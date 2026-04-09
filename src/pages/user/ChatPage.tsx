@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, Info, CheckSquare } from 'lucide-react';
 
 const contacts = [
   {
@@ -11,6 +11,17 @@ const contacts = [
     time: '10:24',
     unread: 2,
     online: true,
+    isGroup: false,
+  },
+  {
+    id: 5,
+    name: 'Dự án HamTech UI',
+    avatar: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=100&h=100&fit=crop',
+    lastMsg: 'Marcus: Chiều nay họp chốt thiết kế nhé.',
+    time: '10:15',
+    unread: 5,
+    online: false,
+    isGroup: true,
   },
   {
     id: 2,
@@ -92,8 +103,13 @@ export default function ChatPage() {
                   className="w-12 h-12 rounded-full object-cover border-2 border-inherit"
                   referrerPolicy="no-referrer"
                 />
-                {contact.online && (
+                {contact.online && !contact.isGroup && (
                   <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-inherit" />
+                )}
+                {contact.isGroup && (
+                  <div className="absolute bottom-0 right-0 w-4 h-4 bg-blue-600 rounded-full border-2 border-inherit flex items-center justify-center">
+                    <Users className="w-2.5 h-2.5 text-white" />
+                  </div>
                 )}
               </div>
               <div className="flex-1 text-left overflow-hidden">
@@ -128,18 +144,40 @@ export default function ChatPage() {
             </div>
             <div>
               <h2 className="font-bold leading-tight">{activeContact?.name}</h2>
-              <p className="text-xs text-green-500 font-bold">Đang hoạt động</p>
+              <p className="text-xs text-muted-foreground font-medium">
+                {activeContact?.isGroup ? '12 thành viên' : activeContact?.online ? <span className="text-green-500 font-bold">Đang hoạt động</span> : 'Hoạt động 2 giờ trước'}
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button type="button" className="p-3 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-              <Phone className="w-5 h-5" />
-            </button>
-            <button type="button" className="p-3 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-              <Video className="w-5 h-5" />
-            </button>
-            <button type="button" className="p-3 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-              <MoreVertical className="w-5 h-5" />
+          <div className="flex items-center gap-1 sm:gap-2">
+            {activeContact?.isGroup ? (
+              <>
+                <button type="button" title="Thêm thành viên" className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600">
+                  <UserPlus className="w-5 h-5" />
+                </button>
+                <button type="button" title="Tìm kiếm tin nhắn" className="hidden sm:block p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600">
+                  <Search className="w-5 h-5" />
+                </button>
+                <button type="button" title="Cuộc gọi Video Nhóm" className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600">
+                  <Video className="w-5 h-5" />
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" title="Tạo nhóm trò chuyện mới" className="hidden sm:block p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600">
+                  <UserPlus className="w-5 h-5" />
+                </button>
+                <button type="button" title="Gọi thoại" className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600">
+                  <Phone className="w-5 h-5" />
+                </button>
+                <button type="button" title="Gọi video" className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600">
+                  <Video className="w-5 h-5" />
+                </button>
+              </>
+            )}
+            <div className="hidden sm:block w-px h-6 bg-inherit mx-1" />
+            <button type="button" title="Thông tin hội thoại" className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 hover:bg-blue-600/10">
+              <Info className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -157,15 +195,24 @@ export default function ChatPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}
             >
-              <div className={`max-w-[70%] space-y-1 ${msg.isMe ? 'items-end' : 'items-start'}`}>
-                <div
-                  className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                    msg.isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-black/5 dark:bg-white/5 rounded-tl-none'
-                  }`}
-                >
-                  {msg.text}
+              <div className={`max-w-[70%] relative group/msg flex flex-col ${msg.isMe ? 'items-end' : 'items-start'}`}>
+                <div className={`flex items-center gap-2 ${msg.isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                  <div
+                    className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                      msg.isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-black/5 dark:bg-white/5 rounded-tl-none'
+                    }`}
+                  >
+                    {msg.text}
+                  </div>
+                  
+                  {/* Floating Action Menu on Hover */}
+                  <div className={`hidden sm:flex items-center gap-1 bg-black/5 dark:bg-white/5 rounded-full p-1 opacity-0 group-hover/msg:opacity-100 transition-opacity`}>
+                    <button title="Trả lời" className="p-1.5 rounded-full hover:bg-white dark:hover:bg-black transition-colors"><Reply className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" /></button>
+                    <button title="Ghim / Lưu lịch sử" className="p-1.5 rounded-full hover:bg-white dark:hover:bg-black transition-colors"><Pin className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" /></button>
+                    <button title="Thu hồi / Xoá" className="p-1.5 rounded-full hover:bg-red-500/10 transition-colors"><Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" /></button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 px-1">
+                <div className="flex items-center gap-2 px-1 mt-1">
                   <p className="text-[10px] text-muted-foreground font-bold">{msg.time}</p>
                   {msg.isMe && <CheckCheck className="w-3 h-3 text-blue-600" />}
                 </div>
@@ -174,30 +221,85 @@ export default function ChatPage() {
           ))}
         </div>
 
-        <div className="p-8 border-t border-inherit shrink-0">
-          <div className="max-w-4xl mx-auto relative flex items-center gap-4">
-            <button type="button" className="p-3 rounded-2xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-all">
-              <Paperclip className="w-5 h-5" />
-            </button>
-            <div className="flex-1 relative">
-              <input
-                type="text"
-                placeholder="Nhập tin nhắn..."
-                className="w-full pl-6 pr-12 py-4 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none text-sm font-medium"
-              />
-              <button
-                type="button"
-                className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-blue-600 transition-all"
-              >
+        <div className="p-4 sm:p-6 border-t border-inherit shrink-0 bg-ethereal-bg/80 dark:bg-midnight-bg/80 backdrop-blur-md flex flex-col gap-3">
+          {/* Zalo-style Toolbar */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <button type="button" title="Gửi nhãn dán / Emoji" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0">
                 <Smile className="w-5 h-5" />
               </button>
+              <button type="button" title="Gửi ảnh/video" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0">
+                <Image className="w-5 h-5" />
+              </button>
+              <button type="button" title="Đính kèm tài liệu" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0">
+                <Paperclip className="w-5 h-5" />
+              </button>
+              
+              <div className="w-px h-5 bg-black/10 dark:bg-white/10 mx-1" />
+
+              {/* Group specific tools in Toolbar */}
+              {activeContact?.isGroup && (
+                <>
+                  <button type="button" title="Tạo bình chọn (Poll)" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0">
+                    <BarChart2 className="w-5 h-5" />
+                  </button>
+                  <button type="button" title="Giao việc / Nhắc hẹn" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0 hidden sm:block">
+                    <CheckSquare className="w-5 h-5" />
+                  </button>
+                  <button type="button" title="AI Tóm tắt nhóm" className="p-2 rounded-lg hover:bg-blue-600/10 transition-all text-blue-600 hover:text-blue-700 shrink-0 hidden sm:flex items-center gap-2 font-bold text-xs bg-blue-600/5 ml-2 border border-blue-600/20">
+                    <Sparkles className="w-4 h-4" />
+                    Tóm tắt cuộc gọi / tin nhắn
+                  </button>
+                </>
+              )}
+
+              {/* 1-1 specific tools */}
+              {!activeContact?.isGroup && (
+                <>
+                  <button type="button" title="Bảng trắng tương tác" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0 hidden sm:block">
+                    <Palette className="w-5 h-5" />
+                  </button>
+                </>
+              )}
             </div>
-            <button
-              type="button"
-              className="p-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 transition-all group"
-            >
-              <Send className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+          </div>
+
+          {/* AI Suggestion Chip (Above input) */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
+              <Sparkles className="w-3 h-3 text-blue-600" />
+              Dạ, em hiểu rồi ạ.
             </button>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
+              <Sparkles className="w-3 h-3 text-blue-600" />
+              Cho mình xin link nhé!
+            </button>
+          </div>
+
+          {/* Chat Input */}
+          <div className="relative flex items-end gap-2">
+            <div className="flex-1 relative flex flex-col bg-black/5 dark:bg-white/5 rounded-2xl border border-transparent focus-within:border-blue-600/30 focus-within:bg-white dark:focus-within:bg-black/40 transition-all">
+              <textarea
+                placeholder={`Nhập tin nhắn tới ${activeContact?.name}...`}
+                rows={1}
+                className="w-full bg-transparent px-4 py-3 outline-none text-sm font-medium resize-none max-h-32 min-h-[44px]"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2 pb-1 shrink-0">
+               <button
+                type="button" title="Ghi âm giọng nói"
+                className="p-3 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-all text-muted-foreground hover:text-blue-600"
+              >
+                <Mic className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                className="p-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 transition-all group"
+              >
+                <Send className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
