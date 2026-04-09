@@ -206,7 +206,7 @@ export default function AdminDashboard() {
                         user.role === 'Quản trị viên'
                           ? 'bg-purple-500/10 text-purple-500'
                           : user.role === 'Kiểm duyệt viên'
-                            ? 'bg-blue-500/10 text-blue-500'
+                            ? 'bg-blue-600/10 text-blue-600'
                             : 'bg-green-500/10 text-green-500'
                       }`}
                     >
@@ -226,7 +226,7 @@ export default function AdminDashboard() {
                   <td className="p-6 text-sm font-medium text-muted-foreground">{user.joined}</td>
                   <td className="p-6">
                     <div className="flex items-center gap-2">
-                      <button className="p-2 rounded-lg hover:bg-blue-500/10 text-blue-600 transition-all">
+                      <button className="p-2 rounded-lg hover:bg-blue-600/10 text-blue-600 transition-all">
                         <Mail className="w-4 h-4" />
                       </button>
                       <button className="p-2 rounded-lg hover:bg-red-500/10 text-red-600 transition-all">

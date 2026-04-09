@@ -73,7 +73,7 @@ export default function AdminAnalytics() {
         <div className="space-y-1">
           <h1 className="text-4xl font-display font-extrabold tracking-tight">Phân tích hiệu suất</h1>
           <p className="text-muted-foreground text-lg">
-            Theo dõi tăng trưởng và mức độ tương tác trong hệ sinh thái Zalogram.
+            Theo dõi tăng trưởng và mức độ tương tác trong hệ sinh thái HamTech.
           </p>
         </div>
         <button className="px-6 py-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-inherit hover:bg-black/10 dark:hover:bg-white/10 transition-all flex items-center gap-2 font-bold">
