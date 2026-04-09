@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, Info, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, PanelRight, PanelRightClose, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const contacts = [
@@ -184,8 +184,8 @@ export default function ChatPage() {
               </>
             )}
             <div className="hidden sm:block w-px h-6 bg-inherit mx-1" />
-            <button type="button" onClick={() => setShowInfo(!showInfo)} title="Thông tin hội thoại" className={`p-2 sm:p-2.5 rounded-full transition-all text-muted-foreground hover:text-blue-600 ${showInfo ? 'bg-blue-600/10 text-blue-600' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}>
-              <Info className="w-5 h-5" />
+            <button type="button" onClick={() => setShowInfo(!showInfo)} title={showInfo ? "Đóng thông tin hội thoại" : "Mở thông tin hội thoại"} className={`p-2 sm:p-2.5 rounded-full transition-all text-muted-foreground hover:text-blue-600 ${showInfo ? 'bg-blue-600/10 text-blue-600' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}>
+              {showInfo ? <PanelRightClose className="w-5 h-5" /> : <PanelRight className="w-5 h-5" />}
             </button>
           </div>
         </div>
