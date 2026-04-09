@@ -8,6 +8,7 @@ import type {
   IChangePasswordRequest,
   IForgotPasswordRequest,
   IResetPasswordRequest,
+  IVerifyEmailRequest,
 } from '@/types/auth.types';
 import type { ApiSuccessResponse } from '@/types/api.types';
 
@@ -25,8 +26,11 @@ export const authApi = createApi({
     login: builder.mutation<ApiSuccessResponse<ILoginResponse>, ILoginRequest>({
       query: (body) => ({ url: '/auth/login', method: 'POST', body }),
     }),
-    register: builder.mutation<ApiSuccessResponse<ILoginResponse>, IRegisterRequest>({
+    register: builder.mutation<ApiSuccessResponse<{ message: string }>, IRegisterRequest>({
       query: (body) => ({ url: '/auth/register', method: 'POST', body }),
+    }),
+    verifyEmail: builder.mutation<ApiSuccessResponse<ILoginResponse>, IVerifyEmailRequest>({
+      query: (body) => ({ url: '/auth/verify-email', method: 'POST', body }),
     }),
     logout: builder.mutation<ApiSuccessResponse<null>, void>({
       query: () => ({ url: '/auth/logout', method: 'POST' }),
@@ -61,6 +65,7 @@ export const authApi = createApi({
 export const {
   useLoginMutation,
   useRegisterMutation,
+  useVerifyEmailMutation,
   useLogoutMutation,
   useFaceLoginMutation,
   useEnableFaceLoginMutation,

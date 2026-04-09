@@ -3,9 +3,9 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowRight, Eye, EyeOff, Loader2, User, Mail, Lock } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Loader2, User, Mail, Lock, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useLoginMutation, useRegisterMutation } from '@/store/api/authApi';
+import { useLoginMutation, useRegisterMutation, useVerifyEmailMutation } from '@/store/api/authApi';
 import { ILoginRequest, IRegisterRequest } from '@/types/auth.types';
 import logo from '@/assets/images/logo_tron.png';
 
@@ -30,8 +30,13 @@ const registerSchema = z
     path: ['confirmPassword'],
   });
 
+const otpSchema = z.object({
+  otp: z.string().length(6, 'OTP phải có 6 chữ số').regex(/^\d+$/, 'OTP chỉ được chứa chữ số'),
+});
+
 type LoginFormValues = z.infer<typeof loginSchema>;
 type RegisterFormValues = z.infer<typeof registerSchema>;
+type OtpFormValues = z.infer<typeof otpSchema>;
 
 const variants = {
   enter: (direction: number) => ({
@@ -56,12 +61,16 @@ const Step = ({
   register,
   errors,
   trigger,
+  otpRegister,
+  otpErrors,
 }: {
   fields: any[];
-  control: any;
-  register: any;
-  errors: any;
-  trigger: (name: any) => void;
+  control?: any;
+  register?: any;
+  errors?: any;
+  trigger?: (name: any) => void;
+  otpRegister?: any;
+  otpErrors?: any;
 }) => {
   return (
     <div className="space-y-6">
@@ -69,17 +78,22 @@ const Step = ({
         <div key={field.name} className="space-y-2">
           <label htmlFor={field.name} className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300">
             {field.icon}
-            {field.title}
+            <div>
+              <div>{field.title}</div>
+              {field.subtitle && <div className="text-sm text-gray-500 dark:text-gray-400 font-normal">{field.subtitle}</div>}
+            </div>
           </label>
           <div className="relative">
             <input
               id={field.name}
               type={field.showPasswordToggle && field.showPassword ? 'text' : field.type}
-              {...register(field.name, {
-                onChange: () => trigger(field.name),
+              placeholder={field.isOtp ? 'XXXXXX' : ''}
+              {...(field.isOtp ? otpRegister : register)(field.name, {
+                onChange: () => (field.isOtp ? undefined : trigger?.(field.name)),
               })}
               className="mt-1 block w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border-2 border-transparent rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
               autoComplete="off"
+              maxLength={field.isOtp ? 6 : undefined}
             />
             {field.showPasswordToggle && (
               <button
@@ -92,9 +106,9 @@ const Step = ({
             )}
           </div>
           <AnimatePresence>
-            {errors[field.name] && (
+            {(field.isOtp ? otpErrors?.[field.name] : errors?.[field.name]) && (
               <motion.p initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="mt-1 text-sm text-red-500">
-                {errors[field.name].message}
+                {field.isOtp ? otpErrors[field.name]?.message : errors[field.name]?.message}
               </motion.p>
             )}
           </AnimatePresence>
@@ -130,6 +144,7 @@ const LoginPage = () => {
 
   // Register Form
   const [register, { isLoading: isRegistering, error: registerError }] = useRegisterMutation();
+  const [verifyEmail, { isLoading: isVerifying, error: verifyError }] = useVerifyEmailMutation();
   const {
     register: registerFormRegister,
     handleSubmit: handleRegisterSubmit,
@@ -141,26 +156,63 @@ const LoginPage = () => {
     mode: 'onChange',
   });
 
+  const {
+    register: otpFormRegister,
+    handleSubmit: handleOtpSubmit,
+    formState: { errors: otpErrors },
+    trigger: triggerOtp,
+  } = useForm<OtpFormValues>({
+    resolver: zodResolver(otpSchema),
+    mode: 'onChange',
+  });
+
   const [regStep, setRegStep] = useState(0);
   const [[page, direction], setPage] = useState([0, 0]);
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [registrationEmail, setRegistrationEmail] = useState('');
 
   const onRegisterSubmit = async (data: RegisterFormValues) => {
-    console.log('Submitting registration with data:', data);
+    console.log('Sending registration data:', data);
     try {
       const { confirmPassword, ...registerData } = data;
-      const result = await register(registerData).unwrap();
-      console.log('Registration successful:', result);
-      navigate('/');
+      await register(registerData).unwrap();
+      setRegistrationEmail(data.email);
+      console.log('OTP sent to email');
+      // Move to OTP verification step
+      if (regStep < 3) {
+        setPage([3, 1]);
+        setRegStep(3);
+      }
     } catch (err) {
       console.error('Failed to register:', err);
     }
   };
 
+  const onOtpSubmit = async (data: OtpFormValues) => {
+    try {
+      const result = await verifyEmail({
+        email: registrationEmail,
+        otp: data.otp,
+      }).unwrap();
+      console.log('Registration successful:', result);
+      navigate('/');
+    } catch (err) {
+      console.error('Failed to verify email:', err);
+    }
+  };
+
   const handleNextStep = async () => {
     const fieldsPerStep: (keyof RegisterFormValues)[][] = [['displayName'], ['email'], ['password', 'confirmPassword']];
+    
+    // If we're on the OTP step (step 3), handle OTP submission
+    if (regStep === 3) {
+      handleOtpSubmit(onOtpSubmit)();
+      return;
+    }
+
+    // For other steps, validate and move to next
     const currentFields = fieldsPerStep[regStep];
     const isValid = await triggerRegister(currentFields);
 
@@ -168,7 +220,8 @@ const LoginPage = () => {
       if (regStep < 2) {
         setPage([regStep + 1, 1]);
         setRegStep(regStep + 1);
-      } else {
+      } else if (regStep === 2) {
+        // On password step, submit registration
         handleRegisterSubmit(onRegisterSubmit)();
       }
     }
@@ -176,8 +229,14 @@ const LoginPage = () => {
 
   const handlePrevStep = () => {
     if (regStep > 0) {
-      setPage([regStep - 1, -1]);
-      setRegStep(regStep - 1);
+      if (regStep === 3) {
+        // Going back from OTP step to password step
+        setPage([2, -1]);
+        setRegStep(2);
+      } else {
+        setPage([regStep - 1, -1]);
+        setRegStep(regStep - 1);
+      }
     }
   };
 
@@ -221,6 +280,18 @@ const LoginPage = () => {
           showPasswordToggle: true,
           showPassword: showConfirmPassword,
           togglePassword: () => setShowConfirmPassword(!showConfirmPassword),
+        },
+      ],
+    },
+    {
+      fields: [
+        {
+          title: 'Nhập mã OTP',
+          subtitle: `Mã xác thực đã được gửi đến ${registrationEmail}`,
+          name: 'otp',
+          type: 'text',
+          icon: <ShieldCheck />,
+          isOtp: true,
         },
       ],
     },
@@ -271,15 +342,17 @@ const LoginPage = () => {
                         register={registerFormRegister}
                         errors={registerErrors}
                         trigger={triggerRegister}
+                        otpRegister={otpFormRegister}
+                        otpErrors={otpErrors}
                       />
                     </motion.div>
                   </AnimatePresence>
                 </form>
 
-                {registerError && (
+                {(registerError || verifyError) && (
                   <div className="text-red-500 text-sm text-center mt-4">
                     {/* @ts-ignore */}
-                    {registerError?.data?.message || 'Đã có lỗi xảy ra'}
+                    {registerError?.data?.message || verifyError?.data?.message || 'Đã có lỗi xảy ra'}
                   </div>
                 )}
 
@@ -294,10 +367,10 @@ const LoginPage = () => {
                   <button
                     type="button"
                     onClick={handleNextStep}
-                    disabled={isRegistering}
+                    disabled={isRegistering || isVerifying}
                     className="flex items-center justify-center py-3 px-6 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400"
                   >
-                    {isRegistering ? (
+                    {isRegistering || isVerifying ? (
                       <Loader2 className="animate-spin" />
                     ) : (
                       <>

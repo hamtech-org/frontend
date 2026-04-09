@@ -41,3 +41,8 @@ export interface IChangePasswordRequest {
   currentPassword: string;
   newPassword: string;
 }
+
+export interface IVerifyEmailRequest {
+  email: string;
+  otp: string;
+}
