@@ -197,7 +197,7 @@ const App: React.FC = () => {
           </header>
         )}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className={cn("flex-1 relative", isChatRoute ? "overflow-hidden" : "overflow-y-auto")}>
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
@@ -205,7 +205,7 @@ const App: React.FC = () => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="h-full"
+              className={isChatRoute ? "absolute inset-0" : "h-full"}
             >
               <Suspense fallback={<PageLoader />}>
                 <Routes>
