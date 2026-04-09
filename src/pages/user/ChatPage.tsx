@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, Info, CheckSquare } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, Info, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const contacts = [
   {
@@ -66,14 +67,21 @@ const messages = [
 ];
 
 export default function ChatPage() {
+  const navigate = useNavigate();
   const [activeChat, setActiveChat] = useState(1);
+  const [showInfo, setShowInfo] = useState(true);
   const activeContact = contacts.find((c) => c.id === activeChat);
 
   return (
     <div className="h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
       <div className="w-96 border-r border-inherit flex flex-col shrink-0">
         <div className="p-6 space-y-6">
-          <h1 className="text-2xl font-display font-bold tracking-tight">Tin nhắn</h1>
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate('/')} type="button" className="p-2 -ml-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600" title="Quay lại hệ thống">
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            <h1 className="text-2xl font-display font-bold tracking-tight">Tin nhắn</h1>
+          </div>
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
@@ -176,11 +184,28 @@ export default function ChatPage() {
               </>
             )}
             <div className="hidden sm:block w-px h-6 bg-inherit mx-1" />
-            <button type="button" title="Thông tin hội thoại" className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 hover:bg-blue-600/10">
+            <button type="button" onClick={() => setShowInfo(!showInfo)} title="Thông tin hội thoại" className={`p-2 sm:p-2.5 rounded-full transition-all text-muted-foreground hover:text-blue-600 ${showInfo ? 'bg-blue-600/10 text-blue-600' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}>
               <Info className="w-5 h-5" />
             </button>
           </div>
         </div>
+
+        {/* Pinned Message (Zalo style) */}
+        {activeContact?.isGroup && (
+          <div className="w-full px-4 sm:px-8 py-3 bg-white dark:bg-black/20 border-b border-inherit flex items-center justify-between shrink-0 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+            <div className="flex items-center gap-3 min-w-0">
+               <Pin className="w-4 h-4 text-blue-600 shrink-0" />
+               <div className="flex flex-col min-w-0">
+                 <p className="text-[10px] sm:text-xs text-blue-600 font-bold uppercase">Tin nhắn ghim</p>
+                 <p className="text-sm font-medium truncate">Marcus Chen: Tổng hợp tài liệu meeting chiều 14h</p>
+               </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs bg-black/5 dark:bg-white/5 px-2 py-1 rounded-md hidden md:inline-block font-bold">+1 ghim</span>
+              <button className="p-1 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10 rounded-md transition-colors"><MoreVertical className="w-4 h-4" /></button>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-8 space-y-8 min-h-0">
           <div className="flex justify-center">
@@ -196,10 +221,17 @@ export default function ChatPage() {
               className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}
             >
               <div className={`max-w-[70%] relative group/msg flex flex-col ${msg.isMe ? 'items-end' : 'items-start'}`}>
-                <div className={`flex items-center gap-2 ${msg.isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                {/* Zalo shows name for non-me messages in Group */}
+                {!msg.isMe && activeContact?.isGroup && (
+                    <p className="text-[11px] font-bold text-muted-foreground mb-1 ml-11">{msg.sender}</p>
+                )}
+                <div className={`flex items-start gap-2 ${msg.isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                  {!msg.isMe && (
+                    <img src={contacts.find(c=>c.name === msg.sender)?.avatar || activeContact?.avatar} className="w-8 h-8 rounded-full object-cover shrink-0 mt-1" alt={msg.sender} />
+                  )}
                   <div
-                    className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                      msg.isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-black/5 dark:bg-white/5 rounded-tl-none'
+                    className={`px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                      msg.isMe ? 'bg-[#c5e1ff] dark:bg-blue-600 text-black dark:text-white rounded-tr-sm' : 'bg-white dark:bg-black/40 border border-inherit rounded-tl-sm'
                     }`}
                   >
                     {msg.text}
@@ -303,6 +335,112 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+
+      {/* Right Sidebar - Info Panel (Zalo Style) */}
+      {showInfo && (
+        <div className="w-[280px] lg:w-[340px] border-l border-inherit flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all hidden md:flex">
+          <div className="h-20 px-6 flex items-center justify-center border-b border-inherit font-bold text-lg sticky top-0 bg-inherit z-10 shrink-0">
+            Thông tin {activeContact?.isGroup ? 'nhóm' : 'hội thoại'}
+          </div>
+          
+          <div className="p-6 flex flex-col items-center border-b border-inherit shrink-0 bg-white dark:bg-transparent">
+            <div className="w-20 h-20 rounded-full overflow-hidden mb-4 relative">
+              <img src={activeContact?.avatar} alt={activeContact?.name} className="w-full h-full object-cover" />
+            </div>
+            <h3 className="font-bold text-lg text-center leading-tight flex items-center gap-2">
+               {activeContact?.name}
+               <button className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"><Palette className="w-3 h-3 text-muted-foreground" /></button>
+            </h3>
+            {activeContact?.isGroup && (
+              <p className="text-sm text-muted-foreground mt-1 text-center font-medium opacity-80">12 thành viên</p>
+            )}
+            
+            <div className="flex items-start justify-center gap-2 lg:gap-6 mt-6 w-full px-2">
+              <button className="flex flex-col items-center gap-2 group w-16">
+                <div className="w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                  <BellOff className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                </div>
+                <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">Tắt thông<br/>báo</span>
+              </button>
+               {activeContact?.isGroup ? (
+                <button className="flex flex-col items-center gap-2 group w-16">
+                  <div className="w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                    <PinOff className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                  </div>
+                  <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">Bỏ ghim<br/>hội thoại</span>
+                </button>
+               ) : (
+                <button className="flex flex-col items-center gap-2 group w-16">
+                  <div className="w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                    <UserPlus className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                  </div>
+                  <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">Thêm vào<br/>nhóm</span>
+                </button>
+               )}
+              <button className="flex flex-col items-center gap-2 group w-16">
+                <div className="w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                  <UserPlus className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                </div>
+                <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">Thêm thành<br/>viên</span>
+              </button>
+              <button className="flex flex-col items-center gap-2 group w-16 hidden lg:flex">
+                <div className="w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                  <Settings className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                </div>
+                <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">Quản lý<br/>nhóm</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto min-h-0 bg-black/5 dark:bg-transparent custom-scrollbar">
+             {activeContact?.isGroup && (
+              <div className="bg-white dark:bg-transparent border-b border-inherit cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                <div className="p-4 flex items-center justify-between font-bold text-sm">
+                  Thành viên nhóm
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                </div>
+              </div>
+             )}
+             <div className="bg-white dark:bg-transparent border-b border-inherit mt-2">
+                <div className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                  Bảng tin nhóm
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <div className="px-4 pb-4 space-y-1">
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground md:hover:text-blue-600 cursor-pointer md:hover:bg-blue-600/5 p-2 -mx-2 rounded-lg transition-colors font-medium"><CheckSquare className="w-4 h-4 opacity-70" /> Danh sách nhắc hẹn</div>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground md:hover:text-blue-600 cursor-pointer md:hover:bg-blue-600/5 p-2 -mx-2 rounded-lg transition-colors font-medium"><FileText className="w-4 h-4 opacity-70" /> Ghi chú, ghim, bình chọn</div>
+                </div>
+             </div>
+             
+             <div className="bg-white dark:bg-transparent border-b border-inherit mt-2 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                <div className="p-4 flex items-center justify-between font-bold text-sm">
+                  Ảnh/Video
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                </div>
+             </div>
+             <div className="bg-white dark:bg-transparent border-b border-inherit cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                <div className="p-4 flex items-center justify-between font-bold text-sm">
+                  File
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                </div>
+             </div>
+             <div className="bg-white dark:bg-transparent border-b border-inherit cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                <div className="p-4 flex items-center justify-between font-bold text-sm">
+                  Link
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                </div>
+             </div>
+             
+             {activeContact?.isGroup && (
+               <div className="p-4 bg-white dark:bg-transparent mt-2 flex justify-center pb-12">
+                  <button className="flex items-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-2 rounded-xl transition-colors">
+                     Rời nhóm
+                  </button>
+               </div>
+             )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
