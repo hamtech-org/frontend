@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, PanelRight, PanelRightClose, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ArrowLeft, ChevronDown, MoreHorizontal, X, Home, Compass, MessageSquare, MessageCircle, Contact, Cloud, FolderOpen, Frame, Briefcase } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, PanelRight, PanelRightClose, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ArrowLeft, ChevronDown, MoreHorizontal, X, Home, Compass, MessageSquare, MessageCircle, Contact, Cloud, FolderOpen, Frame, Briefcase, Camera, Mail, Quote } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const contacts = [
@@ -560,48 +560,97 @@ export default function ChatPage() {
         )}
       </AnimatePresence>
 
-      {/* Modal Zalo: Thông tin cá nhân */}
+      {/* Modal Zalo: Thông tin cá nhân Premium */}
       <AnimatePresence>
         {showProfileModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 shadow-2xl backdrop-blur-[2px]">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 shadow-2xl backdrop-blur-sm">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.15 }}
-              className="bg-white dark:bg-[#1a1a1a] rounded-xl max-w-[360px] w-full overflow-hidden shadow-2xl"
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2, type: "spring", stiffness: 300, damping: 25 }}
+              className="bg-white dark:bg-[#1a1a1a] rounded-2xl max-w-[400px] w-full shadow-2xl border border-black/5 dark:border-white/10 relative max-h-[90vh] flex flex-col overflow-hidden"
             >
-              <div className="relative h-32 bg-gradient-to-r from-[#0068ff] to-[#00d2ff] flex justify-end p-3">
-                 <button onClick={() => setShowProfileModal(false)} className="w-8 h-8 rounded-full bg-black/20 flex items-center justify-center text-white hover:bg-black/40 backdrop-blur-sm transition-colors">
-                   <X className="w-5 h-5 stroke-[2]"/>
-                 </button>
-              </div>
-              <div className="px-6 pb-6 relative">
-                 <div className="w-20 h-20 rounded-full border-4 border-white dark:border-[#1a1a1a] overflow-hidden absolute -top-10 left-6 bg-white shrink-0 shadow-sm">
-                    <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop" className="w-full h-full object-cover" alt="Profile avatar" />
-                 </div>
-                 <div className="mt-12 flex items-center gap-2">
-                   <h3 className="font-bold text-xl text-black dark:text-white">Marcus Chen</h3>
-                   <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-black uppercase tracking-wide">Developer</span>
-                 </div>
-                 
-                 <div className="mt-6 space-y-4">
-                    <div className="flex flex-col">
-                       <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Số điện thoại</span>
-                       <p className="text-[15px] font-medium text-black dark:text-white/90">+84 123 456 789</p>
-                    </div>
-                    <div className="w-full h-px bg-black/5 dark:bg-white/5" />
-                    <div className="flex flex-col">
-                       <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Giới thiệu</span>
-                       <p className="text-[15px] font-medium text-black dark:text-white/90">Luôn giữ tâm hồn đẹp và viết code sạch 🔥</p>
-                    </div>
-                 </div>
+              {/* Sticky Close Button */}
+              <button 
+                 onClick={() => setShowProfileModal(false)} 
+                 className="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center text-white hover:bg-black/50 backdrop-blur-md transition-colors z-20 shadow-sm"
+              >
+                <X className="w-5 h-5 stroke-[2]"/>
+              </button>
 
-                 <div className="mt-8 flex items-center justify-center gap-3">
-                   <button onClick={() => setShowProfileModal(false)} className="w-full py-2.5 rounded-lg font-bold text-[15px] bg-[#0068ff] text-white hover:bg-blue-700 shadow-sm transition-colors">
-                     Cập nhật
+              {/* Scrollable Modal Content */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar w-full">
+                {/* Cover Photo */}
+                <div className="relative h-32 shrink-0 group">
+                   <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop" className="w-full h-full object-cover" alt="Cover" />
+                   <div className="absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors" />
+                   <button className="absolute bottom-4 right-4 p-2 rounded-full bg-black/30 text-white hover:bg-black/50 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 z-10">
+                     <Camera className="w-4 h-4" />
                    </button>
-                 </div>
+                </div>
+
+                {/* Avatar & Basic Info */}
+                <div className="px-6 relative pb-6">
+                   <div className="flex flex-col items-center -mt-12 relative z-10">
+                      <div className="relative group/avatar cursor-pointer">
+                        <div className="w-24 h-24 rounded-full border-[4px] border-white dark:border-[#1a1a1a] overflow-hidden bg-white shadow-md">
+                           <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop" className="w-full h-full object-cover" alt="Profile avatar" />
+                        </div>
+                        <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center">
+                          <Camera className="w-6 h-6 text-white" />
+                        </div>
+                      </div>
+                      
+                      <h3 className="font-bold text-2xl text-black dark:text-white mt-2 text-center">
+                        Marcus Chen
+                      </h3>
+                      <div className="text-[13px] font-medium text-muted-foreground mt-0.5 flex items-center gap-1.5 justify-center">
+                        Đang hoạt động <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                      </div>
+                   </div>
+                   
+                   {/* Detail Cards */}
+                   <div className="mt-6 space-y-2">
+                      <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
+                         <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                           <Phone className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400" />
+                         </div>
+                         <div className="flex-1">
+                           <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block">Điện thoại</span>
+                           <p className="text-[14px] font-semibold text-black dark:text-white/90">+84 123 456 789</p>
+                         </div>
+                      </div>
+
+                      <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
+                         <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                           <Mail className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400" />
+                         </div>
+                         <div className="flex-1">
+                           <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block">Email công việc</span>
+                           <p className="text-[14px] font-semibold text-black dark:text-white/90">marcus@hamtech.vn</p>
+                         </div>
+                      </div>
+
+                      <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
+                         <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                           <Quote className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400 fill-current opacity-80" />
+                         </div>
+                         <div className="flex-1">
+                           <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block">Tiểu sử</span>
+                           <p className="text-[13px] font-medium text-black dark:text-white/80 leading-relaxed italic">
+                             "Technology is best when it brings people together." 🌍 Code & Coffee routine.
+                           </p>
+                         </div>
+                      </div>
+                   </div>
+
+                   <div className="mt-6 flex gap-3 pb-2 shrink-0">
+                     <button className="flex-1 py-2.5 rounded-xl font-bold text-[14px] bg-[#0068ff] text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all hover:-translate-y-0.5">
+                       Cập nhật thông tin
+                     </button>
+                   </div>
+                </div>
               </div>
             </motion.div>
           </div>
