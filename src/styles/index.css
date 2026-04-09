@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", sans-serif;
+  
+  --color-ethereal-bg: #F8F9FA;
+  --color-ethereal-primary: #1A1A1A;
+  --color-ethereal-accent: #2563EB;
+  --color-ethereal-muted: #6C757D;
+  --color-ethereal-border: rgba(0, 0, 0, 0.05);
+
+  --color-midnight-bg: #0A0A0A;
+  --color-midnight-primary: #FFFFFF;
+  --color-midnight-accent: #2563EB;
+  --color-midnight-muted: #9BA3AF;
+  --color-midnight-border: rgba(255, 255, 255, 0.05);
+}
+
+@layer base {
+  body {
+    @apply font-sans antialiased selection:bg-blue-600/20 selection:text-blue-600;
+  }
+
+  .theme-ethereal {
+    @apply bg-ethereal-bg text-ethereal-primary;
+  }
+
+  .theme-midnight {
+    @apply bg-midnight-bg text-midnight-primary;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply backdrop-blur-xl bg-white/70 border border-white/20 shadow-sm;
+  }
+
+  .dark .glass-card {
+    @apply bg-black/40 border-white/10;
+  }
+
+  .editorial-void {
+    @apply p-8 md:p-12 lg:p-16;
+  }
+
+  .asymmetric-grid {
+    @apply grid grid-cols-12 gap-6;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-200 rounded-full;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  @apply bg-gray-800;
+}
