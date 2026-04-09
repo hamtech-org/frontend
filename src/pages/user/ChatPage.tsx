@@ -82,7 +82,7 @@ export default function ChatPage() {
 
   return (
     <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
-      <div className="w-96 border-r border-black/5 dark:border-white/5 flex flex-col shrink-0 min-h-0">
+      <div className="w-[340px] border-r border-black/5 dark:border-white/5 flex flex-col shrink-0 min-h-0">
         <div className="pt-5 px-4 space-y-4 shrink-0 border-b border-black/5 dark:border-white/5 mb-2">
           <div className="flex items-center gap-1">
             <button onClick={() => navigate('/')} type="button" className="p-1.5 -ml-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600" title="Quay lại Bảng tin">
@@ -124,12 +124,18 @@ export default function ChatPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 space-y-2 min-h-0 custom-scrollbar pr-2 pb-4">
-          {mockContacts.map((contact) => (
-            <button
-              key={contact.id}
+          {mockContacts.map((contact, index) => (
+            <motion.button
+              key={`${contact.id}-${index}`}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "0px 0px -20px 0px" }}
+              transition={{ duration: 0.4, ease: "easeOut", delay: Math.min(index * 0.03, 0.3) }}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
               type="button"
               onClick={() => setActiveChat(contact.id)}
-              className={`w-full p-4 rounded-2xl flex items-center gap-4 transition-all group ${activeChat === contact.id
+              className={`w-full p-3 rounded-2xl flex items-center gap-3 transition-colors group ${activeChat === contact.id
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
                   : 'hover:bg-black/5 dark:hover:bg-white/5'
                 }`}
@@ -138,33 +144,33 @@ export default function ChatPage() {
                 <img
                   src={contact.avatar}
                   alt={contact.name}
-                  className="w-12 h-12 rounded-full object-cover border-2 border-inherit"
+                  className="w-11 h-11 rounded-full object-cover border-2 border-inherit"
                   referrerPolicy="no-referrer"
                 />
                 {contact.online && !contact.isGroup && (
                   <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-inherit" />
                 )}
                 {contact.isGroup && (
-                  <div className="absolute bottom-0 right-0 w-4 h-4 bg-blue-600 rounded-full border-2 border-inherit flex items-center justify-center">
-                    <Users className="w-2.5 h-2.5 text-white" />
+                  <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-blue-600 rounded-full border-2 border-inherit flex items-center justify-center">
+                    <Users className="w-2 h-2 text-white" />
                   </div>
                 )}
               </div>
               <div className="flex-1 text-left overflow-hidden">
                 <div className="flex items-center justify-between">
-                  <p className="font-bold truncate">{contact.name}</p>
-                  <p className={`text-xs ${activeChat === contact.id ? 'text-white/60' : 'text-muted-foreground'}`}>{contact.time}</p>
+                  <p className="text-[15px] font-bold truncate">{contact.name}</p>
+                  <p className={`text-[11px] font-medium ${activeChat === contact.id ? 'text-white/70' : 'text-muted-foreground'}`}>{contact.time}</p>
                 </div>
-                <p className={`text-sm truncate ${activeChat === contact.id ? 'text-white/80' : 'text-muted-foreground'}`}>
+                <p className={`text-[13px] truncate mt-0.5 ${activeChat === contact.id ? 'text-white/80' : 'text-muted-foreground'}`}>
                   {contact.lastMsg}
                 </p>
               </div>
               {contact.unread > 0 && activeChat !== contact.id && (
-                <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center text-[10px] font-bold text-white">
+                <div className="w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0">
                   {contact.unread}
                 </div>
               )}
-            </button>
+            </motion.button>
           ))}
         </div>
       </div>
