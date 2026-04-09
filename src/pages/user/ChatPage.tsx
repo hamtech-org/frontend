@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, PanelRight, PanelRightClose, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ArrowLeft, ChevronDown, MoreHorizontal, X } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, PanelRight, PanelRightClose, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ArrowLeft, ChevronDown, MoreHorizontal, X, Home, Compass, MessageSquare, MessageCircle, Contact, Cloud, FolderOpen, Frame, Briefcase } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const contacts = [
@@ -78,16 +78,53 @@ export default function ChatPage() {
   const [activeChat, setActiveChat] = useState(1);
   const [showInfo, setShowInfo] = useState(true);
   const [showMarkReadModal, setShowMarkReadModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const activeContact = mockContacts.find((c) => c.id === activeChat);
 
   return (
     <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
-      <div className="w-[340px] border-r border-black/5 dark:border-white/5 flex flex-col shrink-0 min-h-0">
+      {/* Zalo Blue Navbar */}
+      <div className="w-[64px] bg-[#0068ff] flex flex-col items-center py-6 shrink-0 z-20">
+        <div className="w-12 h-12 shrink-0 rounded-full overflow-hidden mb-6 border border-white/20 cursor-pointer shadow-sm hover:opacity-90 transition-opacity" onClick={() => setShowProfileModal(true)} title="Thông tin tài khoản">
+          <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop" className="w-full h-full object-cover" alt="My Profile" />
+        </div>
+        <div className="flex-1 w-full flex flex-col items-center gap-2">
+          <button className="w-12 h-12 shrink-0 rounded-2xl bg-black/20 flex flex-col items-center justify-center text-white cursor-pointer transition-colors shadow-sm">
+            <MessageCircle className="w-6 h-6 fill-white" />
+          </button>
+          <button className="w-12 h-12 shrink-0 rounded-2xl flex flex-col items-center justify-center text-white/80 hover:bg-white/10 cursor-pointer transition-colors">
+            <Contact className="w-[26px] h-[26px]" />
+          </button>
+
+          <div className="w-8 h-px shrink-0 bg-white/20 my-2" />
+
+          <button onClick={() => navigate('/')} title="Về Bảng Tin" className="w-12 h-12 shrink-0 rounded-2xl flex flex-col items-center justify-center text-white/80 hover:bg-white/10 cursor-pointer transition-colors mt-1">
+            <Home className="w-6 h-6" />
+          </button>
+          
+          <button className="w-12 h-12 shrink-0 rounded-2xl flex flex-col items-center justify-center text-white/80 hover:bg-white/10 cursor-pointer transition-colors">
+            <Cloud className="w-6 h-6" />
+          </button>
+          <button className="w-12 h-12 shrink-0 rounded-2xl flex flex-col items-center justify-center text-white/80 hover:bg-white/10 cursor-pointer transition-colors">
+            <FolderOpen className="w-[22px] h-[22px] stroke-[2]" />
+          </button>
+          <button className="w-12 h-12 shrink-0 rounded-2xl flex flex-col items-center justify-center text-white/80 hover:bg-white/10 cursor-pointer transition-colors">
+            <Frame className="w-[22px] h-[22px] border-dashed border-2 stroke-0 rounded border-current" />
+          </button>
+          <button className="w-12 h-12 shrink-0 rounded-2xl flex flex-col items-center justify-center text-white/80 hover:bg-white/10 cursor-pointer transition-colors">
+            <Briefcase className="w-[22px] h-[22px]" />
+          </button>
+        </div>
+        <div className="mt-auto w-full flex justify-center pb-2">
+          <button className="w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-white/80 hover:bg-white/10 cursor-pointer transition-colors">
+            <Settings className="w-6 h-6" />
+          </button>
+        </div>
+      </div>
+
+      <div className="w-[340px] border-r border-black/5 dark:border-white/5 flex flex-col shrink-0 min-h-0 bg-white dark:bg-[#1a1a1a]">
         <div className="pt-5 px-4 space-y-4 shrink-0 border-b border-black/5 dark:border-white/5 mb-2">
-          <div className="flex items-center gap-1">
-            <button onClick={() => navigate('/')} type="button" className="p-1.5 -ml-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600" title="Quay lại Bảng tin">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
+          <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
@@ -112,7 +149,7 @@ export default function ChatPage() {
               <button className="flex items-center gap-1 text-[13px] font-semibold text-muted-foreground hover:text-black dark:hover:text-white transition-colors">
                 Phân loại <ChevronDown className="w-4 h-4" />
               </button>
-              <button 
+              <button
                 onClick={() => setShowMarkReadModal(true)}
                 title="Đánh dấu đã đọc"
                 className="text-muted-foreground hover:text-black dark:hover:text-white transition-colors p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
@@ -136,8 +173,8 @@ export default function ChatPage() {
               type="button"
               onClick={() => setActiveChat(contact.id)}
               className={`w-full p-3 rounded-2xl flex items-center gap-3 transition-colors group ${activeChat === contact.id
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                  : 'hover:bg-black/5 dark:hover:bg-white/5'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                : 'hover:bg-black/5 dark:hover:bg-white/5'
                 }`}
             >
               <div className="relative flex-shrink-0">
@@ -517,6 +554,54 @@ export default function ChatPage() {
                 >
                   Xác nhận
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Zalo: Thông tin cá nhân */}
+      <AnimatePresence>
+        {showProfileModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 shadow-2xl backdrop-blur-[2px]">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              className="bg-white dark:bg-[#1a1a1a] rounded-xl max-w-[360px] w-full overflow-hidden shadow-2xl"
+            >
+              <div className="relative h-32 bg-gradient-to-r from-[#0068ff] to-[#00d2ff] flex justify-end p-3">
+                 <button onClick={() => setShowProfileModal(false)} className="w-8 h-8 rounded-full bg-black/20 flex items-center justify-center text-white hover:bg-black/40 backdrop-blur-sm transition-colors">
+                   <X className="w-5 h-5 stroke-[2]"/>
+                 </button>
+              </div>
+              <div className="px-6 pb-6 relative">
+                 <div className="w-20 h-20 rounded-full border-4 border-white dark:border-[#1a1a1a] overflow-hidden absolute -top-10 left-6 bg-white shrink-0 shadow-sm">
+                    <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop" className="w-full h-full object-cover" alt="Profile avatar" />
+                 </div>
+                 <div className="mt-12 flex items-center gap-2">
+                   <h3 className="font-bold text-xl text-black dark:text-white">Marcus Chen</h3>
+                   <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-black uppercase tracking-wide">Developer</span>
+                 </div>
+                 
+                 <div className="mt-6 space-y-4">
+                    <div className="flex flex-col">
+                       <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Số điện thoại</span>
+                       <p className="text-[15px] font-medium text-black dark:text-white/90">+84 123 456 789</p>
+                    </div>
+                    <div className="w-full h-px bg-black/5 dark:bg-white/5" />
+                    <div className="flex flex-col">
+                       <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Giới thiệu</span>
+                       <p className="text-[15px] font-medium text-black dark:text-white/90">Luôn giữ tâm hồn đẹp và viết code sạch 🔥</p>
+                    </div>
+                 </div>
+
+                 <div className="mt-8 flex items-center justify-center gap-3">
+                   <button onClick={() => setShowProfileModal(false)} className="w-full py-2.5 rounded-lg font-bold text-[15px] bg-[#0068ff] text-white hover:bg-blue-700 shadow-sm transition-colors">
+                     Cập nhật
+                   </button>
+                 </div>
               </div>
             </motion.div>
           </div>
