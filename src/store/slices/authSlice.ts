@@ -1,9 +1,13 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { IUser } from '@/types/user.types';
+import { authApi } from '../api/authApi';
+import { ILoginResponse } from '@/types/auth.types';
+import { ApiSuccessResponse } from '@/types/api.types';
 
 interface AuthState {
   user: IUser | null;
   accessToken: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
 }
@@ -11,6 +15,7 @@ interface AuthState {
 const initialState: AuthState = {
   user: null,
   accessToken: localStorage.getItem('accessToken'),
+  refreshToken: localStorage.getItem('refreshToken'),
   isAuthenticated: !!localStorage.getItem('accessToken'),
   isLoading: false,
 };
@@ -19,15 +24,10 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    setCredentials: (state, action: PayloadAction<{ user: IUser; accessToken: string }>) => {
-      state.user = action.payload.user;
-      state.accessToken = action.payload.accessToken;
-      state.isAuthenticated = true;
-      localStorage.setItem('accessToken', action.payload.accessToken);
-    },
     logout: (state) => {
       state.user = null;
       state.accessToken = null;
+      state.refreshToken = null;
       state.isAuthenticated = false;
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
@@ -36,7 +36,32 @@ const authSlice = createSlice({
       state.user = action.payload;
     },
   },
+  extraReducers: (builder) => {
+    builder
+      .addMatcher(
+        authApi.endpoints.login.matchFulfilled,
+        (state, { payload }: PayloadAction<ApiSuccessResponse<ILoginResponse>>) => {
+          const { accessToken, refreshToken } = payload.data;
+          state.accessToken = accessToken;
+          state.refreshToken = refreshToken;
+          state.isAuthenticated = true;
+          localStorage.setItem('accessToken', accessToken);
+          localStorage.setItem('refreshToken', refreshToken);
+        }
+      )
+      .addMatcher(
+        authApi.endpoints.register.matchFulfilled,
+        (state, { payload }: PayloadAction<ApiSuccessResponse<ILoginResponse>>) => {
+          const { accessToken, refreshToken } = payload.data;
+          state.accessToken = accessToken;
+          state.refreshToken = refreshToken;
+          state.isAuthenticated = true;
+          localStorage.setItem('accessToken', accessToken);
+          localStorage.setItem('refreshToken', refreshToken);
+        }
+      );
+  },
 });
 
-export const { setCredentials, logout, setUser } = authSlice.actions;
+export const { logout, setUser } = authSlice.actions;
 export default authSlice.reducer;
