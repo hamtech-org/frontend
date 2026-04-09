@@ -74,7 +74,7 @@ export default function ChatPage() {
 
   return (
     <div className="h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
-      <div className="w-96 border-r border-inherit flex flex-col shrink-0">
+      <div className="w-96 border-r border-black/5 dark:border-white/5 flex flex-col shrink-0">
         <div className="p-6 space-y-6">
           <div className="flex items-center gap-3">
             <button onClick={() => navigate('/')} type="button" className="p-2 -ml-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600" title="Quay lại hệ thống">
@@ -92,7 +92,7 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 space-y-2 min-h-0">
+        <div className="flex-1 overflow-y-auto px-4 space-y-2 min-h-0 custom-scrollbar pr-2 pb-4">
           {contacts.map((contact) => (
             <button
               key={contact.id}
@@ -140,7 +140,7 @@ export default function ChatPage() {
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <div className="h-20 px-8 flex items-center justify-between border-b border-inherit bg-inherit/80 backdrop-blur-md sticky top-0 z-10">
+        <div className="h-20 px-8 flex items-center justify-between border-b border-black/5 dark:border-white/5 bg-inherit/80 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-blue-600/20">
               <img
@@ -192,7 +192,7 @@ export default function ChatPage() {
 
         {/* Pinned Message (Zalo style) */}
         {activeContact?.isGroup && (
-          <div className="w-full px-4 sm:px-8 py-3 bg-white dark:bg-black/20 border-b border-inherit flex items-center justify-between shrink-0 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+          <div className="w-full px-4 sm:px-8 py-3 bg-white dark:bg-black/20 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
             <div className="flex items-center gap-3 min-w-0">
                <Pin className="w-4 h-4 text-blue-600 shrink-0" />
                <div className="flex flex-col min-w-0">
@@ -207,7 +207,7 @@ export default function ChatPage() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-8 space-y-8 min-h-0">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-8 min-h-0 custom-scrollbar">
           <div className="flex justify-center">
             <span className="px-4 py-1 rounded-full bg-black/5 dark:bg-white/5 text-xs font-bold text-muted-foreground uppercase tracking-widest">
               Hôm nay
@@ -253,7 +253,7 @@ export default function ChatPage() {
           ))}
         </div>
 
-        <div className="p-4 sm:p-6 border-t border-inherit shrink-0 bg-ethereal-bg/80 dark:bg-midnight-bg/80 backdrop-blur-md flex flex-col gap-3">
+        <div className="p-4 sm:p-6 border-t border-black/5 dark:border-white/5 shrink-0 bg-ethereal-bg/80 dark:bg-midnight-bg/80 backdrop-blur-md flex flex-col gap-3">
           {/* Zalo-style Toolbar */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 sm:gap-2">
@@ -338,12 +338,12 @@ export default function ChatPage() {
 
       {/* Right Sidebar - Info Panel (Zalo Style) */}
       {showInfo && (
-        <div className="w-[280px] lg:w-[340px] border-l border-inherit flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all hidden md:flex">
-          <div className="h-20 px-6 flex items-center justify-center border-b border-inherit font-bold text-lg sticky top-0 bg-inherit z-10 shrink-0">
+        <div className="w-[280px] lg:w-[340px] border-l border-black/5 dark:border-white/5 flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all hidden md:flex">
+          <div className="h-20 px-6 flex items-center justify-center border-b border-black/5 dark:border-white/5 font-bold text-lg sticky top-0 bg-inherit z-10 shrink-0">
             Thông tin {activeContact?.isGroup ? 'nhóm' : 'hội thoại'}
           </div>
           
-          <div className="p-6 flex flex-col items-center border-b border-inherit shrink-0 bg-white dark:bg-transparent">
+          <div className="p-6 flex flex-col items-center border-b border-black/5 dark:border-white/5 shrink-0 bg-white dark:bg-transparent">
             <div className="w-20 h-20 rounded-full overflow-hidden mb-4 relative">
               <img src={activeContact?.avatar} alt={activeContact?.name} className="w-full h-full object-cover" />
             </div>
@@ -394,14 +394,14 @@ export default function ChatPage() {
 
           <div className="flex-1 overflow-y-auto min-h-0 bg-black/5 dark:bg-transparent custom-scrollbar">
              {activeContact?.isGroup && (
-              <div className="bg-white dark:bg-transparent border-b border-inherit cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+              <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                 <div className="p-4 flex items-center justify-between font-bold text-sm">
                   Thành viên nhóm
                   <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </div>
               </div>
              )}
-             <div className="bg-white dark:bg-transparent border-b border-inherit mt-2">
+             <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5 mt-2">
                 <div className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                   Bảng tin nhóm
                   <ChevronRight className="w-4 h-4 text-muted-foreground" />
@@ -412,19 +412,19 @@ export default function ChatPage() {
                 </div>
              </div>
              
-             <div className="bg-white dark:bg-transparent border-b border-inherit mt-2 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+             <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5 mt-2 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                 <div className="p-4 flex items-center justify-between font-bold text-sm">
                   Ảnh/Video
                   <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </div>
              </div>
-             <div className="bg-white dark:bg-transparent border-b border-inherit cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+             <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                 <div className="p-4 flex items-center justify-between font-bold text-sm">
                   File
                   <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </div>
              </div>
-             <div className="bg-white dark:bg-transparent border-b border-inherit cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+             <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                 <div className="p-4 flex items-center justify-between font-bold text-sm">
                   Link
                   <ChevronRight className="w-4 h-4 text-muted-foreground" />
