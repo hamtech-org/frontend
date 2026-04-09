@@ -250,7 +250,7 @@ export default function ChatPage() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}
             >
-              <div className={`max-w-[70%] relative group/msg flex flex-col ${msg.isMe ? 'items-end' : 'items-start'}`}>
+              <div className={`max-w-[85%] relative group/msg flex flex-col ${msg.isMe ? 'items-end' : 'items-start'}`}>
                 {/* Zalo shows name for non-me messages in Group */}
                 {!msg.isMe && activeContact?.isGroup && (
                   <p className="text-[11px] font-bold text-muted-foreground mb-1 ml-11">{msg.sender}</p>
