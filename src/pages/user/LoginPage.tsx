@@ -1,12 +1,11 @@
-import { useState } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useState, useRef, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowRight, Eye, EyeOff, Loader2, User, Mail, Lock, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Loader2, User, Mail, Lock, ShieldCheck, Camera, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useLoginMutation, useVerifyLoginOtpMutation, useRegisterMutation, useVerifyEmailMutation } from '@/store/api/authApi';
-import { ILoginRequest, IRegisterRequest } from '@/types/auth.types';
+import { useLoginMutation, useVerifyLoginOtpMutation, useRegisterMutation, useVerifyEmailMutation, useFaceLoginMutation } from '@/store/api/authApi';
 import logo from '@/assets/images/logo_tron.png';
 
 // Schemas
@@ -57,7 +56,6 @@ const variants = {
 
 const Step = ({
   fields,
-  control,
   register,
   errors,
   trigger,
@@ -65,7 +63,6 @@ const Step = ({
   otpErrors,
 }: {
   fields: any[];
-  control?: any;
   register?: any;
   errors?: any;
   trigger?: (name: any) => void;
@@ -121,6 +118,18 @@ const Step = ({
 const LoginPage = () => {
   const [isRegister, setIsRegister] = useState(false);
   const navigate = useNavigate();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null); // Store stream in ref, not state
+
+  // Face Login
+  const [faceLogin, { isLoading: isFaceLogging }] = useFaceLoginMutation();
+  const [showFaceCamera, setShowFaceCamera] = useState(false);
+  const [currentStream, setCurrentStream] = useState<MediaStream | null>(null);
+  const [recentEmails, setRecentEmails] = useState<string[]>(() => {
+    const stored = localStorage.getItem('recentEmails');
+    return stored ? JSON.parse(stored) : [];
+  });
 
   // Login Form
   const [login, { isLoading: isLoggingIn, error: loginError }] = useLoginMutation();
@@ -150,21 +159,93 @@ const LoginPage = () => {
   const onLoginSubmit = async (data: LoginFormValues) => {
     try {
       await login(data).unwrap();
+      // Store email for quick login
+      setRecentEmails((prev) => {
+        const updated = [data.email, ...prev.filter((e) => e !== data.email)].slice(0, 3);
+        localStorage.setItem('recentEmails', JSON.stringify(updated));
+        return updated;
+      });
       setLoginEmail(data.email);
       setIsLoginOtpPending(true);
-      console.log('OTP sent to email for login verification');
     } catch (err) {
       console.error('Failed to login:', err);
     }
   };
 
+  /// Face Login Handlers
+  const startFaceCamera = async () => {
+    try {
+      // Request camera permissions
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' },
+        audio: false
+      });
+
+      setCurrentStream(stream);
+      setShowFaceCamera(true);
+    } catch (err) {
+      console.error('Failed to access camera:', err);
+      setShowFaceCamera(false);
+      alert('Không thể truy cập camera. Vui lòng kiểm tra quyền của ứng dụng.');
+    }
+  };
+
+  // Assign stream when modal opens
+  useEffect(() => {
+    if (showFaceCamera && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      setCurrentStream(streamRef.current);
+    }
+  }, [showFaceCamera]);
+
+  // Cleanup stream
+  useEffect(() => {
+    return () => {
+      if (currentStream) {
+        currentStream.getTracks().forEach((track) => track.stop());
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (videoRef.current?.srcObject) {
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, [currentStream]);
+
+  const captureFace = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    try {
+      const context = canvasRef.current.getContext('2d');
+      if (!context) return;
+
+      context.drawImage(videoRef.current, 0, 0, 320, 240);
+      const imageData = canvasRef.current.toDataURL('image/jpeg', 0.8);
+
+      setShowFaceCamera(false);
+      setCurrentStream(null);
+
+      await faceLogin({ image: imageData }).unwrap();
+      navigate('/');
+    } catch (err) {
+      console.error('Face login failed:', err);
+      alert('Đăng nhập bằng khuôn mặt không thành công. Vui lòng thử lại.');
+    }
+  };
+
+  const cancelFaceCamera = () => {
+    setShowFaceCamera(false);
+    setCurrentStream(null);
+  };
+
+
   const onLoginOtpSubmit = async (data: OtpFormValues) => {
     try {
-      const result = await verifyLoginOtp({
+      await verifyLoginOtp({
         email: loginEmail,
         otp: data.otp,
       }).unwrap();
-      console.log('Login successful:', result);
       navigate('/');
     } catch (err) {
       console.error('Failed to verify login OTP:', err);
@@ -179,7 +260,6 @@ const LoginPage = () => {
     handleSubmit: handleRegisterSubmit,
     formState: { errors: registerErrors },
     trigger: triggerRegister,
-    control: registerFormControl,
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     mode: 'onChange',
@@ -189,7 +269,6 @@ const LoginPage = () => {
     register: otpFormRegister,
     handleSubmit: handleOtpSubmit,
     formState: { errors: otpErrors },
-    trigger: triggerOtp,
   } = useForm<OtpFormValues>({
     resolver: zodResolver(otpSchema),
     mode: 'onChange',
@@ -203,12 +282,10 @@ const LoginPage = () => {
   const [registrationEmail, setRegistrationEmail] = useState('');
 
   const onRegisterSubmit = async (data: RegisterFormValues) => {
-    console.log('Sending registration data:', data);
     try {
       const { confirmPassword, ...registerData } = data;
       await register(registerData).unwrap();
       setRegistrationEmail(data.email);
-      console.log('OTP sent to email');
       // Move to OTP verification step
       if (regStep < 3) {
         setPage([3, 1]);
@@ -221,11 +298,10 @@ const LoginPage = () => {
 
   const onOtpSubmit = async (data: OtpFormValues) => {
     try {
-      const result = await verifyEmail({
+      await verifyEmail({
         email: registrationEmail,
         otp: data.otp,
       }).unwrap();
-      console.log('Registration successful:', result);
       navigate('/');
     } catch (err) {
       console.error('Failed to verify email:', err);
@@ -367,7 +443,6 @@ const LoginPage = () => {
                     >
                       <Step
                         {...registrationSteps[regStep]}
-                        control={registerFormControl}
                         register={registerFormRegister}
                         errors={registerErrors}
                         trigger={triggerRegister}
@@ -476,10 +551,71 @@ const LoginPage = () => {
                   </div>
                 </form>
               </motion.div>
+            ) : showFaceCamera ? (
+              // Face Camera
+              <motion.div key="face-camera" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <div className="space-y-4">
+                  <div style={{ 
+                    backgroundColor: '#000', 
+                    borderRadius: '8px', 
+                    overflow: 'hidden',
+                    border: '2px solid #e5e7eb',
+                    height: '320px',
+                    width: '100%',
+                    position: 'relative'
+                  }}>
+                    <video
+                      ref={bindFaceVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover'
+                      }}
+                    />
+                  </div>
+                  <canvas ref={canvasRef} className="hidden" width={320} height={240} />
+
+                  <div className="text-center text-sm text-gray-600 dark:text-gray-400">
+                    Căn chỉnh khuôn mặt của bạn vào khung hình rồi nhấn "Chụp"
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={cancelFaceCamera}
+                      className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={captureFace}
+                      disabled={isFaceLogging}
+                      className="flex-1 flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400"
+                    >
+                      {isFaceLogging ? (
+                        <Loader2 className="animate-spin" />
+                      ) : (
+                        <>
+                          <Camera className="w-4 h-4 mr-2" />
+                          Chụp
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
             ) : (
               // Login form
               <motion.div key="login" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-6">
+
                   <div>
                     <label
                       htmlFor="email"
@@ -544,6 +680,17 @@ const LoginPage = () => {
                       )}
                     </button>
                   </div>
+
+                  {/* Face Login Button */}
+                  <button
+                    type="button"
+                    onClick={startFaceCamera}
+                    disabled={isFaceLogging}
+                    className="w-full flex justify-center items-center gap-2 py-3 px-4 border-2 border-blue-600 rounded-lg text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition disabled:opacity-50"
+                  >
+                    <Camera className="w-4 h-4" />
+                    {isFaceLogging ? 'Đang xử lý...' : 'Đăng nhập bằng khuôn mặt'}
+                  </button>
                 </form>
                 <div className="mt-6 text-center">
                   <button onClick={() => setIsRegister(true)} className="text-sm text-blue-600 hover:underline">

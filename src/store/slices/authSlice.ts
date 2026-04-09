@@ -39,7 +39,7 @@ const authSlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addMatcher(
-        authApi.endpoints.login.matchFulfilled,
+        authApi.endpoints.faceLogin.matchFulfilled,
         (state, { payload }: PayloadAction<ApiSuccessResponse<ILoginResponse>>) => {
           const { accessToken, refreshToken } = payload.data;
           state.accessToken = accessToken;
@@ -50,7 +50,7 @@ const authSlice = createSlice({
         }
       )
       .addMatcher(
-        authApi.endpoints.register.matchFulfilled,
+        authApi.endpoints.verifyLoginOtp.matchFulfilled,
         (state, { payload }: PayloadAction<ApiSuccessResponse<ILoginResponse>>) => {
           const { accessToken, refreshToken } = payload.data;
           state.accessToken = accessToken;
@@ -58,6 +58,43 @@ const authSlice = createSlice({
           state.isAuthenticated = true;
           localStorage.setItem('accessToken', accessToken);
           localStorage.setItem('refreshToken', refreshToken);
+        }
+      )
+      .addMatcher(
+        authApi.endpoints.verifyEmail.matchFulfilled,
+        (state, { payload }: PayloadAction<ApiSuccessResponse<ILoginResponse>>) => {
+          const { accessToken, refreshToken } = payload.data;
+          state.accessToken = accessToken;
+          state.refreshToken = refreshToken;
+          state.isAuthenticated = true;
+          localStorage.setItem('accessToken', accessToken);
+          localStorage.setItem('refreshToken', refreshToken);
+        }
+      )
+      .addMatcher(
+        authApi.endpoints.login.matchFulfilled,
+        (state, { payload }: PayloadAction<ApiSuccessResponse<ILoginResponse>>) => {
+          const { accessToken, refreshToken } = payload.data;
+          if (accessToken && refreshToken) {
+            state.accessToken = accessToken;
+            state.refreshToken = refreshToken;
+            state.isAuthenticated = true;
+            localStorage.setItem('accessToken', accessToken);
+            localStorage.setItem('refreshToken', refreshToken);
+          }
+        }
+      )
+      .addMatcher(
+        authApi.endpoints.register.matchFulfilled,
+        (state, { payload }: PayloadAction<ApiSuccessResponse<ILoginResponse>>) => {
+          const { accessToken, refreshToken } = payload.data;
+          if (accessToken && refreshToken) {
+            state.accessToken = accessToken;
+            state.refreshToken = refreshToken;
+            state.isAuthenticated = true;
+            localStorage.setItem('accessToken', accessToken);
+            localStorage.setItem('refreshToken', refreshToken);
+          }
         }
       );
   },
