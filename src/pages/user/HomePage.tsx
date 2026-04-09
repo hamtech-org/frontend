@@ -44,7 +44,7 @@ export default function HomePage() {
       <section className="space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-display font-bold tracking-tight">Reels thịnh hành</h2>
-          <button type="button" className="text-sm font-bold text-[#EAB308] hover:underline">
+          <button type="button" className="text-sm font-bold text-blue-600 hover:underline">
             Xem tất cả
           </button>
         </div>
@@ -75,7 +75,7 @@ export default function HomePage() {
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-display font-bold tracking-tight">Dành cho bạn</h2>
           <div className="flex items-center gap-2">
-            <button type="button" className="px-4 py-2 rounded-full bg-[#EAB308] text-white text-sm font-bold">
+            <button type="button" className="px-4 py-2 rounded-full bg-blue-600 text-white text-sm font-bold">
               Mới nhất
             </button>
             <button type="button" className="px-4 py-2 rounded-full bg-black/5 dark:bg-white/5 text-sm font-bold">
@@ -95,7 +95,7 @@ export default function HomePage() {
             >
               <div className="p-6 flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#EAB308]/20">
+                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-blue-600/20">
                     <img
                       src={post.author.avatar}
                       alt={post.author.name}
@@ -134,8 +134,8 @@ export default function HomePage() {
                     <span className="font-bold">{post.likes}</span>
                   </button>
                   <button type="button" className="flex items-center gap-2 group">
-                    <div className="p-2 rounded-full group-hover:bg-[#EAB308]/10 transition-all">
-                      <MessageCircle className="w-6 h-6 group-hover:text-[#EAB308] transition-all" />
+                    <div className="p-2 rounded-full group-hover:bg-blue-600/10 transition-all">
+                      <MessageCircle className="w-6 h-6 group-hover:text-blue-600 transition-all" />
                     </div>
                     <span className="font-bold">{post.comments}</span>
                   </button>
@@ -143,8 +143,8 @@ export default function HomePage() {
                     <Share2 className="w-6 h-6 group-hover:text-green-500 transition-all" />
                   </button>
                 </div>
-                <button type="button" className="p-2 rounded-full hover:bg-[#EAB308]/10 group transition-all">
-                  <Bookmark className="w-6 h-6 group-hover:text-[#EAB308] transition-all" />
+                <button type="button" className="p-2 rounded-full hover:bg-blue-600/10 group transition-all">
+                  <Bookmark className="w-6 h-6 group-hover:text-blue-600 transition-all" />
                 </button>
               </div>
             </motion.article>
@@ -154,7 +154,7 @@ export default function HomePage() {
 
       <button
         type="button"
-        className="fixed bottom-8 right-8 w-16 h-16 bg-[#EAB308] text-white rounded-2xl shadow-2xl shadow-[#EAB308]/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50"
+        className="fixed bottom-8 right-8 w-16 h-16 bg-blue-600 text-white rounded-2xl shadow-2xl shadow-blue-600/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50"
       >
         <Plus className="w-8 h-8" />
       </button>

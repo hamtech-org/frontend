@@ -124,17 +124,17 @@ const App: React.FC = () => {
                 className={cn(
                   'w-full flex items-center gap-4 p-3 rounded-xl transition-all group relative',
                   isActive
-                    ? isDarkMode ? 'bg-white/10 text-white' : 'bg-black/5 text-white'
-                    : isDarkMode ? 'text-midnight-muted hover:text-white' : 'text-ethereal-muted hover:text-ethereal-primary',
+                    ? isDarkMode ? 'bg-white/10 text-blue-500' : 'bg-black/5 text-blue-600'
+                    : isDarkMode ? 'text-midnight-muted hover:text-blue-400' : 'text-ethereal-muted hover:text-blue-600',
                 )}
               >
-                <item.icon className={cn('w-5 h-5', isActive && 'text-[#EAB308]')} />
+                <item.icon className={cn('w-5 h-5', isActive && 'text-blue-600')} />
                 {isSidebarOpen && (
                   <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="font-medium">
                     {item.label}
                   </motion.span>
                 )}
-                {isActive && <motion.div layoutId="active-nav" className="absolute left-0 w-1 h-6 bg-[#EAB308] rounded-r-full" />}
+                {isActive && <motion.div layoutId="active-nav" className="absolute left-0 w-1 h-6 bg-blue-600 rounded-r-full" />}
               </button>
             );
           })}
@@ -169,7 +169,7 @@ const App: React.FC = () => {
               <input
                 type="text"
                 placeholder="Tìm kiếm người dùng, nội dung, cộng đồng..."
-                className="w-full pl-12 pr-4 py-2.5 rounded-full bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-[#EAB308]/20 transition-all outline-none"
+                className="w-full pl-12 pr-4 py-2.5 rounded-full bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none"
               />
             </div>
           </div>
@@ -177,14 +177,14 @@ const App: React.FC = () => {
           <div className="flex items-center gap-6">
             <button className="relative p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all">
               <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-[#EAB308] rounded-full border-2 border-inherit" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-blue-600 rounded-full border-2 border-inherit" />
             </button>
             <div className="flex items-center gap-3 pl-6 border-l border-inherit">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-semibold">Người dùng</p>
                 <p className="text-xs text-muted-foreground">Thành viên</p>
               </div>
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#EAB308] to-[#f4c25f] flex items-center justify-center text-white font-bold">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-[#f4c25f] flex items-center justify-center text-white font-bold">
                 Z
               </div>
             </div>
@@ -223,7 +223,7 @@ const App: React.FC = () => {
 
 const PageLoader: React.FC = () => (
   <div className="flex items-center justify-center h-full min-h-[50vh]">
-    <div className="w-12 h-12 rounded-full border-4 border-[#EAB308]/20 border-t-[#EAB308] animate-spin" />
+    <div className="w-12 h-12 rounded-full border-4 border-blue-600/20 border-t-blue-600 animate-spin" />
   </div>
 );
 

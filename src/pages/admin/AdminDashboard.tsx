@@ -65,7 +65,7 @@ const stats = [
     change: '+12.5%',
     isUp: true,
     icon: Users,
-    color: 'text-[#EAB308]',
+    color: 'text-blue-600',
   },
   {
     label: 'Kiểm duyệt viên',
@@ -99,14 +99,14 @@ export default function AdminDashboard() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
         <div className="space-y-4 max-w-2xl">
           <h1 className="text-5xl font-display font-extrabold tracking-tight leading-tight">
-            Hệ sinh thái <span className="text-[#EAB308]">Người dùng.</span>
+            Hệ sinh thái <span className="text-blue-600">Người dùng.</span>
           </h1>
           <p className="text-muted-foreground text-xl leading-relaxed">
             Quản lý cộng đồng, giám sát sức khỏe hệ thống và theo dõi hoạt động kiểm duyệt.
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <button className="px-6 py-3 rounded-2xl bg-[#EAB308] text-white shadow-lg shadow-[#EAB308]/20 hover:scale-105 transition-all flex items-center gap-2 font-bold">
+          <button className="px-6 py-3 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:scale-105 transition-all flex items-center gap-2 font-bold">
             <UserPlus className="w-5 h-5" />
             Mời thành viên
           </button>
@@ -156,7 +156,7 @@ export default function AdminDashboard() {
               <input
                 type="text"
                 placeholder="Tìm người dùng..."
-                className="w-full pl-12 pr-4 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-[#EAB308]/20 transition-all outline-none text-sm"
+                className="w-full pl-12 pr-4 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none text-sm"
               />
             </div>
             <button className="p-2.5 rounded-xl bg-black/5 dark:bg-white/5 border border-inherit hover:bg-black/10 dark:hover:bg-white/10 transition-all">
@@ -186,7 +186,7 @@ export default function AdminDashboard() {
                 <tr key={user.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-all group">
                   <td className="p-6">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#EAB308]/20">
+                      <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-blue-600/20">
                         <img
                           src={user.avatar}
                           alt={user.name}
@@ -206,7 +206,7 @@ export default function AdminDashboard() {
                         user.role === 'Quản trị viên'
                           ? 'bg-purple-500/10 text-purple-500'
                           : user.role === 'Kiểm duyệt viên'
-                            ? 'bg-[#EAB308]/10 text-[#EAB308]'
+                            ? 'bg-blue-600/10 text-blue-600'
                             : 'bg-green-500/10 text-green-500'
                       }`}
                     >
@@ -226,7 +226,7 @@ export default function AdminDashboard() {
                   <td className="p-6 text-sm font-medium text-muted-foreground">{user.joined}</td>
                   <td className="p-6">
                     <div className="flex items-center gap-2">
-                      <button className="p-2 rounded-lg hover:bg-[#EAB308]/10 text-[#EAB308] transition-all">
+                      <button className="p-2 rounded-lg hover:bg-blue-600/10 text-blue-600 transition-all">
                         <Mail className="w-4 h-4" />
                       </button>
                       <button className="p-2 rounded-lg hover:bg-red-500/10 text-red-600 transition-all">

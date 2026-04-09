@@ -48,7 +48,7 @@ export default function StudioPage() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               className={`relative rounded-3xl overflow-hidden group border-2 transition-all duration-500 ${
-                p.isSpeaking ? 'border-[#EAB308] shadow-2xl shadow-[#EAB308]/20' : 'border-transparent'
+                p.isSpeaking ? 'border-blue-600 shadow-2xl shadow-blue-600/20' : 'border-transparent'
               }`}
             >
               <img 
@@ -60,9 +60,9 @@ export default function StudioPage() {
                 <span className="px-3 py-1 bg-black/40 backdrop-blur-md rounded-full text-xs font-bold">{p.name}</span>
                 {p.isSpeaking && (
                   <div className="flex gap-0.5 h-3 items-end">
-                    <div className="w-0.5 bg-[#EAB308] animate-[bounce_1s_infinite_0ms]" />
-                    <div className="w-0.5 bg-[#EAB308] animate-[bounce_1s_infinite_200ms]" />
-                    <div className="w-0.5 bg-[#EAB308] animate-[bounce_1s_infinite_400ms]" />
+                    <div className="w-0.5 bg-blue-600 animate-[bounce_1s_infinite_0ms]" />
+                    <div className="w-0.5 bg-blue-600 animate-[bounce_1s_infinite_200ms]" />
+                    <div className="w-0.5 bg-blue-600 animate-[bounce_1s_infinite_400ms]" />
                   </div>
                 )}
               </div>
@@ -76,13 +76,13 @@ export default function StudioPage() {
         {showChat && (
           <motion.div initial={{ x: 400 }} animate={{ x: 0 }} exit={{ x: 400 }} className="w-96 border-l border-white/10 flex flex-col bg-black/20 backdrop-blur-xl">
             <div className="flex border-b border-white/10">
-              <button className="flex-1 py-4 text-sm font-bold border-b-2 border-[#EAB308]">Chat</button>
+              <button className="flex-1 py-4 text-sm font-bold border-b-2 border-blue-600">Chat</button>
               <button className="flex-1 py-4 text-sm font-bold text-white/40 hover:text-white transition-all">AI Insights</button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <div className="space-y-2">
-                <p className="text-xs font-bold text-[#EAB308] uppercase tracking-widest">Tóm tắt AI</p>
-                <div className="p-4 rounded-2xl bg-[#EAB308]/10 border border-[#EAB308]/20 text-sm leading-relaxed">
+                <p className="text-xs font-bold text-blue-600 uppercase tracking-widest">Tóm tắt AI</p>
+                <div className="p-4 rounded-2xl bg-blue-600/10 border border-blue-600/20 text-sm leading-relaxed">
                   Alex đang thảo luận về hệ thống thiết kế mới. Sarah nhấn mạnh tầm quan trọng của accessibility.
                 </div>
               </div>
@@ -98,8 +98,8 @@ export default function StudioPage() {
             </div>
             <div className="p-6 border-t border-white/10">
               <div className="relative">
-                <input type="text" placeholder="Gửi tin nhắn..." className="w-full pl-4 pr-12 py-3 rounded-2xl bg-white/5 border-none focus:ring-2 ring-[#EAB308]/40 transition-all outline-none text-sm" />
-                <button className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-[#EAB308] hover:text-[#EAB308] transition-all"><Send className="w-4 h-4" /></button>
+                <input type="text" placeholder="Gửi tin nhắn..." className="w-full pl-4 pr-12 py-3 rounded-2xl bg-white/5 border-none focus:ring-2 ring-blue-600/40 transition-all outline-none text-sm" />
+                <button className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-blue-600 hover:text-blue-600 transition-all"><Send className="w-4 h-4" /></button>
               </div>
             </div>
           </motion.div>
@@ -108,8 +108,8 @@ export default function StudioPage() {
 
       <div className="h-24 px-8 flex items-center justify-between bg-black/60 backdrop-blur-xl border-t border-white/10">
         <div className="flex items-center gap-4">
-          <button className="p-3 rounded-2xl hover:bg-white/10 transition-all group"><Layout className="w-6 h-6 group-hover:text-[#EAB308]" /></button>
-          <button className="p-3 rounded-2xl hover:bg-white/10 transition-all group"><Users className="w-6 h-6 group-hover:text-[#EAB308]" /></button>
+          <button className="p-3 rounded-2xl hover:bg-white/10 transition-all group"><Layout className="w-6 h-6 group-hover:text-blue-600" /></button>
+          <button className="p-3 rounded-2xl hover:bg-white/10 transition-all group"><Users className="w-6 h-6 group-hover:text-blue-600" /></button>
         </div>
         <div className="flex items-center gap-4">
           <button onClick={() => setIsMuted(!isMuted)} className={`p-4 rounded-2xl transition-all ${isMuted ? 'bg-red-600 text-white' : 'bg-white/10 hover:bg-white/20'}`}>
@@ -119,15 +119,15 @@ export default function StudioPage() {
             {isVideoOff ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
           </button>
           <button className="p-4 rounded-2xl bg-white/10 hover:bg-white/20 transition-all"><Monitor className="w-6 h-6" /></button>
-          <button className="p-4 rounded-2xl bg-white/10 hover:bg-white/20 transition-all"><Sparkles className="w-6 h-6 text-[#EAB308]" /></button>
-          <button onClick={() => navigate('/call')} className="p-4 rounded-2xl bg-[#EAB308] hover:bg-[#d5a84e] text-white transition-all shadow-xl shadow-[#EAB308]/20 group flex items-center gap-2">
+          <button className="p-4 rounded-2xl bg-white/10 hover:bg-white/20 transition-all"><Sparkles className="w-6 h-6 text-blue-600" /></button>
+          <button onClick={() => navigate('/call')} className="p-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-xl shadow-blue-600/20 group flex items-center gap-2">
             <PhoneOff className="w-6 h-6 rotate-[135deg]" />
             <span className="hidden lg:inline font-bold">Tham gia</span>
           </button>
           <button className="p-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white transition-all shadow-xl shadow-red-600/20"><PhoneOff className="w-6 h-6" /></button>
         </div>
         <div className="flex items-center gap-4">
-          <button onClick={() => setShowChat(!showChat)} className={`p-3 rounded-2xl transition-all ${showChat ? 'bg-[#EAB308] text-white' : 'hover:bg-white/10'}`}>
+          <button onClick={() => setShowChat(!showChat)} className={`p-3 rounded-2xl transition-all ${showChat ? 'bg-blue-600 text-white' : 'hover:bg-white/10'}`}>
             <MessageSquare className="w-6 h-6" />
           </button>
           <button className="p-3 rounded-2xl hover:bg-white/10 transition-all"><Maximize2 className="w-6 h-6" /></button>

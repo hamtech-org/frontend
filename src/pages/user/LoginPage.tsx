@@ -13,7 +13,7 @@ export default function LoginPage() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="w-12 h-12 bg-[#EAB308] rounded-2xl flex items-center justify-center text-white font-bold text-2xl"
+              className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl"
             >
               Z
             </motion.div>
@@ -23,7 +23,7 @@ export default function LoginPage() {
               transition={{ delay: 0.1 }}
               className="text-5xl md:text-6xl font-display font-extrabold tracking-tight leading-tight"
             >
-              Kỷ nguyên mới của <span className="text-[#EAB308] italic">OTT</span> đã đến.
+              Kỷ nguyên mới của <span className="text-blue-600 italic">OTT</span> đã đến.
             </motion.h1>
             <motion.p
               initial={{ opacity: 0, y: 20 }}
@@ -44,7 +44,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => navigate('/onboarding')}
-              className="w-full sm:w-auto px-8 py-4 bg-[#EAB308] hover:bg-[#d5a84e] text-white rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg shadow-[#EAB308]/20 group"
+              className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-600/20 group"
             >
               Bắt đầu ngay
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -67,7 +67,7 @@ export default function LoginPage() {
           transition={{ delay: 0.4, duration: 0.8 }}
           className="relative group"
         >
-          <div className="absolute -inset-4 bg-[#EAB308]/10 rounded-[2.5rem] blur-2xl group-hover:bg-[#EAB308]/20 transition-all duration-700" />
+          <div className="absolute -inset-4 bg-blue-600/10 rounded-[2.5rem] blur-2xl group-hover:bg-blue-600/20 transition-all duration-700" />
           <div className="relative aspect-[4/5] rounded-[2rem] overflow-hidden border border-white/20 shadow-2xl">
             <img
               src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&h=1000&fit=crop"

@@ -22,7 +22,7 @@ export default function OnboardingPage() {
             <div
               key={s}
               className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${
-                s <= step ? 'bg-[#EAB308]' : 'bg-black/5 dark:bg-white/5'
+                s <= step ? 'bg-blue-600' : 'bg-black/5 dark:bg-white/5'
               }`}
             />
           ))}
@@ -52,7 +52,7 @@ export default function OnboardingPage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Họ và tên"
-                    className="w-full pl-12 pr-4 py-4 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-[#EAB308]/20 transition-all outline-none text-lg font-medium"
+                    className="w-full pl-12 pr-4 py-4 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none text-lg font-medium"
                   />
                 </div>
               </motion.div>
@@ -65,10 +65,10 @@ export default function OnboardingPage() {
                   onChange={(e) => setBio(e.target.value)}
                   placeholder="Kể câu chuyện của bạn..."
                   rows={4}
-                  className="w-full px-6 py-4 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-[#EAB308]/20 transition-all outline-none text-lg font-medium resize-none"
+                  className="w-full px-6 py-4 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none text-lg font-medium resize-none"
                 />
-                <div className="flex items-center gap-4 p-6 rounded-2xl border-2 border-dashed border-inherit hover:border-[#EAB308]/40 transition-all cursor-pointer group">
-                  <div className="w-12 h-12 rounded-full bg-[#EAB308]/10 flex items-center justify-center text-[#EAB308] group-hover:scale-110 transition-transform">
+                <div className="flex items-center gap-4 p-6 rounded-2xl border-2 border-dashed border-inherit hover:border-blue-600/40 transition-all cursor-pointer group">
+                  <div className="w-12 h-12 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
                     <Camera className="w-6 h-6" />
                   </div>
                   <div>
@@ -99,7 +99,7 @@ export default function OnboardingPage() {
               type="button"
               onClick={nextStep}
               disabled={step === 1 && !name}
-              className="w-full py-4 bg-[#EAB308] hover:bg-[#d5a84e] disabled:opacity-50 disabled:hover:bg-[#EAB308] text-white rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg shadow-[#EAB308]/20 group"
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 text-white rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-600/20 group"
             >
               {step === 3 ? 'Vào HamTech' : 'Tiếp tục'}
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
