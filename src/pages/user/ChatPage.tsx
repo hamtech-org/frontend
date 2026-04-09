@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, PanelRight, PanelRightClose, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ArrowLeft, ChevronDown, MoreHorizontal, X, Home, Compass, MessageSquare, MessageCircle, Contact, Cloud, FolderOpen, Frame, Briefcase, Camera, Mail, Quote } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, PanelRight, PanelRightClose, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ArrowLeft, ChevronDown, MoreHorizontal, X, Home, Compass, MessageSquare, MessageCircle, Contact, Cloud, FolderOpen, Frame, Briefcase, Camera, Mail, Quote, Calendar, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const contacts = [
@@ -612,6 +612,28 @@ export default function ChatPage() {
                    
                    {/* Detail Cards */}
                    <div className="mt-6 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                         <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-center gap-3">
+                           <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center shrink-0">
+                             <User className="w-[18px] h-[18px] text-indigo-600 dark:text-indigo-400" />
+                           </div>
+                           <div className="flex-1 overflow-hidden">
+                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block truncate">Giới tính</span>
+                             <p className="text-[14px] font-semibold text-black dark:text-white/90 truncate">Nam</p>
+                           </div>
+                         </div>
+                         
+                         <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-center gap-3">
+                           <div className="w-9 h-9 rounded-full bg-pink-100 dark:bg-pink-900/40 flex items-center justify-center shrink-0">
+                             <Calendar className="w-[18px] h-[18px] text-pink-600 dark:text-pink-400" />
+                           </div>
+                           <div className="flex-1 overflow-hidden">
+                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block truncate">Ngày sinh</span>
+                             <p className="text-[14px] font-semibold text-black dark:text-white/90 truncate">15/08/2000</p>
+                           </div>
+                         </div>
+                      </div>
+
                       <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
                          <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
                            <Phone className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400" />
