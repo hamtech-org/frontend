@@ -75,6 +75,7 @@ const messages = [
 
 export default function ChatPage() {
   const navigate = useNavigate();
+  const [contactsList, setContactsList] = useState(mockContacts);
   const [activeChat, setActiveChat] = useState(1);
   const [showInfo, setShowInfo] = useState(true);
   const [showMarkReadModal, setShowMarkReadModal] = useState(false);
@@ -82,7 +83,7 @@ export default function ChatPage() {
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [selectedGroupMembers, setSelectedGroupMembers] = useState<number[]>([]);
   const [groupName, setGroupName] = useState('');
-  const activeContact = mockContacts.find((c) => c.id === activeChat);
+  const activeContact = contactsList.find((c) => c.id === activeChat);
 
   return (
     <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
@@ -164,7 +165,7 @@ export default function ChatPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 space-y-2 min-h-0 custom-scrollbar pr-2 pb-4">
-          {mockContacts.map((contact, index) => (
+          {contactsList.map((contact, index) => (
             <motion.button
               key={`${contact.id}-${index}`}
               initial={{ opacity: 0, y: 20 }}
@@ -724,7 +725,7 @@ export default function ChatPage() {
                      <div className="px-4 py-2.5 bg-black/[0.02] dark:bg-white/[0.02] border-b border-black/5 dark:border-white/5">
                        <span className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider">Danh sách liên hệ</span>
                      </div>
-                     {mockContacts.map((contact) => (
+                     {mockContacts.filter(c => !c.isGroup).map((contact) => (
                        <label key={contact.id} className="flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
                          <div className="relative flex items-center justify-center">
                            <input 
@@ -756,6 +757,22 @@ export default function ChatPage() {
                   </button>
                   <div className="relative group/btn tooltip-trigger">
                     <button 
+                      onClick={() => {
+                        const newGroupId = Date.now();
+                        const newGroup = {
+                          id: newGroupId,
+                          name: groupName || `Nhóm của bạn (${selectedGroupMembers.length + 1} thành viên)`,
+                          avatar: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=100&h=100&fit=crop',
+                          lastMsg: 'Bạn vừa tạo nhóm này',
+                          time: 'Vừa xong',
+                          unread: 0,
+                          online: true,
+                          isGroup: true,
+                        };
+                        setContactsList([newGroup, ...contactsList]);
+                        setActiveChat(newGroupId);
+                        setShowCreateGroupModal(false);
+                      }}
                       disabled={selectedGroupMembers.length < 2}
                       className={`px-5 py-2 rounded-xl font-bold text-[14px] text-white shadow-sm transition-all flex items-center gap-2 ${
                         selectedGroupMembers.length >= 2 
