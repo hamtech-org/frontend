@@ -5,7 +5,7 @@ import * as z from 'zod';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowRight, Eye, EyeOff, Loader2, User, Mail, Lock, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useLoginMutation, useRegisterMutation, useVerifyEmailMutation } from '@/store/api/authApi';
+import { useLoginMutation, useVerifyLoginOtpMutation, useRegisterMutation, useVerifyEmailMutation } from '@/store/api/authApi';
 import { ILoginRequest, IRegisterRequest } from '@/types/auth.types';
 import logo from '@/assets/images/logo_tron.png';
 
@@ -124,21 +124,50 @@ const LoginPage = () => {
 
   // Login Form
   const [login, { isLoading: isLoggingIn, error: loginError }] = useLoginMutation();
+  const [verifyLoginOtp, { isLoading: isVerifyingLoginOtp, error: verifyLoginOtpError }] = useVerifyLoginOtpMutation();
   const {
     register: loginFormRegister,
     handleSubmit: handleLoginSubmit,
     formState: { errors: loginErrors },
+    reset: resetLoginForm,
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
   });
+
+  const {
+    register: loginOtpFormRegister,
+    handleSubmit: handleLoginOtpSubmit,
+    formState: { errors: loginOtpErrors },
+  } = useForm<OtpFormValues>({
+    resolver: zodResolver(otpSchema),
+    mode: 'onChange',
+  });
+
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [isLoginOtpPending, setIsLoginOtpPending] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
 
   const onLoginSubmit = async (data: LoginFormValues) => {
     try {
       await login(data).unwrap();
-      navigate('/');
+      setLoginEmail(data.email);
+      setIsLoginOtpPending(true);
+      console.log('OTP sent to email for login verification');
     } catch (err) {
       console.error('Failed to login:', err);
+    }
+  };
+
+  const onLoginOtpSubmit = async (data: OtpFormValues) => {
+    try {
+      const result = await verifyLoginOtp({
+        email: loginEmail,
+        otp: data.otp,
+      }).unwrap();
+      console.log('Login successful:', result);
+      navigate('/');
+    } catch (err) {
+      console.error('Failed to verify login OTP:', err);
     }
   };
 
@@ -385,6 +414,67 @@ const LoginPage = () => {
                     Đã có tài khoản? Đăng nhập
                   </button>
                 </div>
+              </motion.div>
+            ) : isLoginOtpPending ? (
+              // Login OTP Verification
+              <motion.div key="login-otp" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <form onSubmit={handleLoginOtpSubmit(onLoginOtpSubmit)} className="space-y-6">
+                  <div>
+                    <label
+                      htmlFor="login-otp"
+                      className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      <ShieldCheck className="w-5 h-5" />
+                      <div>
+                        <div>Nhập mã OTP</div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400 font-normal">Mã xác thực đã được gửi đến {loginEmail}</div>
+                      </div>
+                    </label>
+                    <input
+                      id="login-otp"
+                      type="text"
+                      placeholder="XXXXXX"
+                      {...loginOtpFormRegister('otp')}
+                      className="mt-4 block w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border border-transparent rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                      maxLength={6}
+                    />
+                    {loginOtpErrors.otp && <p className="mt-1 text-sm text-red-500">{loginOtpErrors.otp.message}</p>}
+                  </div>
+
+                  {(verifyLoginOtpError || loginError) && (
+                    <div className="text-red-500 text-sm text-center">
+                      {/* @ts-ignore */}
+                      {verifyLoginOtpError?.data?.message || loginError?.data?.message || 'Đã có lỗi xảy ra'}
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsLoginOtpPending(false);
+                        resetLoginForm();
+                      }}
+                      className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
+                      Quay lại
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isVerifyingLoginOtp}
+                      className="flex-1 flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400"
+                    >
+                      {isVerifyingLoginOtp ? (
+                        <Loader2 className="animate-spin" />
+                      ) : (
+                        <>
+                          Xác nhận
+                          <ArrowRight className="ml-2 w-5 h-5" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
               </motion.div>
             ) : (
               // Login form

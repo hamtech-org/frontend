@@ -46,3 +46,8 @@ export interface IVerifyEmailRequest {
   email: string;
   otp: string;
 }
+
+export interface IVerifyLoginOtpRequest {
+  email: string;
+  otp: string;
+}
