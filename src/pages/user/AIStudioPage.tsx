@@ -35,7 +35,7 @@ export default function AIStudioPage() {
       <div className="w-80 border-r border-inherit flex flex-col">
         <div className="p-8 space-y-8">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-600/20"><Sparkles className="w-6 h-6" /></div>
+            <div className="p-2 rounded-xl bg-[#EAB308] text-white shadow-lg shadow-[#EAB308]/20"><Sparkles className="w-6 h-6" /></div>
             <h1 className="text-2xl font-display font-bold tracking-tight">AI Studio</h1>
           </div>
           <div className="space-y-2">
@@ -47,11 +47,11 @@ export default function AIStudioPage() {
                 key={tool.id}
                 onClick={() => setActiveTool(tool.id)}
                 className={`w-full text-left p-4 rounded-2xl transition-all group ${
-                  activeTool === tool.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'hover:bg-black/5 dark:hover:bg-white/5'
+                  activeTool === tool.id ? 'bg-[#EAB308] text-white shadow-lg shadow-[#EAB308]/20' : 'hover:bg-black/5 dark:hover:bg-white/5'
                 }`}
               >
                 <div className="flex items-center gap-3 mb-1">
-                  <ToolIcon className={`w-5 h-5 ${activeTool === tool.id ? 'text-white' : 'text-blue-600'}`} />
+                  <ToolIcon className={`w-5 h-5 ${activeTool === tool.id ? 'text-white' : 'text-[#EAB308]'}`} />
                   <p className="font-bold">{tool.label}</p>
                 </div>
                 <p className={`text-xs leading-relaxed ${activeTool === tool.id ? 'text-white/60' : 'text-muted-foreground'}`}>{tool.description}</p>
@@ -79,12 +79,12 @@ export default function AIStudioPage() {
       <div className="flex-1 flex flex-col">
         <div className="h-20 px-8 flex items-center justify-between border-b border-inherit bg-inherit/80 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center gap-4">
-            <div className="p-2 rounded-lg bg-blue-600/10 text-blue-600"><Zap className="w-5 h-5" /></div>
+            <div className="p-2 rounded-lg bg-[#EAB308]/10 text-[#EAB308]"><Zap className="w-5 h-5" /></div>
             <h2 className="font-bold text-lg">{tools.find(t => t.id === activeTool)?.label}</h2>
           </div>
           <div className="flex items-center gap-4">
             <button className="px-4 py-2 rounded-xl bg-black/5 dark:bg-white/5 text-sm font-bold hover:bg-black/10 dark:hover:bg-white/10 transition-all flex items-center gap-2"><Download className="w-4 h-4" />Lưu</button>
-            <button className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-600/20"><Share2 className="w-4 h-4" />Xuất bản</button>
+            <button className="px-4 py-2 rounded-xl bg-[#EAB308] text-white text-sm font-bold hover:bg-[#d5a84e] transition-all flex items-center gap-2 shadow-lg shadow-[#EAB308]/20"><Share2 className="w-4 h-4" />Xuất bản</button>
           </div>
         </div>
 
@@ -94,8 +94,8 @@ export default function AIStudioPage() {
               {isGenerating ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center space-y-6 bg-inherit/80 backdrop-blur-sm z-20">
                   <div className="relative">
-                    <div className="w-20 h-20 rounded-full border-4 border-blue-600/20 border-t-blue-600 animate-spin" />
-                    <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-blue-600 animate-pulse" />
+                    <div className="w-20 h-20 rounded-full border-4 border-[#EAB308]/20 border-t-[#EAB308] animate-spin" />
+                    <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-[#EAB308] animate-pulse" />
                   </div>
                   <div className="text-center space-y-2">
                     <p className="text-xl font-display font-bold tracking-tight">Đang xử lý...</p>
@@ -106,8 +106,8 @@ export default function AIStudioPage() {
                 <div className="prose dark:prose-invert max-w-none">
                   {prompt ? (
                     <div className="space-y-6">
-                      <div className="p-6 rounded-2xl bg-blue-600/5 border border-blue-600/10">
-                        <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-2">Yêu cầu của bạn</p>
+                      <div className="p-6 rounded-2xl bg-[#EAB308]/5 border border-[#EAB308]/10">
+                        <p className="text-xs font-bold text-[#EAB308] uppercase tracking-widest mb-2">Yêu cầu của bạn</p>
                         <p className="text-lg font-medium italic">"{prompt}"</p>
                       </div>
                       <div className="markdown-body">
@@ -131,7 +131,7 @@ export default function AIStudioPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <button className="p-6 rounded-[2rem] bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-all text-left space-y-2 group">
-                <div className="p-2 rounded-lg bg-blue-600/10 text-blue-600 w-fit group-hover:scale-110 transition-transform"><Type className="w-5 h-5" /></div>
+                <div className="p-2 rounded-lg bg-[#EAB308]/10 text-[#EAB308] w-fit group-hover:scale-110 transition-transform"><Type className="w-5 h-5" /></div>
                 <p className="font-bold">Viết lại cho MXH</p>
                 <p className="text-xs text-muted-foreground">Tối ưu cho Instagram, Twitter hoặc LinkedIn.</p>
               </button>
@@ -157,10 +157,10 @@ export default function AIStudioPage() {
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="Mô tả nội dung bạn muốn tạo hoặc tinh chỉnh..."
                 rows={1}
-                className="w-full pl-6 pr-12 py-4 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none text-sm font-medium resize-none overflow-hidden"
+                className="w-full pl-6 pr-12 py-4 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-[#EAB308]/20 transition-all outline-none text-sm font-medium resize-none overflow-hidden"
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); } }}
               />
-              <button onClick={handleGenerate} disabled={!prompt || isGenerating} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-50 transition-all">
+              <button onClick={handleGenerate} disabled={!prompt || isGenerating} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-[#EAB308] text-white rounded-xl shadow-lg shadow-[#EAB308]/20 hover:bg-[#d5a84e] disabled:opacity-50 transition-all">
                 <Send className="w-4 h-4" />
               </button>
             </div>

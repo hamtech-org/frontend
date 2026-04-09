@@ -38,7 +38,7 @@ const stats = [
     change: '+12.5%',
     isUp: true,
     icon: Eye,
-    color: 'text-blue-600',
+    color: 'text-[#EAB308]',
   },
   {
     label: 'Người theo dõi',
@@ -205,7 +205,7 @@ export default function AdminAnalytics() {
       <section className="glass-card rounded-[2.5rem] border-none shadow-xl shadow-black/5 dark:shadow-white/5 overflow-hidden">
         <div className="p-8 border-b border-inherit flex items-center justify-between">
           <h3 className="text-2xl font-display font-bold tracking-tight">Hiệu suất nội dung gần đây</h3>
-          <button className="text-sm font-bold text-blue-600 hover:underline">Xem tất cả</button>
+          <button className="text-sm font-bold text-[#EAB308] hover:underline">Xem tất cả</button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">

@@ -21,7 +21,7 @@ export default function ContactsPage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
         <div className="space-y-4 max-w-2xl">
           <h1 className="text-5xl font-display font-extrabold tracking-tight leading-tight">
-            Khám phá <span className="text-blue-600">Cộng đồng.</span>
+            Khám phá <span className="text-[#EAB308]">Cộng đồng.</span>
           </h1>
           <p className="text-muted-foreground text-xl leading-relaxed">
             Tham gia các cộng đồng chuyên biệt, thảo luận chuyên sâu và hợp tác với những người cùng đam mê.
@@ -33,10 +33,10 @@ export default function ContactsPage() {
             <input 
               type="text" 
               placeholder="Tìm cộng đồng..."
-              className="w-full pl-12 pr-4 py-3 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none font-medium"
+              className="w-full pl-12 pr-4 py-3 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-[#EAB308]/20 transition-all outline-none font-medium"
             />
           </div>
-          <button className="p-4 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:scale-105 transition-all">
+          <button className="p-4 rounded-2xl bg-[#EAB308] text-white shadow-lg shadow-[#EAB308]/20 hover:scale-105 transition-all">
             <Plus className="w-6 h-6" />
           </button>
         </div>
@@ -46,7 +46,7 @@ export default function ContactsPage() {
         <div className="lg:col-span-8 space-y-8">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-display font-bold tracking-tight">Đề xuất cho bạn</h2>
-            <button className="text-sm font-bold text-blue-600 hover:underline">Xem tất cả</button>
+            <button className="text-sm font-bold text-[#EAB308] hover:underline">Xem tất cả</button>
           </div>
 
           <div className="space-y-8">
@@ -72,7 +72,7 @@ export default function ContactsPage() {
                         <div className="flex items-center gap-1"><MessageSquare className="w-4 h-4" />24 Đang hoạt động</div>
                       </div>
                     </div>
-                    <button className="px-6 py-3 rounded-xl bg-white text-black font-bold hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2">
+                    <button className="px-6 py-3 rounded-xl bg-white text-white font-bold hover:bg-[#EAB308] hover:text-white transition-all flex items-center gap-2">
                       Tham gia
                       <ArrowRight className="w-4 h-4" />
                     </button>
@@ -93,8 +93,8 @@ export default function ContactsPage() {
               {trendingTopics.map((topic) => (
                 <button key={topic.tag} className="w-full flex items-center justify-between p-4 rounded-2xl hover:bg-black/5 dark:hover:bg-white/5 transition-all group">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-600/10 flex items-center justify-center text-blue-600 font-bold">#</div>
-                    <p className="font-bold group-hover:text-blue-600 transition-colors">{topic.tag}</p>
+                    <div className="w-10 h-10 rounded-xl bg-[#EAB308]/10 flex items-center justify-center text-[#EAB308] font-bold">#</div>
+                    <p className="font-bold group-hover:text-[#EAB308] transition-colors">{topic.tag}</p>
                   </div>
                   <span className="text-xs font-bold text-muted-foreground">{topic.posts} bài</span>
                 </button>
@@ -112,7 +112,7 @@ export default function ContactsPage() {
                 <div key={i} className="flex gap-4 group cursor-pointer">
                   <div className="w-10 h-10 rounded-full bg-black/10 dark:bg-white/10 flex-shrink-0" />
                   <div className="space-y-1">
-                    <p className="text-sm font-bold group-hover:text-blue-600 transition-colors">Làm thế nào để đạt được "film look" trong digital?</p>
+                    <p className="text-sm font-bold group-hover:text-[#EAB308] transition-colors">Làm thế nào để đạt được "film look" trong digital?</p>
                     <p className="text-xs text-muted-foreground">Bắt đầu bởi Alex • 12 phản hồi</p>
                   </div>
                 </div>

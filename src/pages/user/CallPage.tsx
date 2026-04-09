@@ -84,7 +84,7 @@ export default function CallPage() {
           {isSpeakerOn ? <Volume2 className="w-8 h-8" /> : <VolumeX className="w-8 h-8" />}
         </button>
         <button className="p-6 rounded-3xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all">
-          <Sparkles className="w-8 h-8 text-blue-600" />
+          <Sparkles className="w-8 h-8 text-[#EAB308]" />
         </button>
       </motion.div>
 

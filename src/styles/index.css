@@ -7,20 +7,20 @@
   
   --color-ethereal-bg: #F8F9FA;
   --color-ethereal-primary: #1A1A1A;
-  --color-ethereal-accent: #0066FF;
+  --color-ethereal-accent: #EAB308;
   --color-ethereal-muted: #6C757D;
   --color-ethereal-border: rgba(0, 0, 0, 0.05);
 
   --color-midnight-bg: #0A0A0A;
   --color-midnight-primary: #FFFFFF;
-  --color-midnight-accent: #3385FF;
+  --color-midnight-accent: #EAB308;
   --color-midnight-muted: #9BA3AF;
   --color-midnight-border: rgba(255, 255, 255, 0.05);
 }
 
 @layer base {
   body {
-    @apply font-sans antialiased selection:bg-blue-100 selection:text-blue-900;
+    @apply font-sans antialiased selection:bg-[#EAB308]/20 selection:text-[#EAB308];
   }
 
   .theme-ethereal {

@@ -68,7 +68,7 @@ export default function ChatPage() {
             <input
               type="text"
               placeholder="Tìm kiếm tin nhắn..."
-              className="w-full pl-12 pr-4 py-3 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none"
+              className="w-full pl-12 pr-4 py-3 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-[#EAB308]/20 transition-all outline-none"
             />
           </div>
         </div>
@@ -81,7 +81,7 @@ export default function ChatPage() {
               onClick={() => setActiveChat(contact.id)}
               className={`w-full p-4 rounded-2xl flex items-center gap-4 transition-all group ${
                 activeChat === contact.id
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                  ? 'bg-[#EAB308] text-white shadow-lg shadow-[#EAB308]/20'
                   : 'hover:bg-black/5 dark:hover:bg-white/5'
               }`}
             >
@@ -106,7 +106,7 @@ export default function ChatPage() {
                 </p>
               </div>
               {contact.unread > 0 && activeChat !== contact.id && (
-                <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center text-[10px] font-bold text-white">
+                <div className="w-5 h-5 bg-[#EAB308] rounded-full flex items-center justify-center text-[10px] font-bold text-white">
                   {contact.unread}
                 </div>
               )}
@@ -118,7 +118,7 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="h-20 px-8 flex items-center justify-between border-b border-inherit bg-inherit/80 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-blue-600/20">
+            <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#EAB308]/20">
               <img
                 src={activeContact?.avatar}
                 alt={activeContact?.name ?? 'Chat'}
@@ -160,14 +160,14 @@ export default function ChatPage() {
               <div className={`max-w-[70%] space-y-1 ${msg.isMe ? 'items-end' : 'items-start'}`}>
                 <div
                   className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                    msg.isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-black/5 dark:bg-white/5 rounded-tl-none'
+                    msg.isMe ? 'bg-[#EAB308] text-white rounded-tr-none' : 'bg-black/5 dark:bg-white/5 rounded-tl-none'
                   }`}
                 >
                   {msg.text}
                 </div>
                 <div className="flex items-center gap-2 px-1">
                   <p className="text-[10px] text-muted-foreground font-bold">{msg.time}</p>
-                  {msg.isMe && <CheckCheck className="w-3 h-3 text-blue-600" />}
+                  {msg.isMe && <CheckCheck className="w-3 h-3 text-[#EAB308]" />}
                 </div>
               </div>
             </motion.div>
@@ -183,18 +183,18 @@ export default function ChatPage() {
               <input
                 type="text"
                 placeholder="Nhập tin nhắn..."
-                className="w-full pl-6 pr-12 py-4 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none text-sm font-medium"
+                className="w-full pl-6 pr-12 py-4 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-[#EAB308]/20 transition-all outline-none text-sm font-medium"
               />
               <button
                 type="button"
-                className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-blue-600 transition-all"
+                className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-[#EAB308] transition-all"
               >
                 <Smile className="w-5 h-5" />
               </button>
             </div>
             <button
               type="button"
-              className="p-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 transition-all group"
+              className="p-4 rounded-2xl bg-[#EAB308] hover:bg-[#d5a84e] text-white shadow-lg shadow-[#EAB308]/20 transition-all group"
             >
               <Send className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
             </button>
