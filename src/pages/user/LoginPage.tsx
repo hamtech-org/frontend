@@ -565,7 +565,7 @@ const LoginPage = () => {
                     position: 'relative'
                   }}>
                     <video
-                      ref={bindFaceVideoRef}
+                      ref={videoRef}
                       autoPlay
                       muted
                       playsInline
