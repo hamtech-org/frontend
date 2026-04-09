@@ -18,6 +18,7 @@ import {
   PanelLeft,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import logoUrl from '@/assets/images/logo_vuong.png';
 
 // Lazy-loaded pages
 const LoginPage = React.lazy(() => import('@/pages/user/LoginPage'));
@@ -105,10 +106,10 @@ const App: React.FC = () => {
         )}
       >
         <div className="p-6 flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">Z</div>
+          <img src={logoUrl} alt="User Avatar" className="w-10 h-10" />
           {isSidebarOpen && (
             <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="font-display font-bold text-xl tracking-tight">
-              Zalogram
+              HamTech
             </motion.span>
           )}
         </div>
