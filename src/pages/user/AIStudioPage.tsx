@@ -121,7 +121,7 @@ export default function AIStudioPage() {
                       <div className="w-20 h-20 rounded-3xl bg-black/5 dark:bg-white/5 flex items-center justify-center text-muted-foreground"><Layers className="w-10 h-10" /></div>
                       <div className="space-y-2">
                         <h3 className="text-2xl font-display font-bold tracking-tight">Sẵn sàng sáng tạo?</h3>
-                        <p className="text-muted-foreground max-w-sm">Nhập yêu cầu bên dưới để bắt đầu tinh chỉnh nội dung với Zalogram AI.</p>
+                        <p className="text-muted-foreground max-w-sm">Nhập yêu cầu bên dưới để bắt đầu tinh chỉnh nội dung với HamTech AI.</p>
                       </div>
                     </div>
                   )}

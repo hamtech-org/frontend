@@ -27,7 +27,7 @@ export default function StudioPage() {
             <div className="w-2 h-2 bg-white rounded-full" />
             LIVE
           </div>
-          <h1 className="font-display font-bold text-lg tracking-tight">Ra mắt sản phẩm: Zalogram v2.0</h1>
+          <h1 className="font-display font-bold text-lg tracking-tight">Ra mắt sản phẩm: HamTech v2.0</h1>
           <span className="text-sm text-white/40">01:24:45</span>
         </div>
         <div className="flex items-center gap-4">

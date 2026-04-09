@@ -92,7 +92,7 @@ export default function LoginPage() {
                 </div>
               </div>
               <h3 className="text-2xl font-display font-bold text-white leading-tight">
-                &quot;Zalogram đã thay đổi cách tôi kết nối với cộng đồng.&quot;
+                &quot;HamTech đã thay đổi cách tôi kết nối với cộng đồng.&quot;
               </h3>
             </div>
           </div>
