@@ -83,6 +83,24 @@ export default function ChatPage() {
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [selectedGroupMembers, setSelectedGroupMembers] = useState<number[]>([]);
   const [groupName, setGroupName] = useState('');
+  const [showPollModal, setShowPollModal] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const [showMemberModal, setShowMemberModal] = useState(false);
+  const [showAISummaryModal, setShowAISummaryModal] = useState(false);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiSummaryResult, setAiSummaryResult] = useState('');
+  const mockPendingMembers = [
+    { id: 101, name: 'Trần Văn An', avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop', time: '5 phút trước' },
+    { id: 102, name: 'Nguyễn Thị Bình', avatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?w=100&h=100&fit=crop', time: '12 phút trước' },
+    { id: 103, name: 'Lê Hoàng Cường', avatar: 'https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=100&h=100&fit=crop', time: '1 giờ trước' },
+  ];
+  const mockMembers = [
+    { id: 1, name: 'Marcus Chen (Bạn)', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop', role: 'Trưởng nhóm' },
+    { id: 2, name: 'Elena Vance', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop', role: 'Thành viên' },
+    { id: 3, name: 'Sarah Jenkins', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop', role: 'Thành viên' },
+  ];
+  const [memberTab, setMemberTab] = useState<'list'|'pending'>('list');
   const activeContact = contactsList.find((c) => c.id === activeChat);
 
   return (
@@ -105,7 +123,7 @@ export default function ChatPage() {
           <button onClick={() => navigate('/')} title="Về Bảng Tin" className="w-12 h-12 shrink-0 rounded-2xl flex flex-col items-center justify-center text-white/80 hover:bg-white/10 cursor-pointer transition-colors mt-1">
             <Home className="w-6 h-6" />
           </button>
-          
+
           <button className="w-12 h-12 shrink-0 rounded-2xl flex flex-col items-center justify-center text-white/80 hover:bg-white/10 cursor-pointer transition-colors">
             <Cloud className="w-6 h-6" />
           </button>
@@ -469,12 +487,54 @@ export default function ChatPage() {
               </div>
             </div>
             {activeContact?.isGroup && (
-              <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                <div className="p-4 flex items-center justify-between font-bold text-sm">
-                  Thành viên nhóm
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              <>
+                <div className="p-4 bg-gradient-to-r from-blue-600/5 to-purple-600/5 border-b border-black/5 dark:border-white/5 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 blur-xl group-hover:opacity-30 transition-opacity">
+                    <Sparkles className="w-16 h-16 text-purple-600" />
+                  </div>
+                  <button onClick={() => { setShowAISummaryModal(true); setAiSummaryResult(''); setAiSummaryLoading(true); setTimeout(() => { setAiSummaryLoading(false); setAiSummaryResult('📌 **Chủ đề chính:** Nhóm đang thảo luận về tiến độ dự án HamTech UI và deadline thiết kế.\n\n🗣️ **Người hoạt động nhiều nhất:** Elena Vance (12 tin), Marcus Chen (8 tin).\n\n✅ **Kết luận đã đạt được:** Chốt họp chiều nay lúc 2h. Elena sẽ gửi bản mockup mới nhất.\n\n⚠️ **Việc cần làm:** Marcus cần review và phản hồi trước 5h chiều.'); }, 2000); }} className="w-full relative flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-[#0068ff] to-[#8c52ff] hover:from-blue-700 hover:to-purple-700 text-white font-bold text-[14px] shadow-lg shadow-purple-600/20 transition-all hover:shadow-purple-600/40 hover:-translate-y-0.5">
+                    <Sparkles className="w-[18px] h-[18px]" />
+                    AI tóm tắt toàn bộ tin nhắn
+                  </button>
+                  <p className="text-[11px] text-center mt-2 text-muted-foreground font-medium">Báo cáo siêu tốc những nội dung bị trôi.</p>
                 </div>
-              </div>
+
+                {/* Member Management */}
+                <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5">
+                  <div onClick={() => setShowMemberModal(true)} className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    Quản lý thành viên ({mockMembers.length})
+                    <div className="flex items-center gap-2">
+                      <div className="w-[20px] h-[20px] rounded-full bg-red-500 flex items-center justify-center text-[10px] text-white font-bold">3</div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                  <div className="px-4 pb-4 space-y-1">
+                    <div onClick={() => { setShowMemberModal(true); setMemberTab('pending'); }} className="flex items-center justify-between group/wait cursor-pointer p-2 -mx-2 rounded-lg hover:bg-blue-600/10 transition-colors">
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground group-hover/wait:text-blue-600 font-medium transition-colors">
+                         <UserPlus className="w-4 h-4 opacity-70" /> Duyệt người vào nhóm
+                      </div>
+                      <div className="w-[22px] h-[22px] rounded-full bg-red-500 shadow-md shadow-red-500/20 flex items-center justify-center text-[10px] text-white font-bold">3</div>
+                    </div>
+                    <div onClick={() => { setShowMemberModal(true); setMemberTab('list'); }} className="flex items-center gap-3 text-sm text-muted-foreground hover:text-red-500 cursor-pointer hover:bg-red-500/10 p-2 -mx-2 rounded-lg transition-colors font-medium">
+                       <Users className="w-4 h-4 opacity-70" /> Mời ra khỏi nhóm
+                    </div>
+                  </div>
+                </div>
+
+                {/* Poll shortcut */}
+                <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5">
+                  <div onClick={() => setShowPollModal(true)} className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    Tạo bình chọn / Thăm dò
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                </div>
+              </>
+            )}-center gap-3 text-sm text-muted-foreground hover:text-red-500 cursor-pointer hover:bg-red-500/10 p-2 -mx-2 rounded-lg transition-colors font-medium">
+                      <Users className="w-4 h-4 opacity-70" /> Mời ra khỏi nhóm
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
             <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5 mt-2">
               <div className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
@@ -576,106 +636,106 @@ export default function ChatPage() {
               className="bg-white dark:bg-[#1a1a1a] rounded-2xl max-w-[400px] w-full shadow-2xl border border-black/5 dark:border-white/10 relative max-h-[90vh] flex flex-col overflow-hidden"
             >
               {/* Sticky Close Button */}
-              <button 
-                 onClick={() => setShowProfileModal(false)} 
-                 className="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center text-white hover:bg-black/50 backdrop-blur-md transition-colors z-20 shadow-sm"
+              <button
+                onClick={() => setShowProfileModal(false)}
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center text-white hover:bg-black/50 backdrop-blur-md transition-colors z-20 shadow-sm"
               >
-                <X className="w-5 h-5 stroke-[2]"/>
+                <X className="w-5 h-5 stroke-[2]" />
               </button>
 
               {/* Scrollable Modal Content */}
               <div className="flex-1 overflow-y-auto custom-scrollbar w-full">
                 {/* Cover Photo */}
                 <div className="relative h-32 shrink-0 group">
-                   <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop" className="w-full h-full object-cover" alt="Cover" />
-                   <div className="absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors" />
-                   <button className="absolute bottom-4 right-4 p-2 rounded-full bg-black/30 text-white hover:bg-black/50 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 z-10">
-                     <Camera className="w-4 h-4" />
-                   </button>
+                  <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop" className="w-full h-full object-cover" alt="Cover" />
+                  <div className="absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors" />
+                  <button className="absolute bottom-4 right-4 p-2 rounded-full bg-black/30 text-white hover:bg-black/50 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 z-10">
+                    <Camera className="w-4 h-4" />
+                  </button>
                 </div>
 
                 {/* Avatar & Basic Info */}
                 <div className="px-6 relative pb-6">
-                   <div className="flex flex-col items-center -mt-12 relative z-10">
-                      <div className="relative group/avatar cursor-pointer">
-                        <div className="w-24 h-24 rounded-full border-[4px] border-white dark:border-[#1a1a1a] overflow-hidden bg-white shadow-md">
-                           <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop" className="w-full h-full object-cover" alt="Profile avatar" />
+                  <div className="flex flex-col items-center -mt-12 relative z-10">
+                    <div className="relative group/avatar cursor-pointer">
+                      <div className="w-24 h-24 rounded-full border-[4px] border-white dark:border-[#1a1a1a] overflow-hidden bg-white shadow-md">
+                        <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop" className="w-full h-full object-cover" alt="Profile avatar" />
+                      </div>
+                      <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center">
+                        <Camera className="w-6 h-6 text-white" />
+                      </div>
+                    </div>
+
+                    <h3 className="font-bold text-2xl text-black dark:text-white mt-2 text-center">
+                      Marcus Chen
+                    </h3>
+                    <div className="text-[13px] font-medium text-muted-foreground mt-0.5 flex items-center gap-1.5 justify-center">
+                      Đang hoạt động <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                    </div>
+                  </div>
+
+                  {/* Detail Cards */}
+                  <div className="mt-6 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center shrink-0">
+                          <User className="w-[18px] h-[18px] text-indigo-600 dark:text-indigo-400" />
                         </div>
-                        <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center">
-                          <Camera className="w-6 h-6 text-white" />
+                        <div className="flex-1 overflow-hidden">
+                          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block truncate">Giới tính</span>
+                          <p className="text-[14px] font-semibold text-black dark:text-white/90 truncate">Nam</p>
                         </div>
                       </div>
-                      
-                      <h3 className="font-bold text-2xl text-black dark:text-white mt-2 text-center">
-                        Marcus Chen
-                      </h3>
-                      <div className="text-[13px] font-medium text-muted-foreground mt-0.5 flex items-center gap-1.5 justify-center">
-                        Đang hoạt động <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-                      </div>
-                   </div>
-                   
-                   {/* Detail Cards */}
-                   <div className="mt-6 space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                         <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-center gap-3">
-                           <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center shrink-0">
-                             <User className="w-[18px] h-[18px] text-indigo-600 dark:text-indigo-400" />
-                           </div>
-                           <div className="flex-1 overflow-hidden">
-                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block truncate">Giới tính</span>
-                             <p className="text-[14px] font-semibold text-black dark:text-white/90 truncate">Nam</p>
-                           </div>
-                         </div>
-                         
-                         <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-center gap-3">
-                           <div className="w-9 h-9 rounded-full bg-pink-100 dark:bg-pink-900/40 flex items-center justify-center shrink-0">
-                             <Calendar className="w-[18px] h-[18px] text-pink-600 dark:text-pink-400" />
-                           </div>
-                           <div className="flex-1 overflow-hidden">
-                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block truncate">Ngày sinh</span>
-                             <p className="text-[14px] font-semibold text-black dark:text-white/90 truncate">15/08/2000</p>
-                           </div>
-                         </div>
-                      </div>
 
-                      <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
-                         <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
-                           <Phone className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400" />
-                         </div>
-                         <div className="flex-1">
-                           <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block">Điện thoại</span>
-                           <p className="text-[14px] font-semibold text-black dark:text-white/90">+84 123 456 789</p>
-                         </div>
+                      <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-pink-100 dark:bg-pink-900/40 flex items-center justify-center shrink-0">
+                          <Calendar className="w-[18px] h-[18px] text-pink-600 dark:text-pink-400" />
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block truncate">Ngày sinh</span>
+                          <p className="text-[14px] font-semibold text-black dark:text-white/90 truncate">15/08/2000</p>
+                        </div>
                       </div>
+                    </div>
 
-                      <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
-                         <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
-                           <Mail className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400" />
-                         </div>
-                         <div className="flex-1">
-                           <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block">Email công việc</span>
-                           <p className="text-[14px] font-semibold text-black dark:text-white/90">marcus@hamtech.vn</p>
-                         </div>
+                    <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
+                      <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                        <Phone className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400" />
                       </div>
-
-                      <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
-                         <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
-                           <Quote className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400 fill-current opacity-80" />
-                         </div>
-                         <div className="flex-1">
-                           <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block">Tiểu sử</span>
-                           <p className="text-[13px] font-medium text-black dark:text-white/80 leading-relaxed italic">
-                             "Technology is best when it brings people together." 🌍 Code & Coffee routine.
-                           </p>
-                         </div>
+                      <div className="flex-1">
+                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block">Điện thoại</span>
+                        <p className="text-[14px] font-semibold text-black dark:text-white/90">+84 123 456 789</p>
                       </div>
-                   </div>
+                    </div>
 
-                   <div className="mt-6 flex gap-3 pb-2 shrink-0">
-                     <button className="flex-1 py-2.5 rounded-xl font-bold text-[14px] bg-[#0068ff] text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all hover:-translate-y-0.5">
-                       Cập nhật thông tin
-                     </button>
-                   </div>
+                    <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
+                      <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                        <Mail className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div className="flex-1">
+                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block">Email công việc</span>
+                        <p className="text-[14px] font-semibold text-black dark:text-white/90">marcus@hamtech.vn</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
+                      <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                        <Quote className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400 fill-current opacity-80" />
+                      </div>
+                      <div className="flex-1">
+                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block">Tiểu sử</span>
+                        <p className="text-[13px] font-medium text-black dark:text-white/80 leading-relaxed italic">
+                          "Technology is best when it brings people together." 🌍 Code & Coffee routine.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex gap-3 pb-2 shrink-0">
+                    <button className="flex-1 py-2.5 rounded-xl font-bold text-[14px] bg-[#0068ff] text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all hover:-translate-y-0.5">
+                      Cập nhật thông tin
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -697,54 +757,54 @@ export default function ChatPage() {
               <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0 bg-white dark:bg-[#1a1a1a] z-10">
                 <h3 className="font-bold text-[17px] text-black dark:text-white tracking-tight">Tạo nhóm trò chuyện</h3>
                 <button onClick={() => setShowCreateGroupModal(false)} className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
-                  <X className="w-5 h-5 stroke-[2]"/>
+                  <X className="w-5 h-5 stroke-[2]" />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto px-5 py-5 custom-scrollbar space-y-6 relative">
-                 <div className="flex items-center gap-3">
-                   <div className="w-[52px] h-[52px] rounded-full border-[1.5px] border-dashed border-gray-300 dark:border-white/20 flex flex-col items-center justify-center text-muted-foreground shrink-0 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                     <Camera className="w-5 h-5"/>
-                   </div>
-                   <input 
-                     type="text" 
-                     placeholder="Nhập tên nhóm..." 
-                     value={groupName}
-                     onChange={(e) => setGroupName(e.target.value)}
-                     className="flex-1 py-2 px-1 border-b-2 border-black/10 dark:border-white/10 bg-transparent outline-none focus:border-blue-600 dark:focus:border-blue-500 font-bold text-[15px] transition-colors text-black dark:text-white"
-                   />
-                 </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-[52px] h-[52px] rounded-full border-[1.5px] border-dashed border-gray-300 dark:border-white/20 flex flex-col items-center justify-center text-muted-foreground shrink-0 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    <Camera className="w-5 h-5" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Nhập tên nhóm..."
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    className="flex-1 py-2 px-1 border-b-2 border-black/10 dark:border-white/10 bg-transparent outline-none focus:border-blue-600 dark:focus:border-blue-500 font-bold text-[15px] transition-colors text-black dark:text-white"
+                  />
+                </div>
 
-                 <div className="space-y-4">
-                   <div className="relative">
-                     <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                     <input type="text" placeholder="Tìm tên hoặc số điện thoại..." className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:bg-white dark:focus:bg-black focus:border-blue-600/50 shadow-sm text-[14px] font-medium transition-all text-black dark:text-white" />
-                   </div>
+                <div className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input type="text" placeholder="Tìm tên hoặc số điện thoại..." className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:bg-white dark:focus:bg-black focus:border-blue-600/50 shadow-sm text-[14px] font-medium transition-all text-black dark:text-white" />
+                  </div>
 
-                   <div className="border border-black/5 dark:border-white/10 rounded-2xl overflow-hidden divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-black/20">
-                     <div className="px-4 py-2.5 bg-black/[0.02] dark:bg-white/[0.02] border-b border-black/5 dark:border-white/5">
-                       <span className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider">Danh sách liên hệ</span>
-                     </div>
-                     {mockContacts.filter(c => !c.isGroup).map((contact) => (
-                       <label key={contact.id} className="flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
-                         <div className="relative flex items-center justify-center">
-                           <input 
-                             type="checkbox" 
-                             checked={selectedGroupMembers.includes(contact.id)}
-                             onChange={(e) => {
-                               if (e.target.checked) setSelectedGroupMembers([...selectedGroupMembers, contact.id]);
-                               else setSelectedGroupMembers(selectedGroupMembers.filter(id => id !== contact.id));
-                             }}
-                             className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer appearance-none checked:bg-blue-600 checked:border-blue-600 transition-colors"
-                           />
-                           {selectedGroupMembers.includes(contact.id) && <CheckSquare className="absolute w-[14px] h-[14px] text-white pointer-events-none" />}
-                         </div>
-                         <img src={contact.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" alt="" />
-                         <span className="font-semibold text-[14px] text-black dark:text-white flex-1 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{contact.name}</span>
-                       </label>
-                     ))}
-                   </div>
-                 </div>
+                  <div className="border border-black/5 dark:border-white/10 rounded-2xl overflow-hidden divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-black/20">
+                    <div className="px-4 py-2.5 bg-black/[0.02] dark:bg-white/[0.02] border-b border-black/5 dark:border-white/5">
+                      <span className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider">Danh sách liên hệ</span>
+                    </div>
+                    {mockContacts.filter(c => !c.isGroup).map((contact) => (
+                      <label key={contact.id} className="flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
+                        <div className="relative flex items-center justify-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedGroupMembers.includes(contact.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedGroupMembers([...selectedGroupMembers, contact.id]);
+                              else setSelectedGroupMembers(selectedGroupMembers.filter(id => id !== contact.id));
+                            }}
+                            className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer appearance-none checked:bg-blue-600 checked:border-blue-600 transition-colors"
+                          />
+                          {selectedGroupMembers.includes(contact.id) && <CheckSquare className="absolute w-[14px] h-[14px] text-white pointer-events-none" />}
+                        </div>
+                        <img src={contact.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" alt="" />
+                        <span className="font-semibold text-[14px] text-black dark:text-white flex-1 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{contact.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="px-5 py-4 border-t border-black/5 dark:border-white/5 shrink-0 bg-white dark:bg-[#1a1a1a] z-10 flex items-center justify-between">
@@ -756,7 +816,7 @@ export default function ChatPage() {
                     Hủy
                   </button>
                   <div className="relative group/btn tooltip-trigger">
-                    <button 
+                    <button
                       onClick={() => {
                         const newGroupId = Date.now();
                         const newGroup = {
@@ -774,22 +834,258 @@ export default function ChatPage() {
                         setShowCreateGroupModal(false);
                       }}
                       disabled={selectedGroupMembers.length < 2}
-                      className={`px-5 py-2 rounded-xl font-bold text-[14px] text-white shadow-sm transition-all flex items-center gap-2 ${
-                        selectedGroupMembers.length >= 2 
-                          ? 'bg-[#0068ff] hover:bg-blue-700 hover:-translate-y-0.5 shadow-blue-600/20 cursor-pointer' 
+                      className={`px-5 py-2 rounded-xl font-bold text-[14px] text-white shadow-sm transition-all flex items-center gap-2 ${selectedGroupMembers.length >= 2
+                          ? 'bg-[#0068ff] hover:bg-blue-700 hover:-translate-y-0.5 shadow-blue-600/20 cursor-pointer'
                           : 'bg-black/10 dark:bg-white/10 cursor-not-allowed text-black/40 dark:text-white/40'
-                      }`}
+                        }`}
                     >
                       <Users className="w-[18px] h-[18px]" />
                       Tạo nhóm
                     </button>
                     {selectedGroupMembers.length < 2 && (
-                       <div className="absolute bottom-full right-0 mb-3 w-[200px] bg-black dark:bg-white text-white dark:text-black text-[12px] font-medium p-2.5 rounded-lg opacity-0 invisible group-hover/btn:opacity-100 group-hover/btn:visible transition-all pointer-events-none text-center shadow-xl">
-                         Vui lòng chọn ít nhất 2 người để tạo nhóm (Cần tối thiểu 3 thành viên)
-                       </div>
+                      <div className="absolute bottom-full right-0 mb-3 w-[200px] bg-black dark:bg-white text-white dark:text-black text-[12px] font-medium p-2.5 rounded-lg opacity-0 invisible group-hover/btn:opacity-100 group-hover/btn:visible transition-all pointer-events-none text-center shadow-xl">
+                        Vui lòng chọn ít nhất 2 người để tạo nhóm (Cần tối thiểu 3 thành viên)
+                      </div>
                     )}
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ===== Modal: Bình chọn / Thăm dò ===== */}
+      <AnimatePresence>
+        {showPollModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2, type: 'spring', stiffness: 300, damping: 25 }}
+              className="bg-white dark:bg-[#1a1a1a] rounded-2xl max-w-[460px] w-full shadow-2xl border border-black/5 dark:border-white/10 flex flex-col overflow-hidden max-h-[88vh]"
+            >
+              <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                    <BarChart2 className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                  </div>
+                  <h3 className="font-bold text-[17px] text-black dark:text-white">Tạo bình chọn</h3>
+                </div>
+                <button onClick={() => setShowPollModal(false)} className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-5 custom-scrollbar space-y-5">
+                <div>
+                  <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider mb-2 block">Câu hỏi bình chọn</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Nhập câu hỏi của bạn..."
+                    value={pollQuestion}
+                    onChange={(e) => setPollQuestion(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-orange-500/50 dark:focus:bg-black/40 resize-none text-[14px] font-medium transition-all"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider mb-1 block">Các lựa chọn</label>
+                  {pollOptions.map((opt, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center text-[12px] font-bold text-muted-foreground shrink-0">{String.fromCharCode(65 + idx)}</div>
+                      <input
+                        type="text"
+                        placeholder={`Lựa chọn ${String.fromCharCode(65 + idx)}...`}
+                        value={opt}
+                        onChange={(e) => { const next = [...pollOptions]; next[idx] = e.target.value; setPollOptions(next); }}
+                        className="flex-1 px-4 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-orange-500/50 text-[14px] font-medium transition-all"
+                      />
+                      {pollOptions.length > 2 && (
+                        <button onClick={() => setPollOptions(pollOptions.filter((_, i) => i !== idx))} className="w-7 h-7 rounded-full bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center text-red-500 transition-colors shrink-0">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {pollOptions.length < 6 && (
+                    <button onClick={() => setPollOptions([...pollOptions, ''])} className="flex items-center gap-2 text-[13px] font-bold text-blue-600 hover:text-blue-700 p-2 -mx-2 rounded-xl hover:bg-blue-600/5 transition-colors mt-1">
+                      <div className="w-6 h-6 rounded-full border-2 border-dashed border-blue-600/50 flex items-center justify-center"><span className="text-lg leading-none">+</span></div>
+                      Thêm lựa chọn
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-xl bg-black/5 dark:bg-white/5">
+                  <span className="text-[13px] font-semibold">Cho phép chọn nhiều đáp án</span>
+                  <div className="w-10 h-6 rounded-full bg-blue-600 flex items-center justify-end pr-1 cursor-pointer shadow-inner">
+                    <div className="w-4 h-4 rounded-full bg-white shadow-md" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-5 py-4 border-t border-black/5 dark:border-white/5 shrink-0 flex gap-2.5">
+                <button onClick={() => setShowPollModal(false)} className="px-4 py-2.5 rounded-xl font-bold text-[14px] bg-black/5 dark:bg-white/10 text-black dark:text-white hover:bg-black/10 transition-colors">
+                  Hủy
+                </button>
+                <button
+                  disabled={!pollQuestion.trim() || pollOptions.filter(o => o.trim()).length < 2}
+                  onClick={() => setShowPollModal(false)}
+                  className={`flex-1 py-2.5 rounded-xl font-bold text-[14px] text-white transition-all flex items-center justify-center gap-2 ${
+                    pollQuestion.trim() && pollOptions.filter(o => o.trim()).length >= 2
+                      ? 'bg-orange-500 hover:bg-orange-600 shadow-md shadow-orange-500/20 hover:-translate-y-0.5'
+                      : 'bg-black/10 dark:bg-white/10 text-black/40 dark:text-white/40 cursor-not-allowed'
+                  }`}
+                >
+                  <BarChart2 className="w-4 h-4" /> Gửi bình chọn
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ===== Modal: Quản lý thành viên ===== */}
+      <AnimatePresence>
+        {showMemberModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2, type: 'spring', stiffness: 300, damping: 25 }}
+              className="bg-white dark:bg-[#1a1a1a] rounded-2xl max-w-[460px] w-full shadow-2xl border border-black/5 dark:border-white/10 flex flex-col overflow-hidden max-h-[88vh]"
+            >
+              <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <Users className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <h3 className="font-bold text-[17px] text-black dark:text-white">Quản lý thành viên</h3>
+                </div>
+                <button onClick={() => setShowMemberModal(false)} className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex px-5 pt-4 gap-1 shrink-0">
+                {(['list', 'pending'] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setMemberTab(tab)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
+                      memberTab === tab ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10'
+                    }`}
+                  >
+                    {tab === 'list' ? <><Users className="w-3.5 h-3.5" /> Thành viên ({mockMembers.length})</> : <><UserPlus className="w-3.5 h-3.5" /> Chờ duyệt <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 leading-none">{mockPendingMembers.length}</span></>}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-2">
+                {memberTab === 'list' ? (
+                  mockMembers.map(member => (
+                    <div key={member.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
+                      <img src={member.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" alt="" />
+                      <div className="flex-1 overflow-hidden">
+                        <p className="font-bold text-[14px] text-black dark:text-white truncate">{member.name}</p>
+                        <p className="text-[12px] text-muted-foreground font-medium">{member.role}</p>
+                      </div>
+                      {member.role !== 'Trưởng nhóm' && (
+                        <button className="opacity-0 group-hover:opacity-100 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-[12px] font-bold transition-all flex items-center gap-1 shrink-0">
+                          <Trash2 className="w-3 h-3" /> Kick
+                        </button>
+                      )}
+                      {member.role === 'Trưởng nhóm' && (
+                        <span className="px-2 py-1 rounded-lg bg-blue-600/10 text-blue-600 text-[11px] font-bold shrink-0">Admin</span>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  mockPendingMembers.map(person => (
+                    <div key={person.id} className="flex items-center gap-3 p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5">
+                      <img src={person.avatar} className="w-10 h-10 rounded-full object-cover shrink-0" alt="" />
+                      <div className="flex-1 overflow-hidden">
+                        <p className="font-bold text-[14px] text-black dark:text-white truncate">{person.name}</p>
+                        <p className="text-[12px] text-muted-foreground font-medium">Yêu cầu {person.time}</p>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <button className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-[12px] font-bold transition-all">
+                          Từ chối
+                        </button>
+                        <button className="px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-[12px] font-bold transition-all shadow-sm">
+                          Duyệt
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ===== Modal: AI Tóm tắt nhóm ===== */}
+      <AnimatePresence>
+        {showAISummaryModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2, type: 'spring', stiffness: 300, damping: 25 }}
+              className="bg-white dark:bg-[#1a1a1a] rounded-2xl max-w-[520px] w-full shadow-2xl border border-black/5 dark:border-white/10 flex flex-col overflow-hidden max-h-[88vh]"
+            >
+              <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0 bg-gradient-to-r from-blue-600/5 to-purple-600/5">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#0068ff] to-[#8c52ff] flex items-center justify-center shadow-md">
+                    <Sparkles className="w-[18px] h-[18px] text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-[16px] text-black dark:text-white leading-tight">AI Tóm tắt nhóm</h3>
+                    <p className="text-[11px] text-muted-foreground font-medium">{activeContact?.name}</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowAISummaryModal(false)} className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-5 custom-scrollbar">
+                {aiSummaryLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-5 py-12">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#0068ff] to-[#8c52ff] flex items-center justify-center shadow-xl shadow-purple-600/20 animate-pulse">
+                      <Sparkles className="w-7 h-7 text-white" />
+                    </div>
+                    <div className="text-center space-y-1.5">
+                      <p className="font-bold text-[15px] text-black dark:text-white">AI đang phân tích...</p>
+                      <p className="text-[13px] text-muted-foreground">Đang đọc và tóm tắt toàn bộ lịch sử chat</p>
+                    </div>
+                    <div className="flex gap-1.5">
+                      {[0,1,2].map(i => <div key={i} className="w-2 h-2 rounded-full bg-blue-600 animate-bounce" style={{animationDelay: `${i * 0.15}s`}} />)}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-600/5 to-purple-600/5 border border-blue-600/10">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Sparkles className="w-4 h-4 text-purple-600" />
+                        <span className="text-[12px] font-bold text-purple-600 uppercase tracking-wider">Kết quả phân tích AI</span>
+                      </div>
+                      <div className="space-y-3">
+                        {aiSummaryResult.split('\n\n').filter(Boolean).map((para, i) => (
+                          <p key={i} className="text-[14px] text-black dark:text-white/90 leading-relaxed font-medium">{para}</p>
+                        ))}
+                      </div>
+                    </div>
+                    <button onClick={() => { setAiSummaryResult(''); setAiSummaryLoading(true); setTimeout(() => { setAiSummaryLoading(false); setAiSummaryResult('📌 **Chủ đề chính:** Nhóm đang thảo luận về tiến độ dự án HamTech UI và deadline thiết kế.\n\n🗣️ **Người hoạt động nhiều nhất:** Elena Vance (12 tin), Marcus Chen (8 tin).\n\n✅ **Kết luận đã đạt được:** Chốt họp chiều nay lúc 2h. Elena sẽ gửi bản mockup mới nhất.\n\n⚠️ **Việc cần làm:** Marcus cần review và phản hồi trước 5h chiều.'); }, 2000); }} className="w-full py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[13px] font-bold text-muted-foreground flex items-center justify-center gap-2 transition-colors">
+                      <Sparkles className="w-[14px] h-[14px]" /> Phân tích lại
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
