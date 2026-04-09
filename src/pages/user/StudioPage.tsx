@@ -27,7 +27,7 @@ export default function StudioPage() {
             <div className="w-2 h-2 bg-white rounded-full" />
             LIVE
           </div>
-          <h1 className="font-display font-bold text-lg tracking-tight">Ra mắt sản phẩm: Zalogram v2.0</h1>
+          <h1 className="font-display font-bold text-lg tracking-tight">Ra mắt sản phẩm: HamTech v2.0</h1>
           <span className="text-sm text-white/40">01:24:45</span>
         </div>
         <div className="flex items-center gap-4">
@@ -99,7 +99,7 @@ export default function StudioPage() {
             <div className="p-6 border-t border-white/10">
               <div className="relative">
                 <input type="text" placeholder="Gửi tin nhắn..." className="w-full pl-4 pr-12 py-3 rounded-2xl bg-white/5 border-none focus:ring-2 ring-blue-600/40 transition-all outline-none text-sm" />
-                <button className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-blue-600 hover:text-blue-400 transition-all"><Send className="w-4 h-4" /></button>
+                <button className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-blue-600 hover:text-blue-600 transition-all"><Send className="w-4 h-4" /></button>
               </div>
             </div>
           </motion.div>

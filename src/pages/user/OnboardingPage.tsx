@@ -38,7 +38,7 @@ export default function OnboardingPage() {
             <p className="text-muted-foreground text-lg">
               {step === 1 && 'Đây là cách bạn xuất hiện với mọi người trong cộng đồng.'}
               {step === 2 && 'Một vài dòng giới thiệu giúp mọi người hiểu bạn hơn.'}
-              {step === 3 && 'Chào mừng đến với hệ sinh thái Zalogram.'}
+              {step === 3 && 'Chào mừng đến với hệ sinh thái HamTech.'}
             </p>
           </div>
 
@@ -101,7 +101,7 @@ export default function OnboardingPage() {
               disabled={step === 1 && !name}
               className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 text-white rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-600/20 group"
             >
-              {step === 3 ? 'Vào Zalogram' : 'Tiếp tục'}
+              {step === 3 ? 'Vào HamTech' : 'Tiếp tục'}
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>

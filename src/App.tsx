@@ -18,6 +18,7 @@ import {
   PanelLeft,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import logoUrl from '@/assets/images/logo_vuong.png';
 
 // Lazy-loaded pages
 const LoginPage = React.lazy(() => import('@/pages/user/LoginPage'));
@@ -105,15 +106,15 @@ const App: React.FC = () => {
         )}
       >
         <div className="p-6 flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">Z</div>
+          <img src={logoUrl} alt="User Avatar" className="w-10 h-10" />
           {isSidebarOpen && (
             <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="font-display font-bold text-xl tracking-tight">
-              Zalogram
+              HamTech
             </motion.span>
           )}
         </div>
 
-        <nav className="flex-1 px-4 space-y-2 mt-4">
+        <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
             return (
@@ -123,8 +124,8 @@ const App: React.FC = () => {
                 className={cn(
                   'w-full flex items-center gap-4 p-3 rounded-xl transition-all group relative',
                   isActive
-                    ? isDarkMode ? 'bg-white/10 text-white' : 'bg-black/5 text-black'
-                    : isDarkMode ? 'text-midnight-muted hover:text-white' : 'text-ethereal-muted hover:text-ethereal-primary',
+                    ? isDarkMode ? 'bg-white/10 text-blue-500' : 'bg-black/5 text-blue-600'
+                    : isDarkMode ? 'text-midnight-muted hover:text-blue-400' : 'text-ethereal-muted hover:text-blue-600',
                 )}
               >
                 <item.icon className={cn('w-5 h-5', isActive && 'text-blue-600')} />
@@ -183,7 +184,7 @@ const App: React.FC = () => {
                 <p className="text-sm font-semibold">Người dùng</p>
                 <p className="text-xs text-muted-foreground">Thành viên</p>
               </div>
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-[#f4c25f] flex items-center justify-center text-white font-bold">
                 Z
               </div>
             </div>

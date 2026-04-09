@@ -134,8 +134,8 @@ export default function HomePage() {
                     <span className="font-bold">{post.likes}</span>
                   </button>
                   <button type="button" className="flex items-center gap-2 group">
-                    <div className="p-2 rounded-full group-hover:bg-blue-500/10 transition-all">
-                      <MessageCircle className="w-6 h-6 group-hover:text-blue-500 transition-all" />
+                    <div className="p-2 rounded-full group-hover:bg-blue-600/10 transition-all">
+                      <MessageCircle className="w-6 h-6 group-hover:text-blue-600 transition-all" />
                     </div>
                     <span className="font-bold">{post.comments}</span>
                   </button>
@@ -143,8 +143,8 @@ export default function HomePage() {
                     <Share2 className="w-6 h-6 group-hover:text-green-500 transition-all" />
                   </button>
                 </div>
-                <button type="button" className="p-2 rounded-full hover:bg-blue-500/10 group transition-all">
-                  <Bookmark className="w-6 h-6 group-hover:text-blue-500 transition-all" />
+                <button type="button" className="p-2 rounded-full hover:bg-blue-600/10 group transition-all">
+                  <Bookmark className="w-6 h-6 group-hover:text-blue-600 transition-all" />
                 </button>
               </div>
             </motion.article>

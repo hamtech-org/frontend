@@ -27,8 +27,8 @@ export default function ContactsPage() {
             Tham gia các cộng đồng chuyên biệt, thảo luận chuyên sâu và hợp tác với những người cùng đam mê.
           </p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="relative w-full md:w-80">
+        <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+          <div className="relative w-full sm:w-80">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input 
               type="text" 
@@ -36,7 +36,7 @@ export default function ContactsPage() {
               className="w-full pl-12 pr-4 py-3 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none font-medium"
             />
           </div>
-          <button className="p-4 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:scale-105 transition-all">
+          <button className="w-full sm:w-auto p-4 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:scale-105 transition-all flex items-center justify-center">
             <Plus className="w-6 h-6" />
           </button>
         </div>
@@ -61,25 +61,25 @@ export default function ContactsPage() {
                 <div className="aspect-[21/9] relative overflow-hidden">
                   <img src={community.image} alt={community.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" referrerPolicy="no-referrer" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                  <div className="absolute bottom-6 left-8 right-8 flex items-end justify-between">
-                    <div className="space-y-2">
+                  <div className="absolute bottom-6 left-8 right-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                    <div className="space-y-2 flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <h3 className="text-3xl font-display font-extrabold text-white tracking-tight">{community.name}</h3>
-                        {community.isPrivate ? <Lock className="w-5 h-5 text-white/60" /> : <Globe className="w-5 h-5 text-white/60" />}
+                        <h3 className="text-2xl sm:text-3xl font-display font-extrabold text-white tracking-tight truncate">{community.name}</h3>
+                        {community.isPrivate ? <Lock className="w-5 h-5 text-white/60 flex-shrink-0" /> : <Globe className="w-5 h-5 text-white/60 flex-shrink-0" />}
                       </div>
-                      <div className="flex items-center gap-4 text-white/80 font-bold text-sm">
-                        <div className="flex items-center gap-1"><Users className="w-4 h-4" />{community.members} Thành viên</div>
-                        <div className="flex items-center gap-1"><MessageSquare className="w-4 h-4" />24 Đang hoạt động</div>
+                      <div className="flex flex-wrap items-center gap-4 text-white/80 font-bold text-sm">
+                        <div className="flex items-center gap-1 whitespace-nowrap"><Users className="w-4 h-4" />{community.members} Thành viên</div>
+                        <div className="flex items-center gap-1 whitespace-nowrap"><MessageSquare className="w-4 h-4" />24 Hoạt động</div>
                       </div>
                     </div>
-                    <button className="px-6 py-3 rounded-xl bg-white text-black font-bold hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2">
+                    <button className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white text-blue-900 font-bold hover:bg-blue-600 hover:text-white transition-colors flex items-center justify-center gap-2 flex-shrink-0">
                       Tham gia
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
                 <div className="p-8">
-                  <p className="text-lg text-muted-foreground leading-relaxed">{community.description}</p>
+                  <p className="text-lg text-muted-foreground leading-relaxed line-clamp-2 md:line-clamp-3">{community.description}</p>
                 </div>
               </motion.div>
             ))}
@@ -92,11 +92,11 @@ export default function ContactsPage() {
             <div className="space-y-4">
               {trendingTopics.map((topic) => (
                 <button key={topic.tag} className="w-full flex items-center justify-between p-4 rounded-2xl hover:bg-black/5 dark:hover:bg-white/5 transition-all group">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-600/10 flex items-center justify-center text-blue-600 font-bold">#</div>
-                    <p className="font-bold group-hover:text-blue-600 transition-colors">{topic.tag}</p>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-blue-600/10 flex items-center justify-center text-blue-600 font-bold flex-shrink-0">#</div>
+                    <p className="font-bold group-hover:text-blue-600 transition-colors truncate">{topic.tag}</p>
                   </div>
-                  <span className="text-xs font-bold text-muted-foreground">{topic.posts} bài</span>
+                  <span className="text-xs font-bold text-muted-foreground flex-shrink-0 whitespace-nowrap">{topic.posts} bài</span>
                 </button>
               ))}
             </div>
@@ -109,11 +109,11 @@ export default function ContactsPage() {
             <h3 className="text-xl font-display font-bold tracking-tight">Cuộc trò chuyện nổi bật</h3>
             <div className="space-y-6">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="flex gap-4 group cursor-pointer">
+                <div key={i} className="flex gap-4 group cursor-pointer items-start">
                   <div className="w-10 h-10 rounded-full bg-black/10 dark:bg-white/10 flex-shrink-0" />
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold group-hover:text-blue-600 transition-colors">Làm thế nào để đạt được "film look" trong digital?</p>
-                    <p className="text-xs text-muted-foreground">Bắt đầu bởi Alex • 12 phản hồi</p>
+                  <div className="space-y-1 min-w-0">
+                    <p className="text-sm font-bold group-hover:text-blue-600 transition-colors line-clamp-2">Làm thế nào để đạt được "film look" trong digital?</p>
+                    <p className="text-xs text-muted-foreground truncate">Bắt đầu bởi Alex • 12 phản hồi</p>
                   </div>
                 </div>
               ))}
