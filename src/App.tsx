@@ -16,6 +16,7 @@ import {
   Sun,
   PanelLeftClose,
   PanelLeft,
+  User,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import logoUrl from '@/assets/images/logo_vuong.png';
@@ -29,6 +30,7 @@ const ContactsPage = React.lazy(() => import('@/pages/user/ContactsPage'));
 const StudioPage = React.lazy(() => import('@/pages/user/StudioPage'));
 const CallPage = React.lazy(() => import('@/pages/user/CallPage'));
 const AIStudioPage = React.lazy(() => import('@/pages/user/AIStudioPage'));
+const ProfilePage = React.lazy(() => import('@/pages/user/ProfilePage'));
 const AdminDashboard = React.lazy(() => import('@/pages/admin/AdminDashboard'));
 const AdminAnalytics = React.lazy(() => import('@/pages/admin/AdminAnalytics'));
 
@@ -39,6 +41,7 @@ const navItems = [
   { path: '/chat', icon: MessageSquare, label: 'Tin nhắn' },
   { path: '/analytics', icon: BarChart3, label: 'Thống kê' },
   { path: '/ai-studio', icon: Sparkles, label: 'AI Studio' },
+  { path: '/profile', icon: User, label: 'Hồ sơ' },
   { path: '/admin', icon: Settings, label: 'Quản trị' },
 ];
 
@@ -209,6 +212,7 @@ const App: React.FC = () => {
                   <Route path="/chat" element={<ChatPage />} />
                   <Route path="/analytics" element={<AdminAnalytics />} />
                   <Route path="/ai-studio" element={<AIStudioPage />} />
+                  <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/admin" element={<AdminDashboard />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

@@ -18,3 +18,36 @@ export interface IAuthTokens {
 export interface ILoginResponse extends IAuthTokens {
   userId: string;
 }
+
+export interface IFaceLoginRequest {
+  image: string;
+}
+
+export interface IEnableFaceLoginRequest {
+  image: string;
+}
+
+export interface IForgotPasswordRequest {
+  email: string;
+}
+
+export interface IResetPasswordRequest {
+  email: string;
+  token: string;
+  newPassword: string;
+}
+
+export interface IChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface IVerifyEmailRequest {
+  email: string;
+  otp: string;
+}
+
+export interface IVerifyLoginOtpRequest {
+  email: string;
+  otp: string;
+}
