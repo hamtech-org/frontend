@@ -3,7 +3,7 @@ import { FaceLivenessDetector } from '@aws-amplify/ui-react-liveness';
 import { Loader, Heading, View, Button, Text } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react-liveness/styles.css';
 import '@aws-amplify/ui-react/styles.css';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, X } from 'lucide-react';
 
 interface AwsFaceLivenessComponentProps {
   sessionId: string;
@@ -24,27 +24,31 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
 
   // Handle analysis completion
   const handleAnalysisComplete = async () => {
-    console.log('✅ [DEBUG] Face liveness analysis complete, calling onSuccess callback...');
     try {
       setIsAnalyzing(true);
       await onSuccess();
-      setSuccessMessage('✅ Xác thực khuôn mặt thành công!');
+      setSuccessMessage('Xác thực khuôn mặt thành công!');
       setTimeout(() => {
         setIsAnalyzing(false);
       }, 1500);
     } catch (err: unknown) {
-      console.error('❌ [DEBUG] onSuccess callback failed:', err);
-      const errorMsg = err instanceof Error ? err.message : 'Không xác định được lỗi';
-      setError(`Lỗi xử lý: ${errorMsg}`);
       setIsAnalyzing(false);
+      // Show error in modal and parent will handle it
+      const errorMsg = (err as any)?.data?.message || (err instanceof Error ? err.message : 'Không xác định được lỗi');
+      setError(`Lỗi xử lý: ${errorMsg}`);
+      
+      // Auto-close after 2 seconds on 400 validation error
+      const status = (err as any)?.status;
+      if (status === 400) {
+        setTimeout(() => {
+          onCancel();
+        }, 2000);
+      }
     }
   };
 
   // Helper: Extract error message from various error formats
   const extractErrorMessage = (err: any): string => {
-    console.log('🔍 [DEBUG] Full error object:', err);
-    console.log('🔍 [DEBUG] Error keys:', Object.keys(err || {}));
-    
     // Try common error properties
     if (err?.message) return err.message;
     if (err?.msg) return err.msg;
@@ -67,9 +71,7 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
 
   // Handle AWS errors with better extraction
   const handleError = (err: any) => {
-    console.error('🔥 [LIVENESS] AWS error occurred');
     const errorMsg = extractErrorMessage(err);
-    console.error('✅ [LIVENESS] Extracted error message:', errorMsg);
     setError(errorMsg);
   };
 
@@ -77,8 +79,16 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
   if (!sessionId) {
     return (
       <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-50 p-4">
-        <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+        <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8">
+          <div className="flex justify-between items-start mb-4">
+            <AlertCircle className="w-12 h-12 text-red-500" />
+            <button
+              onClick={onCancel}
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
           <Heading level={3} className="text-red-600 mb-4">
             Lỗi Phiên
           </Heading>
@@ -94,7 +104,15 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
   if (successMessage) {
     return (
       <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-50 p-4">
-        <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8 text-center animate-pulse">
+        <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+          <div className="flex justify-end mb-4 -mx-8 -mt-8 px-8 pt-8">
+            <button
+              onClick={onCancel}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
           <Heading level={2} className="text-green-600 mb-4">
             {successMessage}
           </Heading>
@@ -117,6 +135,14 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
     return (
       <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-50 p-4">
         <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8">
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={onCancel}
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
           <View className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
             <div className="flex gap-3">
               <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
@@ -174,6 +200,14 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
     return (
       <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-50 p-4">
         <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+          <div className="flex justify-end mb-4 -mx-8 -mt-8 px-8 pt-8">
+            <button
+              onClick={onCancel}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
           <Loader size="large" className="mb-6" />
           <Heading level={3} className="mb-2">
             Đang Xử Lý
@@ -190,15 +224,24 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
   return (
     <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-50 p-4">
       <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-        {/* Header */}
-        <View className="bg-gradient-to-r from-blue-500 to-purple-600 p-6 text-white">
-          <Heading level={3} className="text-white">
-            Xác Thực Khuôn Mặt
-          </Heading>
-          <Text className="text-blue-100 text-sm mt-2">
-            Vui lòng theo các chỉ dẫn để hoàn tất xác thực
-          </Text>
-        </View>
+        {/* Header with close button */}
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-6 text-white flex items-start justify-between">
+          <div>
+            <Heading level={3} className="text-white m-0">
+              Xác Thực Khuôn Mặt
+            </Heading>
+            <Text className="text-blue-100 text-sm mt-2">
+              Vui lòng theo các chỉ dẫn để hoàn tất xác thực
+            </Text>
+          </div>
+          <button
+            onClick={onCancel}
+            className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors flex-shrink-0"
+            aria-label="Đóng"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
 
         {/* Liveness Detector */}
         <View className="p-6">

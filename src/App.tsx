@@ -17,6 +17,8 @@ import {
   PanelLeftClose,
   PanelLeft,
   User,
+  Users,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import logoUrl from '@/assets/images/logo_vuong.png';
@@ -31,6 +33,7 @@ const StudioPage = React.lazy(() => import('@/pages/user/StudioPage'));
 const CallPage = React.lazy(() => import('@/pages/user/CallPage'));
 const AIStudioPage = React.lazy(() => import('@/pages/user/AIStudioPage'));
 const ProfilePage = React.lazy(() => import('@/pages/user/ProfilePage'));
+const SearchPage = React.lazy(() => import('@/pages/user/SearchPage'));
 const AdminDashboard = React.lazy(() => import('@/pages/admin/AdminDashboard'));
 const AdminAnalytics = React.lazy(() => import('@/pages/admin/AdminAnalytics'));
 
@@ -50,6 +53,8 @@ const GUEST_ROUTES = ['/login', '/onboarding'];
 const App: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearchResults, setShowSearchResults] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -177,9 +182,143 @@ const App: React.FC = () => {
                 <input
                   type="text"
                   placeholder="Tìm kiếm người dùng, nội dung, cộng đồng..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => setShowSearchResults(true)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && searchQuery.trim()) {
+                      navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=all`);
+                      setShowSearchResults(false);
+                      setSearchQuery('');
+                    }
+                  }}
                   className="w-full pl-12 pr-4 py-2.5 rounded-full bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none"
                 />
+
+                {/* Search Results Dropdown */}
+                <AnimatePresence>
+                  {showSearchResults && searchQuery && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className={cn(
+                        'absolute top-full left-0 right-0 mt-2 rounded-xl shadow-lg z-50 max-h-96 overflow-y-auto',
+                        isDarkMode ? 'bg-midnight-bg border border-midnight-border' : 'bg-white border border-gray-200'
+                      )}
+                    >
+                      <div className="p-4 space-y-4">
+                        {/* Users Section */}
+                        <div>
+                          <button
+                            onClick={() => {
+                              navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=users`);
+                              setShowSearchResults(false);
+                            }}
+                            className="w-full text-left"
+                          >
+                            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                              <User className="w-3 h-3" />
+                              Người dùng
+                            </h3>
+                          </button>
+                          <div className="space-y-2">
+                            {[1, 2, 3].map((i) => (
+                              <button
+                                key={`user-${i}`}
+                                onClick={() => {
+                                  navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=users`);
+                                  setShowSearchResults(false);
+                                }}
+                                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all text-left"
+                              >
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">Người dùng {i}</p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">@user{i}</p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Groups Section */}
+                        <div>
+                          <button
+                            onClick={() => {
+                              navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=groups`);
+                              setShowSearchResults(false);
+                            }}
+                            className="w-full text-left"
+                          >
+                            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                              <Users className="w-3 h-3" />
+                              Cộng đồng
+                            </h3>
+                          </button>
+                          <div className="space-y-2">
+                            {[1, 2, 3].map((i) => (
+                              <button
+                                key={`group-${i}`}
+                                onClick={() => {
+                                  navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=groups`);
+                                  setShowSearchResults(false);
+                                }}
+                                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all text-left"
+                              >
+                                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-600 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">Cộng đồng {i}</p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{100 * i} thành viên</p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Posts Section */}
+                        <div>
+                          <button
+                            onClick={() => {
+                              navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=posts`);
+                              setShowSearchResults(false);
+                            }}
+                            className="w-full text-left"
+                          >
+                            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                              <FileText className="w-3 h-3" />
+                              Bài viết
+                            </h3>
+                          </button>
+                          <div className="space-y-2">
+                            {[1, 2, 3].map((i) => (
+                              <button
+                                key={`post-${i}`}
+                                onClick={() => {
+                                  navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=posts`);
+                                  setShowSearchResults(false);
+                                }}
+                                className="w-full p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all text-left"
+                              >
+                                <p className="text-sm font-medium line-clamp-2">Bài viết thú vị về {searchQuery}...</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Đăng bởi Người dùng • 2 giờ trước</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
+
+              {/* Click outside to close search */}
+              {showSearchResults && (
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowSearchResults(false)}
+                />
+              )}
             </div>
 
             <div className="flex items-center gap-6">
@@ -216,6 +355,7 @@ const App: React.FC = () => {
                   <Route path="/community" element={<ContactsPage />} />
                   <Route path="/studio" element={<StudioPage />} />
                   <Route path="/chat" element={<ChatPage />} />
+                  <Route path="/search" element={<SearchPage />} />
                   <Route path="/analytics" element={<AdminAnalytics />} />
                   <Route path="/ai-studio" element={<AIStudioPage />} />
                   <Route path="/profile" element={<ProfilePage />} />

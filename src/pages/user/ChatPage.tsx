@@ -95,6 +95,36 @@ export default function ChatPage() {
   const [taskAssignees, setTaskAssignees] = useState<number[]>([]);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryResult, setAiSummaryResult] = useState('');
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [showChatSearchResults, setShowChatSearchResults] = useState(false);
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+  const [addFriendQuery, setAddFriendQuery] = useState('');
+  const [showContactsManagement, setShowContactsManagement] = useState(false);
+  const [contactsTab, setContactsTab] = useState<'friends' | 'groups' | 'friendRequests' | 'groupInvites'>('friends');
+  
+  const mockFriends = [
+    { id: 1, name: 'Elena Vance', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop', status: 'online' },
+    { id: 2, name: 'Marcus Chen', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&h=100&fit=crop', status: 'offline' },
+    { id: 3, name: 'Sarah Jenkins', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop', status: 'online' },
+    { id: 4, name: 'Julian Thorne', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop', status: 'offline' },
+  ];
+
+  const mockGroupsList = [
+    { id: 5, name: 'Dự án HamTech UI', avatar: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=100&h=100&fit=crop', members: 12 },
+    { id: 6, name: 'Dev Team', avatar: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=100&h=100&fit=crop', members: 8 },
+    { id: 7, name: 'Design Community', avatar: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=100&h=100&fit=crop', members: 25 },
+  ];
+
+  const mockFriendRequests = [
+    { id: 101, name: 'Trần Văn An', avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop', time: '5 phút trước' },
+    { id: 102, name: 'Nguyễn Thị Bình', avatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?w=100&h=100&fit=crop', time: '1 giờ trước' },
+  ];
+
+  const mockGroupInvites = [
+    { id: 201, groupName: 'Marketing Team', avatar: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=100&h=100&fit=crop', invitedBy: 'Elena Vance', time: '30 phút trước' },
+    { id: 202, groupName: 'Product Owners', avatar: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=100&h=100&fit=crop', invitedBy: 'Marcus Chen', time: '2 giờ trước' },
+  ];
+  
   const mockPendingMembers = [
     { id: 101, name: 'Trần Văn An', avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop', time: '5 phút trước' },
     { id: 102, name: 'Nguyễn Thị Bình', avatar: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?w=100&h=100&fit=crop', time: '12 phút trước' },
@@ -108,6 +138,23 @@ export default function ChatPage() {
   const [memberTab, setMemberTab] = useState<'list'|'pending'>('list');
   const activeContact = contactsList.find((c) => c.id === activeChat);
 
+  // Search logic
+  const searchResults = (() => {
+    if (!chatSearchQuery.trim()) return { contacts: [], messages: [] };
+    
+    const query = chatSearchQuery.toLowerCase();
+    
+    const matchingContacts = contactsList.filter(contact =>
+      contact.name.toLowerCase().includes(query)
+    );
+    
+    const matchingMessages = messages.filter(msg =>
+      msg.text.toLowerCase().includes(query) || msg.sender.toLowerCase().includes(query)
+    );
+    
+    return { contacts: matchingContacts, messages: matchingMessages };
+  })();
+
   return (
     <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
       {/* Zalo Blue Navbar */}
@@ -119,7 +166,9 @@ export default function ChatPage() {
           <button className="w-12 h-12 shrink-0 rounded-2xl bg-black/20 flex flex-col items-center justify-center text-white cursor-pointer transition-colors shadow-sm">
             <MessageCircle className="w-6 h-6 fill-white" />
           </button>
-          <button className="w-12 h-12 shrink-0 rounded-2xl flex flex-col items-center justify-center text-white/80 hover:bg-white/10 cursor-pointer transition-colors">
+          <button onClick={() => { setShowContactsManagement(!showContactsManagement); setContactsTab('friends'); }} title="Quản lý bạn bè" className={`w-12 h-12 shrink-0 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-colors ${
+            showContactsManagement ? 'bg-white/20 text-white' : 'text-white/80 hover:bg-white/10'
+          }`}>
             <Contact className="w-[26px] h-[26px]" />
           </button>
 
@@ -157,10 +206,102 @@ export default function ChatPage() {
               <input
                 type="text"
                 placeholder="Tìm kiếm"
+                value={chatSearchQuery}
+                onChange={(e) => {
+                  setChatSearchQuery(e.target.value);
+                  setShowChatSearchResults(e.target.value.trim().length > 0);
+                }}
+                onFocus={() => chatSearchQuery.trim().length > 0 && setShowChatSearchResults(true)}
+                onBlur={() => setTimeout(() => setShowChatSearchResults(false), 100)}
                 className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-black/5 dark:bg-white/5 border-none focus:ring-1 ring-blue-600/50 transition-all outline-none text-sm font-medium"
               />
+              
+              {/* Search Results Dropdown */}
+              <AnimatePresence>
+                {showChatSearchResults && chatSearchQuery.trim() && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute top-full left-0 right-0 mt-2 z-50 bg-white dark:bg-black/60 border border-black/5 dark:border-white/10 rounded-xl shadow-xl backdrop-blur-md divide-y divide-black/5 dark:divide-white/5 max-h-[400px] overflow-y-auto custom-scrollbar"
+                  >
+                  {/* Contact Results */}
+                  {searchResults.contacts.length > 0 && (
+                    <div>
+                      <div className="px-3 py-2 bg-black/5 dark:bg-white/5">
+                        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Bạn bè & Nhóm ({searchResults.contacts.length})</p>
+                      </div>
+                      {searchResults.contacts.slice(0, 5).map(contact => (
+                        <motion.button
+                          key={contact.id}
+                          whileHover={{ backgroundColor: 'var(--hover-bg)' }}
+                          onClick={() => {
+                            setActiveChat(contact.id);
+                            setChatSearchQuery('');
+                            setShowChatSearchResults(false);
+                          }}
+                          className="w-full px-3 py-2.5 flex items-center gap-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+                        >
+                          <img src={contact.avatar} alt={contact.name} className="w-9 h-9 rounded-full object-cover shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-semibold text-black dark:text-white truncate">{contact.name}</p>
+                            <p className="text-[11px] text-muted-foreground truncate">{contact.lastMsg}</p>
+                          </div>
+                          {contact.isGroup && <Users className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                        </motion.button>
+                      ))}
+                      {searchResults.contacts.length > 5 && (
+                        <div className="px-3 py-2 text-center">
+                          <p className="text-[11px] text-muted-foreground font-medium">+{searchResults.contacts.length - 5} kết quả khác</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Message Results */}
+                  {searchResults.messages.length > 0 && (
+                    <div>
+                      <div className="px-3 py-2 bg-black/5 dark:bg-white/5">
+                        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Tin nhắn ({searchResults.messages.length})</p>
+                      </div>
+                      {searchResults.messages.slice(0, 5).map(msg => (
+                        <motion.button
+                          key={msg.id}
+                          whileHover={{ backgroundColor: 'var(--hover-bg)' }}
+                          onClick={() => {
+                            setChatSearchQuery('');
+                            setShowChatSearchResults(false);
+                          }}
+                          className="w-full px-3 py-2.5 flex items-start gap-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+                        >
+                          <MessageCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[11px] font-semibold text-muted-foreground">{msg.sender}</p>
+                            <p className="text-[13px] text-black dark:text-white truncate">{msg.text}</p>
+                          </div>
+                        </motion.button>
+                      ))}
+                      {searchResults.messages.length > 5 && (
+                        <div className="px-3 py-2 text-center">
+                          <p className="text-[11px] text-muted-foreground font-medium">+{searchResults.messages.length - 5} tin nhắn khác</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* No Results */}
+                  {searchResults.contacts.length === 0 && searchResults.messages.length === 0 && (
+                    <div className="px-4 py-8 flex flex-col items-center justify-center">
+                      <Search className="w-8 h-8 text-muted-foreground/30 mb-2" />
+                      <p className="text-sm font-medium text-muted-foreground">Không tìm thấy kết quả</p>
+                      <p className="text-[12px] text-muted-foreground/70">Thử tìm kiếm tên bạn bè hoặc nội dung tin nhắn</p>
+                    </div>
+                  )}
+                </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-            <button title="Thêm bạn bè" className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-black dark:hover:text-white transition-colors">
+            <button onClick={() => setShowAddFriendModal(true)} title="Thêm bạn bè" className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-black dark:hover:text-white transition-colors">
               <UserPlus className="w-[18px] h-[18px]" />
             </button>
             <button onClick={() => { setShowCreateGroupModal(true); setSelectedGroupMembers([]); setGroupName(''); }} title="Tạo nhóm mới" className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-black dark:hover:text-white transition-colors">
@@ -187,7 +328,137 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 space-y-2 min-h-0 custom-scrollbar pr-2 pb-4">
+        {/* Contacts Management View */}
+        {showContactsManagement ? (
+          <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-[#1a1a1a]">
+            {/* Tabs */}
+            <div className="flex px-4 pt-3 gap-2 shrink-0 border-b border-black/5 dark:border-white/5 pb-0">
+              {[
+                { id: 'friends', label: 'Danh sách bạn bè', icon: Users, count: mockFriends.length },
+                { id: 'groups', label: 'Danh sách nhóm', icon: Users, count: mockGroupsList.length },
+                { id: 'friendRequests', label: 'Lời mời kết bạn', icon: UserPlus, count: mockFriendRequests.length },
+                { id: 'groupInvites', label: 'Lời mời vào nhóm', icon: UserPlus, count: mockGroupInvites.length },
+              ].map((tab: any) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setContactsTab(tab.id as any)}
+                  className={`px-3 py-2.5 rounded-t-lg text-[12px] font-bold transition-all whitespace-nowrap flex items-center gap-1 ${ contactsTab === tab.id
+                    ? 'bg-blue-600 text-white'
+                    : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5'
+                  }`}
+                >
+                  <tab.icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                  <span className="bg-black/20 px-1.5 py-0.5 rounded-md text-[10px] font-bold">{tab.count}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Friends List View */}
+            {contactsTab === 'friends' && (
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1 px-3 py-3">
+                {mockFriends.map(friend => (
+                  <div key={friend.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors group cursor-pointer">
+                    <div className="relative">
+                      <img src={friend.avatar} alt={friend.name} className="w-11 h-11 rounded-full object-cover" />
+                      {friend.status === 'online' && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-[#1a1a1a]" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-semibold text-black dark:text-white truncate">{friend.name}</p>
+                      <p className="text-[11px] text-muted-foreground">{friend.status === 'online' ? 'Đang hoạt động' : 'Ngoại tuyến'}</p>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button className="p-2 rounded-lg hover:bg-blue-600/10 text-blue-600"><MessageCircle className="w-4 h-4" /></button>
+                      <button className="p-2 rounded-lg hover:bg-red-500/10 text-red-500"><X className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Groups List View */}
+            {contactsTab === 'groups' && (
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1 px-3 py-3">
+                {mockGroupsList.map(group => (
+                  <div key={group.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors group cursor-pointer">
+                    <img src={group.avatar} alt={group.name} className="w-11 h-11 rounded-full object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-semibold text-black dark:text-white truncate">{group.name}</p>
+                      <p className="text-[11px] text-muted-foreground">{group.members} thành viên</p>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button className="p-2 rounded-lg hover:bg-blue-600/10 text-blue-600"><MessageCircle className="w-4 h-4" /></button>
+                      <button className="p-2 rounded-lg hover:bg-red-500/10 text-red-500"><X className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Friend Requests View */}
+            {contactsTab === 'friendRequests' && (
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 px-3 py-3">
+                {mockFriendRequests.map(request => (
+                  <motion.div
+                    key={request.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="p-4 rounded-xl bg-gradient-to-br from-blue-50 dark:from-blue-900/20 to-purple-50 dark:to-purple-900/20 border border-blue-200 dark:border-blue-800/30"
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <img src={request.avatar} alt={request.name} className="w-12 h-12 rounded-full object-cover" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-semibold text-black dark:text-white truncate">{request.name}</p>
+                        <p className="text-[11px] text-muted-foreground">{request.time}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[12px] transition-colors">
+                        Chấp nhận
+                      </button>
+                      <button className="flex-1 py-2 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 text-black dark:text-white font-bold text-[12px] transition-colors">
+                        Từ chối
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+
+            {/* Group Invites View */}
+            {contactsTab === 'groupInvites' && (
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 px-3 py-3">
+                {mockGroupInvites.map(invite => (
+                  <motion.div
+                    key={invite.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="p-4 rounded-xl bg-gradient-to-br from-purple-50 dark:from-purple-900/20 to-pink-50 dark:to-pink-900/20 border border-purple-200 dark:border-purple-800/30"
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <img src={invite.avatar} alt={invite.groupName} className="w-12 h-12 rounded-full object-cover" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-semibold text-black dark:text-white truncate">{invite.groupName}</p>
+                        <p className="text-[11px] text-muted-foreground">Từ {invite.invitedBy}</p>
+                        <p className="text-[10px] text-muted-foreground">{invite.time}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="flex-1 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[12px] transition-colors">
+                        Tham gia
+                      </button>
+                      <button className="flex-1 py-2 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 text-black dark:text-white font-bold text-[12px] transition-colors">
+                        Từ chối
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Regular Contact List View */
+          <div className="flex-1 overflow-y-auto px-4 space-y-2 min-h-0 custom-scrollbar pr-2 pb-4">
           {contactsList.map((contact, index) => (
             <motion.button
               key={`${contact.id}-${index}`}
@@ -237,6 +508,7 @@ export default function ChatPage() {
             </motion.button>
           ))}
         </div>
+        )}
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
@@ -1151,6 +1423,82 @@ export default function ChatPage() {
                 <button disabled={!taskTitle.trim() || taskAssignees.length === 0} onClick={() => { setShowTaskModal(false); setTaskTitle(''); setTaskDeadline(''); setTaskNote(''); setTaskAssignees([]); }} className={`flex-1 py-2.5 rounded-xl font-bold text-[14px] text-white transition-all flex items-center justify-center gap-2 ${taskTitle.trim() && taskAssignees.length > 0 ? 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-500/20 hover:-translate-y-0.5' : 'bg-black/10 dark:bg-white/10 text-black/40 dark:text-white/40 cursor-not-allowed'}`}>
                   <CheckSquare className="w-4 h-4" /> Giao việc
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ===== Modal: Thêm bạn bè ===== */}
+      <AnimatePresence>
+        {showAddFriendModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2, type: 'spring', stiffness: 300, damping: 25 }}
+              className="bg-white dark:bg-[#1a1a1a] rounded-2xl max-w-[480px] w-full shadow-2xl border border-black/5 dark:border-white/10 flex flex-col overflow-hidden max-h-[88vh]"
+            >
+              <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <UserPlus className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <h3 className="font-bold text-[17px] text-black dark:text-white">Thêm bạn bè</h3>
+                </div>
+                <button onClick={() => { setShowAddFriendModal(false); setAddFriendQuery(''); }} className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-5 custom-scrollbar flex flex-col">
+                <div className="relative mb-4">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Email hoặc số điện thoại..."
+                    value={addFriendQuery}
+                    onChange={(e) => setAddFriendQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:bg-white dark:focus:bg-black focus:border-blue-600/50 shadow-sm text-[14px] font-medium transition-all text-black dark:text-white"
+                  />
+                </div>
+
+                {/* Search Results */}
+                {addFriendQuery.trim() && (
+                  <div className="space-y-2 flex-1 overflow-y-auto">
+                    {mockContacts
+                      .filter(c => !c.isGroup && (c.name.toLowerCase().includes(addFriendQuery.toLowerCase()) || c.id.toString().includes(addFriendQuery)))
+                      .map(contact => (
+                        <div key={contact.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
+                          <img src={contact.avatar} className="w-11 h-11 rounded-full object-cover shrink-0" alt={contact.name} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-semibold text-black dark:text-white truncate">{contact.name}</p>
+                            <p className="text-[11px] text-muted-foreground truncate">{contact.lastMsg}</p>
+                          </div>
+                          <button className="px-3 py-1.5 rounded-lg font-bold text-[12px] bg-blue-600 text-white hover:bg-blue-700 transition-colors opacity-0 group-hover:opacity-100 shrink-0">
+                            Thêm
+                          </button>
+                        </div>
+                      ))}
+                    
+                    {addFriendQuery.trim() && mockContacts.filter(c => !c.isGroup && (c.name.toLowerCase().includes(addFriendQuery.toLowerCase()) || c.id.toString().includes(addFriendQuery))).length === 0 && (
+                      <div className="flex flex-col items-center justify-center py-8">
+                        <Search className="w-8 h-8 text-muted-foreground/30 mb-2" />
+                        <p className="text-sm font-medium text-muted-foreground">Không tìm thấy kết quả</p>
+                        <p className="text-[12px] text-muted-foreground/70 text-center mt-1">Thử tìm kiếm email hoặc số điện thoại khác</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!addFriendQuery.trim() && (
+                  <div className="flex flex-col items-center justify-center py-12 flex-1">
+                    <UserPlus className="w-12 h-12 text-muted-foreground/20 mb-3" />
+                    <p className="text-sm font-medium text-muted-foreground">Nhập email hoặc số điện thoại</p>
+                    <p className="text-[12px] text-muted-foreground/70 text-center mt-1">Để tìm kiếm và thêm bạn bè</p>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>

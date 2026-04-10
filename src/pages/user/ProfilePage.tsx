@@ -33,6 +33,10 @@ const ProfilePage: React.FC = () => {
   });
   const [livenessSessionId, setLivenessSessionId] = useState('');
   const [showAwsFaceLiveness, setShowAwsFaceLiveness] = useState(false);
+  const [passwordDialog, setPasswordDialog] = useState<{ show: boolean; password: string }>({
+    show: false,
+    password: '',
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const user = profileData?.data;
@@ -133,37 +137,79 @@ const ProfilePage: React.FC = () => {
 
   const handleAwsFaceLivenessSuccess = async () => {
     try {
-      // AWS has already verified liveness, now enable face login
-      await enableFaceLogin({ image: '', livenessSessionId }).unwrap();
+      // AWS has verified liveness and extracted reference image
+      // Now complete enablement with previously entered password
+      await enableFaceLogin({ 
+        password: passwordDialog.password, 
+        livenessSessionId 
+      }).unwrap();
+      
       setFaceLoginEnabled(true);
       setLivenessSessionId('');
       setShowAwsFaceLiveness(false);
+      setPasswordDialog({ show: false, password: '' });
+      
       setMessage({
         type: 'success',
         text: 'Đăng nhập bằng khuôn mặt đã được bật!',
       });
       setTimeout(() => setMessage(null), 3000);
-    } catch (err: any) {
+    } catch (error) {
+      // Close modals and turn off toggle on failure
+      setShowAwsFaceLiveness(false);
+      setLivenessSessionId('');
+      setFaceLoginEnabled(false);
+      
+      // Show error message
+      const errorMsg = 
+        (error as any)?.data?.message || 
+        'Có lỗi xảy ra khi bật đăng nhập bằng khuôn mặt. Vui lòng thử lại.';
       setMessage({
         type: 'error',
-        text: err?.data?.message || 'Có lỗi xảy ra khi bật đăng nhập bằng khuôn mặt',
+        text: errorMsg,
       });
+    }
+  };
+
+  const handlePasswordConfirm = async () => {
+    try {
+      if (!passwordDialog.password.trim()) {
+        setMessage({
+          type: 'error',
+          text: 'Vui lòng nhập mật khẩu',
+        });
+        return;
+      }
+
+      // Password verified locally, close dialog (but KEEP password in state for liveness success)
+      // Don't clear password yet - it's needed when liveness succeeds
+      setPasswordDialog({ ...passwordDialog, show: false });
+      await startFaceCamera();
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: 'Có lỗi xảy ra. Vui lòng thử lại.',
+      });
+      setPasswordDialog({ show: false, password: '' });
     }
   };
 
   const cancelAwsFaceLiveness = () => {
     setLivenessSessionId('');
     setShowAwsFaceLiveness(false);
-    setMessage({
-      type: 'error',
-      text: 'Xác thực khuôn mặt đã bị hủy',
-    });
+    setPasswordDialog({ show: false, password: '' });
+  };
+
+  const cancelPasswordDialog = () => {
+    setPasswordDialog({ show: false, password: '' });
+    setShowAwsFaceLiveness(false);
+    setLivenessSessionId('');
   };
 
   const handleToggleFaceLogin = async () => {
     if (!faceLoginEnabled) {
-      // Enable face login - open camera
-      await startFaceCamera();
+      // Enable face login - show password verification first
+      setPasswordDialog({ show: true, password: '' });
     } else {
       // Disable face login
       try {
@@ -487,6 +533,81 @@ const ProfilePage: React.FC = () => {
             onSuccess={handleAwsFaceLivenessSuccess}
             onCancel={cancelAwsFaceLiveness}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Password Verification Dialog */}
+      <AnimatePresence>
+        {passwordDialog.show && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 backdrop-blur-md bg-opacity-50 flex items-center justify-center z-50"
+            onClick={cancelPasswordDialog}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Xác thực mật khẩu
+                </h3>
+                <button
+                  onClick={cancelPasswordDialog}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Nhập mật khẩu của bạn để bảo mật tài khoản trước khi bật đăng nhập bằng khuôn mặt.
+              </p>
+
+              <input
+                type="password"
+                value={passwordDialog.password}
+                onChange={(e) =>
+                  setPasswordDialog({ ...passwordDialog, password: e.target.value })
+                }
+                placeholder="Nhập mật khẩu"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    handlePasswordConfirm();
+                  }
+                }}
+              />
+
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelPasswordDialog}
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handlePasswordConfirm}
+                  disabled={isEnablingFaceLogin}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isEnablingFaceLogin ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Đang xử lý...
+                    </>
+                  ) : (
+                    'Tiếp tục'
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
