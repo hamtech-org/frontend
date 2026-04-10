@@ -4,11 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import { useLoginMutation, useVerifyLoginOtpMutation, useRegisterMutation, useVerifyEmailMutation, useFaceLoginMutation } from '@/store/api/authApi';
 import logo from '@/assets/images/logo_tron.png';
 import { LoginForm, type LoginFormValues, RegisterForm, type RegisterFormValues, OtpVerificationForm, type OtpFormValues, FaceCameraModal } from './components';
+import { apiClient } from '@/services/api';
 
 const LoginPage = () => {
   const [isRegister, setIsRegister] = useState(false);
   const [showFaceCamera, setShowFaceCamera] = useState(false);
   const [faceLoginEmail, setFaceLoginEmail] = useState('');
+  const [livenessSessionId, setLivenessSessionId] = useState('');
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isVideoReady, setIsVideoReady] = useState(false);
   const [isLoginOtpPending, setIsLoginOtpPending] = useState(false);
@@ -88,6 +90,21 @@ const LoginPage = () => {
     console.log('🎬 [DEBUG] startFaceCamera called with email:', email);
     setFaceLoginEmail(email);
     try {
+      // Step 1: Create liveness session for anti-spoofing verification
+      console.log('🤖 [DEBUG] Creating liveness session...');
+      const livenessResponse = await apiClient.post('/auth/face-liveness/start', {});
+      const sessionId = livenessResponse.data?.sessionId;
+      
+      if (!sessionId) {
+        console.error('❌ [DEBUG] Failed to create liveness session');
+        alert('Không thể khởi tạo phiên xác thực khuôn mặt. Vui lòng thử lại.');
+        return;
+      }
+
+      console.log('✅ [DEBUG] Liveness session created:', sessionId);
+      setLivenessSessionId(sessionId);
+
+      // Step 2: Request camera permission
       console.log('📹 [DEBUG] Requesting camera permission with constraints:', {
         video: { facingMode: 'user' },
         audio: false,
@@ -111,7 +128,7 @@ const LoginPage = () => {
       setIsVideoReady(false);
       setShowFaceCamera(true);
     } catch (err) {
-      console.error('❌ [DEBUG] Failed to access camera:', err);
+      console.error('❌ [DEBUG] Failed to start Face Camera:', err);
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error('Error details:', { type: err instanceof Error ? err.name : 'unknown', message: errorMessage });
       alert('Không thể truy cập camera. Vui lòng kiểm tra quyền của ứng dụng.');
@@ -151,7 +168,8 @@ const LoginPage = () => {
       setIsVideoReady(false);
 
       console.log('📤 [DEBUG] Sending face login request with email:', faceLoginEmail);
-      await faceLogin({ email: faceLoginEmail, image: imageData }).unwrap();
+      console.log('🎭 [DEBUG] Including liveness session:', livenessSessionId);
+      await faceLogin({ email: faceLoginEmail, image: imageData, livenessSessionId }).unwrap();
       console.log('✅ [DEBUG] Face login successful, navigating home');
       navigate('/');
     } catch (err) {
@@ -172,6 +190,7 @@ const LoginPage = () => {
     console.log('📭 [DEBUG] Clearing camera stream state and email');
     setCameraStream(null);
     setFaceLoginEmail('');
+    setLivenessSessionId('');
     console.log('📳 [DEBUG] Resetting isVideoReady');
     setIsVideoReady(false);
     console.log('🎬 [DEBUG] Closing camera modal');

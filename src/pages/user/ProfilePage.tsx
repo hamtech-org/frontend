@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Camera, Mail, Phone, FileText, User as UserIcon, Loader2, Check, X } from 'lucide-react';
 import { useGetProfileQuery, useUpdateProfileMutation } from '@/store/api/userApi';
 import { useEnableFaceLoginMutation, useDisableFaceLoginMutation } from '@/store/api/authApi';
+import { apiClient } from '@/services/api';
 
 // ── Validation Schema ──
 const updateProfileSchema = z.object({
@@ -29,6 +30,7 @@ const ProfilePage: React.FC = () => {
     const saved = localStorage.getItem('faceLoginEnabled');
     return saved !== null ? saved === 'true' : false; // Default to false if not set
   });
+  const [livenessSessionId, setLivenessSessionId] = useState('');
   const [showFaceCamera, setShowFaceCamera] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -109,6 +111,21 @@ const ProfilePage: React.FC = () => {
 
   const startFaceCamera = async () => {
     try {
+      // Step 1: Create liveness session for anti-spoofing verification
+      const livenessResponse = await apiClient.post('/auth/face-liveness/start', {});
+      const sessionId = livenessResponse.data?.sessionId;
+
+      if (!sessionId) {
+        setMessage({
+          type: 'error',
+          text: 'Không thể khởi tạo phiên xác thực khuôn mặt. Vui lòng thử lại.',
+        });
+        return;
+      }
+
+      setLivenessSessionId(sessionId);
+
+      // Step 2: Request camera access
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
           facingMode: 'user',
@@ -155,8 +172,9 @@ const ProfilePage: React.FC = () => {
     setShowFaceCamera(false);
 
     try {
-      await enableFaceLogin({ image: imageData }).unwrap();
+      await enableFaceLogin({ image: imageData, livenessSessionId }).unwrap();
       setFaceLoginEnabled(true);
+      setLivenessSessionId('');
       setMessage({
         type: 'success',
         text: 'Đăng nhập bằng khuôn mặt đã được bật!',
