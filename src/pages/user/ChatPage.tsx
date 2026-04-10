@@ -391,6 +391,25 @@ export default function ChatPage() {
           </div>
 
 
+          {/* AI Suggestion Chips */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
+              <Sparkles className="w-3 h-3 text-blue-600" />
+              Dạ, em hiểu rồi ạ.
+            </button>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
+              <Sparkles className="w-3 h-3 text-blue-600" />
+              Cho mình xin link nhé!
+            </button>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
+              <Sparkles className="w-3 h-3 text-blue-600" />
+              OK, để mình check lại.
+            </button>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
+              <Sparkles className="w-3 h-3 text-blue-600" />
+              👍
+            </button>
+          </div>
 
           {/* Chat Input */}
           <div className="relative flex items-end gap-2">
