@@ -8,6 +8,7 @@ import { LoginForm, type LoginFormValues, RegisterForm, type RegisterFormValues,
 const LoginPage = () => {
   const [isRegister, setIsRegister] = useState(false);
   const [showFaceCamera, setShowFaceCamera] = useState(false);
+  const [faceLoginEmail, setFaceLoginEmail] = useState('');
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isVideoReady, setIsVideoReady] = useState(false);
   const [isLoginOtpPending, setIsLoginOtpPending] = useState(false);
@@ -83,8 +84,9 @@ const LoginPage = () => {
   };
 
   // Face login handlers
-  const startFaceCamera = async () => {
-    console.log('🎬 [DEBUG] startFaceCamera called');
+  const startFaceCamera = async (email: string) => {
+    console.log('🎬 [DEBUG] startFaceCamera called with email:', email);
+    setFaceLoginEmail(email);
     try {
       console.log('📹 [DEBUG] Requesting camera permission with constraints:', {
         video: { facingMode: 'user' },
@@ -117,21 +119,45 @@ const LoginPage = () => {
   };
 
   const captureFace = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    console.log('📸 [DEBUG] captureFace called with email:', faceLoginEmail);
+    if (!videoRef.current || !canvasRef.current) {
+      console.error('❌ [DEBUG] videoRef or canvasRef is missing');
+      return;
+    }
 
     try {
+      console.log('🖼️ [DEBUG] Getting canvas context');
       const context = canvasRef.current.getContext('2d');
-      if (!context) return;
+      if (!context) {
+        console.error('❌ [DEBUG] Could not get 2D context from canvas');
+        return;
+      }
 
+      console.log('📐 [DEBUG] Drawing image from video to canvas');
       context.drawImage(videoRef.current, 0, 0, 320, 240);
+      
       const imageData = canvasRef.current.toDataURL('image/jpeg', 0.8);
+      console.log('✅ [DEBUG] Image data created, length:', imageData.length);
 
+      console.log('🎬 [DEBUG] Closing camera modal');
       setShowFaceCamera(false);
 
-      await faceLogin({ image: imageData }).unwrap();
+      console.log('🛑 [DEBUG] Stopping camera tracks');
+      cameraStream?.getTracks().forEach((track) => {
+        console.log('Stopping track:', { kind: track.kind, enabled: track.enabled });
+        track.stop();
+      });
+      setCameraStream(null);
+      setIsVideoReady(false);
+
+      console.log('📤 [DEBUG] Sending face login request with email:', faceLoginEmail);
+      await faceLogin({ email: faceLoginEmail, image: imageData }).unwrap();
+      console.log('✅ [DEBUG] Face login successful, navigating home');
       navigate('/');
     } catch (err) {
-      console.error('Face login failed:', err);
+      console.error('❌ [DEBUG] Face login failed:', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('Error details:', { message: errorMessage });
       alert('Đăng nhập bằng khuôn mặt không thành công. Vui lòng thử lại.');
     }
   };
@@ -143,8 +169,9 @@ const LoginPage = () => {
       console.log('Stopping track:', { kind: track.kind, enabled: track.enabled });
       track.stop();
     });
-    console.log('📭 [DEBUG] Clearing camera stream state');
+    console.log('📭 [DEBUG] Clearing camera stream state and email');
     setCameraStream(null);
+    setFaceLoginEmail('');
     console.log('📳 [DEBUG] Resetting isVideoReady');
     setIsVideoReady(false);
     console.log('🎬 [DEBUG] Closing camera modal');
@@ -267,6 +294,12 @@ const LoginPage = () => {
                 onCancel={cancelFaceCamera}
                 videoRef={videoRef}
                 canvasRef={canvasRef}
+                initialEmail={faceLoginEmail}
+                onEmailChange={(email) => {
+                  console.log('📧 [DEBUG] onEmailChange callback - email changed to:', email);
+                  setFaceLoginEmail(email);
+                  console.log('📧 [DEBUG] faceLoginEmail state updated');
+                }}
                 onVideoReady={() => {
                   console.log('📞 [DEBUG] onVideoReady callback called from FaceCameraModal');
                   setIsVideoReady(true);

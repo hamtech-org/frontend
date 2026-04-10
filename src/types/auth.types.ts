@@ -20,6 +20,7 @@ export interface ILoginResponse extends IAuthTokens {
 }
 
 export interface IFaceLoginRequest {
+  email: string;
   image: string;
 }
 
