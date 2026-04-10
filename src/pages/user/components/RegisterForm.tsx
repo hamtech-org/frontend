@@ -126,15 +126,20 @@ export const RegisterForm = ({
   const handleNextStep = async () => {
     const fieldsPerStep: (keyof RegisterFormValues)[][] = [['displayName'], ['email'], ['password', 'confirmPassword']];
     const currentFields = fieldsPerStep[regStep];
+    console.log('📝 [DEBUG] RegisterForm - validating fields:', currentFields, 'for step:', regStep);
     const isValid = await trigger(currentFields);
 
     if (isValid) {
       if (regStep < 2) {
+        console.log('📝 [DEBUG] RegisterForm - moving to next step:', regStep + 1);
         setPage([regStep + 1, 1]);
         setRegStep(regStep + 1);
       } else if (regStep === 2) {
+        console.log('📝 [DEBUG] RegisterForm - final step, submitting form');
         handleSubmit(onSubmit)();
       }
+    } else {
+      console.log('❌ [DEBUG] RegisterForm - validation failed for fields:', currentFields);
     }
   };
 
@@ -217,6 +222,10 @@ export const RegisterForm = ({
 
       {error && (
         <div className="text-red-500 text-sm text-center mt-4">
+          {(() => {
+            console.log('📝 [DEBUG] RegisterForm - error:', error);
+            return null;
+          })()}
           {/* @ts-ignore */}
           {error?.data?.message || 'Đã có lỗi xảy ra'}
         </div>

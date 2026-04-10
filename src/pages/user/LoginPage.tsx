@@ -17,10 +17,7 @@ const LoginPage = () => {
   const [registrationOtpPending, setRegistrationOtpPending] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [registrationEmail, setRegistrationEmail] = useState('');
-  const [recentEmails, setRecentEmails] = useState<string[]>(() => {
-    const stored = localStorage.getItem('recentEmails');
-    return stored ? JSON.parse(stored) : [];
-  });
+  // Note: recentEmails could be stored/tracked at login time if needed
 
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -37,11 +34,6 @@ const LoginPage = () => {
   const onLoginSubmit = async (data: LoginFormValues) => {
     try {
       await login(data).unwrap();
-      setRecentEmails((prev) => {
-        const updated = [data.email, ...prev.filter((e) => e !== data.email)].slice(0, 3);
-        localStorage.setItem('recentEmails', JSON.stringify(updated));
-        return updated;
-      });
       setLoginEmail(data.email);
       setIsLoginOtpPending(true);
     } catch (err) {
@@ -64,12 +56,18 @@ const LoginPage = () => {
   // Register handlers
   const onRegisterSubmit = async (data: RegisterFormValues) => {
     try {
+      console.log('📝 [DEBUG] onRegisterSubmit called with email:', data.email);
       const { confirmPassword, ...registerData } = data;
-      await register(registerData).unwrap();
+      console.log('📝 [DEBUG] Sending register request...');
+      const result = await register(registerData).unwrap();
+      console.log('✅ [DEBUG] Register successful:', result);
       setRegistrationEmail(data.email);
+      console.log('📝 [DEBUG] Setting registrationOtpPending to true');
       setRegistrationOtpPending(true);
     } catch (err) {
-      console.error('Failed to register:', err);
+      console.error('❌ [DEBUG] Failed to register:', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('Error details:', { message: errorMessage });
     }
   };
 
@@ -273,16 +271,7 @@ const LoginPage = () => {
           </div>
 
           <AnimatePresence mode="wait">
-            {isRegister ? (
-              <motion.div key="register" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <RegisterForm
-                  onSubmit={onRegisterSubmit}
-                  isLoading={isRegistering}
-                  error={registerError}
-                  onLoginClick={() => setIsRegister(false)}
-                />
-              </motion.div>
-            ) : registrationOtpPending ? (
+            {registrationOtpPending ? (
               <motion.div key="register-otp" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <OtpVerificationForm
                   email={registrationEmail}
@@ -293,6 +282,15 @@ const LoginPage = () => {
                     setRegistrationOtpPending(false);
                     setRegistrationEmail('');
                   }}
+                />
+              </motion.div>
+            ) : isRegister ? (
+              <motion.div key="register" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <RegisterForm
+                  onSubmit={onRegisterSubmit}
+                  isLoading={isRegistering}
+                  error={registerError}
+                  onLoginClick={() => setIsRegister(false)}
                 />
               </motion.div>
             ) : isLoginOtpPending ? (

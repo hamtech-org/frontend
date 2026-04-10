@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, MonitorUp, Palette, UserPlus, PanelRight, PanelRightClose, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ArrowLeft, ChevronDown, MoreHorizontal, X, Home, Compass, MessageSquare, MessageCircle, Contact, Cloud, FolderOpen, Frame, Briefcase, Camera, Mail, Quote, Calendar, User } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, Palette, UserPlus, PanelRight, PanelRightClose, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ChevronDown, MoreHorizontal, X, Home, MessageCircle, Contact, Cloud, FolderOpen, Frame, Briefcase, Camera, Mail, Quote, Calendar, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const contacts = [
