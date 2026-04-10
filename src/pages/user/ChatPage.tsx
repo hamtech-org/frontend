@@ -529,12 +529,6 @@ export default function ChatPage() {
                   </div>
                 </div>
               </>
-            )}-center gap-3 text-sm text-muted-foreground hover:text-red-500 cursor-pointer hover:bg-red-500/10 p-2 -mx-2 rounded-lg transition-colors font-medium">
-                      <Users className="w-4 h-4 opacity-70" /> Mời ra khỏi nhóm
-                    </div>
-                  </div>
-                </div>
-              </>
             )}
             <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5 mt-2">
               <div className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
