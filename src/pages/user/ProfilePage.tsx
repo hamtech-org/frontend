@@ -7,6 +7,7 @@ import { Upload, Camera, Mail, Phone, FileText, User as UserIcon, Loader2, Check
 import { useGetProfileQuery, useUpdateProfileMutation } from '@/store/api/userApi';
 import { useEnableFaceLoginMutation, useDisableFaceLoginMutation } from '@/store/api/authApi';
 import { apiClient } from '@/services/api';
+import AwsFaceLivenessComponent from '@/components/AwsFaceLivenessComponent';
 
 // ── Validation Schema ──
 const updateProfileSchema = z.object({
@@ -31,10 +32,8 @@ const ProfilePage: React.FC = () => {
     return saved !== null ? saved === 'true' : false; // Default to false if not set
   });
   const [livenessSessionId, setLivenessSessionId] = useState('');
-  const [showFaceCamera, setShowFaceCamera] = useState(false);
+  const [showAwsFaceLiveness, setShowAwsFaceLiveness] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const user = profileData?.data;
 
@@ -111,9 +110,9 @@ const ProfilePage: React.FC = () => {
 
   const startFaceCamera = async () => {
     try {
-      // Step 1: Create liveness session for anti-spoofing verification
+      // Step 1: Create liveness session with AWS
       const livenessResponse = await apiClient.post('/auth/face-liveness/start', {});
-      const sessionId = livenessResponse.data?.sessionId;
+      const sessionId = livenessResponse.data?.data?.sessionId;
 
       if (!sessionId) {
         setMessage({
@@ -122,66 +121,29 @@ const ProfilePage: React.FC = () => {
         });
         return;
       }
-
       setLivenessSessionId(sessionId);
-
-      // Step 2: Request camera access
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: 'user',
-          width: { ideal: 320 },
-          height: { ideal: 240 }
-        },
-      });
-      
-      // Open modal first to mount video element
-      setShowFaceCamera(true);
-      
-      // Wait for video ref to be available after render
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          // Ensure video plays
-          videoRef.current.play().catch((err) => {
-            console.error('Error playing video:', err);
-          });
-        }
-      }, 100);
+      setShowAwsFaceLiveness(true);
     } catch (err) {
-      console.error('Failed to access camera:', err);
-      setShowFaceCamera(false);
       setMessage({
         type: 'error',
-        text: 'Không thể truy cập camera. Vui lòng kiểm tra quyền của ứng dụng.',
+        text: 'Không thể khởi tạo phiên xác thực khuôn mặt. Vui lòng thử lại.',
       });
     }
   };
 
-  const captureFaceAndEnable = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-
-    const context = canvasRef.current.getContext('2d');
-    if (!context) return;
-
-    context.drawImage(videoRef.current, 0, 0, 320, 240);
-    const imageData = canvasRef.current.toDataURL('image/jpeg', 0.8);
-
-    // Stop camera
-    const stream = videoRef.current.srcObject as MediaStream;
-    stream?.getTracks().forEach((track) => track.stop());
-    setShowFaceCamera(false);
-
+  const handleAwsFaceLivenessSuccess = async () => {
     try {
-      await enableFaceLogin({ image: imageData, livenessSessionId }).unwrap();
+      // AWS has already verified liveness, now enable face login
+      await enableFaceLogin({ image: '', livenessSessionId }).unwrap();
       setFaceLoginEnabled(true);
       setLivenessSessionId('');
+      setShowAwsFaceLiveness(false);
       setMessage({
         type: 'success',
         text: 'Đăng nhập bằng khuôn mặt đã được bật!',
       });
       setTimeout(() => setMessage(null), 3000);
     } catch (err: any) {
-      console.error('Failed to enable face login:', err);
       setMessage({
         type: 'error',
         text: err?.data?.message || 'Có lỗi xảy ra khi bật đăng nhập bằng khuôn mặt',
@@ -189,12 +151,13 @@ const ProfilePage: React.FC = () => {
     }
   };
 
-  const cancelFaceCamera = () => {
-    if (videoRef.current) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream?.getTracks().forEach((track) => track.stop());
-    }
-    setShowFaceCamera(false);
+  const cancelAwsFaceLiveness = () => {
+    setLivenessSessionId('');
+    setShowAwsFaceLiveness(false);
+    setMessage({
+      type: 'error',
+      text: 'Xác thực khuôn mặt đã bị hủy',
+    });
   };
 
   const handleToggleFaceLogin = async () => {
@@ -212,7 +175,6 @@ const ProfilePage: React.FC = () => {
         });
         setTimeout(() => setMessage(null), 3000);
       } catch (err: any) {
-        console.error('Failed to disable face login:', err);
         setMessage({
           type: 'error',
           text: err?.data?.message || 'Có lỗi xảy ra khi tắt đăng nhập bằng khuôn mặt',
@@ -516,72 +478,15 @@ const ProfilePage: React.FC = () => {
         </motion.div>
       </div>
 
-      {/* Face Camera Modal */}
+      {/* AWS Face Liveness Modal */}
       <AnimatePresence>
-        {showFaceCamera && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 backdrop-blur-sm bg-opacity-20 flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
-            >
-              {/* Modal Header */}
-              <div className="bg-gradient-to-r from-purple-500 to-pink-600 px-6 py-4">
-                <h2 className="text-xl font-bold text-white">Chụp ảnh khuôn mặt</h2>
-                <p className="text-purple-100 text-sm mt-1">Căn chỉnh khuôn mặt vào khung hình rồi nhấn "Chụp"</p>
-              </div>
-
-              {/* Camera Feed */}
-              <div className="p-6 space-y-4">
-                <div className="bg-black rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    width={320}
-                    height={240}
-                    className="w-full aspect-video object-cover"
-                  />
-                </div>
-                <canvas ref={canvasRef} className="hidden" width={320} height={240} />
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={cancelFaceCamera}
-                    className="flex-1 py-3 px-4 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={captureFaceAndEnable}
-                    disabled={isEnablingFaceLogin}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-medium rounded-lg transition"
-                  >
-                    {isEnablingFaceLogin ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Đang xử lý...
-                      </>
-                    ) : (
-                      <>
-                        <Camera className="w-4 h-4" />
-                        Chụp
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
+        {showAwsFaceLiveness && livenessSessionId && (
+          <AwsFaceLivenessComponent
+            sessionId={livenessSessionId}
+            region="us-east-1"
+            onSuccess={handleAwsFaceLivenessSuccess}
+            onCancel={cancelAwsFaceLiveness}
+          />
         )}
       </AnimatePresence>
     </div>

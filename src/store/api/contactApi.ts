@@ -1,16 +1,10 @@
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import { createApi } from '@reduxjs/toolkit/query/react';
 import type { ApiSuccessResponse } from '@/types/api.types';
+import { baseQueryWithReauth } from './baseQuery';
 
 export const contactApi = createApi({
   reducerPath: 'contactApi',
-  baseQuery: fetchBaseQuery({
-    baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1',
-    prepareHeaders: (headers) => {
-      const token = localStorage.getItem('accessToken');
-      if (token) headers.set('Authorization', `Bearer ${token}`);
-      return headers;
-    },
-  }),
+  baseQuery: baseQueryWithReauth,
   tagTypes: ['Friends', 'Groups'],
   endpoints: (builder) => ({
     getFriends: builder.query<ApiSuccessResponse<unknown[]>, void>({
