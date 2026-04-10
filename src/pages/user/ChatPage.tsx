@@ -366,7 +366,7 @@ export default function ChatPage() {
               {/* Group specific tools in Toolbar */}
               {activeContact?.isGroup && (
                 <>
-                  <button type="button" title="Tạo bình chọn (Poll)" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0">
+                  <button type="button" onClick={() => setShowPollModal(true)} title="Tạo bình chọn (Poll)" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0">
                     <BarChart2 className="w-5 h-5" />
                   </button>
                   <button type="button" title="Giao việc / Nhắc hẹn" className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0 hidden sm:block">
@@ -390,17 +390,7 @@ export default function ChatPage() {
             </div>
           </div>
 
-          {/* AI Suggestion Chip (Above input) */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
-              <Sparkles className="w-3 h-3 text-blue-600" />
-              Dạ, em hiểu rồi ạ.
-            </button>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
-              <Sparkles className="w-3 h-3 text-blue-600" />
-              Cho mình xin link nhé!
-            </button>
-          </div>
+
 
           {/* Chat Input */}
           <div className="relative flex items-end gap-2">
@@ -518,14 +508,6 @@ export default function ChatPage() {
                     <div onClick={() => { setShowMemberModal(true); setMemberTab('list'); }} className="flex items-center gap-3 text-sm text-muted-foreground hover:text-red-500 cursor-pointer hover:bg-red-500/10 p-2 -mx-2 rounded-lg transition-colors font-medium">
                        <Users className="w-4 h-4 opacity-70" /> Mời ra khỏi nhóm
                     </div>
-                  </div>
-                </div>
-
-                {/* Poll shortcut */}
-                <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5">
-                  <div onClick={() => setShowPollModal(true)} className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                    Tạo bình chọn / Thăm dò
-                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   </div>
                 </div>
               </>
