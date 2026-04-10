@@ -63,6 +63,7 @@ const App: React.FC = () => {
 
   const isGuestRoute = GUEST_ROUTES.includes(location.pathname);
   const isCallRoute = location.pathname === '/call';
+  const isChatRoute = location.pathname.startsWith('/chat');
 
   if (isGuestRoute) {
     return (
@@ -100,101 +101,106 @@ const App: React.FC = () => {
   return (
     <div className={cn('min-h-screen flex transition-colors duration-500', isDarkMode ? 'theme-midnight dark' : 'theme-ethereal')}>
       {/* Sidebar */}
-      <motion.aside
-        initial={false}
-        animate={{ width: isSidebarOpen ? 280 : 80 }}
-        className={cn(
-          'h-screen sticky top-0 border-r transition-all duration-500 z-50 flex flex-col',
-          isDarkMode ? 'bg-midnight-bg border-midnight-border' : 'bg-ethereal-bg border-ethereal-border',
-        )}
-      >
-        <div className="p-6 flex items-center gap-3">
-          <img src={logoUrl} alt="User Avatar" className="w-10 h-10" />
-          {isSidebarOpen && (
-            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="font-display font-bold text-xl tracking-tight">
-              HamTech
-            </motion.span>
+      {!isChatRoute && (
+        <motion.aside
+          initial={false}
+          animate={{ width: isSidebarOpen ? 280 : 80 }}
+          className={cn(
+            'h-screen sticky top-0 border-r transition-all duration-500 z-50 flex flex-col',
+            isDarkMode ? 'bg-midnight-bg border-midnight-border' : 'bg-ethereal-bg border-ethereal-border',
           )}
-        </div>
+        >
+          <div className="p-6 flex items-center gap-3">
+            <img src={logoUrl} alt="User Avatar" className="w-10 h-10 shrink-0" />
+            {isSidebarOpen && (
+              <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="font-display font-bold text-xl tracking-tight whitespace-nowrap">
+                HamTech
+              </motion.span>
+            )}
+          </div>
 
-        <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
-            return (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={cn(
-                  'w-full flex items-center gap-4 p-3 rounded-xl transition-all group relative',
-                  isActive
-                    ? isDarkMode ? 'bg-white/10 text-blue-500' : 'bg-black/5 text-blue-600'
-                    : isDarkMode ? 'text-midnight-muted hover:text-blue-400' : 'text-ethereal-muted hover:text-blue-600',
-                )}
-              >
-                <item.icon className={cn('w-5 h-5', isActive && 'text-blue-600')} />
-                {isSidebarOpen && (
-                  <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="font-medium">
-                    {item.label}
-                  </motion.span>
-                )}
-                {isActive && <motion.div layoutId="active-nav" className="absolute left-0 w-1 h-6 bg-blue-600 rounded-r-full" />}
-              </button>
-            );
-          })}
-        </nav>
+          <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
+            {navItems.map((item) => {
+              const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  className={cn(
+                    'w-full flex items-center p-3 rounded-xl transition-all group relative',
+                    isSidebarOpen ? 'gap-4' : 'justify-center',
+                    isActive
+                      ? isDarkMode ? 'bg-white/10 text-blue-500' : 'bg-black/5 text-blue-600'
+                      : isDarkMode ? 'text-midnight-muted hover:text-blue-400' : 'text-ethereal-muted hover:text-blue-600',
+                  )}
+                >
+                  <item.icon className={cn('w-5 h-5 shrink-0', isActive && 'text-blue-600')} />
+                  {isSidebarOpen && (
+                    <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="font-medium whitespace-nowrap">
+                      {item.label}
+                    </motion.span>
+                  )}
+                  {isActive && <motion.div layoutId="active-nav" className="absolute left-0 w-1 h-6 bg-blue-600 rounded-r-full" />}
+                </button>
+              );
+            })}
+          </nav>
 
-        <div className="p-4 border-t border-inherit space-y-2">
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            {isSidebarOpen && <span>{isDarkMode ? 'Sáng' : 'Tối'}</span>}
-          </button>
-          <button onClick={() => navigate('/login')} className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-red-500/10 text-red-500 transition-all">
-            <LogOut className="w-5 h-5" />
-            {isSidebarOpen && <span>Đăng xuất</span>}
-          </button>
-        </div>
-      </motion.aside>
+          <div className="p-4 border-t border-inherit space-y-2">
+            <button onClick={() => setIsDarkMode(!isDarkMode)} className={cn('w-full flex items-center p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all', isSidebarOpen ? 'gap-4' : 'justify-center')}>
+              {isDarkMode ? <Sun className="w-5 h-5 shrink-0" /> : <Moon className="w-5 h-5 shrink-0" />}
+              {isSidebarOpen && <span className="whitespace-nowrap">{isDarkMode ? 'Sáng' : 'Tối'}</span>}
+            </button>
+            <button onClick={() => navigate('/login')} className={cn('w-full flex items-center p-3 rounded-xl hover:bg-red-500/10 text-red-500 transition-all', isSidebarOpen ? 'gap-4' : 'justify-center')}>
+              <LogOut className="w-5 h-5 shrink-0" />
+              {isSidebarOpen && <span className="whitespace-nowrap">Đăng xuất</span>}
+            </button>
+          </div>
+        </motion.aside>
+      )}
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
-        <header
-          className={cn(
-            'h-20 px-8 flex items-center justify-between border-b sticky top-0 z-40 backdrop-blur-md',
-            isDarkMode ? 'bg-midnight-bg/80 border-midnight-border' : 'bg-ethereal-bg/80 border-ethereal-border',
-          )}
-        >
-          <div className="flex items-center gap-4 flex-1 max-w-xl">
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-              {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeft className="w-5 h-5" />}
-            </button>
-            <div className="relative w-full">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Tìm kiếm người dùng, nội dung, cộng đồng..."
-                className="w-full pl-12 pr-4 py-2.5 rounded-full bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <button className="relative p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-blue-600 rounded-full border-2 border-inherit" />
-            </button>
-            <div className="flex items-center gap-3 pl-6 border-l border-inherit">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-semibold">Người dùng</p>
-                <p className="text-xs text-muted-foreground">Thành viên</p>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-[#f4c25f] flex items-center justify-center text-white font-bold">
-                Z
+        {!isChatRoute && (
+          <header
+            className={cn(
+              'h-20 px-8 flex items-center justify-between border-b sticky top-0 z-40 backdrop-blur-md',
+              isDarkMode ? 'bg-midnight-bg/80 border-midnight-border' : 'bg-ethereal-bg/80 border-ethereal-border',
+            )}
+          >
+            <div className="flex items-center gap-4 flex-1 max-w-xl">
+              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all">
+                {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeft className="w-5 h-5" />}
+              </button>
+              <div className="relative w-full">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm người dùng, nội dung, cộng đồng..."
+                  className="w-full pl-12 pr-4 py-2.5 rounded-full bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none"
+                />
               </div>
             </div>
-          </div>
-        </header>
 
-        <div className="flex-1 overflow-y-auto">
+            <div className="flex items-center gap-6">
+              <button className="relative p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all">
+                <Bell className="w-5 h-5" />
+                <span className="absolute top-2 right-2 w-2 h-2 bg-blue-600 rounded-full border-2 border-inherit" />
+              </button>
+              <div className="flex items-center gap-3 pl-6 border-l border-inherit">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-semibold">Người dùng</p>
+                  <p className="text-xs text-muted-foreground">Thành viên</p>
+                </div>
+                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-[#f4c25f] flex items-center justify-center text-white font-bold">
+                  Z
+                </div>
+              </div>
+            </div>
+          </header>
+        )}
+
+        <div className={cn("flex-1 relative", isChatRoute ? "overflow-hidden" : "overflow-y-auto")}>
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
@@ -202,7 +208,7 @@ const App: React.FC = () => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="h-full"
+              className={isChatRoute ? "absolute inset-0" : "h-full"}
             >
               <Suspense fallback={<PageLoader />}>
                 <Routes>
