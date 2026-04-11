@@ -79,6 +79,7 @@ const chatSlice = createSlice({
         if (msg) {
           msg.isRecalled = true;
           msg.content = 'Tin nhắn đã được thu hồi';
+          msg.isPinned = false;
         }
       }
     },
@@ -162,6 +163,7 @@ const chatSlice = createSlice({
       if (msg) {
         msg.isDeleted = true;
         msg.content = '';
+        msg.isPinned = false;
       }
     },
 

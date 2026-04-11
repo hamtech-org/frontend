@@ -331,6 +331,7 @@ export default function ChatPage() {
         patchMessageInCache(msg.conversationId, msg.messageId, {
           isRecalled: true,
           content: 'Tin nhắn đã được thu hồi',
+          isPinned: false,
         });
         setActionMenuMsgId(null);
       } catch {
@@ -350,7 +351,11 @@ export default function ChatPage() {
           createdAt: msg.createdAt,
         }).unwrap();
         dispatch(messageDeleted({ messageId: msg.messageId, conversationId: msg.conversationId }));
-        patchMessageInCache(msg.conversationId, msg.messageId, { isDeleted: true, content: '' });
+        patchMessageInCache(msg.conversationId, msg.messageId, {
+          isDeleted: true,
+          content: '',
+          isPinned: false,
+        });
         setActionMenuMsgId(null);
       } catch {
         /* ignore */
