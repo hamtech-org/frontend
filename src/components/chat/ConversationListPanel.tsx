@@ -88,14 +88,19 @@ export function ConversationListPanel({
 
       <div className="flex-1 overflow-y-auto px-4 space-y-2 min-h-0 custom-scrollbar pr-2 pb-4">
         {convsLoading && (
-          <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">Đang tải...</div>
+          <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+            Đang tải...
+          </div>
         )}
         {conversations.map((conv, index) => {
           const isActive = activeConversationId === conv.conversationId;
+          const hasUnread = (conv.unreadCount ?? 0) > 0;
           const isGroup = conv.type === 'group';
           const displayName = conv.name ?? 'Hội thoại';
           const lastMsgText = formatConversationListLastPreview(conv, currentUserId);
-          const lastMsgTime = conv.lastMessage?.createdAt ? formatMessageTime(conv.lastMessage.createdAt) : '';
+          const lastMsgTime = conv.lastMessage?.createdAt
+            ? formatMessageTime(conv.lastMessage.createdAt)
+            : '';
           return (
             <motion.button
               key={conv.conversationId}
@@ -119,7 +124,11 @@ export function ConversationListPanel({
                   />
                 ) : (
                   <div className="w-11 h-11 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center border-2 border-inherit">
-                    {isGroup ? <Users className="w-5 h-5 text-blue-600" /> : <User className="w-5 h-5 text-blue-600" />}
+                    {isGroup ? (
+                      <Users className="w-5 h-5 text-blue-600" />
+                    ) : (
+                      <User className="w-5 h-5 text-blue-600" />
+                    )}
                   </div>
                 )}
                 {isGroup && (
@@ -131,11 +140,21 @@ export function ConversationListPanel({
               <div className="flex-1 text-left overflow-hidden">
                 <div className="flex items-center justify-between">
                   <p className="text-[15px] font-bold truncate">{displayName}</p>
-                  <p className={`text-[11px] font-medium ${isActive ? 'text-white/70' : 'text-muted-foreground'}`}>
+                  <p
+                    className={`text-[11px] font-medium ${isActive ? 'text-white/70' : 'text-muted-foreground'}`}
+                  >
                     {lastMsgTime}
                   </p>
                 </div>
-                <p className={`text-[13px] truncate mt-0.5 ${isActive ? 'text-white/80' : 'text-muted-foreground'}`}>
+                <p
+                  className={`text-[13px] truncate mt-0.5 ${
+                    isActive
+                      ? 'text-white/80'
+                      : hasUnread
+                        ? 'font-semibold text-foreground'
+                        : 'text-black/50 dark:text-white/50'
+                  }`}
+                >
                   {lastMsgText}
                 </p>
               </div>
