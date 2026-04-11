@@ -271,8 +271,8 @@ export function ChatMessageList({
                 className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-semibold shadow-lg shadow-blue-600/25 hover:bg-blue-700 transition-colors"
               >
                 {unreadIncomingCount > 1
-                  ? `${unreadIncomingCount} tin nhắn chưa đọc - bấm để xem`
-                  : '1 tin nhắn chưa đọc - bấm để xem'}
+                  ? `${unreadIncomingCount} tin nhắn mới — bấm để xem`
+                  : '1 tin nhắn mới — bấm để xem'}
               </button>
             </div>
           )}

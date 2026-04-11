@@ -49,6 +49,8 @@ type MessageConfirmState =
   | { kind: 'recall'; msg: IMessage }
   | { kind: 'delete'; msg: IMessage };
 
+const CHAT_NEAR_BOTTOM_PX = 80;
+
 export default function ChatPage() {
   const navigate = useNavigate();
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
@@ -235,19 +237,25 @@ export default function ChatPage() {
     if (latestMessage.messageId === previousMessageId) return;
 
     const isMyMessage = latestMessage.senderId === currentUserId;
+    const container = messagesContainerRef.current;
+    const distanceToBottom = container
+      ? container.scrollHeight - container.scrollTop - container.clientHeight
+      : 0;
+    const isOverflowing = container ? container.scrollHeight > container.clientHeight + 1 : false;
+    const isNearBottom = distanceToBottom < CHAT_NEAR_BOTTOM_PX;
+
     if (isMyMessage) {
       setUnreadIncomingCount(0);
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } else if (isNearBottom || !isOverflowing) {
+      setUnreadIncomingCount(0);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        });
+      });
     } else {
-      const container = messagesContainerRef.current;
-      const isOverflowing = container ? container.scrollHeight > container.clientHeight + 1 : false;
-      const distanceToBottom = container
-        ? container.scrollHeight - container.scrollTop - container.clientHeight
-        : 0;
-      const isNearBottom = distanceToBottom < 24;
-      if (isOverflowing && !isNearBottom) {
-        setUnreadIncomingCount((count) => count + 1);
-      }
+      setUnreadIncomingCount((count) => count + 1);
     }
 
     prevLastMessageIdRef.current = latestMessage.messageId;
@@ -260,7 +268,7 @@ export default function ChatPage() {
     const handleScroll = () => {
       const distanceToBottom =
         container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceToBottom < 24) {
+      if (distanceToBottom < CHAT_NEAR_BOTTOM_PX) {
         setUnreadIncomingCount(0);
       }
     };
@@ -274,7 +282,7 @@ export default function ChatPage() {
     if (!container || typingUsers.length === 0) return;
 
     const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    const isNearBottom = distanceToBottom < 80;
+    const isNearBottom = distanceToBottom < CHAT_NEAR_BOTTOM_PX;
     if (!isNearBottom) return;
 
     requestAnimationFrame(() => {
