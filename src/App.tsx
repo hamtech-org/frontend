@@ -19,9 +19,16 @@ import {
   User,
   Users,
   FileText,
+  Loader,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import logoUrl from '@/assets/images/logo_vuong.png';
+import { searchService } from '@/services/search.service';
+import { useAuth } from '@/hooks/useAuth';
+import { useGetProfileQuery } from '@/store/api/userApi';
+import { useDispatch } from 'react-redux';
+import { setUser } from '@/store/slices/authSlice';
+import type { ISearchAllResult } from '@/types/search.types';
 
 // Lazy-loaded pages
 const LoginPage = React.lazy(() => import('@/pages/user/LoginPage'));
@@ -55,8 +62,93 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [searchResults, setSearchResults] = useState<ISearchAllResult | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user: currentUser, isAuthenticated } = useAuth();
+  const dispatch = useDispatch();
+  
+  // Load user profile when authenticated (only if profile not yet loaded)
+  const { data: profileData } = useGetProfileQuery(undefined, {
+    skip: !isAuthenticated || !!currentUser, // Skip if not authenticated or profile already loaded
+  });
+
+  // Sync fetched profile into auth state
+  useEffect(() => {
+    if (profileData?.data) {
+      dispatch(setUser(profileData.data));
+      console.log('Profile synced to auth state:', profileData.data);
+    }
+  }, [profileData, dispatch]);
+
+  // Fetch search results when query changes (with debounce)
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+
+    // Skip search if auth hasn't loaded yet
+    if (!currentUser?.userId) {
+      console.log("Auth not loaded yet, skipping search");
+      return;
+    }
+
+    console.log("User currentUser in search effect:", currentUser);
+    console.log('Search query changed:', searchQuery);
+    const timer = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        console.log('Calling searchService.searchAll with query:', searchQuery);
+        console.log('Current user for filtering:', { 
+          userId: currentUser?.userId, 
+          displayName: currentUser?.displayName,
+          fullUser: currentUser 
+        });
+        
+        const results = await searchService.searchAll({ q: searchQuery });
+        console.log('Search results received:', results);
+        console.log('Users before filtering:', results?.users?.items?.map((u: any) => ({ 
+          userId: u.userId, 
+          displayName: u.displayName 
+        })));
+        
+        // Filter out current user from results - create new object for React to detect change
+        const filteredResults = {
+          ...results,
+          users: results?.users ? {
+            ...results.users,
+            items: (results.users.items || []).filter((user: any) => {
+              const shouldInclude = user.userId !== currentUser?.userId;
+              console.log(`Comparing user ${user.userId} (${user.displayName}) with currentUser ${currentUser?.userId} - Include: ${shouldInclude}`);
+              return shouldInclude;
+            })
+          } : results?.users
+        };
+        
+        console.log('Filtered results:', filteredResults);
+        console.log('Users after filtering:', filteredResults?.users?.items?.map((u: any) => ({ 
+          userId: u.userId, 
+          displayName: u.displayName 
+        })));
+        setSearchResults(filteredResults);
+      } catch (error: any) {
+        console.error('Search error:', error);
+        console.error('Error details:', {
+          message: error?.message,
+          status: error?.response?.status,
+          data: error?.response?.data,
+          url: error?.config?.url,
+        });
+        setSearchResults(null);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300); // debounce 300ms
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, currentUser?.userId]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -209,104 +301,136 @@ const App: React.FC = () => {
                       )}
                     >
                       <div className="p-4 space-y-4">
-                        {/* Users Section */}
-                        <div>
-                          <button
-                            onClick={() => {
-                              navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=users`);
-                              setShowSearchResults(false);
-                            }}
-                            className="w-full text-left"
-                          >
-                            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
-                              <User className="w-3 h-3" />
-                              Người dùng
-                            </h3>
-                          </button>
-                          <div className="space-y-2">
-                            {[1, 2, 3].map((i) => (
-                              <button
-                                key={`user-${i}`}
-                                onClick={() => {
-                                  navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=users`);
-                                  setShowSearchResults(false);
-                                }}
-                                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all text-left"
-                              >
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-purple-600 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium truncate">Người dùng {i}</p>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">@user{i}</p>
-                                </div>
-                              </button>
-                            ))}
+                        {searchLoading && (
+                          <div className="flex items-center justify-center py-4">
+                            <Loader className="w-5 h-5 text-blue-600 animate-spin" />
                           </div>
-                        </div>
+                        )}
 
-                        {/* Groups Section */}
-                        <div>
-                          <button
-                            onClick={() => {
-                              navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=groups`);
-                              setShowSearchResults(false);
-                            }}
-                            className="w-full text-left"
-                          >
-                            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
-                              <Users className="w-3 h-3" />
-                              Cộng đồng
-                            </h3>
-                          </button>
-                          <div className="space-y-2">
-                            {[1, 2, 3].map((i) => (
-                              <button
-                                key={`group-${i}`}
-                                onClick={() => {
-                                  navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=groups`);
-                                  setShowSearchResults(false);
-                                }}
-                                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all text-left"
-                              >
-                                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-600 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium truncate">Cộng đồng {i}</p>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{100 * i} thành viên</p>
+                        {!searchLoading && searchResults && (
+                          <>
+                            {/* Users Section */}
+                            {searchResults.users?.items && searchResults.users.items.length > 0 && (
+                              <div>
+                                <button
+                                  onClick={() => {
+                                    navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=users`);
+                                    setShowSearchResults(false);
+                                  }}
+                                  className="w-full text-left"
+                                >
+                                  <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                                    <User className="w-3 h-3" />
+                                    Người dùng ({searchResults.users.items.length})
+                                  </h3>
+                                </button>
+                                <div className="space-y-2">
+                                  {searchResults.users.items.slice(0, 3).map((user) => (
+                                    <button
+                                      key={user.userId}
+                                      onClick={() => {
+                                        navigate(`/profile/${user.userId}`);
+                                        setShowSearchResults(false);
+                                        setSearchQuery('');
+                                      }}
+                                      className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all text-left"
+                                    >
+                                      <img
+                                        src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.userId}`}
+                                        alt={user.displayName}
+                                        className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{user.displayName}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
+                                      </div>
+                                    </button>
+                                  ))}
                                 </div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                              </div>
+                            )}
 
-                        {/* Posts Section */}
-                        <div>
-                          <button
-                            onClick={() => {
-                              navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=posts`);
-                              setShowSearchResults(false);
-                            }}
-                            className="w-full text-left"
-                          >
-                            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
-                              <FileText className="w-3 h-3" />
-                              Bài viết
-                            </h3>
-                          </button>
-                          <div className="space-y-2">
-                            {[1, 2, 3].map((i) => (
-                              <button
-                                key={`post-${i}`}
-                                onClick={() => {
-                                  navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=posts`);
-                                  setShowSearchResults(false);
-                                }}
-                                className="w-full p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all text-left"
-                              >
-                                <p className="text-sm font-medium line-clamp-2">Bài viết thú vị về {searchQuery}...</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Đăng bởi Người dùng • 2 giờ trước</p>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                            {/* Groups Section */}
+                            {searchResults.groups?.items && searchResults.groups.items.length > 0 && (
+                              <div>
+                                <button
+                                  onClick={() => {
+                                    navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=groups`);
+                                    setShowSearchResults(false);
+                                  }}
+                                  className="w-full text-left"
+                                >
+                                  <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                                    <Users className="w-3 h-3" />
+                                    Cộng đồng ({searchResults.groups.items.length})
+                                  </h3>
+                                </button>
+                                <div className="space-y-2">
+                                  {searchResults.groups.items.slice(0, 3).map((group) => (
+                                    <button
+                                      key={group.groupId}
+                                      onClick={() => {
+                                        navigate(`/group/${group.groupId}`);
+                                        setShowSearchResults(false);
+                                        setSearchQuery('');
+                                      }}
+                                      className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all text-left"
+                                    >
+                                      <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-600 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">
+                                        {group.name.charAt(0)}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{group.name}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{group.memberCount.toLocaleString()} thành viên</p>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Posts Section */}
+                            {searchResults.posts?.items && searchResults.posts.items.length > 0 && (
+                              <div>
+                                <button
+                                  onClick={() => {
+                                    navigate(`/search?q=${encodeURIComponent(searchQuery)}&type=posts`);
+                                    setShowSearchResults(false);
+                                  }}
+                                  className="w-full text-left"
+                                >
+                                  <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer">
+                                    <FileText className="w-3 h-3" />
+                                    Bài viết ({searchResults.posts.items.length})
+                                  </h3>
+                                </button>
+                                <div className="space-y-2">
+                                  {searchResults.posts.items.slice(0, 3).map((post) => (
+                                    <button
+                                      key={post.postId}
+                                      onClick={() => {
+                                        navigate(`/post/${post.postId}`);
+                                        setShowSearchResults(false);
+                                        setSearchQuery('');
+                                      }}
+                                      className="w-full p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all text-left"
+                                    >
+                                      <p className="text-sm font-medium line-clamp-1">{post.content.substring(0, 50)}...</p>
+                                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{new Date(post.createdAt).toLocaleDateString('vi-VN')}</p>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* No results */}
+                            {!searchResults.users?.items?.length && !searchResults.groups?.items?.length && !searchResults.posts?.items?.length && (
+                              <div className="text-center py-4">
+                                <p className="text-sm text-gray-500 dark:text-gray-400">Không tìm thấy kết quả cho "{searchQuery}"</p>
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                     </motion.div>
                   )}
