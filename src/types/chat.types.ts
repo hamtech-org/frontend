@@ -41,6 +41,7 @@ export interface IMessage {
   isPinned: boolean;
   isEdited: boolean;
   isRecalled: boolean;
+  isDeleted?: boolean;
   reactions: Record<string, string[]>;
   status: MessageStatus;
   createdAt: string;
