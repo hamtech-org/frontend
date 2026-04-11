@@ -1,13 +1,159 @@
-import React, { createContext, useContext } from 'react';
-import { useWebRTC } from '@/hooks/useWebRTC';
+import React, { createContext, useContext, useEffect, useCallback } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import { socketService } from '@/services/socket';
+import { apiClient } from '@/services/api';
+import type { RootState, AppDispatch } from '@/store/store';
+import type { CallType, IncomingCallData } from '@/types/call.types';
+import {
+  setOutgoingCall,
+  setIncomingCall,
+  setCallAccepted,
+  setCallEnded,
+  toggleMic,
+  toggleCamera,
+  resetCall,
+} from '@/store/slices/callSlice';
 
-type CallContextValue = ReturnType<typeof useWebRTC>;
+const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '8d20dc4c559344829aade9c1a38ddd62';
+
+interface AgoraTokenResponse {
+  token: string;
+  uid: number;
+  channel: string;
+}
+
+interface CallContextValue {
+  initiateCall: (calleeId: string, type: CallType) => void;
+  acceptCall: () => void;
+  rejectCall: () => void;
+  endCall: () => void;
+  onToggleMic: () => void;
+  onToggleCamera: () => void;
+  fetchAgoraToken: (channelName: string) => Promise<AgoraTokenResponse>;
+  appId: string;
+}
 
 const CallContext = createContext<CallContextValue | null>(null);
 
 export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const webrtc = useWebRTC();
-  return <CallContext.Provider value={webrtc}>{children}</CallContext.Provider>;
+  const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
+  const callState = useSelector((state: RootState) => state.call);
+
+  useEffect(() => {
+    const onIncoming = (data: unknown) => {
+      const payload = data as IncomingCallData;
+      dispatch(setIncomingCall(payload));
+    };
+
+    const onAccepted = (data: unknown) => {
+      const payload = data as { calleeId: string; channelName: string };
+      dispatch(setCallAccepted());
+      navigate(`/call?channel=${payload.channelName}`);
+    };
+
+    const onRejected = () => {
+      dispatch(setCallEnded());
+      setTimeout(() => dispatch(resetCall()), 2000);
+    };
+
+    const onEnded = () => {
+      dispatch(setCallEnded());
+      setTimeout(() => dispatch(resetCall()), 1500);
+    };
+
+    socketService.on('call:incoming', onIncoming);
+    socketService.on('call:accepted', onAccepted);
+    socketService.on('call:rejected', onRejected);
+    socketService.on('call:ended', onEnded);
+
+    return () => {
+      socketService.off('call:incoming', onIncoming);
+      socketService.off('call:accepted', onAccepted);
+      socketService.off('call:rejected', onRejected);
+      socketService.off('call:ended', onEnded);
+    };
+  }, [dispatch, navigate]);
+
+  const fetchAgoraToken = useCallback(
+    async (channelName: string): Promise<AgoraTokenResponse> => {
+      const res = await apiClient.get('/agora/rtc-token', {
+        params: { channelName },
+      });
+      return res.data.data;
+    },
+    [],
+  );
+
+  const initiateCall = useCallback(
+    (calleeId: string, type: CallType) => {
+      if (callState.status !== 'idle') return;
+
+      socketService.emit('call:initiate', { calleeId, type });
+
+      const onChannelReady = (data: unknown) => {
+        const payload = data as { channelName: string };
+        dispatch(setOutgoingCall({ calleeId, callType: type, channelName: payload.channelName }));
+        navigate(`/call?channel=${payload.channelName}`);
+        socketService.off('call:channel-ready', onChannelReady);
+      };
+      socketService.on('call:channel-ready', onChannelReady);
+    },
+    [callState.status, dispatch, navigate],
+  );
+
+  const acceptCall = useCallback(() => {
+    if (callState.status !== 'incoming-ringing' || !callState.channelName || !callState.callerId) return;
+
+    socketService.emit('call:accept', {
+      channelName: callState.channelName,
+      callerId: callState.callerId,
+    });
+    dispatch(setCallAccepted());
+    navigate(`/call?channel=${callState.channelName}`);
+  }, [callState, dispatch, navigate]);
+
+  const rejectCall = useCallback(() => {
+    if (!callState.channelName || !callState.callerId) return;
+
+    socketService.emit('call:reject', {
+      channelName: callState.channelName,
+      callerId: callState.callerId,
+    });
+    dispatch(resetCall());
+  }, [callState, dispatch]);
+
+  const endCall = useCallback(() => {
+    const peerId = callState.callerId || callState.calleeId;
+    if (!callState.channelName || !peerId) return;
+
+    socketService.emit('call:end', {
+      channelName: callState.channelName,
+      peerId,
+    });
+    dispatch(setCallEnded());
+  }, [callState, dispatch]);
+
+  const onToggleMic = useCallback(() => dispatch(toggleMic()), [dispatch]);
+  const onToggleCamera = useCallback(() => dispatch(toggleCamera()), [dispatch]);
+
+  return (
+    <CallContext.Provider
+      value={{
+        initiateCall,
+        acceptCall,
+        rejectCall,
+        endCall,
+        onToggleMic,
+        onToggleCamera,
+        fetchAgoraToken,
+        appId: AGORA_APP_ID,
+      }}
+    >
+      {children}
+    </CallContext.Provider>
+  );
 };
 
 export const useCallContext = (): CallContextValue => {
