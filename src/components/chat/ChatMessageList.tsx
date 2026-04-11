@@ -67,7 +67,7 @@ export function ChatMessageList({
   return (
     <div
       ref={messagesContainerRef}
-      className="flex-1 overflow-y-auto px-4 py-4 space-y-1 min-h-0 custom-scrollbar"
+      className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-1 min-h-0 custom-scrollbar"
     >
       {!activeConversationId && (
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
@@ -214,7 +214,7 @@ export function ChatMessageList({
                             <SmilePlus className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
                           </button>
                           <div
-                            className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-1 p-1.5 rounded-full bg-white dark:bg-zinc-800 shadow-xl border border-black/10 dark:border-white/10 flex items-center gap-1 transition-all translate-y-2 z-50 after:content-[''] after:absolute after:left-0 after:-bottom-5 after:w-full after:h-5 ${hiddenReactPopupId === msg.messageId ? 'hidden' : 'opacity-0 pointer-events-none group-hover/reactbtn:opacity-100 group-hover/reactbtn:pointer-events-auto group-hover/reactbtn:translate-y-0'}`}
+                            className={`absolute bottom-full ${isMe ? 'right-0' : 'left-0'} mb-1 p-1.5 rounded-full bg-white dark:bg-zinc-800 shadow-xl border border-black/10 dark:border-white/10 flex items-center gap-1 transition-all translate-y-2 z-50 after:content-[''] after:absolute after:left-0 after:-bottom-5 after:w-full after:h-5 ${hiddenReactPopupId === msg.messageId ? 'hidden' : 'opacity-0 pointer-events-none group-hover/reactbtn:opacity-100 group-hover/reactbtn:pointer-events-auto group-hover/reactbtn:translate-y-0'}`}
                           >
                             {['❤️', '👍', '😂', '😮', '😢', '😡'].map((emoji) => (
                               <button
