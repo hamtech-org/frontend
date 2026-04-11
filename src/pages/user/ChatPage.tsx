@@ -215,6 +215,12 @@ export default function ChatPage() {
     const previousMessageId = prevLastMessageIdRef.current;
     if (previousMessageId === null) {
       prevLastMessageIdRef.current = latestMessage.messageId;
+      const scrollToEnd = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+      };
+      requestAnimationFrame(() => {
+        requestAnimationFrame(scrollToEnd);
+      });
       return;
     }
     if (latestMessage.messageId === previousMessageId) return;
