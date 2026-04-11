@@ -1,244 +1,46 @@
-import { useState, useRef, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowRight, Eye, EyeOff, Loader2, User, Mail, Lock, ShieldCheck, Camera, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLoginMutation, useVerifyLoginOtpMutation, useRegisterMutation, useVerifyEmailMutation, useFaceLoginMutation } from '@/store/api/authApi';
+import { apiClient } from '@/services/api';
+import AwsFaceLivenessComponent from '@/components/AwsFaceLivenessComponent';
 import logo from '@/assets/images/logo_tron.png';
-
-// Schemas
-const loginSchema = z.object({
-  email: z.string().email('Email không hợp lệ'),
-  password: z.string().min(1, 'Mật khẩu không được để trống'),
-});
-
-const registerSchema = z
-  .object({
-    displayName: z.string().min(2, 'Tên hiển thị phải có ít nhất 2 ký tự').max(50, 'Tên hiển thị không quá 50 ký tự'),
-    email: z.string().email('Email không hợp lệ'),
-    password: z
-      .string()
-      .min(8, 'Mật khẩu phải có ít nhất 8 ký tự')
-      .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/, 'Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt'),
-    confirmPassword: z.string().min(1, 'Vui lòng xác nhận mật khẩu'),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: 'Mật khẩu không khớp',
-    path: ['confirmPassword'],
-  });
-
-const otpSchema = z.object({
-  otp: z.string().length(6, 'OTP phải có 6 chữ số').regex(/^\d+$/, 'OTP chỉ được chứa chữ số'),
-});
-
-type LoginFormValues = z.infer<typeof loginSchema>;
-type RegisterFormValues = z.infer<typeof registerSchema>;
-type OtpFormValues = z.infer<typeof otpSchema>;
-
-const variants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? 1000 : -1000,
-    opacity: 0,
-  }),
-  center: {
-    zIndex: 1,
-    x: 0,
-    opacity: 1,
-  },
-  exit: (direction: number) => ({
-    zIndex: 0,
-    x: direction < 0 ? 1000 : -1000,
-    opacity: 0,
-  }),
-};
-
-const Step = ({
-  fields,
-  register,
-  errors,
-  trigger,
-  otpRegister,
-  otpErrors,
-}: {
-  fields: any[];
-  register?: any;
-  errors?: any;
-  trigger?: (name: any) => void;
-  otpRegister?: any;
-  otpErrors?: any;
-}) => {
-  return (
-    <div className="space-y-6">
-      {fields.map((field) => (
-        <div key={field.name} className="space-y-2">
-          <label htmlFor={field.name} className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300">
-            {field.icon}
-            <div>
-              <div>{field.title}</div>
-              {field.subtitle && <div className="text-sm text-gray-500 dark:text-gray-400 font-normal">{field.subtitle}</div>}
-            </div>
-          </label>
-          <div className="relative">
-            <input
-              id={field.name}
-              type={field.showPasswordToggle && field.showPassword ? 'text' : field.type}
-              placeholder={field.isOtp ? 'XXXXXX' : ''}
-              {...(field.isOtp ? otpRegister : register)(field.name, {
-                onChange: () => (field.isOtp ? undefined : trigger?.(field.name)),
-              })}
-              className="mt-1 block w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border-2 border-transparent rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
-              autoComplete="off"
-              maxLength={field.isOtp ? 6 : undefined}
-            />
-            {field.showPasswordToggle && (
-              <button
-                type="button"
-                onClick={field.togglePassword}
-                className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600"
-              >
-                {field.showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            )}
-          </div>
-          <AnimatePresence>
-            {(field.isOtp ? otpErrors?.[field.name] : errors?.[field.name]) && (
-              <motion.p initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="mt-1 text-sm text-red-500">
-                {field.isOtp ? otpErrors[field.name]?.message : errors[field.name]?.message}
-              </motion.p>
-            )}
-          </AnimatePresence>
-        </div>
-      ))}
-    </div>
-  );
-};
+import { LoginForm, type LoginFormValues, RegisterForm, type RegisterFormValues, OtpVerificationForm, type OtpFormValues } from '../../components';
+import { X, Loader2 } from 'lucide-react';
 
 const LoginPage = () => {
   const [isRegister, setIsRegister] = useState(false);
+  const [isLoginOtpPending, setIsLoginOtpPending] = useState(false);
+  const [registrationOtpPending, setRegistrationOtpPending] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [registrationEmail, setRegistrationEmail] = useState('');
+
+  // Face login states
+  const [showFaceLoginEmailDialog, setShowFaceLoginEmailDialog] = useState(false);
+  const [faceLoginEmail, setFaceLoginEmail] = useState('');
+  const [livenessSessionId, setLivenessSessionId] = useState('');
+  const [showAwsFaceLiveness, setShowAwsFaceLiveness] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const navigate = useNavigate();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null); // Store stream in ref, not state
 
-  // Face Login
-  const [faceLogin, { isLoading: isFaceLogging }] = useFaceLoginMutation();
-  const [showFaceCamera, setShowFaceCamera] = useState(false);
-  const [currentStream, setCurrentStream] = useState<MediaStream | null>(null);
-  const [recentEmails, setRecentEmails] = useState<string[]>(() => {
-    const stored = localStorage.getItem('recentEmails');
-    return stored ? JSON.parse(stored) : [];
-  });
-
-  // Login Form
+  // Mutations
   const [login, { isLoading: isLoggingIn, error: loginError }] = useLoginMutation();
   const [verifyLoginOtp, { isLoading: isVerifyingLoginOtp, error: verifyLoginOtpError }] = useVerifyLoginOtpMutation();
-  const {
-    register: loginFormRegister,
-    handleSubmit: handleLoginSubmit,
-    formState: { errors: loginErrors },
-    reset: resetLoginForm,
-  } = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
-  });
+  const [register, { isLoading: isRegistering, error: registerError }] = useRegisterMutation();
+  const [verifyEmail, { isLoading: isVerifying, error: verifyError }] = useVerifyEmailMutation();
+  const [faceLogin, { isLoading: isFaceLoginLoading }] = useFaceLoginMutation();
 
-  const {
-    register: loginOtpFormRegister,
-    handleSubmit: handleLoginOtpSubmit,
-    formState: { errors: loginOtpErrors },
-  } = useForm<OtpFormValues>({
-    resolver: zodResolver(otpSchema),
-    mode: 'onChange',
-  });
-
-  const [showLoginPassword, setShowLoginPassword] = useState(false);
-  const [isLoginOtpPending, setIsLoginOtpPending] = useState(false);
-  const [loginEmail, setLoginEmail] = useState('');
-
+  // Login handlers
   const onLoginSubmit = async (data: LoginFormValues) => {
     try {
       await login(data).unwrap();
-      // Store email for quick login
-      setRecentEmails((prev) => {
-        const updated = [data.email, ...prev.filter((e) => e !== data.email)].slice(0, 3);
-        localStorage.setItem('recentEmails', JSON.stringify(updated));
-        return updated;
-      });
       setLoginEmail(data.email);
       setIsLoginOtpPending(true);
     } catch (err) {
       console.error('Failed to login:', err);
     }
   };
-
-  /// Face Login Handlers
-  const startFaceCamera = async () => {
-    try {
-      // Request camera permissions
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: false
-      });
-
-      setCurrentStream(stream);
-      setShowFaceCamera(true);
-    } catch (err) {
-      console.error('Failed to access camera:', err);
-      setShowFaceCamera(false);
-      alert('Không thể truy cập camera. Vui lòng kiểm tra quyền của ứng dụng.');
-    }
-  };
-
-  // Assign stream when modal opens
-  useEffect(() => {
-    if (showFaceCamera && streamRef.current && videoRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-      setCurrentStream(streamRef.current);
-    }
-  }, [showFaceCamera]);
-
-  // Cleanup stream
-  useEffect(() => {
-    return () => {
-      if (currentStream) {
-        currentStream.getTracks().forEach((track) => track.stop());
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-      if (videoRef.current?.srcObject) {
-        videoRef.current.srcObject = null;
-      }
-    };
-  }, [currentStream]);
-
-  const captureFace = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-
-    try {
-      const context = canvasRef.current.getContext('2d');
-      if (!context) return;
-
-      context.drawImage(videoRef.current, 0, 0, 320, 240);
-      const imageData = canvasRef.current.toDataURL('image/jpeg', 0.8);
-
-      setShowFaceCamera(false);
-      setCurrentStream(null);
-
-      await faceLogin({ image: imageData }).unwrap();
-      navigate('/');
-    } catch (err) {
-      console.error('Face login failed:', err);
-      alert('Đăng nhập bằng khuôn mặt không thành công. Vui lòng thử lại.');
-    }
-  };
-
-  const cancelFaceCamera = () => {
-    setShowFaceCamera(false);
-    setCurrentStream(null);
-  };
-
 
   const onLoginOtpSubmit = async (data: OtpFormValues) => {
     try {
@@ -252,51 +54,25 @@ const LoginPage = () => {
     }
   };
 
-  // Register Form
-  const [register, { isLoading: isRegistering, error: registerError }] = useRegisterMutation();
-  const [verifyEmail, { isLoading: isVerifying, error: verifyError }] = useVerifyEmailMutation();
-  const {
-    register: registerFormRegister,
-    handleSubmit: handleRegisterSubmit,
-    formState: { errors: registerErrors },
-    trigger: triggerRegister,
-  } = useForm<RegisterFormValues>({
-    resolver: zodResolver(registerSchema),
-    mode: 'onChange',
-  });
-
-  const {
-    register: otpFormRegister,
-    handleSubmit: handleOtpSubmit,
-    formState: { errors: otpErrors },
-  } = useForm<OtpFormValues>({
-    resolver: zodResolver(otpSchema),
-    mode: 'onChange',
-  });
-
-  const [regStep, setRegStep] = useState(0);
-  const [[page, direction], setPage] = useState([0, 0]);
-
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [registrationEmail, setRegistrationEmail] = useState('');
-
+  // Register handlers
   const onRegisterSubmit = async (data: RegisterFormValues) => {
     try {
+      console.log('📝 [DEBUG] onRegisterSubmit called with email:', data.email);
       const { confirmPassword, ...registerData } = data;
-      await register(registerData).unwrap();
+      console.log('📝 [DEBUG] Sending register request...');
+      const result = await register(registerData).unwrap();
+      console.log('✅ [DEBUG] Register successful:', result);
       setRegistrationEmail(data.email);
-      // Move to OTP verification step
-      if (regStep < 3) {
-        setPage([3, 1]);
-        setRegStep(3);
-      }
+      console.log('📝 [DEBUG] Setting registrationOtpPending to true');
+      setRegistrationOtpPending(true);
     } catch (err) {
-      console.error('Failed to register:', err);
+      console.error('❌ [DEBUG] Failed to register:', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('Error details:', { message: errorMessage });
     }
   };
 
-  const onOtpSubmit = async (data: OtpFormValues) => {
+  const onRegisterOtpSubmit = async (data: OtpFormValues) => {
     try {
       await verifyEmail({
         email: registrationEmail,
@@ -308,99 +84,67 @@ const LoginPage = () => {
     }
   };
 
-  const handleNextStep = async () => {
-    const fieldsPerStep: (keyof RegisterFormValues)[][] = [['displayName'], ['email'], ['password', 'confirmPassword']];
-    
-    // If we're on the OTP step (step 3), handle OTP submission
-    if (regStep === 3) {
-      handleOtpSubmit(onOtpSubmit)();
-      return;
-    }
-
-    // For other steps, validate and move to next
-    const currentFields = fieldsPerStep[regStep];
-    const isValid = await triggerRegister(currentFields);
-
-    if (isValid) {
-      if (regStep < 2) {
-        setPage([regStep + 1, 1]);
-        setRegStep(regStep + 1);
-      } else if (regStep === 2) {
-        // On password step, submit registration
-        handleRegisterSubmit(onRegisterSubmit)();
+  // Face login handlers
+  const startFaceLogin = async () => {
+    try {
+      if (!faceLoginEmail.trim()) {
+        setMessage({ type: 'error', text: 'Vui lòng nhập email' });
+        return;
       }
+
+      // Create liveness session
+      const livenessResponse = await apiClient.post('/auth/face-liveness/start', {});
+      const sessionId = livenessResponse.data?.data?.sessionId;
+
+      if (!sessionId) {
+        setMessage({
+          type: 'error',
+          text: 'Không thể khởi tạo phiên xác thực khuôn mặt. Vui lòng thử lại.',
+        });
+        return;
+      }
+
+      setLivenessSessionId(sessionId);
+      setShowFaceLoginEmailDialog(false);
+      setShowAwsFaceLiveness(true);
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text: 'Không thể khởi tạo phiên xác thực khuôn mặt. Vui lòng thử lại.',
+      });
     }
   };
 
-  const handlePrevStep = () => {
-    if (regStep > 0) {
-      if (regStep === 3) {
-        // Going back from OTP step to password step
-        setPage([2, -1]);
-        setRegStep(2);
-      } else {
-        setPage([regStep - 1, -1]);
-        setRegStep(regStep - 1);
-      }
+  const handleFaceLivenessSuccess = async () => {
+    try {
+      await faceLogin({
+        email: faceLoginEmail,
+        livenessSessionId,
+      }).unwrap();
+
+      setShowAwsFaceLiveness(false);
+      setLivenessSessionId('');
+      setFaceLoginEmail('');
+      navigate('/');
+    } catch (error: any) {
+      setShowAwsFaceLiveness(false);
+      setLivenessSessionId('');
+
+      const errorMsg =
+        error?.data?.message ||
+        'Đăng nhập bằng khuôn mặt thất bại. Vui lòng thử lại.';
+      setMessage({
+        type: 'error',
+        text: errorMsg,
+      });
     }
   };
 
-  const registrationSteps = [
-    {
-      fields: [
-        {
-          title: 'Tên của bạn là gì?',
-          name: 'displayName',
-          type: 'text',
-          icon: <User />,
-        },
-      ],
-    },
-    {
-      fields: [
-        {
-          title: 'Email của bạn?',
-          name: 'email',
-          type: 'email',
-          icon: <Mail />,
-        },
-      ],
-    },
-    {
-      fields: [
-        {
-          title: 'Tạo một mật khẩu an toàn',
-          name: 'password',
-          type: 'password',
-          icon: <Lock />,
-          showPasswordToggle: true,
-          showPassword: showPassword,
-          togglePassword: () => setShowPassword(!showPassword),
-        },
-        {
-          title: 'Xác nhận lại mật khẩu',
-          name: 'confirmPassword',
-          type: 'password',
-          icon: <Lock />,
-          showPasswordToggle: true,
-          showPassword: showConfirmPassword,
-          togglePassword: () => setShowConfirmPassword(!showConfirmPassword),
-        },
-      ],
-    },
-    {
-      fields: [
-        {
-          title: 'Nhập mã OTP',
-          subtitle: `Mã xác thực đã được gửi đến ${registrationEmail}`,
-          name: 'otp',
-          type: 'text',
-          icon: <ShieldCheck />,
-          isOtp: true,
-        },
-      ],
-    },
-  ];
+  const cancelFaceLiveness = () => {
+    setShowAwsFaceLiveness(false);
+    setLivenessSessionId('');
+    setShowFaceLoginEmailDialog(true);
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4 overflow-hidden">
@@ -424,284 +168,156 @@ const LoginPage = () => {
           </div>
 
           <AnimatePresence mode="wait">
-            {isRegister ? (
-              // Registration multi-step form
-              <motion.div key="register">
-                <form onSubmit={(e) => e.preventDefault()} className="space-y-6 h-48">
-                  <AnimatePresence initial={false} custom={direction} mode="wait">
-                    <motion.div
-                      key={page}
-                      custom={direction}
-                      variants={variants}
-                      initial="enter"
-                      animate="center"
-                      exit="exit"
-                      transition={{
-                        x: { type: 'spring', stiffness: 300, damping: 30 },
-                        opacity: { duration: 0.2 },
-                      }}
-                    >
-                      <Step
-                        {...registrationSteps[regStep]}
-                        register={registerFormRegister}
-                        errors={registerErrors}
-                        trigger={triggerRegister}
-                        otpRegister={otpFormRegister}
-                        otpErrors={otpErrors}
-                      />
-                    </motion.div>
-                  </AnimatePresence>
-                </form>
-
-                {(registerError || verifyError) && (
-                  <div className="text-red-500 text-sm text-center mt-4">
-                    {/* @ts-ignore */}
-                    {registerError?.data?.message || verifyError?.data?.message || 'Đã có lỗi xảy ra'}
-                  </div>
-                )}
-
-                <div className="mt-6 flex items-center justify-between">
-                  <button
-                    onClick={handlePrevStep}
-                    disabled={regStep === 0}
-                    className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
-                  >
-                    Quay lại
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNextStep}
-                    disabled={isRegistering || isVerifying}
-                    className="flex items-center justify-center py-3 px-6 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400"
-                  >
-                    {isRegistering || isVerifying ? (
-                      <Loader2 className="animate-spin" />
-                    ) : (
-                      <>
-                        {regStep === 3 ? 'Hoàn tất' : 'Tiếp theo'}
-                        <ArrowRight className="ml-2 w-5 h-5" />
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div className="mt-6 text-center">
-                  <button onClick={() => setIsRegister(false)} className="text-sm text-blue-600 hover:underline">
-                    Đã có tài khoản? Đăng nhập
-                  </button>
-                </div>
+            {registrationOtpPending ? (
+              <motion.div key="register-otp" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <OtpVerificationForm
+                  email={registrationEmail}
+                  onSubmit={onRegisterOtpSubmit}
+                  isLoading={isVerifying}
+                  error={verifyError}
+                  onBack={() => {
+                    setRegistrationOtpPending(false);
+                    setRegistrationEmail('');
+                  }}
+                />
+              </motion.div>
+            ) : isRegister ? (
+              <motion.div key="register" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <RegisterForm
+                  onSubmit={onRegisterSubmit}
+                  isLoading={isRegistering}
+                  error={registerError}
+                  onLoginClick={() => setIsRegister(false)}
+                />
               </motion.div>
             ) : isLoginOtpPending ? (
-              // Login OTP Verification
               <motion.div key="login-otp" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <form onSubmit={handleLoginOtpSubmit(onLoginOtpSubmit)} className="space-y-6">
-                  <div>
-                    <label
-                      htmlFor="login-otp"
-                      className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      <ShieldCheck className="w-5 h-5" />
-                      <div>
-                        <div>Nhập mã OTP</div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400 font-normal">Mã xác thực đã được gửi đến {loginEmail}</div>
-                      </div>
-                    </label>
-                    <input
-                      id="login-otp"
-                      type="text"
-                      placeholder="XXXXXX"
-                      {...loginOtpFormRegister('otp')}
-                      className="mt-4 block w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border border-transparent rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                      maxLength={6}
-                    />
-                    {loginOtpErrors.otp && <p className="mt-1 text-sm text-red-500">{loginOtpErrors.otp.message}</p>}
-                  </div>
-
-                  {(verifyLoginOtpError || loginError) && (
-                    <div className="text-red-500 text-sm text-center">
-                      {/* @ts-ignore */}
-                      {verifyLoginOtpError?.data?.message || loginError?.data?.message || 'Đã có lỗi xảy ra'}
-                    </div>
-                  )}
-
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsLoginOtpPending(false);
-                        resetLoginForm();
-                      }}
-                      className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                    >
-                      Quay lại
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isVerifyingLoginOtp}
-                      className="flex-1 flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400"
-                    >
-                      {isVerifyingLoginOtp ? (
-                        <Loader2 className="animate-spin" />
-                      ) : (
-                        <>
-                          Xác nhận
-                          <ArrowRight className="ml-2 w-5 h-5" />
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
-            ) : showFaceCamera ? (
-              // Face Camera
-              <motion.div key="face-camera" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <div className="space-y-4">
-                  <div style={{ 
-                    backgroundColor: '#000', 
-                    borderRadius: '8px', 
-                    overflow: 'hidden',
-                    border: '2px solid #e5e7eb',
-                    height: '320px',
-                    width: '100%',
-                    position: 'relative'
-                  }}>
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      muted
-                      playsInline
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover'
-                      }}
-                    />
-                  </div>
-                  <canvas ref={canvasRef} className="hidden" width={320} height={240} />
-
-                  <div className="text-center text-sm text-gray-600 dark:text-gray-400">
-                    Căn chỉnh khuôn mặt của bạn vào khung hình rồi nhấn "Chụp"
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={cancelFaceCamera}
-                      className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                    >
-                      Hủy
-                    </button>
-                    <button
-                      type="button"
-                      onClick={captureFace}
-                      disabled={isFaceLogging}
-                      className="flex-1 flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400"
-                    >
-                      {isFaceLogging ? (
-                        <Loader2 className="animate-spin" />
-                      ) : (
-                        <>
-                          <Camera className="w-4 h-4 mr-2" />
-                          Chụp
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
+                <OtpVerificationForm
+                  email={loginEmail}
+                  onSubmit={onLoginOtpSubmit}
+                  isLoading={isVerifyingLoginOtp}
+                  error={verifyLoginOtpError}
+                  onBack={() => setIsLoginOtpPending(false)}
+                />
               </motion.div>
             ) : (
-              // Login form
               <motion.div key="login" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-6">
+                <LoginForm
+                  onSubmit={onLoginSubmit}
+                  isLoading={isLoggingIn}
+                  error={loginError}
+                  onRegisterClick={() => setIsRegister(true)}
+                />
 
-                  <div>
-                    <label
-                      htmlFor="email"
-                      className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      Email
-                    </label>
-                    <input
-                      id="email"
-                      type="email"
-                      {...loginFormRegister('email')}
-                      className="mt-1 block w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border border-transparent rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                    />
-                    {loginErrors.email && <p className="mt-1 text-sm text-red-500">{loginErrors.email.message}</p>}
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="password"
-                      className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      Mật khẩu
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="password"
-                        type={showLoginPassword ? 'text' : 'password'}
-                        {...loginFormRegister('password')}
-                        className="mt-1 block w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border border-transparent rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowLoginPassword(!showLoginPassword)}
-                        className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600"
-                      >
-                        {showLoginPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                      </button>
+                {/* Face Login Divider */}
+                <div className="mt-6 mb-6">
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
                     </div>
-                    {loginErrors.password && <p className="mt-1 text-sm text-red-500">{loginErrors.password.message}</p>}
-                  </div>
-
-                  {loginError && (
-                    <div className="text-red-500 text-sm text-center">
-                      {/* @ts-ignore */}
-                      {loginError?.data?.message || 'Đã có lỗi xảy ra'}
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">hoặc</span>
                     </div>
-                  )}
-
-                  <div>
-                    <button
-                      type="submit"
-                      disabled={isLoggingIn}
-                      className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400"
-                    >
-                      {isLoggingIn ? (
-                        <Loader2 className="animate-spin" />
-                      ) : (
-                        <>
-                          Đăng nhập
-                          <ArrowRight className="ml-2 w-5 h-5" />
-                        </>
-                      )}
-                    </button>
                   </div>
-
-                  {/* Face Login Button */}
-                  <button
-                    type="button"
-                    onClick={startFaceCamera}
-                    disabled={isFaceLogging}
-                    className="w-full flex justify-center items-center gap-2 py-3 px-4 border-2 border-blue-600 rounded-lg text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition disabled:opacity-50"
-                  >
-                    <Camera className="w-4 h-4" />
-                    {isFaceLogging ? 'Đang xử lý...' : 'Đăng nhập bằng khuôn mặt'}
-                  </button>
-                </form>
-                <div className="mt-6 text-center">
-                  <button onClick={() => setIsRegister(true)} className="text-sm text-blue-600 hover:underline">
-                    Chưa có tài khoản? Đăng ký
-                  </button>
                 </div>
+
+                {/* Face Login Button */}
+                <button
+                  onClick={() => setShowFaceLoginEmailDialog(true)}
+                  className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium flex items-center justify-center gap-2"
+                >
+                  🔐 Đăng nhập bằng khuôn mặt
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Face Login Email Dialog */}
+      <AnimatePresence>
+        {showFaceLoginEmailDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 backdrop-blur-md bg-opacity-50 flex items-center justify-center z-50"
+            onClick={() => setShowFaceLoginEmailDialog(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Đăng nhập bằng khuôn mặt
+                </h3>
+                <button
+                  onClick={() => setShowFaceLoginEmailDialog(false)}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Nhập email để xác minh danh tính của bạn.
+              </p>
+
+              <input
+                type="email"
+                value={faceLoginEmail}
+                onChange={(e) => setFaceLoginEmail(e.target.value)}
+                placeholder="Nhập email"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    startFaceLogin();
+                  }
+                }}
+              />
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowFaceLoginEmailDialog(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={startFaceLogin}
+                  disabled={isFaceLoginLoading}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isFaceLoginLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Đang xử lý...
+                    </>
+                  ) : (
+                    'Tiếp tục'
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* AWS Face Liveness Modal */}
+      <AnimatePresence>
+        {showAwsFaceLiveness && livenessSessionId && (
+          <AwsFaceLivenessComponent
+            sessionId={livenessSessionId}
+            region="us-east-1"
+            onSuccess={handleFaceLivenessSuccess}
+            onCancel={cancelFaceLiveness}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

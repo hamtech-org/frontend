@@ -35,6 +35,12 @@ const authSlice = createSlice({
     setUser: (state, action: PayloadAction<IUser>) => {
       state.user = action.payload;
     },
+    setCredentials: (state, action: PayloadAction<{ user: IUser; accessToken: string }>) => {
+      state.user = action.payload.user;
+      state.accessToken = action.payload.accessToken;
+      state.isAuthenticated = true;
+      localStorage.setItem('accessToken', action.payload.accessToken);
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -73,32 +79,20 @@ const authSlice = createSlice({
       )
       .addMatcher(
         authApi.endpoints.login.matchFulfilled,
-        (state, { payload }: PayloadAction<ApiSuccessResponse<ILoginResponse>>) => {
-          const { accessToken, refreshToken } = payload.data;
-          if (accessToken && refreshToken) {
-            state.accessToken = accessToken;
-            state.refreshToken = refreshToken;
-            state.isAuthenticated = true;
-            localStorage.setItem('accessToken', accessToken);
-            localStorage.setItem('refreshToken', refreshToken);
-          }
+        (state) => {
+          // login endpoint returns {message} only, OTP verification happens next
+          state.isLoading = false;
         }
       )
       .addMatcher(
         authApi.endpoints.register.matchFulfilled,
-        (state, { payload }: PayloadAction<ApiSuccessResponse<ILoginResponse>>) => {
-          const { accessToken, refreshToken } = payload.data;
-          if (accessToken && refreshToken) {
-            state.accessToken = accessToken;
-            state.refreshToken = refreshToken;
-            state.isAuthenticated = true;
-            localStorage.setItem('accessToken', accessToken);
-            localStorage.setItem('refreshToken', refreshToken);
-          }
+        (state) => {
+          // register endpoint returns {message} only, email verification happens next
+          state.isLoading = false;
         }
       );
   },
 });
 
-export const { logout, setUser } = authSlice.actions;
+export const { logout, setUser, setCredentials } = authSlice.actions;
 export default authSlice.reducer;
