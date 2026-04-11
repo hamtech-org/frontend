@@ -1,4 +1,13 @@
-export type MessageType = 'text' | 'image' | 'video' | 'file' | 'sticker' | 'emoji' | 'location' | 'poll' | 'schedule';
+export type MessageType =
+  | 'text'
+  | 'image'
+  | 'video'
+  | 'file'
+  | 'sticker'
+  | 'emoji'
+  | 'location'
+  | 'poll'
+  | 'schedule';
 export type MessageStatus = 'sent' | 'delivered' | 'read';
 export type ConversationType = 'direct' | 'group';
 
@@ -23,6 +32,7 @@ export interface IMessage {
   messageId: string;
   conversationId: string;
   senderId: string;
+  senderDisplayName?: string | null;
   type: MessageType;
   content: string;
   mediaUrl: string | null;
