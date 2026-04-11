@@ -89,8 +89,8 @@ export function ChatMessageList({
                   <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-indigo-500 flex items-center justify-center shrink-0 text-white text-xs font-bold shadow-sm mb-0.5">
                     {(msg.senderDisplayName ?? msg.senderId).trim().slice(0, 1).toUpperCase()}
                   </div>
-                ) : (
-                  <div className="w-8 shrink-0" />
+                ) : isMe ? null : (
+                  <div className="w-8 shrink-0" aria-hidden />
                 )}
 
                 <div
