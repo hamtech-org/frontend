@@ -69,6 +69,7 @@ const App: React.FC = () => {
   const isGuestRoute = GUEST_ROUTES.includes(location.pathname);
   const isCallRoute = location.pathname === '/call';
   const isChatRoute = location.pathname.startsWith('/chat');
+  const routeTransitionKey = isChatRoute ? 'chat' : location.pathname;
 
   if (isGuestRoute) {
     return (
@@ -342,7 +343,7 @@ const App: React.FC = () => {
         <div className={cn("flex-1 relative", isChatRoute ? "overflow-hidden" : "overflow-y-auto")}>
           <AnimatePresence mode="wait">
             <motion.div
-              key={location.pathname}
+              key={routeTransitionKey}
               initial={{ opacity: 0, x: 10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
@@ -354,6 +355,7 @@ const App: React.FC = () => {
                   <Route path="/" element={<HomePage />} />
                   <Route path="/community" element={<ContactsPage />} />
                   <Route path="/studio" element={<StudioPage />} />
+                  <Route path="/chat/:conversationId" element={<ChatPage />} />
                   <Route path="/chat" element={<ChatPage />} />
                   <Route path="/search" element={<SearchPage />} />
                   <Route path="/analytics" element={<AdminAnalytics />} />

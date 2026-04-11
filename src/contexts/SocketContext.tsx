@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { socketService } from '@/services/socket';
 import { useAuth } from '@/hooks/useAuth';
+import { GlobalChatSocketBridge } from '@/components/GlobalChatSocketBridge';
 
 interface SocketContextValue {
   isConnected: boolean;
@@ -23,6 +24,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   return (
     <SocketContext.Provider value={{ isConnected }}>
+      <GlobalChatSocketBridge />
       {children}
     </SocketContext.Provider>
   );

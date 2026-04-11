@@ -6,6 +6,7 @@ class SocketService {
   private socket: Socket | null = null;
 
   connect(token: string): void {
+    this.disconnect();
     this.socket = io(SOCKET_URL, {
       auth: { token },
       transports: ['websocket', 'polling'],
