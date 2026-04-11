@@ -1,11 +1,12 @@
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import type { IConversation, IMessage, ConversationType } from '@/types/chat.types';
+import { createApi } from '@reduxjs/toolkit/query/react';
+import type { IConversation, IMessage } from '@/types/chat.types';
 import type { ApiSuccessResponse } from '@/types/api.types';
+import { baseQueryWithReauth } from './baseQuery';
 
 // ─── Request types ─────────────────────────────────────────────────────────────
 
 export interface CreateConversationRequest {
-  type: ConversationType;
+  type: IConversation['type'];
   name?: string;
   memberIds: string[];
 }
@@ -52,14 +53,7 @@ export interface PinMessageRequest {
 
 export const chatApi = createApi({
   reducerPath: 'chatApi',
-  baseQuery: fetchBaseQuery({
-    baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1',
-    prepareHeaders: (headers) => {
-      const token = localStorage.getItem('accessToken');
-      if (token) headers.set('Authorization', `Bearer ${token}`);
-      return headers;
-    },
-  }),
+  baseQuery: baseQueryWithReauth,
   tagTypes: ['Conversations', 'Messages'],
   endpoints: (builder) => ({
     // ─── Queries ──────────────────────────────────────────────────────────
@@ -68,7 +62,10 @@ export const chatApi = createApi({
       providesTags: ['Conversations'],
     }),
 
-    getMessages: builder.query<ApiSuccessResponse<IMessage[]>, { conversationId: string; limit?: number }>({
+    getMessages: builder.query<
+      ApiSuccessResponse<IMessage[]>,
+      { conversationId: string; limit?: number }
+    >({
       query: ({ conversationId, limit }) =>
         `/chat/conversations/${conversationId}/messages${limit ? `?limit=${limit}` : ''}`,
       providesTags: (_result, _error, { conversationId }) => [
@@ -77,7 +74,10 @@ export const chatApi = createApi({
     }),
 
     // ─── Mutations ────────────────────────────────────────────────────────
-    createConversation: builder.mutation<ApiSuccessResponse<IConversation>, CreateConversationRequest>({
+    createConversation: builder.mutation<
+      ApiSuccessResponse<IConversation>,
+      CreateConversationRequest
+    >({
       query: (body) => ({
         url: '/chat/conversations',
         method: 'POST',
