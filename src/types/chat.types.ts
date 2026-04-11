@@ -22,6 +22,7 @@ export interface IConversation {
 }
 
 export interface ILastMessage {
+  messageId?: string;
   content: string;
   senderId: string;
   type: MessageType;
