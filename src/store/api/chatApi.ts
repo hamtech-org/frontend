@@ -72,6 +72,7 @@ export function patchConversationsFromNewMessage(
         senderId: msg.senderId,
         type: msg.type,
         createdAt: msg.createdAt,
+        senderDisplayName: msg.senderDisplayName?.trim() ?? null,
       };
       if (msg.conversationId !== activeConversationId && !alreadySamePreview) {
         conv.unreadCount = (conv.unreadCount ?? 0) + 1;

@@ -60,6 +60,7 @@ const chatSlice = createSlice({
           senderId: msg.senderId,
           type: msg.type,
           createdAt: msg.createdAt,
+          senderDisplayName: msg.senderDisplayName?.trim() ?? null,
         };
         if (state.activeConversationId !== msg.conversationId) {
           conv.unreadCount = (conv.unreadCount ?? 0) + 1;

@@ -1,11 +1,13 @@
 import { motion } from 'motion/react';
 import { ChevronDown, MoreHorizontal, Search, User, UserPlus, Users } from 'lucide-react';
 import type { IConversation } from '@/types/chat.types';
+import { formatConversationListLastPreview } from '@/utils/chatUtils';
 
 type ConversationListPanelProps = {
   conversations: IConversation[];
   convsLoading: boolean;
   activeConversationId: string | null;
+  currentUserId: string;
   onSelectConversation: (conversationId: string) => void;
   formatMessageTime: (createdAt: string) => string;
   onOpenCreateGroup: () => void;
@@ -16,6 +18,7 @@ export function ConversationListPanel({
   conversations,
   convsLoading,
   activeConversationId,
+  currentUserId,
   onSelectConversation,
   formatMessageTime,
   onOpenCreateGroup,
@@ -91,7 +94,7 @@ export function ConversationListPanel({
           const isActive = activeConversationId === conv.conversationId;
           const isGroup = conv.type === 'group';
           const displayName = conv.name ?? 'Hội thoại';
-          const lastMsgText = conv.lastMessage?.content ?? 'Chưa có tin nhắn';
+          const lastMsgText = formatConversationListLastPreview(conv, currentUserId);
           const lastMsgTime = conv.lastMessage?.createdAt ? formatMessageTime(conv.lastMessage.createdAt) : '';
           return (
             <motion.button

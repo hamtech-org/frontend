@@ -514,6 +514,7 @@ export default function ChatPage() {
         conversations={conversations}
         convsLoading={convsLoading}
         activeConversationId={activeConversationId}
+        currentUserId={currentUserId}
         onSelectConversation={handleSelectConversation}
         formatMessageTime={formatMessageTime}
         onOpenCreateGroup={openCreateGroupModal}

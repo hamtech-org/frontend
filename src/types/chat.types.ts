@@ -27,6 +27,7 @@ export interface ILastMessage {
   senderId: string;
   type: MessageType;
   createdAt: string;
+  senderDisplayName?: string | null;
 }
 
 export interface IMessage {
