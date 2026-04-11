@@ -28,7 +28,8 @@ import type { IMessage } from '@/types/chat.types';
 import { formatTime } from '@/utils/formatDate';
 import { decodeJwtUserId } from '@/utils/chatUtils';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
-import { ConversationListPanel } from '@/components/chat/ConversationListPanel';
+import { ConversationListPanel, type ContactsTabId } from '@/components/chat/ConversationListPanel';
+import { AddFriendModal } from '@/components/chat/AddFriendModal';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import { PinnedMessagesBar } from '@/components/chat/PinnedMessagesBar';
 import { ConversationInfoPanel } from '@/components/chat/ConversationInfoPanel';
@@ -169,7 +170,9 @@ export default function ChatPage() {
   const [aiSummaryResult, setAiSummaryResult] = useState('');
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
   const [showContactsManagement, setShowContactsManagement] = useState(false);
-  const [, setContactsTab] = useState<'friends' | 'groups' | 'requests'>('friends');
+  const [contactsTab, setContactsTab] = useState<ContactsTabId>('friends');
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+  const [addFriendQuery, setAddFriendQuery] = useState('');
 
   useEffect(() => {
     dispatch(setActiveConversation(routeConversationId ?? null));
@@ -524,6 +527,13 @@ export default function ChatPage() {
     setGroupName('');
   }, []);
 
+  const handleAddFriendSubmit = useCallback(() => {
+    if (!addFriendQuery.trim()) return;
+    console.info('[chat] Gửi lời mời kết bạn (placeholder):', addFriendQuery.trim());
+    setShowAddFriendModal(false);
+    setAddFriendQuery('');
+  }, [addFriendQuery]);
+
   return (
     <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
       <ChatNavRail
@@ -541,10 +551,16 @@ export default function ChatPage() {
         convsLoading={convsLoading}
         activeConversationId={activeConversationId}
         currentUserId={currentUserId}
+        activeMessages={allMessages}
+        showContactsManagement={showContactsManagement}
+        contactsTab={contactsTab}
+        onContactsTabChange={setContactsTab}
         onSelectConversation={handleSelectConversation}
+        onPickSearchMessage={scrollToMessageBubble}
         formatMessageTime={formatMessageTime}
         onOpenCreateGroup={openCreateGroupModal}
         onOpenMarkRead={() => setShowMarkReadModal(true)}
+        onOpenAddFriend={() => setShowAddFriendModal(true)}
       />
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
@@ -614,6 +630,16 @@ export default function ChatPage() {
       )}
 
       <MarkReadModal open={showMarkReadModal} onClose={() => setShowMarkReadModal(false)} />
+      <AddFriendModal
+        open={showAddFriendModal}
+        query={addFriendQuery}
+        onQueryChange={setAddFriendQuery}
+        onClose={() => {
+          setShowAddFriendModal(false);
+          setAddFriendQuery('');
+        }}
+        onSubmit={handleAddFriendSubmit}
+      />
       <ConfirmModal
         open={messageConfirm !== null}
         title={
