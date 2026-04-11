@@ -7,6 +7,7 @@ import { Upload, Camera, Mail, Phone, FileText, User as UserIcon, Loader2, Check
 import { useGetProfileQuery, useUpdateProfileMutation } from '@/store/api/userApi';
 import { useEnableFaceLoginMutation, useDisableFaceLoginMutation } from '@/store/api/authApi';
 import { apiClient } from '@/services/api';
+import AwsFaceLivenessComponent from '@/components/AwsFaceLivenessComponent';
 
 // ── Validation Schema ──
 const updateProfileSchema = z.object({
@@ -31,10 +32,12 @@ const ProfilePage: React.FC = () => {
     return saved !== null ? saved === 'true' : false; // Default to false if not set
   });
   const [livenessSessionId, setLivenessSessionId] = useState('');
-  const [showFaceCamera, setShowFaceCamera] = useState(false);
+  const [showAwsFaceLiveness, setShowAwsFaceLiveness] = useState(false);
+  const [passwordDialog, setPasswordDialog] = useState<{ show: boolean; password: string }>({
+    show: false,
+    password: '',
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const user = profileData?.data;
 
@@ -111,9 +114,9 @@ const ProfilePage: React.FC = () => {
 
   const startFaceCamera = async () => {
     try {
-      // Step 1: Create liveness session for anti-spoofing verification
+      // Step 1: Create liveness session with AWS
       const livenessResponse = await apiClient.post('/auth/face-liveness/start', {});
-      const sessionId = livenessResponse.data?.sessionId;
+      const sessionId = livenessResponse.data?.data?.sessionId;
 
       if (!sessionId) {
         setMessage({
@@ -122,85 +125,91 @@ const ProfilePage: React.FC = () => {
         });
         return;
       }
-
       setLivenessSessionId(sessionId);
-
-      // Step 2: Request camera access
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: 'user',
-          width: { ideal: 320 },
-          height: { ideal: 240 }
-        },
-      });
-      
-      // Open modal first to mount video element
-      setShowFaceCamera(true);
-      
-      // Wait for video ref to be available after render
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          // Ensure video plays
-          videoRef.current.play().catch((err) => {
-            console.error('Error playing video:', err);
-          });
-        }
-      }, 100);
+      setShowAwsFaceLiveness(true);
     } catch (err) {
-      console.error('Failed to access camera:', err);
-      setShowFaceCamera(false);
       setMessage({
         type: 'error',
-        text: 'Không thể truy cập camera. Vui lòng kiểm tra quyền của ứng dụng.',
+        text: 'Không thể khởi tạo phiên xác thực khuôn mặt. Vui lòng thử lại.',
       });
     }
   };
 
-  const captureFaceAndEnable = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-
-    const context = canvasRef.current.getContext('2d');
-    if (!context) return;
-
-    context.drawImage(videoRef.current, 0, 0, 320, 240);
-    const imageData = canvasRef.current.toDataURL('image/jpeg', 0.8);
-
-    // Stop camera
-    const stream = videoRef.current.srcObject as MediaStream;
-    stream?.getTracks().forEach((track) => track.stop());
-    setShowFaceCamera(false);
-
+  const handleAwsFaceLivenessSuccess = async () => {
     try {
-      await enableFaceLogin({ image: imageData, livenessSessionId }).unwrap();
+      // AWS has verified liveness and extracted reference image
+      // Now complete enablement with previously entered password
+      await enableFaceLogin({ 
+        password: passwordDialog.password, 
+        livenessSessionId 
+      }).unwrap();
+      
       setFaceLoginEnabled(true);
       setLivenessSessionId('');
+      setShowAwsFaceLiveness(false);
+      setPasswordDialog({ show: false, password: '' });
+      
       setMessage({
         type: 'success',
         text: 'Đăng nhập bằng khuôn mặt đã được bật!',
       });
       setTimeout(() => setMessage(null), 3000);
-    } catch (err: any) {
-      console.error('Failed to enable face login:', err);
+    } catch (error) {
+      // Close modals and turn off toggle on failure
+      setShowAwsFaceLiveness(false);
+      setLivenessSessionId('');
+      setFaceLoginEnabled(false);
+      
+      // Show error message
+      const errorMsg = 
+        (error as any)?.data?.message || 
+        'Có lỗi xảy ra khi bật đăng nhập bằng khuôn mặt. Vui lòng thử lại.';
       setMessage({
         type: 'error',
-        text: err?.data?.message || 'Có lỗi xảy ra khi bật đăng nhập bằng khuôn mặt',
+        text: errorMsg,
       });
     }
   };
 
-  const cancelFaceCamera = () => {
-    if (videoRef.current) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream?.getTracks().forEach((track) => track.stop());
+  const handlePasswordConfirm = async () => {
+    try {
+      if (!passwordDialog.password.trim()) {
+        setMessage({
+          type: 'error',
+          text: 'Vui lòng nhập mật khẩu',
+        });
+        return;
+      }
+
+      // Password verified locally, close dialog (but KEEP password in state for liveness success)
+      // Don't clear password yet - it's needed when liveness succeeds
+      setPasswordDialog({ ...passwordDialog, show: false });
+      await startFaceCamera();
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: 'Có lỗi xảy ra. Vui lòng thử lại.',
+      });
+      setPasswordDialog({ show: false, password: '' });
     }
-    setShowFaceCamera(false);
+  };
+
+  const cancelAwsFaceLiveness = () => {
+    setLivenessSessionId('');
+    setShowAwsFaceLiveness(false);
+    setPasswordDialog({ show: false, password: '' });
+  };
+
+  const cancelPasswordDialog = () => {
+    setPasswordDialog({ show: false, password: '' });
+    setShowAwsFaceLiveness(false);
+    setLivenessSessionId('');
   };
 
   const handleToggleFaceLogin = async () => {
     if (!faceLoginEnabled) {
-      // Enable face login - open camera
-      await startFaceCamera();
+      // Enable face login - show password verification first
+      setPasswordDialog({ show: true, password: '' });
     } else {
       // Disable face login
       try {
@@ -212,7 +221,6 @@ const ProfilePage: React.FC = () => {
         });
         setTimeout(() => setMessage(null), 3000);
       } catch (err: any) {
-        console.error('Failed to disable face login:', err);
         setMessage({
           type: 'error',
           text: err?.data?.message || 'Có lỗi xảy ra khi tắt đăng nhập bằng khuôn mặt',
@@ -516,69 +524,87 @@ const ProfilePage: React.FC = () => {
         </motion.div>
       </div>
 
-      {/* Face Camera Modal */}
+      {/* AWS Face Liveness Modal */}
       <AnimatePresence>
-        {showFaceCamera && (
+        {showAwsFaceLiveness && livenessSessionId && (
+          <AwsFaceLivenessComponent
+            sessionId={livenessSessionId}
+            region="us-east-1"
+            onSuccess={handleAwsFaceLivenessSuccess}
+            onCancel={cancelAwsFaceLiveness}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Password Verification Dialog */}
+      <AnimatePresence>
+        {passwordDialog.show && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 backdrop-blur-sm bg-opacity-20 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 backdrop-blur-md bg-opacity-50 flex items-center justify-center z-50"
+            onClick={cancelPasswordDialog}
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
             >
-              {/* Modal Header */}
-              <div className="bg-gradient-to-r from-purple-500 to-pink-600 px-6 py-4">
-                <h2 className="text-xl font-bold text-white">Chụp ảnh khuôn mặt</h2>
-                <p className="text-purple-100 text-sm mt-1">Căn chỉnh khuôn mặt vào khung hình rồi nhấn "Chụp"</p>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Xác thực mật khẩu
+                </h3>
+                <button
+                  onClick={cancelPasswordDialog}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              {/* Camera Feed */}
-              <div className="p-6 space-y-4">
-                <div className="bg-black rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    width={320}
-                    height={240}
-                    className="w-full aspect-video object-cover"
-                  />
-                </div>
-                <canvas ref={canvasRef} className="hidden" width={320} height={240} />
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Nhập mật khẩu của bạn để bảo mật tài khoản trước khi bật đăng nhập bằng khuôn mặt.
+              </p>
 
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={cancelFaceCamera}
-                    className="flex-1 py-3 px-4 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={captureFaceAndEnable}
-                    disabled={isEnablingFaceLogin}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-medium rounded-lg transition"
-                  >
-                    {isEnablingFaceLogin ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Đang xử lý...
-                      </>
-                    ) : (
-                      <>
-                        <Camera className="w-4 h-4" />
-                        Chụp
-                      </>
-                    )}
-                  </button>
-                </div>
+              <input
+                type="password"
+                value={passwordDialog.password}
+                onChange={(e) =>
+                  setPasswordDialog({ ...passwordDialog, password: e.target.value })
+                }
+                placeholder="Nhập mật khẩu"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    handlePasswordConfirm();
+                  }
+                }}
+              />
+
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelPasswordDialog}
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={handlePasswordConfirm}
+                  disabled={isEnablingFaceLogin}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isEnablingFaceLogin ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Đang xử lý...
+                    </>
+                  ) : (
+                    'Tiếp tục'
+                  )}
+                </button>
               </div>
             </motion.div>
           </motion.div>

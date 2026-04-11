@@ -16,8 +16,6 @@ interface LoginFormProps {
   isLoading: boolean;
   error: any;
   onRegisterClick: () => void;
-  onFaceLoginClick: (email: string) => void;
-  isFaceLoggingIn: boolean;
 }
 
 export const LoginForm = ({
@@ -25,8 +23,6 @@ export const LoginForm = ({
   isLoading,
   error,
   onRegisterClick,
-  onFaceLoginClick,
-  isFaceLoggingIn,
 }: LoginFormProps) => {
   const [showPassword, setShowPassword] = useState(false);
 
@@ -34,20 +30,11 @@ export const LoginForm = ({
     register,
     handleSubmit,
     formState: { errors },
-    watch,
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
   });
 
-  const emailValue = watch('email');
 
-  const handleFaceLogin = () => {
-    if (!emailValue) {
-      alert('Vui lòng nhập email trước khi sử dụng đăng nhập bằng khuôn mặt');
-      return;
-    }
-    onFaceLoginClick(emailValue);
-  };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -112,15 +99,6 @@ export const LoginForm = ({
             <ArrowRight className="ml-2 w-5 h-5" />
           </>
         )}
-      </button>
-
-      <button
-        type="button"
-        onClick={handleFaceLogin}
-        disabled={isFaceLoggingIn}
-        className="w-full flex justify-center items-center gap-2 py-3 px-4 border-2 border-blue-600 rounded-lg text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition disabled:opacity-50"
-      >
-        {isFaceLoggingIn ? 'Đang xử lý...' : 'Đăng nhập bằng khuôn mặt'}
       </button>
 
       <div className="text-center">

@@ -21,12 +21,11 @@ export interface ILoginResponse extends IAuthTokens {
 
 export interface IFaceLoginRequest {
   email: string;
-  image: string;
   livenessSessionId: string;
 }
 
 export interface IEnableFaceLoginRequest {
-  image: string;
+  password: string;
   livenessSessionId: string;
 }
 

@@ -1,4 +1,4 @@
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import { createApi } from '@reduxjs/toolkit/query/react';
 import type {
   ILoginRequest,
   IRegisterRequest,
@@ -12,17 +12,11 @@ import type {
   IVerifyLoginOtpRequest,
 } from '@/types/auth.types';
 import type { ApiSuccessResponse } from '@/types/api.types';
+import { baseQueryWithReauth } from './baseQuery';
 
 export const authApi = createApi({
   reducerPath: 'authApi',
-  baseQuery: fetchBaseQuery({
-    baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1',
-    prepareHeaders: (headers) => {
-      const token = localStorage.getItem('accessToken');
-      if (token) headers.set('Authorization', `Bearer ${token}`);
-      return headers;
-    },
-  }),
+  baseQuery: baseQueryWithReauth,
   endpoints: (builder) => ({
     login: builder.mutation<ApiSuccessResponse<{ message: string }>, ILoginRequest>({
       query: (body) => ({ url: '/auth/login', method: 'POST', body }),

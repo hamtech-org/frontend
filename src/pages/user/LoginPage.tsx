@@ -1,47 +1,40 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useLoginMutation, useVerifyLoginOtpMutation, useRegisterMutation, useVerifyEmailMutation, useFaceLoginMutation } from '@/store/api/authApi';
-import logo from '@/assets/images/logo_tron.png';
-import { LoginForm, type LoginFormValues, RegisterForm, type RegisterFormValues, OtpVerificationForm, type OtpFormValues, FaceCameraModal } from './components';
 import { apiClient } from '@/services/api';
+import AwsFaceLivenessComponent from '@/components/AwsFaceLivenessComponent';
+import logo from '@/assets/images/logo_tron.png';
+import { LoginForm, type LoginFormValues, RegisterForm, type RegisterFormValues, OtpVerificationForm, type OtpFormValues } from '../../components';
+import { X, Loader2 } from 'lucide-react';
 
 const LoginPage = () => {
   const [isRegister, setIsRegister] = useState(false);
-  const [showFaceCamera, setShowFaceCamera] = useState(false);
-  const [faceLoginEmail, setFaceLoginEmail] = useState('');
-  const [livenessSessionId, setLivenessSessionId] = useState('');
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [isVideoReady, setIsVideoReady] = useState(false);
   const [isLoginOtpPending, setIsLoginOtpPending] = useState(false);
   const [registrationOtpPending, setRegistrationOtpPending] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [registrationEmail, setRegistrationEmail] = useState('');
-  const [recentEmails, setRecentEmails] = useState<string[]>(() => {
-    const stored = localStorage.getItem('recentEmails');
-    return stored ? JSON.parse(stored) : [];
-  });
+
+  // Face login states
+  const [showFaceLoginEmailDialog, setShowFaceLoginEmailDialog] = useState(false);
+  const [faceLoginEmail, setFaceLoginEmail] = useState('');
+  const [livenessSessionId, setLivenessSessionId] = useState('');
+  const [showAwsFaceLiveness, setShowAwsFaceLiveness] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const navigate = useNavigate();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Mutations
   const [login, { isLoading: isLoggingIn, error: loginError }] = useLoginMutation();
   const [verifyLoginOtp, { isLoading: isVerifyingLoginOtp, error: verifyLoginOtpError }] = useVerifyLoginOtpMutation();
   const [register, { isLoading: isRegistering, error: registerError }] = useRegisterMutation();
   const [verifyEmail, { isLoading: isVerifying, error: verifyError }] = useVerifyEmailMutation();
-  const [faceLogin, { isLoading: isFaceLogging }] = useFaceLoginMutation();
+  const [faceLogin, { isLoading: isFaceLoginLoading }] = useFaceLoginMutation();
 
   // Login handlers
   const onLoginSubmit = async (data: LoginFormValues) => {
     try {
       await login(data).unwrap();
-      setRecentEmails((prev) => {
-        const updated = [data.email, ...prev.filter((e) => e !== data.email)].slice(0, 3);
-        localStorage.setItem('recentEmails', JSON.stringify(updated));
-        return updated;
-      });
       setLoginEmail(data.email);
       setIsLoginOtpPending(true);
     } catch (err) {
@@ -64,12 +57,18 @@ const LoginPage = () => {
   // Register handlers
   const onRegisterSubmit = async (data: RegisterFormValues) => {
     try {
+      console.log('📝 [DEBUG] onRegisterSubmit called with email:', data.email);
       const { confirmPassword, ...registerData } = data;
-      await register(registerData).unwrap();
+      console.log('📝 [DEBUG] Sending register request...');
+      const result = await register(registerData).unwrap();
+      console.log('✅ [DEBUG] Register successful:', result);
       setRegistrationEmail(data.email);
+      console.log('📝 [DEBUG] Setting registrationOtpPending to true');
       setRegistrationOtpPending(true);
     } catch (err) {
-      console.error('Failed to register:', err);
+      console.error('❌ [DEBUG] Failed to register:', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('Error details:', { message: errorMessage });
     }
   };
 
@@ -86,170 +85,66 @@ const LoginPage = () => {
   };
 
   // Face login handlers
-  const startFaceCamera = async (email: string) => {
-    console.log('🎬 [DEBUG] startFaceCamera called with email:', email);
-    setFaceLoginEmail(email);
+  const startFaceLogin = async () => {
     try {
-      // Step 1: Create liveness session for anti-spoofing verification
-      console.log('🤖 [DEBUG] Creating liveness session...');
+      if (!faceLoginEmail.trim()) {
+        setMessage({ type: 'error', text: 'Vui lòng nhập email' });
+        return;
+      }
+
+      // Create liveness session
       const livenessResponse = await apiClient.post('/auth/face-liveness/start', {});
-      const sessionId = livenessResponse.data?.sessionId;
-      
+      const sessionId = livenessResponse.data?.data?.sessionId;
+
       if (!sessionId) {
-        console.error('❌ [DEBUG] Failed to create liveness session');
-        alert('Không thể khởi tạo phiên xác thực khuôn mặt. Vui lòng thử lại.');
+        setMessage({
+          type: 'error',
+          text: 'Không thể khởi tạo phiên xác thực khuôn mặt. Vui lòng thử lại.',
+        });
         return;
       }
 
-      console.log('✅ [DEBUG] Liveness session created:', sessionId);
       setLivenessSessionId(sessionId);
-
-      // Step 2: Request camera permission
-      console.log('📹 [DEBUG] Requesting camera permission with constraints:', {
-        video: { facingMode: 'user' },
-        audio: false,
-      });
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: false,
-      });
-
-      console.log('✅ [DEBUG] Camera stream obtained:', {
-        id: stream.id,
-        active: stream.active,
-        tracks: stream.getTracks().length,
-        videoTracks: stream.getVideoTracks().length,
-      });
-
-      console.log('🎬 [DEBUG] Setting cameraStream state');
-      setCameraStream(stream);
-      
-      console.log('🎬 [DEBUG] Setting showFaceCamera to true, isVideoReady reset to false');
-      setIsVideoReady(false);
-      setShowFaceCamera(true);
+      setShowFaceLoginEmailDialog(false);
+      setShowAwsFaceLiveness(true);
     } catch (err) {
-      console.error('❌ [DEBUG] Failed to start Face Camera:', err);
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error('Error details:', { type: err instanceof Error ? err.name : 'unknown', message: errorMessage });
-      alert('Không thể truy cập camera. Vui lòng kiểm tra quyền của ứng dụng.');
+      setMessage({
+        type: 'error',
+        text: 'Không thể khởi tạo phiên xác thực khuôn mặt. Vui lòng thử lại.',
+      });
     }
   };
 
-  const captureFace = async () => {
-    console.log('📸 [DEBUG] captureFace called with email:', faceLoginEmail);
-    if (!videoRef.current || !canvasRef.current) {
-      console.error('❌ [DEBUG] videoRef or canvasRef is missing');
-      return;
-    }
-
+  const handleFaceLivenessSuccess = async () => {
     try {
-      console.log('🖼️ [DEBUG] Getting canvas context');
-      const context = canvasRef.current.getContext('2d');
-      if (!context) {
-        console.error('❌ [DEBUG] Could not get 2D context from canvas');
-        return;
-      }
+      await faceLogin({
+        email: faceLoginEmail,
+        livenessSessionId,
+      }).unwrap();
 
-      console.log('📐 [DEBUG] Drawing image from video to canvas');
-      context.drawImage(videoRef.current, 0, 0, 320, 240);
-      
-      const imageData = canvasRef.current.toDataURL('image/jpeg', 0.8);
-      console.log('✅ [DEBUG] Image data created, length:', imageData.length);
-
-      console.log('🎬 [DEBUG] Closing camera modal');
-      setShowFaceCamera(false);
-
-      console.log('🛑 [DEBUG] Stopping camera tracks');
-      cameraStream?.getTracks().forEach((track) => {
-        console.log('Stopping track:', { kind: track.kind, enabled: track.enabled });
-        track.stop();
-      });
-      setCameraStream(null);
-      setIsVideoReady(false);
-
-      console.log('📤 [DEBUG] Sending face login request with email:', faceLoginEmail);
-      console.log('🎭 [DEBUG] Including liveness session:', livenessSessionId);
-      await faceLogin({ email: faceLoginEmail, image: imageData, livenessSessionId }).unwrap();
-      console.log('✅ [DEBUG] Face login successful, navigating home');
+      setShowAwsFaceLiveness(false);
+      setLivenessSessionId('');
+      setFaceLoginEmail('');
       navigate('/');
-    } catch (err) {
-      console.error('❌ [DEBUG] Face login failed:', err);
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error('Error details:', { message: errorMessage });
-      alert('Đăng nhập bằng khuôn mặt không thành công. Vui lòng thử lại.');
+    } catch (error: any) {
+      setShowAwsFaceLiveness(false);
+      setLivenessSessionId('');
+
+      const errorMsg =
+        error?.data?.message ||
+        'Đăng nhập bằng khuôn mặt thất bại. Vui lòng thử lại.';
+      setMessage({
+        type: 'error',
+        text: errorMsg,
+      });
     }
   };
 
-  const cancelFaceCamera = () => {
-    console.log('❌ [DEBUG] cancelFaceCamera called');
-    console.log('🛑 [DEBUG] Stopping all camera tracks');
-    cameraStream?.getTracks().forEach((track) => {
-      console.log('Stopping track:', { kind: track.kind, enabled: track.enabled });
-      track.stop();
-    });
-    console.log('📭 [DEBUG] Clearing camera stream state and email');
-    setCameraStream(null);
-    setFaceLoginEmail('');
+  const cancelFaceLiveness = () => {
+    setShowAwsFaceLiveness(false);
     setLivenessSessionId('');
-    console.log('📳 [DEBUG] Resetting isVideoReady');
-    setIsVideoReady(false);
-    console.log('🎬 [DEBUG] Closing camera modal');
-    setShowFaceCamera(false);
+    setShowFaceLoginEmailDialog(true);
   };
-
-  // Wait for video element to be ready before attaching stream
-  useEffect(() => {
-    console.log('⏳ [DEBUG] Stream attachment useEffect triggered:', {
-      showFaceCamera,
-      cameraStreamExists: !!cameraStream,
-      isVideoReady,
-    });
-
-    if (!showFaceCamera || !cameraStream || !isVideoReady) {
-      console.log('⚠️ [DEBUG] not ready to attach stream:', {
-        showFaceCamera,
-        cameraStreamExists: !!cameraStream,
-        isVideoReady,
-      });
-      return;
-    }
-
-    const video = videoRef.current;
-    if (!video) {
-      console.error('❌ [DEBUG] video element not found in ref');
-      return;
-    }
-
-    console.log('🔌 [DEBUG] Attaching stream to video element');
-    video.srcObject = cameraStream;
-    console.log('✅ [DEBUG] Stream attached successfully');
-    console.log('📊 [DEBUG] Video element state after attachment:', {
-      hasStream: !!video.srcObject,
-      paused: video.paused,
-      ended: video.ended,
-      width: video.videoWidth,
-      height: video.videoHeight,
-      readyState: video.readyState,
-      networkState: video.networkState,
-    });
-  }, [showFaceCamera, cameraStream, isVideoReady]);
-
-  // Cleanup stream on unmount
-  useEffect(() => {
-    console.log('🧹 [DEBUG] Cleanup useEffect - setting up cleanup function');
-    return () => {
-      console.log('🧹 [DEBUG] Cleanup running - stopping all tracks');
-      cameraStream?.getTracks().forEach((track) => {
-        console.log('Cleaning up track:', { kind: track.kind, enabled: track.enabled });
-        track.stop();
-      });
-      if (videoRef.current) {
-        console.log('🧹 [DEBUG] Clearing video ref srcObject');
-        videoRef.current.srcObject = null;
-      }
-      console.log('✅ [DEBUG] Cleanup completed');
-    };
-  }, [cameraStream]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4 overflow-hidden">
@@ -273,16 +168,7 @@ const LoginPage = () => {
           </div>
 
           <AnimatePresence mode="wait">
-            {isRegister ? (
-              <motion.div key="register" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <RegisterForm
-                  onSubmit={onRegisterSubmit}
-                  isLoading={isRegistering}
-                  error={registerError}
-                  onLoginClick={() => setIsRegister(false)}
-                />
-              </motion.div>
-            ) : registrationOtpPending ? (
+            {registrationOtpPending ? (
               <motion.div key="register-otp" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <OtpVerificationForm
                   email={registrationEmail}
@@ -295,6 +181,15 @@ const LoginPage = () => {
                   }}
                 />
               </motion.div>
+            ) : isRegister ? (
+              <motion.div key="register" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <RegisterForm
+                  onSubmit={onRegisterSubmit}
+                  isLoading={isRegistering}
+                  error={registerError}
+                  onLoginClick={() => setIsRegister(false)}
+                />
+              </motion.div>
             ) : isLoginOtpPending ? (
               <motion.div key="login-otp" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <OtpVerificationForm
@@ -305,25 +200,6 @@ const LoginPage = () => {
                   onBack={() => setIsLoginOtpPending(false)}
                 />
               </motion.div>
-            ) : showFaceCamera ? (
-              <FaceCameraModal
-                isOpen={showFaceCamera}
-                isLoading={isFaceLogging}
-                onCapture={captureFace}
-                onCancel={cancelFaceCamera}
-                videoRef={videoRef}
-                canvasRef={canvasRef}
-                initialEmail={faceLoginEmail}
-                onEmailChange={(email) => {
-                  console.log('📧 [DEBUG] onEmailChange callback - email changed to:', email);
-                  setFaceLoginEmail(email);
-                  console.log('📧 [DEBUG] faceLoginEmail state updated');
-                }}
-                onVideoReady={() => {
-                  console.log('📞 [DEBUG] onVideoReady callback called from FaceCameraModal');
-                  setIsVideoReady(true);
-                }}
-              />
             ) : (
               <motion.div key="login" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <LoginForm
@@ -331,14 +207,117 @@ const LoginPage = () => {
                   isLoading={isLoggingIn}
                   error={loginError}
                   onRegisterClick={() => setIsRegister(true)}
-                  onFaceLoginClick={startFaceCamera}
-                  isFaceLoggingIn={isFaceLogging}
                 />
+
+                {/* Face Login Divider */}
+                <div className="mt-6 mb-6">
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">hoặc</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Face Login Button */}
+                <button
+                  onClick={() => setShowFaceLoginEmailDialog(true)}
+                  className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium flex items-center justify-center gap-2"
+                >
+                  🔐 Đăng nhập bằng khuôn mặt
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Face Login Email Dialog */}
+      <AnimatePresence>
+        {showFaceLoginEmailDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 backdrop-blur-md bg-opacity-50 flex items-center justify-center z-50"
+            onClick={() => setShowFaceLoginEmailDialog(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Đăng nhập bằng khuôn mặt
+                </h3>
+                <button
+                  onClick={() => setShowFaceLoginEmailDialog(false)}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Nhập email để xác minh danh tính của bạn.
+              </p>
+
+              <input
+                type="email"
+                value={faceLoginEmail}
+                onChange={(e) => setFaceLoginEmail(e.target.value)}
+                placeholder="Nhập email"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    startFaceLogin();
+                  }
+                }}
+              />
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowFaceLoginEmailDialog(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={startFaceLogin}
+                  disabled={isFaceLoginLoading}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isFaceLoginLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Đang xử lý...
+                    </>
+                  ) : (
+                    'Tiếp tục'
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* AWS Face Liveness Modal */}
+      <AnimatePresence>
+        {showAwsFaceLiveness && livenessSessionId && (
+          <AwsFaceLivenessComponent
+            sessionId={livenessSessionId}
+            region="us-east-1"
+            onSuccess={handleFaceLivenessSuccess}
+            onCancel={cancelFaceLiveness}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
