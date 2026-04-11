@@ -1,11 +1,16 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { IConversation, IMessage, MessageStatus } from '@/types/chat.types';
 
+export interface TypingUserEntry {
+  userId: string;
+  displayName: string;
+}
+
 interface ChatState {
   conversations: IConversation[];
   activeConversationId: string | null;
   messages: Record<string, IMessage[]>;
-  typingUsers: Record<string, string[]>;
+  typingUsers: Record<string, TypingUserEntry[]>;
 }
 
 const initialState: ChatState = {
@@ -27,7 +32,10 @@ const chatSlice = createSlice({
       state.activeConversationId = action.payload;
     },
 
-    setMessages: (state, action: PayloadAction<{ conversationId: string; messages: IMessage[] }>) => {
+    setMessages: (
+      state,
+      action: PayloadAction<{ conversationId: string; messages: IMessage[] }>,
+    ) => {
       state.messages[action.payload.conversationId] = action.payload.messages;
     },
 
@@ -38,9 +46,7 @@ const chatSlice = createSlice({
         state.messages[msg.conversationId] = [];
       }
       // Tránh thêm trùng lặp
-      const exists = state.messages[msg.conversationId].some(
-        (m) => m.messageId === msg.messageId,
-      );
+      const exists = state.messages[msg.conversationId].some((m) => m.messageId === msg.messageId);
       if (!exists) {
         state.messages[msg.conversationId].push(msg);
       }
@@ -109,25 +115,31 @@ const chatSlice = createSlice({
     // ─── Typing indicators ────────────────────────────────────────────────
     typingStarted: (
       state,
-      action: PayloadAction<{ conversationId: string; userId: string }>,
+      action: PayloadAction<{
+        conversationId: string;
+        userId: string;
+        displayName?: string | null;
+      }>,
     ) => {
-      const { conversationId, userId } = action.payload;
+      const { conversationId, userId, displayName } = action.payload;
       if (!state.typingUsers[conversationId]) {
         state.typingUsers[conversationId] = [];
       }
-      if (!state.typingUsers[conversationId].includes(userId)) {
-        state.typingUsers[conversationId].push(userId);
+      const list = state.typingUsers[conversationId];
+      const name = displayName?.trim() ?? '';
+      const idx = list.findIndex((e) => e.userId === userId);
+      if (idx >= 0) {
+        if (name) list[idx].displayName = name;
+      } else {
+        list.push({ userId, displayName: name });
       }
     },
 
-    typingStopped: (
-      state,
-      action: PayloadAction<{ conversationId: string; userId: string }>,
-    ) => {
+    typingStopped: (state, action: PayloadAction<{ conversationId: string; userId: string }>) => {
       const { conversationId, userId } = action.payload;
       if (state.typingUsers[conversationId]) {
         state.typingUsers[conversationId] = state.typingUsers[conversationId].filter(
-          (id) => id !== userId,
+          (e) => e.userId !== userId,
         );
       }
     },
@@ -138,17 +150,30 @@ const chatSlice = createSlice({
       if (conv) conv.unreadCount = 0;
     },
 
-    // ─── Xóa tin nhắn khỏi state (optimistic) ────────────────────────────
+    // ─── Soft delete (đồng bộ với DynamoDB isDeleted) ─────────────────────
     messageDeleted: (
       state,
       action: PayloadAction<{ messageId: string; conversationId: string }>,
     ) => {
       const { messageId, conversationId } = action.payload;
-      if (state.messages[conversationId]) {
-        state.messages[conversationId] = state.messages[conversationId].filter(
-          (m) => m.messageId !== messageId,
-        );
+      const messages = state.messages[conversationId];
+      if (!messages) return;
+      const msg = messages.find((m) => m.messageId === messageId);
+      if (msg) {
+        msg.isDeleted = true;
+        msg.content = '';
       }
+    },
+
+    messagePinUpdated: (
+      state,
+      action: PayloadAction<{ messageId: string; conversationId: string; isPinned: boolean }>,
+    ) => {
+      const { messageId, conversationId, isPinned } = action.payload;
+      const messages = state.messages[conversationId];
+      if (!messages) return;
+      const msg = messages.find((m) => m.messageId === messageId);
+      if (msg) msg.isPinned = isPinned;
     },
 
     // Backward-compatible alias
@@ -162,22 +187,28 @@ const chatSlice = createSlice({
         state.messages[msg.conversationId].push(msg);
       }
     },
-
-    setTypingUser: (state, action: PayloadAction<{ conversationId: string; userId: string }>) => {
-      const { conversationId, userId } = action.payload;
+    setTypingUser: (
+      state,
+      action: PayloadAction<{ conversationId: string; userId: string; displayName?: string | null }>,
+    ) => {
+      const { conversationId, userId, displayName } = action.payload;
       if (!state.typingUsers[conversationId]) {
         state.typingUsers[conversationId] = [];
       }
-      if (!state.typingUsers[conversationId].includes(userId)) {
-        state.typingUsers[conversationId].push(userId);
+      const list = state.typingUsers[conversationId];
+      const name = displayName?.trim() ?? '';
+      if (!list.some((e) => e.userId === userId)) {
+        list.push({ userId, displayName: name });
       }
     },
-
-    removeTypingUser: (state, action: PayloadAction<{ conversationId: string; userId: string }>) => {
+    removeTypingUser: (
+      state,
+      action: PayloadAction<{ conversationId: string; userId: string }>,
+    ) => {
       const { conversationId, userId } = action.payload;
       if (state.typingUsers[conversationId]) {
         state.typingUsers[conversationId] = state.typingUsers[conversationId].filter(
-          (id) => id !== userId,
+          (e) => e.userId !== userId,
         );
       }
     },
@@ -199,6 +230,7 @@ export const {
   typingStopped,
   resetUnread,
   messageDeleted,
+  messagePinUpdated,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;
