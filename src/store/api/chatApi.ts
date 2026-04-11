@@ -1,6 +1,7 @@
 import { createApi } from '@reduxjs/toolkit/query/react';
 import type { IConversation, IMessage } from '@/types/chat.types';
 import type { ApiSuccessResponse } from '@/types/api.types';
+import type { AppDispatch } from '@/store/store';
 import { baseQueryWithReauth } from './baseQuery';
 
 // ─── Request types ─────────────────────────────────────────────────────────────
@@ -49,6 +50,36 @@ export interface PinMessageRequest {
   createdAt: string;
 }
 
+/** Cập nhật preview lastMessage + unread trên cache getConversations (gọi sau khi module đã export chatApi). */
+export function patchConversationsFromNewMessage(
+  dispatch: AppDispatch,
+  msg: IMessage,
+  activeConversationId: string | null,
+): void {
+  dispatch(
+    chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+      if (!draft?.data) return;
+      const conv = draft.data.find((c) => c.conversationId === msg.conversationId);
+      if (!conv) return;
+      const alreadySamePreview =
+        conv.lastMessage &&
+        conv.lastMessage.content === msg.content &&
+        conv.lastMessage.senderId === msg.senderId &&
+        conv.lastMessage.createdAt === msg.createdAt;
+      conv.lastMessage = {
+        messageId: msg.messageId,
+        content: msg.content,
+        senderId: msg.senderId,
+        type: msg.type,
+        createdAt: msg.createdAt,
+      };
+      if (msg.conversationId !== activeConversationId && !alreadySamePreview) {
+        conv.unreadCount = (conv.unreadCount ?? 0) + 1;
+      }
+    }),
+  );
+}
+
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 export const chatApi = createApi({
@@ -94,8 +125,15 @@ export const chatApi = createApi({
       }),
       invalidatesTags: (_result, _error, { conversationId }) => [
         { type: 'Messages', id: conversationId },
-        'Conversations',
       ],
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          patchConversationsFromNewMessage(dispatch, data.data, arg.conversationId);
+        } catch {
+          /* gửi thất bại — không patch list */
+        }
+      },
     }),
 
     editMessage: builder.mutation<ApiSuccessResponse<null>, EditMessageRequest>({
@@ -106,6 +144,7 @@ export const chatApi = createApi({
       }),
       invalidatesTags: (_result, _error, { conversationId }) => [
         { type: 'Messages', id: conversationId },
+        'Conversations',
       ],
     }),
 
@@ -117,6 +156,7 @@ export const chatApi = createApi({
       }),
       invalidatesTags: (_result, _error, { conversationId }) => [
         { type: 'Messages', id: conversationId },
+        'Conversations',
       ],
     }),
 
@@ -128,6 +168,7 @@ export const chatApi = createApi({
       }),
       invalidatesTags: (_result, _error, { conversationId }) => [
         { type: 'Messages', id: conversationId },
+        'Conversations',
       ],
     }),
 

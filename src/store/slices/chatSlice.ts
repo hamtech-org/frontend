@@ -51,16 +51,16 @@ const chatSlice = createSlice({
         state.messages[msg.conversationId].push(msg);
       }
 
-      // Cập nhật lastMessage trên conversation
+      // Cập nhật lastMessage / unread chỉ khi tin chưa xử lý (tránh conv+user emit trùng)
       const conv = state.conversations.find((c) => c.conversationId === msg.conversationId);
-      if (conv) {
+      if (conv && !exists) {
         conv.lastMessage = {
+          messageId: msg.messageId,
           content: msg.content,
           senderId: msg.senderId,
           type: msg.type,
           createdAt: msg.createdAt,
         };
-        // Tăng unread nếu không phải conversation đang active
         if (state.activeConversationId !== msg.conversationId) {
           conv.unreadCount = (conv.unreadCount ?? 0) + 1;
         }

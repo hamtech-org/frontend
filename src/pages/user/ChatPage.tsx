@@ -27,7 +27,6 @@ import type { AppDispatch, RootState } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
 import { formatTime } from '@/utils/formatDate';
 import { decodeJwtUserId } from '@/utils/chatUtils';
-import { useChatSocketListeners } from '@/hooks/useChatSocketListeners';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
 import { ConversationListPanel } from '@/components/chat/ConversationListPanel';
 import { ChatHeader } from '@/components/chat/ChatHeader';
@@ -60,6 +59,7 @@ export default function ChatPage() {
     data: conversationsData,
     isLoading: convsLoading,
     isFetching: convsFetching,
+    refetch: refetchConversations,
   } = useGetConversationsQuery();
   const conversations = conversationsData?.data ?? [];
 
@@ -127,7 +127,9 @@ export default function ChatPage() {
     [dispatch],
   );
 
-  useChatSocketListeners(dispatch, patchMessageInCache);
+  useEffect(() => {
+    void refetchConversations();
+  }, [activeConversationId, refetchConversations]);
 
   const [inputText, setInputText] = useState('');
   const messagesContainerRef = useRef<HTMLDivElement>(null);

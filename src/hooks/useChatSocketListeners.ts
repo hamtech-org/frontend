@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { socketService } from '@/services/socket';
 import type { AppDispatch } from '@/store/store';
+import { chatApi, patchConversationsFromNewMessage } from '@/store/api/chatApi';
 import {
   messageReceived,
   messageRecalled,
@@ -12,22 +13,34 @@ import {
 } from '@/store/slices/chatSlice';
 import type { IMessage } from '@/types/chat.types';
 
-type PatchMessageInCache = (conversationId: string, messageId: string, patch: Partial<IMessage>) => void;
+type PatchMessageInCache = (
+  conversationId: string,
+  messageId: string,
+  patch: Partial<IMessage>,
+) => void;
 
 /**
- * Đăng ký lắng nghe socket chat một lần (gọi từ ChatPage).
- * Giữ cleanup timers typing nội bộ hook.
+ * Đăng ký lắng nghe socket chat.
  */
 export function useChatSocketListeners(
   dispatch: AppDispatch,
   patchMessageInCache: PatchMessageInCache,
+  activeConversationId: string | null,
+  socketReady: boolean,
 ): void {
   const typingCleanupTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const activeConversationIdRef = useRef(activeConversationId);
+  activeConversationIdRef.current = activeConversationId;
 
   useEffect(() => {
+    if (!socketReady) return;
+
     const handleNewMessage = (data: unknown) => {
-      dispatch(messageReceived(data as IMessage));
+      const msg = data as IMessage;
+      dispatch(messageReceived(msg));
+      patchConversationsFromNewMessage(dispatch, msg, activeConversationIdRef.current);
     };
+
     const handleRecall = (data: unknown) => {
       const payload = data as { messageId: string; conversationId: string };
       dispatch(messageRecalled(payload));
@@ -35,7 +48,9 @@ export function useChatSocketListeners(
         isRecalled: true,
         content: 'Tin nhắn đã được thu hồi',
       });
+      dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
+
     const handleEdited = (data: unknown) => {
       const { messageId, conversationId, content } = data as {
         messageId: string;
@@ -44,12 +59,16 @@ export function useChatSocketListeners(
       };
       dispatch(messageEdited({ messageId, conversationId, content }));
       patchMessageInCache(conversationId, messageId, { content, isEdited: true });
+      dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
+
     const handleDeleted = (data: unknown) => {
       const { messageId, conversationId } = data as { messageId: string; conversationId: string };
       dispatch(messageDeleted({ messageId, conversationId }));
       patchMessageInCache(conversationId, messageId, { isDeleted: true, content: '' });
+      dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
+
     const handlePinUpdated = (data: unknown) => {
       const { messageId, conversationId, isPinned } = data as {
         messageId: string;
@@ -59,6 +78,7 @@ export function useChatSocketListeners(
       dispatch(messagePinUpdated({ messageId, conversationId, isPinned }));
       patchMessageInCache(conversationId, messageId, { isPinned });
     };
+
     const handleTyping = (data: unknown) => {
       const { userId, conversationId, displayName } = data as {
         userId: string;
@@ -92,5 +112,5 @@ export function useChatSocketListeners(
       Object.values(typingCleanupTimersRef.current).forEach(clearTimeout);
       typingCleanupTimersRef.current = {};
     };
-  }, [dispatch, patchMessageInCache]);
+  }, [dispatch, patchMessageInCache, socketReady]);
 }
