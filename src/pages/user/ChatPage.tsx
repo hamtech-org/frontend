@@ -21,6 +21,8 @@ import {
   messageDeleted,
   messagePinUpdated,
   resetUnread,
+  setReplyingTo,
+  clearReplyingTo,
 } from '@/store/slices/chatSlice';
 import { socketService } from '@/services/socket';
 import type { AppDispatch, RootState } from '@/store/store';
@@ -79,6 +81,7 @@ export default function ChatPage() {
   const typingUsers = useSelector((state: RootState) =>
     activeConversationId ? (state.chat.typingUsers[activeConversationId] ?? []) : [],
   );
+  const replyingTo = useSelector((state: RootState) => state.chat.replyingTo);
 
   const { data: messagesData } = useGetMessagesQuery(
     { conversationId: activeConversationId! },
@@ -309,7 +312,9 @@ export default function ChatPage() {
         conversationId: activeConversationId,
         type: 'text',
         content,
+        replyTo: replyingTo?.messageId,
       }).unwrap();
+      dispatch(clearReplyingTo());
     } catch {
       setInputText(content);
     }
@@ -601,6 +606,7 @@ export default function ChatPage() {
           onTogglePin={handleTogglePinMsg}
           onRecall={handleRecallMsg}
           onDelete={handleDeleteMsg}
+          onReply={(msg) => dispatch(setReplyingTo(msg))}
           onJumpToLatest={handleJumpToLatest}
         />
 
@@ -613,6 +619,8 @@ export default function ChatPage() {
           onTyping={handleTyping}
           onSend={handleSendMessage}
           isSending={isSending}
+          replyingTo={replyingTo}
+          onClearReply={() => dispatch(clearReplyingTo())}
           onOpenPoll={() => setShowPollModal(true)}
           onOpenTask={() => setShowTaskModal(true)}
         />

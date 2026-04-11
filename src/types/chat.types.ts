@@ -30,6 +30,14 @@ export interface ILastMessage {
   senderDisplayName?: string | null;
 }
 
+export interface IReplyToDetails {
+  messageId: string;
+  senderId: string;
+  senderDisplayName: string | null;
+  content: string;
+  type: MessageType;
+}
+
 export interface IMessage {
   messageId: string;
   conversationId: string;
@@ -40,6 +48,7 @@ export interface IMessage {
   mediaUrl: string | null;
   thumbnailUrl: string | null;
   replyTo: string | null;
+  replyToDetails?: IReplyToDetails | null;
   isPinned: boolean;
   isEdited: boolean;
   isRecalled: boolean;

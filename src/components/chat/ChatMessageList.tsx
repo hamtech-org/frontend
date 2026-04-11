@@ -30,6 +30,7 @@ export type ChatMessageListProps = {
   onTogglePin: (msg: IMessage) => void;
   onRecall: (msg: IMessage) => void;
   onDelete: (msg: IMessage) => void;
+  onReply: (msg: IMessage) => void;
   onJumpToLatest: () => void;
 };
 
@@ -48,8 +49,16 @@ export function ChatMessageList({
   onTogglePin,
   onRecall,
   onDelete,
+  onReply,
   onJumpToLatest,
 }: ChatMessageListProps) {
+  const scrollToMessage = (messageId: string) => {
+    document.getElementById(`chat-msg-${messageId}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  };
+
   return (
     <div
       ref={messagesContainerRef}
@@ -102,35 +111,60 @@ export function ChatMessageList({
                     </p>
                   )}
 
-                  <div
-                    className={`relative flex items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
-                  >
-                    {msg.isDeleted ? (
-                      <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
-                        Tin nhắn đã bị xóa
-                      </div>
-                    ) : msg.isRecalled ? (
-                      <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
-                        Tin nhắn đã được thu hồi
-                      </div>
-                    ) : (
-                      <div
-                        className={`relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm wrap-break-word selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
-                          isMe
-                            ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
-                            : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
-                        }`}
-                      >
-                        {msg.content}
-                        {msg.isEdited && (
-                          <span
-                            className={`ml-1.5 text-[10px] ${isMe ? 'text-blue-100/70' : 'text-muted-foreground/60'}`}
-                          >
-                            (đã sửa)
-                          </span>
-                        )}
-                      </div>
-                    )}
+                    <div
+                      className={`relative flex items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
+                    >
+                      {msg.isDeleted ? (
+                        <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
+                          Tin nhắn đã bị xóa
+                        </div>
+                      ) : msg.isRecalled ? (
+                        <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
+                          Tin nhắn đã được thu hồi
+                        </div>
+                      ) : (
+                        <div
+                          className={`relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm wrap-break-word selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                            isMe
+                              ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
+                              : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
+                          }`}
+                        >
+                          {msg.replyToDetails && (
+                            <div
+                              onClick={() => scrollToMessage(msg.replyToDetails!.messageId)}
+                              className={`mb-1.5 px-2.5 py-1.5 rounded-lg border-l-4 cursor-pointer transition-colors ${
+                                isMe
+                                  ? 'bg-white/10 border-white/30 hover:bg-white/20'
+                                  : 'bg-black/5 border-blue-500/50 hover:bg-black/10'
+                              }`}
+                            >
+                              <p
+                                className={`text-[10px] font-bold mb-0.5 ${
+                                  isMe ? 'text-blue-100' : 'text-blue-600'
+                                }`}
+                              >
+                                {msg.replyToDetails.senderDisplayName ?? msg.replyToDetails.senderId}
+                              </p>
+                              <p
+                                className={`text-[11px] truncate opacity-80 ${
+                                  isMe ? 'text-white' : 'text-foreground'
+                                }`}
+                              >
+                                {msg.replyToDetails.content}
+                              </p>
+                            </div>
+                          )}
+                          {msg.content}
+                          {msg.isEdited && (
+                            <span
+                              className={`ml-1.5 text-[10px] ${isMe ? 'text-blue-100/70' : 'text-muted-foreground/60'}`}
+                            >
+                              (đã sửa)
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                     {!msg.isDeleted && !msg.isRecalled && (
                       <div
@@ -139,7 +173,10 @@ export function ChatMessageList({
                         <button
                           type="button"
                           title="Trả lời"
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReply(msg);
+                          }}
                           className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
                         >
                           <Reply className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />

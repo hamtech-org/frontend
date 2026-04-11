@@ -11,6 +11,7 @@ interface ChatState {
   activeConversationId: string | null;
   messages: Record<string, IMessage[]>;
   typingUsers: Record<string, TypingUserEntry[]>;
+  replyingTo: IMessage | null;
 }
 
 const initialState: ChatState = {
@@ -18,6 +19,7 @@ const initialState: ChatState = {
   activeConversationId: null,
   messages: {},
   typingUsers: {},
+  replyingTo: null,
 };
 
 const chatSlice = createSlice({
@@ -215,6 +217,12 @@ const chatSlice = createSlice({
         );
       }
     },
+    setReplyingTo: (state, action: PayloadAction<IMessage | null>) => {
+      state.replyingTo = action.payload;
+    },
+    clearReplyingTo: (state) => {
+      state.replyingTo = null;
+    },
   },
 });
 
@@ -234,6 +242,8 @@ export const {
   resetUnread,
   messageDeleted,
   messagePinUpdated,
+  setReplyingTo,
+  clearReplyingTo,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

@@ -10,7 +10,7 @@ import {
   Smile,
   Sparkles,
 } from 'lucide-react';
-import type { IConversation } from '@/types/chat.types';
+import type { IConversation, IMessage } from '@/types/chat.types';
 
 type ChatComposerProps = {
   activeConversation: IConversation | undefined;
@@ -21,6 +21,8 @@ type ChatComposerProps = {
   onTyping: () => void;
   onSend: () => void;
   isSending: boolean;
+  replyingTo: IMessage | null;
+  onClearReply: () => void;
   onOpenPoll: () => void;
   onOpenTask: () => void;
 };
@@ -34,11 +36,31 @@ export function ChatComposer({
   onTyping,
   onSend,
   isSending,
+  replyingTo,
+  onClearReply,
   onOpenPoll,
   onOpenTask,
 }: ChatComposerProps) {
   return (
     <div className="p-4 sm:p-6 border-t border-black/5 dark:border-white/5 shrink-0 bg-ethereal-bg/80 dark:bg-midnight-bg/80 backdrop-blur-md flex flex-col gap-3">
+      {replyingTo && (
+        <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 px-4 py-3 rounded-xl border-l-4 border-blue-600 animate-in slide-in-from-bottom-2 duration-200">
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-bold text-blue-600 mb-0.5">
+              Đang trả lời {replyingTo.senderDisplayName ?? replyingTo.senderId}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {replyingTo.isRecalled ? 'Tin nhắn đã được thu hồi' : replyingTo.content}
+            </p>
+          </div>
+          <button
+            onClick={onClearReply}
+            className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-muted-foreground"
+          >
+            <Smile className="w-4 h-4 rotate-45" /> {/* Dùng Smile tạm vì Lucide X chưa import, hoặc import X */}
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 sm:gap-2">
           <button
