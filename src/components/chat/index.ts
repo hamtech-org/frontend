@@ -8,6 +8,7 @@ export { ChatMessageList } from './ChatMessageList';
 export { ChatComposer } from './ChatComposer';
 export { EditMessageDialog } from './EditMessageDialog';
 export { MarkReadModal } from './MarkReadModal';
+export { ConfirmModal } from './ConfirmModal';
 export { ProfileModal } from './ProfileModal';
 export { CreateGroupModal } from './CreateGroupModal';
 export { PollModal } from './PollModal';

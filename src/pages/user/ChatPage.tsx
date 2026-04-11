@@ -36,12 +36,18 @@ import { ChatMessageList } from '@/components/chat/ChatMessageList';
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { EditMessageDialog } from '@/components/chat/EditMessageDialog';
 import { MarkReadModal } from '@/components/chat/MarkReadModal';
+import { ConfirmModal } from '@/components/chat/ConfirmModal';
 import { ProfileModal } from '@/components/chat/ProfileModal';
 import { CreateGroupModal } from '@/components/chat/CreateGroupModal';
 import { PollModal } from '@/components/chat/PollModal';
 import { MemberManagementModal } from '@/components/chat/MemberManagementModal';
 import { AISummaryModal } from '@/components/chat/AISummaryModal';
 import { TaskModal } from '@/components/chat/TaskModal';
+
+type MessageConfirmState =
+  | null
+  | { kind: 'recall'; msg: IMessage }
+  | { kind: 'delete'; msg: IMessage };
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -112,6 +118,8 @@ export default function ChatPage() {
   const [editingMessage, setEditingMessage] = useState<IMessage | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [actionMenuMsgId, setActionMenuMsgId] = useState<string | null>(null);
+  const [messageConfirm, setMessageConfirm] = useState<MessageConfirmState>(null);
+  const [messageConfirmSubmitting, setMessageConfirmSubmitting] = useState(false);
   const lastMarkReadKeyRef = useRef<string>('');
 
   const patchMessageInCache = useCallback(
@@ -176,6 +184,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     setShowOtherPinnedPanel(false);
+    setMessageConfirm(null);
   }, [activeConversationId]);
 
   useEffect(() => {
@@ -344,10 +353,22 @@ export default function ChatPage() {
     }
   }, [editingMessage, editDraft, editMessage, dispatch, patchMessageInCache]);
 
-  const handleRecallMsg = useCallback(
-    async (msg: IMessage) => {
-      if (!window.confirm('Thu hồi tin nhắn này cho mọi người?')) return;
-      try {
+  const handleRecallMsg = useCallback((msg: IMessage) => {
+    setActionMenuMsgId(null);
+    setMessageConfirm({ kind: 'recall', msg });
+  }, []);
+
+  const handleDeleteMsg = useCallback((msg: IMessage) => {
+    setActionMenuMsgId(null);
+    setMessageConfirm({ kind: 'delete', msg });
+  }, []);
+
+  const handleMessageConfirm = useCallback(async () => {
+    if (!messageConfirm) return;
+    const { kind, msg } = messageConfirm;
+    setMessageConfirmSubmitting(true);
+    try {
+      if (kind === 'recall') {
         await recallMessage({
           messageId: msg.messageId,
           conversationId: msg.conversationId,
@@ -359,18 +380,7 @@ export default function ChatPage() {
           content: 'Tin nhắn đã được thu hồi',
           isPinned: false,
         });
-        setActionMenuMsgId(null);
-      } catch {
-        /* ignore */
-      }
-    },
-    [recallMessage, dispatch, patchMessageInCache],
-  );
-
-  const handleDeleteMsg = useCallback(
-    async (msg: IMessage) => {
-      if (!window.confirm('Xóa tin nhắn này?')) return;
-      try {
+      } else {
         await deleteMessage({
           messageId: msg.messageId,
           conversationId: msg.conversationId,
@@ -382,13 +392,15 @@ export default function ChatPage() {
           content: '',
           isPinned: false,
         });
-        setActionMenuMsgId(null);
-      } catch {
-        /* ignore */
       }
-    },
-    [deleteMessage, dispatch, patchMessageInCache],
-  );
+      setMessageConfirm(null);
+      setActionMenuMsgId(null);
+    } catch {
+      /* ignore */
+    } finally {
+      setMessageConfirmSubmitting(false);
+    }
+  }, [messageConfirm, recallMessage, deleteMessage, dispatch, patchMessageInCache]);
 
   const handleTogglePinMsg = useCallback(
     async (msg: IMessage) => {
@@ -594,6 +606,30 @@ export default function ChatPage() {
       )}
 
       <MarkReadModal open={showMarkReadModal} onClose={() => setShowMarkReadModal(false)} />
+      <ConfirmModal
+        open={messageConfirm !== null}
+        title={
+          messageConfirm?.kind === 'delete'
+            ? 'Xóa tin nhắn'
+            : messageConfirm?.kind === 'recall'
+              ? 'Thu hồi tin nhắn'
+              : ''
+        }
+        description={
+          messageConfirm?.kind === 'delete'
+            ? 'Xóa tin nhắn này?'
+            : messageConfirm?.kind === 'recall'
+              ? 'Thu hồi tin nhắn này cho mọi người?'
+              : undefined
+        }
+        confirmLabel={messageConfirm?.kind === 'delete' ? 'Xóa' : 'Thu hồi'}
+        variant={messageConfirm?.kind === 'delete' ? 'danger' : 'primary'}
+        isConfirming={messageConfirmSubmitting}
+        onClose={() => {
+          if (!messageConfirmSubmitting) setMessageConfirm(null);
+        }}
+        onConfirm={() => void handleMessageConfirm()}
+      />
       <ProfileModal open={showProfileModal} onClose={() => setShowProfileModal(false)} />
       <CreateGroupModal
         open={showCreateGroupModal}
