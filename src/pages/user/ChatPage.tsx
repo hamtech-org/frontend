@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   chatApi,
   useGetConversationsQuery,
@@ -46,6 +46,7 @@ import { TaskModal } from '@/components/chat/TaskModal';
 
 export default function ChatPage() {
   const navigate = useNavigate();
+  const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
   const dispatch = useDispatch<AppDispatch>();
 
   const currentUser = useSelector((state: RootState) => state.auth.user);
@@ -55,7 +56,11 @@ export default function ChatPage() {
     [currentUser?.userId, accessToken],
   );
 
-  const { data: conversationsData, isLoading: convsLoading } = useGetConversationsQuery();
+  const {
+    data: conversationsData,
+    isLoading: convsLoading,
+    isFetching: convsFetching,
+  } = useGetConversationsQuery();
   const conversations = conversationsData?.data ?? [];
 
   const activeConversationId = useSelector((state: RootState) => state.chat.activeConversationId);
@@ -155,6 +160,19 @@ export default function ChatPage() {
   const [, setContactsTab] = useState<'friends' | 'groups' | 'requests'>('friends');
 
   useEffect(() => {
+    dispatch(setActiveConversation(routeConversationId ?? null));
+  }, [routeConversationId, dispatch]);
+
+  useEffect(() => {
+    if (!routeConversationId) return;
+    if (convsLoading || convsFetching) return;
+    const exists = conversations.some((c) => c.conversationId === routeConversationId);
+    if (!exists) {
+      navigate('/chat', { replace: true });
+    }
+  }, [routeConversationId, convsLoading, convsFetching, conversations, navigate]);
+
+  useEffect(() => {
     setShowOtherPinnedPanel(false);
   }, [activeConversationId]);
 
@@ -249,9 +267,9 @@ export default function ChatPage() {
 
   const handleSelectConversation = useCallback(
     (conversationId: string) => {
-      dispatch(setActiveConversation(conversationId));
+      void navigate(`/chat/${conversationId}`);
     },
-    [dispatch],
+    [navigate],
   );
 
   const handleSendMessage = useCallback(async () => {
@@ -428,14 +446,14 @@ export default function ChatPage() {
         name: groupName || `Nhóm (${selectedGroupMembers.length + 1} thành viên)`,
         memberIds: selectedGroupMembers,
       }).unwrap();
-      dispatch(setActiveConversation(result.data.conversationId));
+      void navigate(`/chat/${result.data.conversationId}`);
     } catch {
       /* ignored */
     }
     setShowCreateGroupModal(false);
     setSelectedGroupMembers([]);
     setGroupName('');
-  }, [selectedGroupMembers, groupName, createConversation, dispatch]);
+  }, [selectedGroupMembers, groupName, createConversation, navigate]);
 
   const closeTaskModal = useCallback(() => {
     setShowTaskModal(false);
