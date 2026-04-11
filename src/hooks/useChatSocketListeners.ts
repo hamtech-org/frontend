@@ -8,6 +8,7 @@ import {
   messageEdited,
   messageDeleted,
   messagePinUpdated,
+  messageReacted,
   typingStarted,
   typingStopped,
 } from '@/store/slices/chatSlice';
@@ -79,6 +80,16 @@ export function useChatSocketListeners(
       patchMessageInCache(conversationId, messageId, { isPinned });
     };
 
+    const handleReacted = (data: unknown) => {
+      const { messageId, conversationId, reactions } = data as {
+        messageId: string;
+        conversationId: string;
+        reactions: Record<string, string[]>;
+      };
+      dispatch(messageReacted({ messageId, conversationId, reactions }));
+      patchMessageInCache(conversationId, messageId, { reactions });
+    };
+
     const handleTyping = (data: unknown) => {
       const { userId, conversationId, displayName } = data as {
         userId: string;
@@ -100,6 +111,7 @@ export function useChatSocketListeners(
     socketService.on('message:edited', handleEdited);
     socketService.on('message:deleted', handleDeleted);
     socketService.on('message:pin_updated', handlePinUpdated);
+    socketService.on('message:reacted', handleReacted);
     socketService.on('message:typing_indicator', handleTyping);
 
     return () => {
@@ -108,6 +120,7 @@ export function useChatSocketListeners(
       socketService.off('message:edited', handleEdited);
       socketService.off('message:deleted', handleDeleted);
       socketService.off('message:pin_updated', handlePinUpdated);
+      socketService.off('message:reacted', handleReacted);
       socketService.off('message:typing_indicator', handleTyping);
       Object.values(typingCleanupTimersRef.current).forEach(clearTimeout);
       typingCleanupTimersRef.current = {};

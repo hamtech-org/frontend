@@ -1,4 +1,4 @@
-import type { Ref } from 'react';
+import { useState, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CheckCheck,
@@ -8,6 +8,7 @@ import {
   Pencil,
   Reply,
   RotateCcw,
+  SmilePlus,
   Trash2,
 } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
@@ -31,6 +32,7 @@ export type ChatMessageListProps = {
   onRecall: (msg: IMessage) => void;
   onDelete: (msg: IMessage) => void;
   onReply: (msg: IMessage) => void;
+  onReact: (msg: IMessage, emoji: string) => void;
   onJumpToLatest: () => void;
 };
 
@@ -50,6 +52,7 @@ export function ChatMessageList({
   onRecall,
   onDelete,
   onReply,
+  onReact,
   onJumpToLatest,
 }: ChatMessageListProps) {
   const scrollToMessage = (messageId: string) => {
@@ -58,6 +61,8 @@ export function ChatMessageList({
       block: 'center',
     });
   };
+
+  const [hiddenReactPopupId, setHiddenReactPopupId] = useState<string | null>(null);
 
   return (
     <div
@@ -111,65 +116,123 @@ export function ChatMessageList({
                     </p>
                   )}
 
-                    <div
-                      className={`relative flex items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
-                    >
-                      {msg.isDeleted ? (
-                        <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
-                          Tin nhắn đã bị xóa
-                        </div>
-                      ) : msg.isRecalled ? (
-                        <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
-                          Tin nhắn đã được thu hồi
-                        </div>
-                      ) : (
-                        <div
-                          className={`relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm wrap-break-word selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
-                            isMe
-                              ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
-                              : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
-                          }`}
-                        >
-                          {msg.replyToDetails && (
-                            <div
-                              onClick={() => scrollToMessage(msg.replyToDetails!.messageId)}
-                              className={`mb-1.5 px-2.5 py-1.5 rounded-lg border-l-4 cursor-pointer transition-colors ${
-                                isMe
-                                  ? 'bg-white/10 border-white/30 hover:bg-white/20'
-                                  : 'bg-black/5 border-blue-500/50 hover:bg-black/10'
+                  <div
+                    className={`relative flex items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.reactions && Object.keys(msg.reactions).length > 0 ? 'mb-3.5' : ''}`}
+                  >
+                    {msg.isDeleted ? (
+                      <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
+                        Tin nhắn đã bị xóa
+                      </div>
+                    ) : msg.isRecalled ? (
+                      <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
+                        Tin nhắn đã được thu hồi
+                      </div>
+                    ) : (
+                      <div
+                        className={`relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm wrap-break-word selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                          isMe
+                            ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
+                            : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
+                        }`}
+                      >
+                        {msg.replyToDetails && (
+                          <div
+                            onClick={() => scrollToMessage(msg.replyToDetails!.messageId)}
+                            className={`mb-1.5 px-2.5 py-1.5 rounded-lg border-l-4 cursor-pointer transition-colors ${
+                              isMe
+                                ? 'bg-white/10 border-white/30 hover:bg-white/20'
+                                : 'bg-black/5 border-blue-500/50 hover:bg-black/10'
+                            }`}
+                          >
+                            <p
+                              className={`text-[10px] font-bold mb-0.5 ${
+                                isMe ? 'text-blue-100' : 'text-blue-600'
                               }`}
                             >
-                              <p
-                                className={`text-[10px] font-bold mb-0.5 ${
-                                  isMe ? 'text-blue-100' : 'text-blue-600'
-                                }`}
-                              >
-                                {msg.replyToDetails.senderDisplayName ?? msg.replyToDetails.senderId}
-                              </p>
-                              <p
-                                className={`text-[11px] truncate opacity-80 ${
-                                  isMe ? 'text-white' : 'text-foreground'
-                                }`}
-                              >
-                                {msg.replyToDetails.content}
-                              </p>
-                            </div>
-                          )}
-                          {msg.content}
-                          {msg.isEdited && (
-                            <span
-                              className={`ml-1.5 text-[10px] ${isMe ? 'text-blue-100/70' : 'text-muted-foreground/60'}`}
+                              {msg.replyToDetails.senderDisplayName ?? msg.replyToDetails.senderId}
+                            </p>
+                            <p
+                              className={`text-[11px] truncate opacity-80 ${
+                                isMe ? 'text-white' : 'text-foreground'
+                              }`}
                             >
-                              (đã sửa)
-                            </span>
-                          )}
-                        </div>
-                      )}
+                              {msg.replyToDetails.content}
+                            </p>
+                          </div>
+                        )}
+                        {msg.content}
+                        {msg.isEdited && (
+                          <span
+                            className={`ml-1.5 text-[10px] ${isMe ? 'text-blue-100/70' : 'text-muted-foreground/60'}`}
+                          >
+                            (đã sửa)
+                          </span>
+                        )}
+
+                        {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                          <div
+                            className={`absolute -bottom-3 ${isMe ? '-left-2' : '-right-2 flex-row-reverse'} flex flex-wrap gap-1 z-10`}
+                          >
+                            {Object.entries(msg.reactions).map(([emoji, userIds]) => (
+                              <div
+                                key={emoji}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onReact(msg, emoji);
+                                }}
+                                className={`px-1.5 py-0.5 rounded-full bg-white dark:bg-zinc-800 ${userIds.includes(currentUserId) ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/40 text-blue-600' : 'border-black/10 dark:border-white/10 text-foreground'} text-[14px] shadow-sm flex items-center gap-1 cursor-pointer select-non hover:bg-gray-100 dark:hover:bg-gray-700`}
+                                title={userIds.length > 0 ? `${userIds.length} người` : ''}
+                              >
+                                <span className="leading-none">{emoji}</span>
+                                {userIds.length > 1 && (
+                                  <span className="text-[10px] font-semibold opacity-70">
+                                    {userIds.length}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {!msg.isDeleted && !msg.isRecalled && (
                       <div
                         className={`flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-all duration-150 shrink-0 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
                       >
+                        <div
+                          className="relative group/reactbtn"
+                          onMouseLeave={() => {
+                            if (hiddenReactPopupId === msg.messageId) setHiddenReactPopupId(null);
+                          }}
+                        >
+                          <button
+                            type="button"
+                            title="Thả cảm xúc"
+                            className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
+                          >
+                            <SmilePlus className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
+                          </button>
+                          <div
+                            className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-1 p-1.5 rounded-full bg-white dark:bg-zinc-800 shadow-xl border border-black/10 dark:border-white/10 flex items-center gap-1 transition-all translate-y-2 z-50 after:content-[''] after:absolute after:left-0 after:-bottom-5 after:w-full after:h-5 ${hiddenReactPopupId === msg.messageId ? 'hidden' : 'opacity-0 pointer-events-none group-hover/reactbtn:opacity-100 group-hover/reactbtn:pointer-events-auto group-hover/reactbtn:translate-y-0'}`}
+                          >
+                            {['❤️', '👍', '😂', '😮', '😢', '😡'].map((emoji) => (
+                              <button
+                                key={emoji}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onReact(msg, emoji);
+                                  setHiddenReactPopupId(msg.messageId);
+                                }}
+                                className="text-xl hover:scale-125 transition-transform px-1"
+                                title={emoji}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
                         <button
                           type="button"
                           title="Trả lời"
@@ -250,7 +313,9 @@ export function ChatMessageList({
                     <div
                       className={`flex items-center gap-1 mt-1 px-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
                     >
-                      <span className="text-[10px] text-muted-foreground/70">{formatTime(msg.createdAt)}</span>
+                      <span className="text-[10px] text-muted-foreground/70">
+                        {formatTime(msg.createdAt)}
+                      </span>
                       {isMe && !msg.isRecalled && !msg.isDeleted && (
                         <CheckCheck className="w-3 h-3 text-blue-400" />
                       )}
@@ -295,7 +360,9 @@ export function ChatMessageList({
                       />
                     ))}
                   </div>
-                  <span className="text-[11px] text-muted-foreground/60 italic px-0.5">Đang soạn tin nhắn...</span>
+                  <span className="text-[11px] text-muted-foreground/60 italic px-0.5">
+                    Đang soạn tin nhắn...
+                  </span>
                 </div>
               </motion.div>
             )}

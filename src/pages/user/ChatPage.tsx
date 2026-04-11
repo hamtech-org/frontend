@@ -13,6 +13,7 @@ import {
   useMarkAsReadMutation,
   usePinMessageMutation,
   useUnpinMessageMutation,
+  useReactMessageMutation,
 } from '@/store/api/chatApi';
 import {
   setActiveConversation,
@@ -118,6 +119,7 @@ export default function ChatPage() {
   const [markAsRead] = useMarkAsReadMutation();
   const [pinMessage] = usePinMessageMutation();
   const [unpinMessage] = useUnpinMessageMutation();
+  const [reactMessage] = useReactMessageMutation();
 
   const activeConversation = conversations.find((c) => c.conversationId === activeConversationId);
 
@@ -139,6 +141,25 @@ export default function ChatPage() {
       );
     },
     [dispatch],
+  );
+
+  const handleReactMessage = useCallback(
+    async (msg: IMessage, emoji: string) => {
+      try {
+        await reactMessage({
+          messageId: msg.messageId,
+          conversationId: msg.conversationId,
+          createdAt: msg.createdAt,
+          emoji,
+        }).unwrap();
+        // Socket or invalidation will handle the UI update, but optimistic update is better:
+        // Already handled correctly by socket if we want to wait, or we can patch manually.
+        // I will let socket handle it by default, or you can do optimistic updates here.
+      } catch {
+        /* ignore */
+      }
+    },
+    [reactMessage],
   );
 
   useEffect(() => {
@@ -303,8 +324,11 @@ export default function ChatPage() {
     [navigate],
   );
 
-  const handleSendMessage = useCallback(async () => {
-    const content = inputText.trim();
+  const handleSendMessage = useCallback(async (overrideText?: string) => {
+    // Determine content, falling back to state. Force string explicitly if browser passes an Event.
+    const rawContent = typeof overrideText === 'string' ? overrideText : inputText;
+    const content = rawContent.trim();
+    
     if (!content || !activeConversationId || isSending) return;
     setInputText('');
     try {
@@ -318,7 +342,7 @@ export default function ChatPage() {
     } catch {
       setInputText(content);
     }
-  }, [inputText, activeConversationId, isSending, sendMessage]);
+  }, [inputText, activeConversationId, isSending, sendMessage, replyingTo, dispatch]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -607,6 +631,7 @@ export default function ChatPage() {
           onRecall={handleRecallMsg}
           onDelete={handleDeleteMsg}
           onReply={(msg) => dispatch(setReplyingTo(msg))}
+          onReact={handleReactMessage}
           onJumpToLatest={handleJumpToLatest}
         />
 

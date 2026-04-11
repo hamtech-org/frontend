@@ -1,4 +1,5 @@
-import type { KeyboardEvent } from 'react';
+import { useState, useRef, type KeyboardEvent, useEffect } from 'react';
+import EmojiPicker from 'emoji-picker-react';
 import {
   BarChart2,
   CheckSquare,
@@ -19,7 +20,7 @@ type ChatComposerProps = {
   onInputTextChange: (value: string) => void;
   onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
   onTyping: () => void;
-  onSend: () => void;
+  onSend: (text?: string) => void;
   isSending: boolean;
   replyingTo: IMessage | null;
   onClearReply: () => void;
@@ -41,6 +42,32 @@ export function ChatComposer({
   onOpenPoll,
   onOpenTask,
 }: ChatComposerProps) {
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+    if (showEmojiPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showEmojiPicker]);
+
+  const onEmojiClick = (emojiObject: any) => {
+    onInputTextChange(inputText + emojiObject.emoji);
+  };
+
+  const handleLikeClick = () => {
+    if (isSending || !activeConversationId) return;
+    onSend('👍');
+  };
+
   return (
     <div className="p-4 sm:p-6 border-t border-black/5 dark:border-white/5 shrink-0 bg-ethereal-bg/80 dark:bg-midnight-bg/80 backdrop-blur-md flex flex-col gap-3">
       {replyingTo && (
@@ -57,19 +84,27 @@ export function ChatComposer({
             onClick={onClearReply}
             className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-muted-foreground"
           >
-            <Smile className="w-4 h-4 rotate-45" /> {/* Dùng Smile tạm vì Lucide X chưa import, hoặc import X */}
+            <Smile className="w-4 h-4 rotate-45" />
           </button>
         </div>
       )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 sm:gap-2">
-          <button
-            type="button"
-            title="Gửi nhãn dán / Emoji"
-            className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0"
-          >
-            <Smile className="w-5 h-5" />
-          </button>
+          <div className="relative" ref={emojiPickerRef}>
+            <button
+              type="button"
+              title="Gửi nhãn dán / Emoji"
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+            {showEmojiPicker && (
+              <div className="absolute bottom-full left-0 mb-2 z-50 animate-in fade-in zoom-in-95 duration-150 shadow-2xl rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900">
+                <EmojiPicker onEmojiClick={onEmojiClick} theme={'auto' as any} />
+              </div>
+            )}
+          </div>
           <button
             type="button"
             title="Gửi ảnh/video"
@@ -175,14 +210,25 @@ export function ChatComposer({
           >
             <Mic className="w-5 h-5" />
           </button>
-          <button
-            type="button"
-            onClick={() => void onSend()}
-            disabled={!inputText.trim() || !activeConversationId || isSending}
-            className="p-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 transition-all group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
-          >
-            <Send className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-          </button>
+          {inputText.trim() ? (
+            <button
+              type="button"
+              onClick={() => void onSend()}
+              disabled={!activeConversationId || isSending}
+              className="p-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 transition-all group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600 animate-in fade-in zoom-in"
+            >
+              <Send className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLikeClick}
+              disabled={!activeConversationId || isSending}
+              className="p-3 rounded-xl bg-black/5 hover:bg-blue-600 dark:bg-white/5 dark:hover:bg-blue-600 text-blue-600 hover:text-white transition-all animate-in fade-in zoom-in group"
+            >
+              <span className="text-xl leading-none group-hover:scale-125 transition-transform inline-block">👍</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -181,6 +181,17 @@ const chatSlice = createSlice({
       if (msg) msg.isPinned = isPinned;
     },
 
+    messageReacted: (
+      state,
+      action: PayloadAction<{ messageId: string; conversationId: string; reactions: Record<string, string[]> }>,
+    ) => {
+      const { messageId, conversationId, reactions } = action.payload;
+      const messages = state.messages[conversationId];
+      if (!messages) return;
+      const msg = messages.find((m) => m.messageId === messageId);
+      if (msg) msg.reactions = reactions;
+    },
+
     // Backward-compatible alias
     addMessage: (state, action: PayloadAction<IMessage>) => {
       const msg = action.payload;
@@ -242,6 +253,7 @@ export const {
   resetUnread,
   messageDeleted,
   messagePinUpdated,
+  messageReacted,
   setReplyingTo,
   clearReplyingTo,
 } = chatSlice.actions;

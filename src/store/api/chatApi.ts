@@ -50,6 +50,13 @@ export interface PinMessageRequest {
   createdAt: string;
 }
 
+export interface ReactMessageRequest {
+  messageId: string;
+  conversationId: string;
+  createdAt: string;
+  emoji: string;
+}
+
 /** Cập nhật preview lastMessage + unread trên cache getConversations (gọi sau khi module đã export chatApi). */
 export function patchConversationsFromNewMessage(
   dispatch: AppDispatch,
@@ -203,6 +210,17 @@ export const chatApi = createApi({
         { type: 'Messages', id: conversationId },
       ],
     }),
+
+    reactMessage: builder.mutation<ApiSuccessResponse<Record<string, string[]>>, ReactMessageRequest>({
+      query: ({ messageId, ...body }) => ({
+        url: `/chat/messages/${messageId}/react`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: (_result, _error, { conversationId }) => [
+        { type: 'Messages', id: conversationId },
+      ],
+    }),
   }),
 });
 
@@ -217,4 +235,5 @@ export const {
   useMarkAsReadMutation,
   usePinMessageMutation,
   useUnpinMessageMutation,
+  useReactMessageMutation,
 } = chatApi;
