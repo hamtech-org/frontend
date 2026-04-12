@@ -1,23 +1,239 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Mic, MicOff, Video, VideoOff, PhoneOff, Maximize2, Minimize2, 
-  MessageSquare, Users, Settings, MoreHorizontal, Volume2, VolumeX, Sparkles 
+import {
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  PhoneOff,
+  Maximize2,
+  Minimize2,
+  MonitorUp,
+  MonitorOff,
 } from 'lucide-react';
+import AgoraRTC, {
+  type IAgoraRTCClient,
+  type IMicrophoneAudioTrack,
+  type ICameraVideoTrack,
+  type ILocalVideoTrack,
+  type IAgoraRTCRemoteUser,
+} from 'agora-rtc-react';
+import { useCallContext } from '@/contexts/CallContext';
+import type { RootState, AppDispatch } from '@/store/store';
+import {
+  setCallConnected,
+  setCallEnded,
+  resetCall,
+  setScreenSharing,
+} from '@/store/slices/callSlice';
 
 export default function CallPage() {
   const navigate = useNavigate();
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const dispatch = useDispatch<AppDispatch>();
+  const [searchParams] = useSearchParams();
+  const channelName = searchParams.get('channel');
+  const urlCallType = searchParams.get('type') as 'audio' | 'video' | null;
+
+  const {
+    endCall,
+    fetchAgoraToken,
+    appId,
+    onToggleMic,
+    onToggleCamera,
+    requestUpgradeToVideo,
+    respondUpgradeToVideo,
+  } = useCallContext();
+  const {
+    status,
+    callType,
+    isMicOn,
+    isCameraOn,
+    upgradeStatus,
+    isScreenSharing,
+  } = useSelector((state: RootState) => state.call);
+
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [timer, setTimer] = useState(0);
+  const [remoteUser, setRemoteUser] = useState<IAgoraRTCRemoteUser | null>(null);
+  const [joined, setJoined] = useState(false);
+  const [remoteHasVideo, setRemoteHasVideo] = useState(false);
+
+  const clientRef = useRef<IAgoraRTCClient | null>(null);
+  const micTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
+  const camTrackRef = useRef<ICameraVideoTrack | null>(null);
+  const screenTrackRef = useRef<ILocalVideoTrack | null>(null);
+  const localVideoRef = useRef<HTMLDivElement>(null);
+  const remoteVideoRef = useRef<HTMLDivElement>(null);
+
+  const isVideoCall = (urlCallType ?? callType) === 'video';
+  const isVideoCallRef = useRef(isVideoCall);
+  if (isVideoCall) isVideoCallRef.current = true;
+
+  const createTrackWithRetry = async <T,>(
+    factory: () => Promise<T>,
+    retries = 3,
+    delayMs = 800,
+  ): Promise<T> => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await factory();
+      } catch (e: unknown) {
+        const isDeviceBusy =
+          e instanceof Error && /NOT_READABLE|in use/i.test(e.message);
+        if (!isDeviceBusy || i === retries - 1) throw e;
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+    throw new Error('Track creation failed');
+  };
 
   useEffect(() => {
-    const interval = setInterval(() => setTimer(t => t + 1), 1000);
+    if (!channelName) {
+      navigate('/chat');
+      return;
+    }
+
+    let cancelled = false;
+    const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+    clientRef.current = client;
+    const videoCall = isVideoCallRef.current;
+
+    const init = async () => {
+      try {
+        const { token, uid } = await fetchAgoraToken(channelName);
+        if (cancelled) return;
+
+        client.on('user-joined', () => {
+          dispatch(setCallConnected());
+        });
+
+        client.on('user-published', async (user, mediaType) => {
+          await client.subscribe(user, mediaType);
+          if (mediaType === 'video' && remoteVideoRef.current) {
+            user.videoTrack?.play(remoteVideoRef.current);
+            setRemoteHasVideo(true);
+          }
+          if (mediaType === 'audio') {
+            user.audioTrack?.play();
+          }
+          setRemoteUser(user);
+        });
+
+        client.on('user-unpublished', (user, mediaType) => {
+          if (mediaType === 'video') {
+            user.videoTrack?.stop();
+            setRemoteHasVideo(false);
+          }
+          if (mediaType === 'audio') {
+            user.audioTrack?.stop();
+          }
+        });
+
+        client.on('user-left', () => {
+          setRemoteUser(null);
+          setRemoteHasVideo(false);
+          dispatch(setCallEnded());
+        });
+
+        await client.join(appId, channelName, token, uid);
+        if (cancelled) return;
+        setJoined(true);
+
+        const micTrack = await createTrackWithRetry(() =>
+          AgoraRTC.createMicrophoneAudioTrack(),
+        );
+        if (cancelled) { micTrack.close(); return; }
+        micTrackRef.current = micTrack;
+
+        if (videoCall) {
+          const camTrack = await createTrackWithRetry(() =>
+            AgoraRTC.createCameraVideoTrack(),
+          );
+          if (cancelled) { camTrack.close(); micTrack.close(); return; }
+          camTrackRef.current = camTrack;
+          if (localVideoRef.current) {
+            camTrack.play(localVideoRef.current);
+          }
+          await client.publish([micTrack, camTrack]);
+        } else {
+          await client.publish([micTrack]);
+        }
+      } catch (err) {
+        console.error('Agora join failed:', err);
+        if (!cancelled) navigate('/chat');
+      }
+    };
+
+    init();
+
+    return () => {
+      cancelled = true;
+      micTrackRef.current?.close();
+      camTrackRef.current?.close();
+      screenTrackRef.current?.close();
+      if (clientRef.current?.connectionState === 'CONNECTED') {
+        clientRef.current.leave();
+      }
+      clientRef.current = null;
+    };
+  }, [channelName, appId, fetchAgoraToken, dispatch, navigate]);
+
+  useEffect(() => {
+    micTrackRef.current?.setEnabled(isMicOn);
+  }, [isMicOn]);
+
+  useEffect(() => {
+    camTrackRef.current?.setEnabled(isCameraOn);
+  }, [isCameraOn]);
+
+  // Handle upgrade accepted: create and publish camera track
+  useEffect(() => {
+    if (upgradeStatus !== 'accepted') return;
+    const client = clientRef.current;
+    if (!client || client.connectionState !== 'CONNECTED') return;
+
+    let cancelled = false;
+    const enableCamera = async () => {
+      try {
+        if (!camTrackRef.current) {
+          const camTrack = await createTrackWithRetry(() =>
+            AgoraRTC.createCameraVideoTrack(),
+          );
+          if (cancelled) { camTrack.close(); return; }
+          camTrackRef.current = camTrack;
+          await client.publish([camTrack]);
+        }
+        if (localVideoRef.current && camTrackRef.current) {
+          camTrackRef.current.play(localVideoRef.current);
+        }
+      } catch (err) {
+        console.error('Failed to enable camera for upgrade:', err);
+      }
+    };
+
+    enableCamera();
+    return () => { cancelled = true; };
+  }, [upgradeStatus]);
+
+  useEffect(() => {
+    if (status !== 'ended') return;
+    micTrackRef.current?.close();
+    camTrackRef.current?.close();
+    screenTrackRef.current?.close();
+    if (clientRef.current?.connectionState === 'CONNECTED') {
+      clientRef.current.leave();
+    }
+    dispatch(resetCall());
+    navigate('/chat');
+  }, [status, dispatch, navigate]);
+
+  useEffect(() => {
+    if (status !== 'connected') return;
+    const interval = setInterval(() => setTimer((t) => t + 1), 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [status]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -25,76 +241,298 @@ export default function CallPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleEndCall = useCallback(() => {
+    endCall();
+    micTrackRef.current?.close();
+    camTrackRef.current?.close();
+    screenTrackRef.current?.close();
+    if (clientRef.current?.connectionState === 'CONNECTED') {
+      clientRef.current.leave();
+    }
+    setTimeout(() => {
+      dispatch(resetCall());
+      navigate('/chat');
+    }, 500);
+  }, [endCall, dispatch, navigate]);
+
+  const toggleFullScreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      setIsFullScreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullScreen(false);
+    }
+  }, []);
+
+  const restoreCameraAfterScreenShare = useCallback(async () => {
+    const client = clientRef.current;
+    if (!client || client.connectionState !== 'CONNECTED') return;
+    const cam = camTrackRef.current;
+    if (cam) {
+      await cam.setEnabled(true);
+      await client.publish([cam]);
+      if (localVideoRef.current) cam.play(localVideoRef.current);
+    }
+    dispatch(setScreenSharing(false));
+  }, [dispatch]);
+
+  const handleScreenShare = useCallback(async () => {
+    const client = clientRef.current;
+    if (!client || client.connectionState !== 'CONNECTED') return;
+
+    if (isScreenSharing) {
+      if (screenTrackRef.current) {
+        await client.unpublish([screenTrackRef.current]);
+        screenTrackRef.current.close();
+        screenTrackRef.current = null;
+      }
+      await restoreCameraAfterScreenShare();
+    } else {
+      try {
+        const screenTrack = await AgoraRTC.createScreenVideoTrack(
+          { encoderConfig: '1080p_1' },
+          'disable',
+        ) as ILocalVideoTrack;
+
+        screenTrack.on('track-ended', async () => {
+          if (clientRef.current?.connectionState === 'CONNECTED') {
+            try { await clientRef.current.unpublish([screenTrack]); } catch { /* already unpublished */ }
+          }
+          screenTrack.close();
+          screenTrackRef.current = null;
+          await restoreCameraAfterScreenShare();
+        });
+
+        if (camTrackRef.current) {
+          camTrackRef.current.stop();
+          await client.unpublish([camTrackRef.current]);
+        }
+
+        screenTrackRef.current = screenTrack;
+        await client.publish([screenTrack]);
+        if (localVideoRef.current) screenTrack.play(localVideoRef.current);
+        dispatch(setScreenSharing(true));
+      } catch (err) {
+        console.error('Screen share failed:', err);
+      }
+    }
+  }, [isScreenSharing, dispatch, restoreCameraAfterScreenShare]);
+
+  const currentCallIsVideo = callType === 'video' || upgradeStatus === 'accepted';
+
+  const statusLabel =
+    status === 'connected'
+      ? `Đang gọi • ${formatTime(timer)}`
+      : joined
+        ? 'Đang chờ người tham gia...'
+        : 'Đang kết nối...';
+
   return (
-    <div className="fixed inset-0 z-[100] bg-black text-white flex flex-col overflow-hidden">
-      <div className="absolute inset-0 z-0">
-        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=1920&h=1080&fit=crop" alt="Participant" className="w-full h-full object-cover opacity-80" referrerPolicy="no-referrer" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
-      </div>
+    <div className="fixed inset-0 z-[100] bg-gray-950 text-white flex flex-col overflow-hidden">
+      {/* Remote video — always in DOM, visibility controlled by CSS */}
+      <div
+        ref={remoteVideoRef}
+        className={`absolute inset-0 z-0 ${remoteHasVideo ? '' : 'invisible'}`}
+      />
 
-      <motion.div initial={{ y: -100 }} animate={{ y: 0 }} className="relative z-10 p-8 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full border-2 border-white/20 overflow-hidden">
-            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop" alt="Elena" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-display font-bold tracking-tight">Elena Vance</h2>
-            <p className="text-sm text-white/60 font-medium flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              Đang gọi • {formatTime(timer)}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <button className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"><Users className="w-6 h-6" /></button>
-          <button className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"><Settings className="w-6 h-6" /></button>
-        </div>
-      </motion.div>
-
-      <div className="flex-1 relative z-10 flex items-center justify-center p-12">
-        <AnimatePresence>
-          {!isVideoOff && (
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative aspect-video w-full max-w-5xl rounded-[3rem] overflow-hidden border-4 border-white/10 shadow-2xl shadow-black/50 group">
-              <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=1200&h=800&fit=crop" alt="Elena Focused" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="absolute bottom-8 left-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                <p className="text-xl font-bold">Elena Vance</p>
-                <p className="text-sm text-white/60">Nhà quay phim</p>
+      {/* Avatar / audio indicator overlay (hidden when remote video is active) */}
+      {!remoteHasVideo && (
+        <div className="absolute inset-0 z-0 flex items-center justify-center">
+          {remoteUser && !currentCallIsVideo ? (
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-green-600 to-emerald-400 flex items-center justify-center animate-pulse">
+                <Mic className="w-14 h-14" />
               </div>
-            </motion.div>
+              <p className="text-white/60 text-sm font-medium">Đang nghe...</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-5xl font-bold">
+                ?
+              </div>
+              {!remoteUser && (
+                <p className="text-white/40 text-sm">Đang chờ người tham gia...</p>
+              )}
+            </div>
           )}
-        </AnimatePresence>
-        <motion.div drag dragConstraints={{ left: -500, right: 500, top: -300, bottom: 300 }} className="absolute bottom-12 right-12 w-64 aspect-video rounded-3xl overflow-hidden border-2 border-white/20 shadow-2xl cursor-move z-20">
-          <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&h=300&fit=crop" alt="Self View" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-          <div className="absolute bottom-3 left-3 px-2 py-1 bg-black/40 backdrop-blur-md rounded-lg text-[10px] font-bold">Bạn</div>
-        </motion.div>
-      </div>
+        </div>
+      )}
 
-      <motion.div initial={{ y: 100 }} animate={{ y: 0 }} className="relative z-10 p-12 flex items-center justify-center gap-6">
-        <button onClick={() => setIsMuted(!isMuted)} className={`p-6 rounded-3xl transition-all ${isMuted ? 'bg-red-600 text-white' : 'bg-white/10 backdrop-blur-md hover:bg-white/20'}`}>
-          {isMuted ? <MicOff className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
-        </button>
-        <button onClick={() => setIsVideoOff(!isVideoOff)} className={`p-6 rounded-3xl transition-all ${isVideoOff ? 'bg-red-600 text-white' : 'bg-white/10 backdrop-blur-md hover:bg-white/20'}`}>
-          {isVideoOff ? <VideoOff className="w-8 h-8" /> : <Video className="w-8 h-8" />}
-        </button>
-        <button onClick={() => navigate('/studio')} className="p-8 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-2xl shadow-red-600/40 transition-all hover:scale-110 active:scale-95">
-          <PhoneOff className="w-10 h-10" />
-        </button>
-        <button onClick={() => setIsSpeakerOn(!isSpeakerOn)} className={`p-6 rounded-3xl transition-all ${!isSpeakerOn ? 'bg-red-600 text-white' : 'bg-white/10 backdrop-blur-md hover:bg-white/20'}`}>
-          {isSpeakerOn ? <Volume2 className="w-8 h-8" /> : <VolumeX className="w-8 h-8" />}
-        </button>
-        <button className="p-6 rounded-3xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all">
-          <Sparkles className="w-8 h-8 text-blue-600" />
+      {/* Gradient overlay */}
+      <div className="absolute inset-0 z-[1] bg-gradient-to-t from-black/70 via-transparent to-black/30 pointer-events-none" />
+
+      {/* Upgrade to video: incoming request prompt */}
+      <AnimatePresence>
+        {upgradeStatus === 'pending-incoming' && (
+          <motion.div
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -30 }}
+            className="absolute top-24 left-1/2 -translate-x-1/2 z-30 w-[340px]"
+          >
+            <div className="rounded-2xl bg-gray-900/95 border border-white/10 backdrop-blur-xl p-5 shadow-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center">
+                  <Video className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">Yêu cầu chuyển sang Video</p>
+                  <p className="text-xs text-white/50">Đối phương muốn bật camera</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => respondUpgradeToVideo(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
+                >
+                  Từ chối
+                </button>
+                <button
+                  onClick={() => respondUpgradeToVideo(true)}
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-sm font-medium transition-all"
+                >
+                  Chấp nhận
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Upgrade to video: outgoing pending indicator */}
+      <AnimatePresence>
+        {upgradeStatus === 'pending-outgoing' && (
+          <motion.div
+            initial={{ opacity: 0, y: -30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -30 }}
+            className="absolute top-24 left-1/2 -translate-x-1/2 z-30"
+          >
+            <div className="rounded-2xl bg-gray-900/95 border border-white/10 backdrop-blur-xl px-6 py-4 shadow-2xl flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm text-white/70">Đang chờ đối phương chấp nhận...</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header */}
+      <motion.div
+        initial={{ y: -60 }}
+        animate={{ y: 0 }}
+        className="relative z-10 p-6 flex items-center justify-between"
+      >
+        <div>
+          <h2 className="text-xl font-bold tracking-tight">
+            {currentCallIsVideo ? 'Video Call' : 'Voice Call'}
+          </h2>
+          <p className="text-sm text-white/50 flex items-center gap-2">
+            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            {statusLabel}
+          </p>
+        </div>
+        <button
+          onClick={toggleFullScreen}
+          className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"
+        >
+          {isFullScreen ? (
+            <Minimize2 className="w-5 h-5" />
+          ) : (
+            <Maximize2 className="w-5 h-5" />
+          )}
         </button>
       </motion.div>
 
-      <div className="absolute right-8 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-10">
-        <button className="p-4 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"><MessageSquare className="w-6 h-6" /></button>
-        <button onClick={() => setIsFullScreen(!isFullScreen)} className="p-4 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all">
-          {isFullScreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
+      <div className="flex-1" />
+
+      {/* Local self-view (video/screen share) */}
+      {currentCallIsVideo && (
+        <motion.div
+          drag
+          dragConstraints={{ left: -500, right: 500, top: -300, bottom: 300 }}
+          className="absolute bottom-36 right-6 w-48 aspect-video rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl cursor-move z-20 bg-gray-800"
+        >
+          <div ref={localVideoRef} className="w-full h-full" />
+          <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/50 backdrop-blur-md rounded-lg text-[10px] font-bold">
+            {isScreenSharing ? 'Màn hình' : 'Bạn'}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Controls */}
+      <motion.div
+        initial={{ y: 80 }}
+        animate={{ y: 0 }}
+        className="relative z-10 p-8 flex items-center justify-center gap-4"
+      >
+        {/* Mic toggle */}
+        <button
+          onClick={onToggleMic}
+          title={isMicOn ? 'Tắt mic' : 'Bật mic'}
+          className={`p-4 rounded-2xl transition-all ${
+            !isMicOn
+              ? 'bg-red-600 text-white'
+              : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
+          }`}
+        >
+          {isMicOn ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
         </button>
-        <button className="p-4 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"><MoreHorizontal className="w-6 h-6" /></button>
-      </div>
+
+        {/* Camera toggle (only in video mode) */}
+        {currentCallIsVideo && (
+          <button
+            onClick={onToggleCamera}
+            title={isCameraOn ? 'Tắt camera' : 'Bật camera'}
+            className={`p-4 rounded-2xl transition-all ${
+              !isCameraOn
+                ? 'bg-red-600 text-white'
+                : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
+            }`}
+          >
+            {isCameraOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+          </button>
+        )}
+
+        {/* Switch to video (only in audio mode, when connected) */}
+        {!currentCallIsVideo && status === 'connected' && upgradeStatus === 'none' && (
+          <button
+            onClick={requestUpgradeToVideo}
+            title="Chuyển sang Video Call"
+            className="p-4 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-blue-600/80 transition-all"
+          >
+            <Video className="w-6 h-6" />
+          </button>
+        )}
+
+        {/* Screen share (only in video mode) */}
+        {currentCallIsVideo && (
+          <button
+            onClick={handleScreenShare}
+            title={isScreenSharing ? 'Dừng chia sẻ màn hình' : 'Chia sẻ màn hình'}
+            className={`p-4 rounded-2xl transition-all ${
+              isScreenSharing
+                ? 'bg-blue-600 text-white'
+                : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
+            }`}
+          >
+            {isScreenSharing ? (
+              <MonitorOff className="w-6 h-6" />
+            ) : (
+              <MonitorUp className="w-6 h-6" />
+            )}
+          </button>
+        )}
+
+        {/* End call */}
+        <button
+          onClick={handleEndCall}
+          title="Kết thúc cuộc gọi"
+          className="p-5 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-2xl shadow-red-600/40 transition-all hover:scale-110 active:scale-95"
+        >
+          <PhoneOff className="w-7 h-7" />
+        </button>
+      </motion.div>
     </div>
   );
 }

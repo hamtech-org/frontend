@@ -29,7 +29,6 @@ import { useGetProfileQuery } from '@/store/api/userApi';
 import { useDispatch } from 'react-redux';
 import { setUser } from '@/store/slices/authSlice';
 import type { ISearchAllResult } from '@/types/search.types';
-
 // Lazy-loaded pages
 const LoginPage = React.lazy(() => import('@/pages/user/LoginPage'));
 const OnboardingPage = React.lazy(() => import('@/pages/user/OnboardingPage'));
@@ -497,6 +496,7 @@ const App: React.FC = () => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 const PageLoader: React.FC = () => (
   <div className="flex items-center justify-center h-full min-h-[50vh]">
     <div className="w-12 h-12 rounded-full border-4 border-blue-600/20 border-t-blue-600 animate-spin" />
