@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import logoUrl from '@/assets/images/logo_vuong.png';
+import { CallProvider } from '@/contexts/CallContext';
+import IncomingCallModal from '@/components/call/IncomingCallModal';
 
 // Lazy-loaded pages
 const LoginPage = React.lazy(() => import('@/pages/user/LoginPage'));
@@ -50,7 +52,14 @@ const navItems = [
 
 const GUEST_ROUTES = ['/login', '/onboarding'];
 
-const App: React.FC = () => {
+const App: React.FC = () => (
+  <CallProvider>
+    <IncomingCallModal />
+    <AppContent />
+  </CallProvider>
+);
+
+const AppContent: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -373,6 +382,7 @@ const App: React.FC = () => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 const PageLoader: React.FC = () => (
   <div className="flex items-center justify-center h-full min-h-[50vh]">
     <div className="w-12 h-12 rounded-full border-4 border-blue-600/20 border-t-blue-600 animate-spin" />

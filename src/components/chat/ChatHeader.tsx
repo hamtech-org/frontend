@@ -17,6 +17,8 @@ type ChatHeaderProps = {
   typingUsers: TypingUserEntry[];
   showInfo: boolean;
   onToggleShowInfo: () => void;
+  onAudioCall?: () => void;
+  onVideoCall?: () => void;
 };
 
 export function ChatHeader({
@@ -24,6 +26,8 @@ export function ChatHeader({
   typingUsers,
   showInfo,
   onToggleShowInfo,
+  onAudioCall,
+  onVideoCall,
 }: ChatHeaderProps) {
   return (
     <div className="h-20 px-8 flex items-center justify-between border-b border-black/5 dark:border-white/5 bg-inherit/80 backdrop-blur-md sticky top-0 z-10">
@@ -96,6 +100,7 @@ export function ChatHeader({
             <button
               type="button"
               title="Gọi thoại"
+              onClick={onAudioCall}
               className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600"
             >
               <Phone className="w-5 h-5" />
@@ -103,6 +108,7 @@ export function ChatHeader({
             <button
               type="button"
               title="Gọi video"
+              onClick={onVideoCall}
               className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600"
             >
               <Video className="w-5 h-5" />

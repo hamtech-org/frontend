@@ -47,6 +47,7 @@ import { PollModal } from '@/components/chat/PollModal';
 import { MemberManagementModal } from '@/components/chat/MemberManagementModal';
 import { AISummaryModal } from '@/components/chat/AISummaryModal';
 import { TaskModal } from '@/components/chat/TaskModal';
+import { useCallContext } from '@/contexts/CallContext';
 
 type MessageConfirmState =
   | null
@@ -122,6 +123,18 @@ export default function ChatPage() {
   const [reactMessage] = useReactMessageMutation();
 
   const activeConversation = conversations.find((c) => c.conversationId === activeConversationId);
+
+  const { initiateCall } = useCallContext();
+
+  const handleAudioCall = useCallback(() => {
+    if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
+    initiateCall(activeConversation.otherUserId, 'audio');
+  }, [activeConversation, initiateCall]);
+
+  const handleVideoCall = useCallback(() => {
+    if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
+    initiateCall(activeConversation.otherUserId, 'video');
+  }, [activeConversation, initiateCall]);
 
   const [editingMessage, setEditingMessage] = useState<IMessage | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -598,6 +611,8 @@ export default function ChatPage() {
           typingUsers={typingUsers}
           showInfo={showInfo}
           onToggleShowInfo={() => setShowInfo(!showInfo)}
+          onAudioCall={handleAudioCall}
+          onVideoCall={handleVideoCall}
         />
 
         {activeConversationId && primaryPinnedMessage && (
