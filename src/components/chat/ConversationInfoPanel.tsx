@@ -18,12 +18,18 @@ type ConversationInfoPanelProps = {
   activeConversation: IConversation | undefined;
   onOpenAISummaryFromPanel: () => void;
   onOpenMemberModal: (tab: 'list' | 'pending') => void;
+  onLeaveGroup?: () => void;
+  onDeleteGroup?: () => void;
+  numRequests: number;
 };
 
 export function ConversationInfoPanel({
   activeConversation,
   onOpenAISummaryFromPanel,
   onOpenMemberModal,
+  onLeaveGroup,
+  onDeleteGroup,
+  numRequests,
 }: ConversationInfoPanelProps) {
   return (
     <div className="w-[280px] lg:w-[340px] border-l border-black/5 dark:border-white/5 flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all hidden md:flex">
@@ -144,11 +150,13 @@ export function ConversationInfoPanel({
                 onKeyDown={(e) => e.key === 'Enter' && onOpenMemberModal('list')}
                 className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
               >
-                Quản lý thành viên ({mockMembers.length})
+                Quản lý thành viên ({activeConversation.memberCount})
                 <div className="flex items-center gap-2">
-                  <div className="w-[20px] h-[20px] rounded-full bg-red-500 flex items-center justify-center text-[10px] text-white font-bold">
-                    3
-                  </div>
+                  {numRequests > 0 && (
+                    <div className="w-[20px] h-[20px] rounded-full bg-red-500 flex items-center justify-center text-[10px] text-white font-bold">
+                      {numRequests}
+                    </div>
+                  )}
                   <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </div>
               </div>
@@ -163,9 +171,11 @@ export function ConversationInfoPanel({
                   <div className="flex items-center gap-3 text-sm text-muted-foreground group-hover/wait:text-blue-600 font-medium transition-colors">
                     <UserPlus className="w-4 h-4 opacity-70" /> Duyệt người vào nhóm
                   </div>
-                  <div className="w-[22px] h-[22px] rounded-full bg-red-500 shadow-md shadow-red-500/20 flex items-center justify-center text-[10px] text-white font-bold">
-                    3
-                  </div>
+                  {numRequests > 0 && (
+                    <div className="w-[22px] h-[22px] rounded-full bg-red-500 shadow-md shadow-red-500/20 flex items-center justify-center text-[10px] text-white font-bold">
+                      {numRequests}
+                    </div>
+                  )}
                 </div>
                 <div
                   role="button"
@@ -215,13 +225,15 @@ export function ConversationInfoPanel({
         </div>
 
         {activeConversation?.type === 'group' && (
-          <div className="p-4 bg-white dark:bg-transparent mt-2 flex justify-center">
+          <div className="p-4 bg-white dark:bg-transparent mt-2 flex flex-col gap-2 justify-center">
             <button
               type="button"
-              className="flex items-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-2 rounded-xl transition-colors"
+              onClick={onLeaveGroup}
+              className="flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-2 rounded-xl transition-colors border border-red-500/20"
             >
               Rời nhóm
             </button>
+            {/* Logic for delete group if owner can be added here */}
           </div>
         )}
       </div>
