@@ -8,6 +8,7 @@ type PollModalProps = {
   onPollQuestionChange: (value: string) => void;
   pollOptions: string[];
   onPollOptionsChange: (options: string[]) => void;
+  onCreatePoll: () => void;
 };
 
 export function PollModal({
@@ -17,6 +18,7 @@ export function PollModal({
   onPollQuestionChange,
   pollOptions,
   onPollOptionsChange,
+  onCreatePoll,
 }: PollModalProps) {
   return (
     <AnimatePresence>
@@ -123,7 +125,7 @@ export function PollModal({
               <button
                 type="button"
                 disabled={!pollQuestion.trim() || pollOptions.filter((o) => o.trim()).length < 2}
-                onClick={onClose}
+                onClick={onCreatePoll}
                 className={`flex-1 py-2.5 rounded-xl font-bold text-[14px] text-white transition-all flex items-center justify-center gap-2 ${
                   pollQuestion.trim() && pollOptions.filter((o) => o.trim()).length >= 2
                     ? 'bg-orange-500 hover:bg-orange-600 shadow-md shadow-orange-500/20 hover:-translate-y-0.5'
