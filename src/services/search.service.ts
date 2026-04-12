@@ -1,13 +1,4 @@
 import { apiClient } from './api';
-import type {
-  ISearchResult,
-  ISearchUserResult,
-  ISearchGroupResult,
-  ISearchPostResult,
-  ISearchMessageResult,
-  ISearchAllResult,
-  ISearchAllChatResult,
-} from '@/types/search.types';
 
 interface SearchParams {
   q: string;
@@ -88,6 +79,18 @@ export const searchService = {
     const response = await apiClient.get<any, any>(
       '/search/all-chat',
       { params: { q: params.q } }
+    );
+    return response.data?.data || response.data;
+  },
+
+  /**
+   * Search users by email or phone number
+   * GET /search/users/by-contact?q=...
+   */
+  searchUsersByContact: async (params: SearchParams) => {
+    const response = await apiClient.get<any, any>(
+      '/search/users/by-contact',
+      { params: { q: params.q, page: params.page, pageSize: params.pageSize } }
     );
     return response.data?.data || response.data;
   },

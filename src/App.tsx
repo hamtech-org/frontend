@@ -28,6 +28,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useGetProfileQuery } from '@/store/api/userApi';
 import { useDispatch } from 'react-redux';
 import { setUser } from '@/store/slices/authSlice';
+import { CallProvider } from '@/contexts/CallContext';
 import type { ISearchAllResult } from '@/types/search.types';
 // Lazy-loaded pages
 const LoginPage = React.lazy(() => import('@/pages/user/LoginPage'));
@@ -474,19 +475,21 @@ const App: React.FC = () => {
               className={isChatRoute ? "absolute inset-0" : "h-full"}
             >
               <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/community" element={<ContactsPage />} />
-                  <Route path="/studio" element={<StudioPage />} />
-                  <Route path="/chat/:conversationId" element={<ChatPage />} />
-                  <Route path="/chat" element={<ChatPage />} />
-                  <Route path="/search" element={<SearchPage />} />
-                  <Route path="/analytics" element={<AdminAnalytics />} />
-                  <Route path="/ai-studio" element={<AIStudioPage />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/admin" element={<AdminDashboard />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
+                <CallProvider>
+                  <Routes>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/community" element={<ContactsPage />} />
+                    <Route path="/studio" element={<StudioPage />} />
+                    <Route path="/chat/:conversationId" element={<ChatPage />} />
+                    <Route path="/chat" element={<ChatPage />} />
+                    <Route path="/search" element={<SearchPage />} />
+                    <Route path="/analytics" element={<AdminAnalytics />} />
+                    <Route path="/ai-studio" element={<AIStudioPage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/admin" element={<AdminDashboard />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </CallProvider>
               </Suspense>
             </motion.div>
           </AnimatePresence>

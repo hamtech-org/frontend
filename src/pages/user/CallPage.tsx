@@ -109,7 +109,7 @@ export default function CallPage() {
           dispatch(setCallConnected());
         });
 
-        client.on('user-published', async (user, mediaType) => {
+        client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
           await client.subscribe(user, mediaType);
           if (mediaType === 'video' && remoteVideoRef.current) {
             user.videoTrack?.play(remoteVideoRef.current);
@@ -121,7 +121,7 @@ export default function CallPage() {
           setRemoteUser(user);
         });
 
-        client.on('user-unpublished', (user, mediaType) => {
+        client.on('user-unpublished', (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
           if (mediaType === 'video') {
             user.videoTrack?.stop();
             setRemoteHasVideo(false);
@@ -144,17 +144,17 @@ export default function CallPage() {
         const micTrack = await createTrackWithRetry(() =>
           AgoraRTC.createMicrophoneAudioTrack(),
         );
-        if (cancelled) { micTrack.close(); return; }
+        if (cancelled) { (micTrack as IMicrophoneAudioTrack).close(); return; }
         micTrackRef.current = micTrack;
 
         if (videoCall) {
           const camTrack = await createTrackWithRetry(() =>
             AgoraRTC.createCameraVideoTrack(),
           );
-          if (cancelled) { camTrack.close(); micTrack.close(); return; }
+          if (cancelled) { (camTrack as ICameraVideoTrack).close(); (micTrack as IMicrophoneAudioTrack).close(); return; }
           camTrackRef.current = camTrack;
           if (localVideoRef.current) {
-            camTrack.play(localVideoRef.current);
+            (camTrack as ICameraVideoTrack).play(localVideoRef.current);
           }
           await client.publish([micTrack, camTrack]);
         } else {
@@ -201,7 +201,7 @@ export default function CallPage() {
           const camTrack = await createTrackWithRetry(() =>
             AgoraRTC.createCameraVideoTrack(),
           );
-          if (cancelled) { camTrack.close(); return; }
+          if (cancelled) { (camTrack as ICameraVideoTrack).close(); return; }
           camTrackRef.current = camTrack;
           await client.publish([camTrack]);
         }

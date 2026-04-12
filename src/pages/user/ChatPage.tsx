@@ -32,6 +32,7 @@ import { formatTime } from '@/utils/formatDate';
 import { decodeJwtUserId } from '@/utils/chatUtils';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
 import { ConversationListPanel, type ContactsTabId } from '@/components/chat/ConversationListPanel';
+import { FriendsListView } from '@/components/chat/FriendsListView';
 import { AddFriendModal } from '@/components/chat/AddFriendModal';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import { PinnedMessagesBar } from '@/components/chat/PinnedMessagesBar';
@@ -528,6 +529,41 @@ export default function ChatPage() {
     setGroupName('');
   }, [selectedGroupMembers, groupName, createConversation, navigate]);
 
+  const handleFriendClick = useCallback(
+    async (friendId: string, friendName: string) => {
+      try {
+        console.log('👤 handleFriendClick - friendId:', friendId, 'friendName:', friendName);
+        
+        // Check if conversation already exists with this friend
+        let existingConversation = conversations.find(
+          (c) => c.type === 'direct' && (c.otherUserId === friendId || c.name === friendName),
+        );
+
+        // If not found, create a new direct conversation
+        if (!existingConversation) {
+          console.log('🆕 Creating new direct conversation...');
+          const result = await createConversation({
+            type: 'direct',
+            memberIds: [friendId],
+          }).unwrap();
+          existingConversation = result.data;
+          console.log('✅ Conversation created:', result.data.conversationId);
+        } else {
+          console.log('✅ Found existing conversation:', existingConversation.conversationId);
+        }
+
+        // Close contacts management and navigate to conversation
+        setShowContactsManagement(false);
+        void navigate(`/chat/${existingConversation.conversationId}`);
+      } catch (error) {
+        console.error('❌ Failed to open conversation with friend:', error);
+        // Log the full error object to see what went wrong
+        console.error('Error details:', JSON.stringify(error, null, 2));
+      }
+    },
+    [conversations, createConversation, navigate],
+  );
+
   const closeTaskModal = useCallback(() => {
     setShowTaskModal(false);
     setTaskTitle('');
@@ -570,11 +606,10 @@ export default function ChatPage() {
   }, []);
 
   const handleAddFriendSubmit = useCallback(() => {
-    if (!addFriendQuery.trim()) return;
-    console.info('[chat] Gửi lời mời kết bạn (placeholder):', addFriendQuery.trim());
+    // Modal now handles all friend request logic internally
     setShowAddFriendModal(false);
     setAddFriendQuery('');
-  }, [addFriendQuery]);
+  }, []);
 
   return (
     <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
@@ -606,67 +641,73 @@ export default function ChatPage() {
       />
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
-        <ChatHeader
-          activeConversation={activeConversation}
-          typingUsers={typingUsers}
-          showInfo={showInfo}
-          onToggleShowInfo={() => setShowInfo(!showInfo)}
-          onAudioCall={handleAudioCall}
-          onVideoCall={handleVideoCall}
-        />
+        {showContactsManagement ? (
+          <FriendsListView onFriendClick={handleFriendClick} />
+        ) : (
+          <>
+            <ChatHeader
+              activeConversation={activeConversation}
+              typingUsers={typingUsers}
+              showInfo={showInfo}
+              onToggleShowInfo={() => setShowInfo(!showInfo)}
+              onAudioCall={handleAudioCall}
+              onVideoCall={handleVideoCall}
+            />
 
-        {activeConversationId && primaryPinnedMessage && (
-          <PinnedMessagesBar
-            primaryPinnedMessage={primaryPinnedMessage}
-            otherPinnedMessages={otherPinnedMessages}
-            showOtherPinnedPanel={showOtherPinnedPanel}
-            onToggleOtherPinnedPanel={() => setShowOtherPinnedPanel((v) => !v)}
-            onScrollToMessage={scrollToMessageBubble}
-            onTogglePin={handleTogglePinMsg}
-            formatMessageTime={formatMessageTime}
-          />
+            {activeConversationId && primaryPinnedMessage && (
+              <PinnedMessagesBar
+                primaryPinnedMessage={primaryPinnedMessage}
+                otherPinnedMessages={otherPinnedMessages}
+                showOtherPinnedPanel={showOtherPinnedPanel}
+                onToggleOtherPinnedPanel={() => setShowOtherPinnedPanel((v) => !v)}
+                onScrollToMessage={scrollToMessageBubble}
+                onTogglePin={handleTogglePinMsg}
+                formatMessageTime={formatMessageTime}
+              />
+            )}
+
+            <ChatMessageList
+              messagesContainerRef={messagesContainerRef}
+              messagesEndRef={messagesEndRef}
+              allMessages={allMessages}
+              activeConversationId={activeConversationId}
+              activeConversation={activeConversation}
+              currentUserId={currentUserId}
+              typingUsers={typingUsers}
+              unreadIncomingCount={unreadIncomingCount}
+              actionMenuMsgId={actionMenuMsgId}
+              onActionMenuMsgIdChange={setActionMenuMsgId}
+              onStartEdit={(msg) => {
+                setEditingMessage(msg);
+                setEditDraft(msg.content);
+              }}
+              onTogglePin={handleTogglePinMsg}
+              onRecall={handleRecallMsg}
+              onDelete={handleDeleteMsg}
+              onReply={(msg) => dispatch(setReplyingTo(msg))}
+              onReact={handleReactMessage}
+              onJumpToLatest={handleJumpToLatest}
+            />
+
+            <ChatComposer
+              activeConversation={activeConversation}
+              activeConversationId={activeConversationId}
+              inputText={inputText}
+              onInputTextChange={setInputText}
+              onKeyDown={handleKeyDown}
+              onTyping={handleTyping}
+              onSend={handleSendMessage}
+              isSending={isSending}
+              replyingTo={replyingTo}
+              onClearReply={() => dispatch(clearReplyingTo())}
+              onOpenPoll={() => setShowPollModal(true)}
+              onOpenTask={() => setShowTaskModal(true)}
+            />
+          </>
         )}
-
-        <ChatMessageList
-          messagesContainerRef={messagesContainerRef}
-          messagesEndRef={messagesEndRef}
-          allMessages={allMessages}
-          activeConversationId={activeConversationId}
-          activeConversation={activeConversation}
-          currentUserId={currentUserId}
-          typingUsers={typingUsers}
-          unreadIncomingCount={unreadIncomingCount}
-          actionMenuMsgId={actionMenuMsgId}
-          onActionMenuMsgIdChange={setActionMenuMsgId}
-          onStartEdit={(msg) => {
-            setEditingMessage(msg);
-            setEditDraft(msg.content);
-          }}
-          onTogglePin={handleTogglePinMsg}
-          onRecall={handleRecallMsg}
-          onDelete={handleDeleteMsg}
-          onReply={(msg) => dispatch(setReplyingTo(msg))}
-          onReact={handleReactMessage}
-          onJumpToLatest={handleJumpToLatest}
-        />
-
-        <ChatComposer
-          activeConversation={activeConversation}
-          activeConversationId={activeConversationId}
-          inputText={inputText}
-          onInputTextChange={setInputText}
-          onKeyDown={handleKeyDown}
-          onTyping={handleTyping}
-          onSend={handleSendMessage}
-          isSending={isSending}
-          replyingTo={replyingTo}
-          onClearReply={() => dispatch(clearReplyingTo())}
-          onOpenPoll={() => setShowPollModal(true)}
-          onOpenTask={() => setShowTaskModal(true)}
-        />
       </div>
 
-      {showInfo && (
+      {showInfo && !showContactsManagement && (
         <ConversationInfoPanel
           activeConversation={activeConversation}
           onOpenAISummaryFromPanel={openAISummaryFromPanel}

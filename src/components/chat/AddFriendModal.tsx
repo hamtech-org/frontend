@@ -1,5 +1,19 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Search, UserPlus, X } from 'lucide-react';
+import { Search, UserPlus, X, Loader, Clock, UserCheck, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { searchService } from '@/services/search.service';
+import { useSendFriendRequestMutation, useCancelFriendRequestMutation, useAcceptFriendRequestMutation, useRejectFriendRequestMutation } from '@/store/api/userApi';
+
+interface SearchResult {
+  userId: string;
+  displayName: string;
+  email: string;
+  phone?: string | null;
+  avatar?: string | null;
+  bio?: string | null;
+  isFriend?: boolean;
+  friendshipStatus?: 'friend' | 'pending_sent' | 'pending_received' | 'none';
+}
 
 type AddFriendModalProps = {
   open: boolean;
@@ -12,6 +26,169 @@ type AddFriendModalProps = {
 
 export function AddFriendModal({ open, query, onQueryChange, onClose, onSubmit }: AddFriendModalProps) {
   const trimmed = query.trim();
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const [sendFriendRequest] = useSendFriendRequestMutation();
+  const [cancelFriendRequest] = useCancelFriendRequestMutation();
+  const [acceptFriendRequest] = useAcceptFriendRequestMutation();
+  const [rejectFriendRequest] = useRejectFriendRequestMutation();
+
+  // Fetch results when query changes
+  useEffect(() => {
+    if (!trimmed) {
+      setResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const data = await searchService.searchUsersByContact({ q: trimmed, pageSize: 10 });
+        setResults(data?.items || []);
+      } catch (error) {
+        console.error('Search error:', error);
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 300); // debounce
+
+    return () => clearTimeout(timer);
+  }, [trimmed]);
+
+  const handleSendRequest = async (userId: string) => {
+    setActionLoading(prev => ({ ...prev, [userId]: true }));
+    try {
+      await sendFriendRequest({ friendId: userId }).unwrap();
+      setResults(prev =>
+        prev.map(user =>
+          user.userId === userId
+            ? { ...user, friendshipStatus: 'pending_sent' }
+            : user
+        )
+      );
+    } catch (error) {
+      console.error('Error sending friend request:', error);
+    } finally {
+      setActionLoading(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  const handleCancelRequest = async (userId: string) => {
+    setActionLoading(prev => ({ ...prev, [userId]: true }));
+    try {
+      await cancelFriendRequest({ friendId: userId }).unwrap();
+      setResults(prev =>
+        prev.map(user =>
+          user.userId === userId
+            ? { ...user, friendshipStatus: 'none' }
+            : user
+        )
+      );
+    } catch (error) {
+      console.error('Error canceling friend request:', error);
+    } finally {
+      setActionLoading(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  const handleAcceptRequest = async (userId: string) => {
+    setActionLoading(prev => ({ ...prev, [userId]: true }));
+    try {
+      await acceptFriendRequest({ senderId: userId }).unwrap();
+      setResults(prev =>
+        prev.map(user =>
+          user.userId === userId
+            ? { ...user, friendshipStatus: 'friend', isFriend: true }
+            : user
+        )
+      );
+    } catch (error) {
+      console.error('Error accepting friend request:', error);
+    } finally {
+      setActionLoading(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  const handleRejectRequest = async (userId: string) => {
+    setActionLoading(prev => ({ ...prev, [userId]: true }));
+    try {
+      await rejectFriendRequest({ senderId: userId }).unwrap();
+      setResults(prev =>
+        prev.map(user =>
+          user.userId === userId
+            ? { ...user, friendshipStatus: 'none' }
+            : user
+        )
+      );
+    } catch (error) {
+      console.error('Error rejecting friend request:', error);
+    } finally {
+      setActionLoading(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  const renderActionButton = (user: SearchResult) => {
+    const status = user.friendshipStatus || 'none';
+    const isLoading = actionLoading[user.userId];
+
+    switch (status) {
+      case 'friend':
+        return (
+          <button
+            disabled
+            className="flex items-center gap-1 px-3 py-1 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-xs font-semibold"
+          >
+            <UserCheck className="w-3 h-3" />
+            Bạn bè
+          </button>
+        );
+      case 'pending_sent':
+        return (
+          <button
+            onClick={() => handleCancelRequest(user.userId)}
+            disabled={isLoading}
+            className="flex items-center gap-1 px-3 py-1 rounded-lg bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-200 dark:hover:bg-yellow-900/50 text-xs font-semibold transition-colors disabled:opacity-50"
+          >
+            {isLoading ? <Loader className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
+            Hủy
+          </button>
+        );
+      case 'pending_received':
+        return (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleAcceptRequest(user.userId)}
+              disabled={isLoading}
+              className="flex items-center gap-1 px-3 py-1 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+            >
+              {isLoading ? <Loader className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+              Chấp nhận
+            </button>
+            <button
+              onClick={() => handleRejectRequest(user.userId)}
+              disabled={isLoading}
+              className="flex items-center gap-1 px-3 py-1 rounded-lg bg-gray-400 hover:bg-gray-500 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+            >
+              Từ chối
+            </button>
+          </div>
+        );
+      case 'none':
+      default:
+        return (
+          <button
+            onClick={() => handleSendRequest(user.userId)}
+            disabled={isLoading}
+            className="flex items-center gap-1 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+          >
+            {isLoading ? <Loader className="w-3 h-3 animate-spin" /> : <UserPlus className="w-3 h-3" />}
+            Kết bạn
+          </button>
+        );
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -56,24 +233,67 @@ export function AddFriendModal({ open, query, onQueryChange, onClose, onSubmit }
                   className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:bg-white dark:focus:bg-black focus:border-blue-600/50 shadow-sm text-[14px] font-medium transition-all text-black dark:text-white"
                 />
               </div>
-              <p className="text-[13px] text-muted-foreground leading-relaxed">
-                Gửi lời mời kết bạn qua email hoặc số điện thoại. API tìm kiếm / gửi lời mời sẽ được nối khi backend sẵn sàng.
-              </p>
-              <div className="flex justify-end gap-2 pt-2">
+
+              {loading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader className="w-5 h-5 text-blue-600 animate-spin" />
+                </div>
+              )}
+
+              {!loading && results.length > 0 && (
+                <div className="space-y-3">
+                  {results.map(user => (
+                    <div
+                      key={user.userId}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                    >
+                      <img
+                        src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.userId}`}
+                        alt={user.displayName}
+                        className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-black dark:text-white truncate">
+                          {user.displayName}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                          {user.email}
+                        </p>
+                        {user.phone && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                            {user.phone}
+                          </p>
+                        )}
+                      </div>
+                      {renderActionButton(user)}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!loading && trimmed && results.length === 0 && (
+                <div className="text-center py-8">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Không tìm thấy người dùng với "{trimmed}"
+                  </p>
+                </div>
+              )}
+
+              {!trimmed && (
+                <div className="text-center py-8">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Nhập email hoặc số điện thoại để tìm kiếm
+                  </p>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-black/5 dark:border-white/5">
                 <button
                   type="button"
                   onClick={onClose}
                   className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15"
                 >
                   Đóng
-                </button>
-                <button
-                  type="button"
-                  disabled={!trimmed}
-                  onClick={() => onSubmit()}
-                  className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Gửi lời mời
                 </button>
               </div>
             </div>
