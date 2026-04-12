@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, Palette, UserPlus, PanelRight, PanelRightClose, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ChevronDown, MoreHorizontal, X, Home, MessageCircle, Contact, Cloud, FolderOpen, Frame, Briefcase, Camera, Mail, Quote, Calendar, User } from 'lucide-react';
+import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck, Image, FileText, Sparkles, Reply, Pin, Trash2, Mic, BarChart2, Users, Palette, UserPlus, PanelRight, PanelRightClose, CheckSquare, BellOff, PinOff, Settings, ChevronRight, ChevronDown, MoreHorizontal, X, Home, MessageCircle, Contact, Cloud, FolderOpen, Frame, Briefcase, Camera, Mail, Quote, Calendar, User, Copy, PhoneCall } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useCallContext } from '@/contexts/CallContext';
+import { useAuth } from '@/hooks/useAuth';
+import type { CallType } from '@/types/call.types';
 
 const contacts = [
   {
@@ -75,8 +78,28 @@ const messages = [
 
 export default function ChatPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { initiateCall } = useCallContext();
   const [contactsList, setContactsList] = useState(mockContacts);
   const [activeChat, setActiveChat] = useState(1);
+  const [testCallTargetId, setTestCallTargetId] = useState('');
+  const [copiedId, setCopiedId] = useState(false);
+
+  const handleCopyUserId = useCallback(() => {
+    if (!user?.userId) return;
+    navigator.clipboard.writeText(user.userId);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  }, [user?.userId]);
+
+  const handleTestCall = useCallback(
+    (type: CallType) => {
+      const targetId = testCallTargetId.trim();
+      if (!targetId) return;
+      initiateCall(targetId, type);
+    },
+    [testCallTargetId, initiateCall],
+  );
   const [showInfo, setShowInfo] = useState(true);
   const [showMarkReadModal, setShowMarkReadModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -547,10 +570,10 @@ export default function ChatPage() {
                 <button type="button" title="Tạo nhóm trò chuyện mới" className="hidden sm:block p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600">
                   <UserPlus className="w-5 h-5" />
                 </button>
-                <button type="button" title="Gọi thoại" className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600">
+                <button type="button" title="Gọi thoại" onClick={() => handleTestCall('audio')} className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600">
                   <Phone className="w-5 h-5" />
                 </button>
-                <button type="button" title="Gọi video" className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600">
+                <button type="button" title="Gọi video" onClick={() => handleTestCall('video')} className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600">
                   <Video className="w-5 h-5" />
                 </button>
               </>
@@ -578,6 +601,54 @@ export default function ChatPage() {
             </div>
           </div>
         )}
+
+        {/* Test Call Panel */}
+        <div className="shrink-0 mx-4 sm:mx-8 mt-3 p-3 rounded-xl bg-gradient-to-r from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 border border-blue-200/50 dark:border-blue-500/20">
+          <div className="flex items-center gap-2 mb-2">
+            <PhoneCall className="w-4 h-4 text-blue-600" />
+            <span className="text-xs font-bold text-blue-600 uppercase tracking-wide">Test Call</span>
+          </div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs text-muted-foreground shrink-0">Your ID:</span>
+            <code className="text-xs bg-black/5 dark:bg-white/10 px-2 py-1 rounded font-mono truncate max-w-[200px]">
+              {user?.userId ?? '—'}
+            </code>
+            <button
+              type="button"
+              onClick={handleCopyUserId}
+              className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+              title="Copy User ID"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+            {copiedId && <span className="text-[10px] text-green-500 font-bold">Copied!</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={testCallTargetId}
+              onChange={(e) => setTestCallTargetId(e.target.value)}
+              placeholder="Paste target User ID here..."
+              className="flex-1 text-xs px-3 py-1.5 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-black/20 outline-none focus:ring-2 focus:ring-blue-500/40 font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => handleTestCall('audio')}
+              disabled={!testCallTargetId.trim()}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold transition-colors"
+            >
+              <Phone className="w-3.5 h-3.5" /> Audio
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTestCall('video')}
+              disabled={!testCallTargetId.trim()}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold transition-colors"
+            >
+              <Video className="w-3.5 h-3.5" /> Video
+            </button>
+          </div>
+        </div>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-8 min-h-0 custom-scrollbar">
           <div className="flex justify-center">

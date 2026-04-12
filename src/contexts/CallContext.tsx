@@ -47,20 +47,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       dispatch(setIncomingCall(payload));
     };
 
-    const onAccepted = (data: unknown) => {
-      const payload = data as { calleeId: string; channelName: string };
+    const onAccepted = () => {
       dispatch(setCallAccepted());
-      navigate(`/call?channel=${payload.channelName}`);
     };
 
     const onRejected = () => {
-      dispatch(setCallEnded());
-      setTimeout(() => dispatch(resetCall()), 2000);
+      dispatch(resetCall());
     };
 
     const onEnded = () => {
       dispatch(setCallEnded());
-      setTimeout(() => dispatch(resetCall()), 1500);
     };
 
     socketService.on('call:incoming', onIncoming);
@@ -95,7 +91,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const onChannelReady = (data: unknown) => {
         const payload = data as { channelName: string };
         dispatch(setOutgoingCall({ calleeId, callType: type, channelName: payload.channelName }));
-        navigate(`/call?channel=${payload.channelName}`);
+        navigate(`/call?channel=${payload.channelName}&type=${type}`);
         socketService.off('call:channel-ready', onChannelReady);
       };
       socketService.on('call:channel-ready', onChannelReady);
@@ -111,7 +107,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       callerId: callState.callerId,
     });
     dispatch(setCallAccepted());
-    navigate(`/call?channel=${callState.channelName}`);
+    navigate(`/call?channel=${callState.channelName}&type=${callState.callType || 'audio'}`);
   }, [callState, dispatch, navigate]);
 
   const rejectCall = useCallback(() => {
