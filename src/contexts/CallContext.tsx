@@ -19,7 +19,7 @@ import {
   resetUpgrade,
 } from '@/store/slices/callSlice';
 
-const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '8d20dc4c559344829aade9c1a38ddd62';
+const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID;
 
 interface AgoraTokenResponse {
   token: string;
@@ -95,15 +95,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [dispatch, navigate]);
 
-  const fetchAgoraToken = useCallback(
-    async (channelName: string): Promise<AgoraTokenResponse> => {
-      const res = await apiClient.get('/agora/rtc-token', {
-        params: { channelName },
-      });
-      return res.data.data;
-    },
-    [],
-  );
+  const fetchAgoraToken = useCallback(async (channelName: string): Promise<AgoraTokenResponse> => {
+    const res = await apiClient.get('/agora/rtc-token', {
+      params: { channelName },
+    });
+    return res.data.data;
+  }, []);
 
   const initiateCall = useCallback(
     (calleeId: string, type: CallType) => {
@@ -123,7 +120,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const acceptCall = useCallback(() => {
-    if (callState.status !== 'incoming-ringing' || !callState.channelName || !callState.callerId) return;
+    if (callState.status !== 'incoming-ringing' || !callState.channelName || !callState.callerId)
+      return;
 
     socketService.emit('call:accept', {
       channelName: callState.channelName,
@@ -165,21 +163,24 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dispatch(setUpgradePendingOutgoing());
   }, [callState, dispatch]);
 
-  const respondUpgradeToVideo = useCallback((accepted: boolean) => {
-    const peerId = callState.callerId || callState.calleeId;
-    if (!callState.channelName || !peerId) return;
+  const respondUpgradeToVideo = useCallback(
+    (accepted: boolean) => {
+      const peerId = callState.callerId || callState.calleeId;
+      if (!callState.channelName || !peerId) return;
 
-    socketService.emit('call:upgrade-response', {
-      peerId,
-      channelName: callState.channelName,
-      accepted,
-    });
-    if (accepted) {
-      dispatch(setUpgradeAccepted());
-    } else {
-      dispatch(resetUpgrade());
-    }
-  }, [callState, dispatch]);
+      socketService.emit('call:upgrade-response', {
+        peerId,
+        channelName: callState.channelName,
+        accepted,
+      });
+      if (accepted) {
+        dispatch(setUpgradeAccepted());
+      } else {
+        dispatch(resetUpgrade());
+      }
+    },
+    [callState, dispatch],
+  );
 
   const onToggleMic = useCallback(() => dispatch(toggleMic()), [dispatch]);
   const onToggleCamera = useCallback(() => dispatch(toggleCamera()), [dispatch]);
