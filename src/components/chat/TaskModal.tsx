@@ -5,6 +5,7 @@ import { mockMembers } from './chatMocks';
 type TaskModalProps = {
   open: boolean;
   onClose: () => void;
+  members: Array<{ id: string; name: string; avatar: string; role: string }>;
   taskTitle: string;
   onTaskTitleChange: (value: string) => void;
   taskDeadline: string;
@@ -19,6 +20,7 @@ type TaskModalProps = {
 export function TaskModal({
   open,
   onClose,
+  members,
   taskTitle,
   onTaskTitleChange,
   taskDeadline,
@@ -88,7 +90,7 @@ export function TaskModal({
                   Giao cho
                 </label>
                 <div className="border border-black/5 dark:border-white/10 rounded-2xl overflow-hidden divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-black/20">
-                  {mockMembers.map((member) => (
+                  {members.map((member) => (
                     <label
                       key={member.id}
                       className="flex items-center gap-3.5 px-4 py-2.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors group"
