@@ -10,6 +10,8 @@ const initialState: CallState = {
   calleeId: null,
   isMicOn: true,
   isCameraOn: true,
+  upgradeStatus: 'none',
+  isScreenSharing: false,
 };
 
 const callSlice = createSlice({
@@ -52,6 +54,23 @@ const callSlice = createSlice({
     toggleCamera: (state) => {
       state.isCameraOn = !state.isCameraOn;
     },
+    setUpgradePendingOutgoing: (state) => {
+      state.upgradeStatus = 'pending-outgoing';
+    },
+    setUpgradePendingIncoming: (state) => {
+      state.upgradeStatus = 'pending-incoming';
+    },
+    setUpgradeAccepted: (state) => {
+      state.upgradeStatus = 'accepted';
+      state.callType = 'video';
+      state.isCameraOn = true;
+    },
+    resetUpgrade: (state) => {
+      state.upgradeStatus = 'none';
+    },
+    setScreenSharing: (state, action: PayloadAction<boolean>) => {
+      state.isScreenSharing = action.payload;
+    },
     resetCall: () => initialState,
   },
 });
@@ -64,6 +83,11 @@ export const {
   setCallEnded,
   toggleMic,
   toggleCamera,
+  setUpgradePendingOutgoing,
+  setUpgradePendingIncoming,
+  setUpgradeAccepted,
+  resetUpgrade,
+  setScreenSharing,
   resetCall,
 } = callSlice.actions;
 

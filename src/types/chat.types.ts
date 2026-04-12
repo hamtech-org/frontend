@@ -19,6 +19,7 @@ export interface IConversation {
   lastMessage: ILastMessage | null;
   memberCount: number;
   unreadCount: number;
+  otherUserId?: string;
 }
 
 export interface ILastMessage {

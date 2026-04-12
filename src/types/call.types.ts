@@ -8,6 +8,8 @@ export type CallStatus =
   | 'connected'
   | 'ended';
 
+export type UpgradeStatus = 'none' | 'pending-outgoing' | 'pending-incoming' | 'accepted';
+
 export interface CallState {
   status: CallStatus;
   callType: CallType | null;
@@ -17,6 +19,8 @@ export interface CallState {
   calleeId: string | null;
   isMicOn: boolean;
   isCameraOn: boolean;
+  upgradeStatus: UpgradeStatus;
+  isScreenSharing: boolean;
 }
 
 export interface IncomingCallData {

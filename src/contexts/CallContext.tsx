@@ -13,6 +13,10 @@ import {
   toggleMic,
   toggleCamera,
   resetCall,
+  setUpgradePendingOutgoing,
+  setUpgradePendingIncoming,
+  setUpgradeAccepted,
+  resetUpgrade,
 } from '@/store/slices/callSlice';
 
 const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID || '8d20dc4c559344829aade9c1a38ddd62';
@@ -30,6 +34,8 @@ interface CallContextValue {
   endCall: () => void;
   onToggleMic: () => void;
   onToggleCamera: () => void;
+  requestUpgradeToVideo: () => void;
+  respondUpgradeToVideo: (accepted: boolean) => void;
   fetchAgoraToken: (channelName: string) => Promise<AgoraTokenResponse>;
   appId: string;
 }
@@ -59,16 +65,33 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       dispatch(setCallEnded());
     };
 
+    const onUpgradeRequest = () => {
+      dispatch(setUpgradePendingIncoming());
+    };
+
+    const onUpgradeResponse = (data: unknown) => {
+      const payload = data as { accepted: boolean };
+      if (payload.accepted) {
+        dispatch(setUpgradeAccepted());
+      } else {
+        dispatch(resetUpgrade());
+      }
+    };
+
     socketService.on('call:incoming', onIncoming);
     socketService.on('call:accepted', onAccepted);
     socketService.on('call:rejected', onRejected);
     socketService.on('call:ended', onEnded);
+    socketService.on('call:upgrade-request', onUpgradeRequest);
+    socketService.on('call:upgrade-response', onUpgradeResponse);
 
     return () => {
       socketService.off('call:incoming', onIncoming);
       socketService.off('call:accepted', onAccepted);
       socketService.off('call:rejected', onRejected);
       socketService.off('call:ended', onEnded);
+      socketService.off('call:upgrade-request', onUpgradeRequest);
+      socketService.off('call:upgrade-response', onUpgradeResponse);
     };
   }, [dispatch, navigate]);
 
@@ -131,6 +154,33 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dispatch(setCallEnded());
   }, [callState, dispatch]);
 
+  const requestUpgradeToVideo = useCallback(() => {
+    const peerId = callState.callerId || callState.calleeId;
+    if (!callState.channelName || !peerId) return;
+
+    socketService.emit('call:upgrade-request', {
+      peerId,
+      channelName: callState.channelName,
+    });
+    dispatch(setUpgradePendingOutgoing());
+  }, [callState, dispatch]);
+
+  const respondUpgradeToVideo = useCallback((accepted: boolean) => {
+    const peerId = callState.callerId || callState.calleeId;
+    if (!callState.channelName || !peerId) return;
+
+    socketService.emit('call:upgrade-response', {
+      peerId,
+      channelName: callState.channelName,
+      accepted,
+    });
+    if (accepted) {
+      dispatch(setUpgradeAccepted());
+    } else {
+      dispatch(resetUpgrade());
+    }
+  }, [callState, dispatch]);
+
   const onToggleMic = useCallback(() => dispatch(toggleMic()), [dispatch]);
   const onToggleCamera = useCallback(() => dispatch(toggleCamera()), [dispatch]);
 
@@ -143,6 +193,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         endCall,
         onToggleMic,
         onToggleCamera,
+        requestUpgradeToVideo,
+        respondUpgradeToVideo,
         fetchAgoraToken,
         appId: AGORA_APP_ID,
       }}
