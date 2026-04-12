@@ -21,6 +21,8 @@ export interface ISearchUserResult {
   email: string;
   avatar: string | null;
   bio: string | null;
+  friendshipStatus?: 'none' | 'pending_sent' | 'pending_received' | 'friend' | 'blocked';
+  isFriend?: boolean; // Backward compatibility
 }
 
 export interface ISearchPostResult {

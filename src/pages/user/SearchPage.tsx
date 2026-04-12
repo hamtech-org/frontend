@@ -1,11 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, User, Users, FileText, ArrowLeft, Loader } from 'lucide-react';
+import { Search, User, Users, FileText, ArrowLeft, Loader, UserPlus, UserCheck, UserX } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/utils/cn';
 import { searchService } from '@/services/search.service';
 import { useAuth } from '@/hooks/useAuth';
+import {
+  useSendFriendRequestMutation,
+  useCancelFriendRequestMutation,
+  useAcceptFriendRequestMutation,
+  useRejectFriendRequestMutation,
+  useRemoveFriendMutation,
+} from '@/store/api/userApi';
 import type {
   ISearchUserResult,
   ISearchGroupResult,
@@ -22,12 +29,21 @@ const SearchPage = () => {
     (type as 'all' | 'users' | 'groups' | 'posts') || 'all'
   );
 
+  // Redux mutations
+  const [sendFriendRequest] = useSendFriendRequestMutation();
+  const [cancelFriendRequest] = useCancelFriendRequestMutation();
+  const [acceptFriendRequest] = useAcceptFriendRequestMutation();
+  const [rejectFriendRequest] = useRejectFriendRequestMutation();
+  const [removeFriend] = useRemoveFriendMutation();
+
   // API state
   const [users, setUsers] = useState<ISearchUserResult[]>([]);
   const [groups, setGroups] = useState<ISearchGroupResult[]>([]);
   const [posts, setPosts] = useState<ISearchPostResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [friendActionLoading, setFriendActionLoading] = useState<Record<string, boolean>>({});
+  const [expandedPendingReceived, setExpandedPendingReceived] = useState<Record<string, boolean>>({});
 
   // Fetch data when query or tab changes
   useEffect(() => {
@@ -93,6 +109,216 @@ const SearchPage = () => {
   const filteredUsers = activeTab === 'all' || activeTab === 'users' ? users : [];
   const filteredGroups = activeTab === 'all' || activeTab === 'groups' ? groups : [];
   const filteredPosts = activeTab === 'all' || activeTab === 'posts' ? posts : [];
+
+  // Handle friend actions
+  const handleSendFriendRequest = async (e: React.MouseEvent, friendId: string) => {
+    e.stopPropagation();
+    setFriendActionLoading(prev => ({ ...prev, [friendId]: true }));
+    try {
+      await sendFriendRequest({ friendId }).unwrap();
+      
+      // Update user friendship status
+      setUsers(prevUsers =>
+        prevUsers.map(u =>
+          u.userId === friendId ? { ...u, friendshipStatus: 'pending_sent', isFriend: false } : u
+        )
+      );
+    } catch (err: any) {
+      console.error('Error sending friend request:', err);
+      const message = err?.data?.error?.message || 'Lỗi khi gửi lời kết bạn';
+      alert(message);
+    } finally {
+      setFriendActionLoading(prev => ({ ...prev, [friendId]: false }));
+    }
+  };
+
+  const handleCancelFriendRequest = async (e: React.MouseEvent, friendId: string) => {
+    e.stopPropagation();
+    setFriendActionLoading(prev => ({ ...prev, [friendId]: true }));
+    try {
+      await cancelFriendRequest({ friendId }).unwrap();
+      
+      setUsers(prevUsers =>
+        prevUsers.map(u =>
+          u.userId === friendId ? { ...u, friendshipStatus: 'none', isFriend: false } : u
+        )
+      );
+    } catch (err: any) {
+      console.error('Error canceling friend request:', err);
+      const message = err?.data?.error?.message || 'Lỗi khi hủy lời kết bạn';
+      alert(message);
+    } finally {
+      setFriendActionLoading(prev => ({ ...prev, [friendId]: false }));
+    }
+  };
+
+  const handleAcceptFriendRequest = async (e: React.MouseEvent, senderId: string) => {
+    e.stopPropagation();
+    setFriendActionLoading(prev => ({ ...prev, [senderId]: true }));
+    try {
+      await acceptFriendRequest({ senderId }).unwrap();
+      
+      setUsers(prevUsers =>
+        prevUsers.map(u =>
+          u.userId === senderId ? { ...u, friendshipStatus: 'friend', isFriend: true } : u
+        )
+      );
+      setExpandedPendingReceived(prev => ({ ...prev, [senderId]: false }));
+    } catch (err: any) {
+      console.error('Error accepting friend request:', err);
+      const message = err?.data?.error?.message || 'Lỗi khi chấp nhận lời kết bạn';
+      alert(message);
+    } finally {
+      setFriendActionLoading(prev => ({ ...prev, [senderId]: false }));
+    }
+  };
+
+  const handleRejectFriendRequest = async (e: React.MouseEvent, senderId: string) => {
+    e.stopPropagation();
+    setFriendActionLoading(prev => ({ ...prev, [senderId]: true }));
+    try {
+      await rejectFriendRequest({ senderId }).unwrap();
+      
+      setUsers(prevUsers =>
+        prevUsers.map(u =>
+          u.userId === senderId ? { ...u, friendshipStatus: 'none', isFriend: false } : u
+        )
+      );
+      setExpandedPendingReceived(prev => ({ ...prev, [senderId]: false }));
+    } catch (err: any) {
+      console.error('Error rejecting friend request:', err);
+      const message = err?.data?.error?.message || 'Lỗi khi từ chối lời kết bạn';
+      alert(message);
+    } finally {
+      setFriendActionLoading(prev => ({ ...prev, [senderId]: false }));
+    }
+  };
+
+  const handleRemoveFriend = async (e: React.MouseEvent, friendId: string) => {
+    e.stopPropagation();
+    
+    // Confirm before removing friend
+    if (!window.confirm('Bạn có chắc chắn muốn hủy kết bạn với người này không?')) {
+      return;
+    }
+    
+    setFriendActionLoading(prev => ({ ...prev, [friendId]: true }));
+    try {
+      await removeFriend({ friendId }).unwrap();
+      
+      setUsers(prevUsers =>
+        prevUsers.map(u =>
+          u.userId === friendId ? { ...u, friendshipStatus: 'none', isFriend: false } : u
+        )
+      );
+    } catch (err: any) {
+      console.error('Error removing friend:', err);
+      const message = err?.data?.error?.message || 'Lỗi khi hủy kết bạn';
+      alert(message);
+    } finally {
+      setFriendActionLoading(prev => ({ ...prev, [friendId]: false }));
+    }
+  };
+
+  // Helper to render friend status button
+  const renderFriendButton = (user: ISearchUserResult) => {
+    const status = user.friendshipStatus || 'none';
+    const isLoading = friendActionLoading[user.userId];
+    console.log(user);
+    switch (status) {
+      case 'friend':
+        return (
+          <button
+            onClick={(e) => handleRemoveFriend(e, user.userId)}
+            disabled={isLoading}
+            className="w-full px-3 py-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-xs rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-1"
+          >
+            {isLoading ? (
+              <Loader className="w-3 h-3 animate-spin" />
+            ) : (
+              <>
+                <UserCheck className="w-3 h-3" />
+                Bạn bè
+              </>
+            )}
+          </button>
+        );
+      case 'pending_sent':
+        return (
+          <button
+            onClick={(e) => handleCancelFriendRequest(e, user.userId)}
+            disabled={isLoading}
+            className="w-full px-3 py-1 bg-gray-400 hover:bg-gray-500 text-white text-xs rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-1"
+          >
+            {isLoading ? (
+              <Loader className="w-3 h-3 animate-spin" />
+            ) : (
+              <>
+                <UserX className="w-3 h-3" />
+                Hủy lời mời
+              </>
+            )}
+          </button>
+        );
+      case 'pending_received':
+        return (
+          <div className="w-full space-y-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedPendingReceived(prev => ({ ...prev, [user.userId]: !prev[user.userId] }));
+              }}
+              className="w-full px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded-lg transition-all flex items-center justify-center gap-1"
+            >
+              <UserPlus className="w-3 h-3" />
+              Lời mời kết bạn
+            </button>
+            {expandedPendingReceived[user.userId] && (
+              <div className="flex gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAcceptFriendRequest(e, user.userId);
+                  }}
+                  disabled={isLoading}
+                  className="flex-1 px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded-lg transition-all disabled:opacity-50"
+                >
+                  {isLoading ? <Loader className="w-3 h-3 animate-spin" /> : 'Chấp nhận'}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRejectFriendRequest(e, user.userId);
+                  }}
+                  disabled={isLoading}
+                  className="flex-1 px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded-lg transition-all disabled:opacity-50"
+                >
+                  {isLoading ? <Loader className="w-3 h-3 animate-spin" /> : 'Từ chối'}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      case 'none':
+      default:
+        return (
+          <button
+            onClick={(e) => handleSendFriendRequest(e, user.userId)}
+            disabled={isLoading}
+            className="w-full px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-1"
+          >
+            {isLoading ? (
+              <Loader className="w-3 h-3 animate-spin" />
+            ) : (
+              <>
+                <UserPlus className="w-3 h-3" />
+                Gửi lời kết bạn
+              </>
+            )}
+          </button>
+        );
+    }
+  };
 
   const tabs = [
     { id: 'all' as const, label: 'Tất cả', total: users.length + groups.length + posts.length },
@@ -188,9 +414,9 @@ const SearchPage = () => {
                       <h3 className="font-semibold text-gray-900 dark:text-white">{user.displayName}</h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{user.email}</p>
                       <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 mb-3">{user.bio?.substring(0, 100) || 'Chưa có tiểu sử'}</p>
-                      <button className="w-full px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-colors">
-                        Gửi lời kết bạn
-                      </button>
+                      
+                      {/* Friend status button based on friendshipStatus */}
+                      {renderFriendButton(user)}
                     </div>
                   </motion.div>
                 ))}
