@@ -303,7 +303,13 @@ export default function ChatPage() {
     void refetchConversations();
   }, [activeConversationId, refetchConversations]);
 
-  const [inputText, setInputText] = useState('');
+  // Lưu inputText theo conversationId
+  const [inputTextMap, setInputTextMap] = useState<{ [convId: string]: string }>({});
+  const inputText = activeConversationId ? inputTextMap[activeConversationId] || '' : '';
+  const setInputText = (text: string) => {
+    if (!activeConversationId) return;
+    setInputTextMap((prev) => ({ ...prev, [activeConversationId]: text }));
+  };
 
   const addPendingFiles = useCallback((files: File[]) => {
     setPendingAttachments((prev) => {
