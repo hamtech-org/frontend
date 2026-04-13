@@ -196,7 +196,13 @@ export function ChatComposer({
               onInputTextChange(e.target.value);
               onTyping();
             }}
-            onKeyDown={onKeyDown}
+            onKeyDown={(e) => {
+              onKeyDown(e);
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                // Clear input after sending
+                setTimeout(() => onInputTextChange(''), 0);
+              }
+            }}
             disabled={!activeConversationId}
             className="w-full bg-transparent px-4 py-3 outline-none text-sm font-medium resize-none max-h-32 min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
           />
