@@ -1,13 +1,11 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { Camera, CheckSquare, Search, User, Users, X, Loader } from 'lucide-react';
-import type { IConversation } from '@/types/chat.types';
 import { useGetFriendsQuery } from '@/store/api/contactApi';
 import { useState, useMemo } from 'react';
 
 type CreateGroupModalProps = {
   open: boolean;
   onClose: () => void;
-  conversations: IConversation[];
   groupName: string;
   onGroupNameChange: (value: string) => void;
   selectedGroupMembers: string[];
@@ -18,7 +16,6 @@ type CreateGroupModalProps = {
 export function CreateGroupModal({
   open,
   onClose,
-  conversations,
   groupName,
   onGroupNameChange,
   selectedGroupMembers,

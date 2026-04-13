@@ -1310,12 +1310,6 @@ export default function ChatPage() {
     }
   }, [activeConversationId, groupPolls, setActionBusy]);
 
-  const handleAddFriendSubmit = useCallback(() => {
-    // Modal now handles all friend request logic internally
-    setShowAddFriendModal(false);
-    setAddFriendQuery('');
-  }, []);
-
   const handleApproveRequest = useCallback(async (userId: string) => {
     if (!activeConversationId) return;
     setActionBusy('approveRequest', true);
@@ -1582,7 +1576,6 @@ export default function ChatPage() {
             requestJoin: groupActionLoading.requestJoin,
             updateGroup: groupActionLoading.updateGroup,
           }}
-          numRequests={groupRequests.length}
           onLeaveGroup={() => void handleLeaveGroup()}
           onDeleteGroup={() => void handleDeleteGroup()}
           onOpenMemberModal={(tab) => {
@@ -1601,7 +1594,6 @@ export default function ChatPage() {
           setShowAddFriendModal(false);
           setAddFriendQuery('');
         }}
-        onSubmit={handleAddFriendSubmit}
       />
       <ConfirmModal
         open={messageConfirm !== null}
@@ -1631,7 +1623,6 @@ export default function ChatPage() {
       <CreateGroupModal
         open={showCreateGroupModal}
         onClose={() => setShowCreateGroupModal(false)}
-        conversations={conversations}
         groupName={groupName}
         onGroupNameChange={setGroupName}
         selectedGroupMembers={selectedGroupMembers}

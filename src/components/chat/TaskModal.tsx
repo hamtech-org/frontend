@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCheck, CheckSquare, X } from 'lucide-react';
-import { mockMembers } from './chatMocks';
 
 type TaskModalProps = {
   open: boolean;

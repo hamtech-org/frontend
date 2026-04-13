@@ -20,7 +20,6 @@ const LoginPage = () => {
   const [faceLoginEmail, setFaceLoginEmail] = useState('');
   const [livenessSessionId, setLivenessSessionId] = useState('');
   const [showAwsFaceLiveness, setShowAwsFaceLiveness] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const navigate = useNavigate();
 
@@ -88,7 +87,6 @@ const LoginPage = () => {
   const startFaceLogin = async () => {
     try {
       if (!faceLoginEmail.trim()) {
-        setMessage({ type: 'error', text: 'Vui lòng nhập email' });
         return;
       }
 
@@ -97,10 +95,6 @@ const LoginPage = () => {
       const sessionId = livenessResponse.data?.data?.sessionId;
 
       if (!sessionId) {
-        setMessage({
-          type: 'error',
-          text: 'Không thể khởi tạo phiên xác thực khuôn mặt. Vui lòng thử lại.',
-        });
         return;
       }
 
@@ -108,10 +102,7 @@ const LoginPage = () => {
       setShowFaceLoginEmailDialog(false);
       setShowAwsFaceLiveness(true);
     } catch (err) {
-      setMessage({
-        type: 'error',
-        text: 'Không thể khởi tạo phiên xác thực khuôn mặt. Vui lòng thử lại.',
-      });
+      console.error('Face liveness error:', err);
     }
   };
 
@@ -133,10 +124,7 @@ const LoginPage = () => {
       const errorMsg =
         error?.data?.message ||
         'Đăng nhập bằng khuôn mặt thất bại. Vui lòng thử lại.';
-      setMessage({
-        type: 'error',
-        text: errorMsg,
-      });
+      console.error('Face login error:', errorMsg);
     }
   };
 

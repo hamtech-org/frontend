@@ -142,7 +142,7 @@ export function useChatSocketListeners(
     socketService.on('group:poll_updated', (data: any) => handleGroupUpdate({ ...data, type: 'poll' }));
     socketService.on('group:task_new', (data: any) => handleGroupUpdate({ ...data, type: 'task' }));
     socketService.on('group:task_updated', (data: any) => handleGroupUpdate({ ...data, type: 'task' }));
-    socketService.on('group:recap_new', (data: any) => {
+    socketService.on('group:recap_new', () => {
       // Có thể hiển thị thông báo "AI vừa tạo tóm tắt mới!"
       dispatch(chatApi.util.invalidateTags(['Conversations']));
     });
