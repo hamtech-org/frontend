@@ -2,6 +2,8 @@ import { useState, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CheckCheck,
+  Download,
+  FileText,
   MessageCircle,
   MoreHorizontal,
   Phone,
@@ -17,6 +19,31 @@ import type { IConversation, IMessage } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/store/slices/chatSlice';
 import { formatTime } from '@/utils/formatDate';
 import { typingInitial, typingLabel } from '@/utils/chatUtils';
+import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
+import { formatFileSize } from '@/utils/fileHelper';
+
+async function downloadAuthedFile(url: string, filename: string): Promise<void> {
+  const token = localStorage.getItem('accessToken');
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename || 'file';
+  a.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
+function isRichMediaMessage(msg: IMessage): boolean {
+  return msg.type === 'image' || msg.type === 'video' || msg.type === 'file';
+}
+
+function messageHasCaption(msg: IMessage): boolean {
+  return (msg.content ?? '').trim().length > 0;
+}
 
 type CallLogContent =
   | { kind: 'completed' | 'missed' | 'rejected'; callType: 'audio' | 'video'; durationSec?: number }
@@ -144,6 +171,8 @@ export function ChatMessageList({
             const isSameSenderAsNext = !!nextMsg && nextMsg.senderId === msg.senderId;
             const showAvatar = !isMe && !isSameSenderAsNext;
             const showMeta = !isSameSenderAsNext;
+            const isMediaMsg = isRichMediaMessage(msg);
+            const showCaption = messageHasCaption(msg);
             return (
               <motion.div
                 id={`chat-msg-${msg.messageId}`}
@@ -183,41 +212,125 @@ export function ChatMessageList({
                       </div>
                     ) : (
                       <div
-                        className={`relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm wrap-break-word selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
-                          isMe
-                            ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
-                            : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
-                        }`}
+                        className={
+                          isMediaMsg
+                            ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none wrap-break-word bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                                isMe ? 'items-end' : 'items-start'
+                              }`
+                            : `relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm wrap-break-word selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                                isMe
+                                  ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
+                                  : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
+                              }`
+                        }
                       >
                         {msg.replyToDetails && (
                           <div
                             onClick={() => scrollToMessage(msg.replyToDetails!.messageId)}
                             className={`mb-1.5 px-2.5 py-1.5 rounded-lg border-l-4 cursor-pointer transition-colors ${
-                              isMe
+                              isMediaMsg ? 'w-full max-w-[min(100%,20rem)]' : ''
+                            } ${
+                              isMe && !isMediaMsg
                                 ? 'bg-white/10 border-white/30 hover:bg-white/20'
-                                : 'bg-black/5 border-blue-500/50 hover:bg-black/10'
+                                : 'bg-black/5 border-blue-500/50 hover:bg-black/10 dark:hover:bg-white/5'
                             }`}
                           >
                             <p
                               className={`text-[10px] font-bold mb-0.5 ${
-                                isMe ? 'text-blue-100' : 'text-blue-600'
+                                isMe && !isMediaMsg ? 'text-blue-100' : 'text-blue-600 dark:text-blue-400'
                               }`}
                             >
                               {msg.replyToDetails.senderDisplayName ?? msg.replyToDetails.senderId}
                             </p>
                             <p
                               className={`text-[11px] truncate opacity-80 ${
-                                isMe ? 'text-white' : 'text-foreground'
+                                isMe && !isMediaMsg ? 'text-white' : 'text-foreground'
                               }`}
                             >
-                              {msg.replyToDetails.content}
+                              {msg.replyToDetails.content?.trim() || '[Media]'}
                             </p>
                           </div>
                         )}
-                        {msg.content}
+                        {msg.type === 'image' && msg.mediaUrl && (
+                          <div
+                            className={`w-fit max-w-full overflow-hidden rounded-lg ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
+                          >
+                            <AuthenticatedMedia
+                              src={(msg.thumbnailUrl ?? msg.mediaUrl) as string}
+                              kind="image"
+                              className="max-h-56 max-w-full object-cover rounded-lg"
+                              alt="Ảnh đính kèm"
+                            />
+                          </div>
+                        )}
+                        {msg.type === 'video' && msg.mediaUrl && (
+                          <div
+                            className={`w-fit max-w-[min(100%,20rem)] min-w-0 overflow-hidden rounded-lg ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
+                          >
+                            <AuthenticatedMedia
+                              src={msg.mediaUrl}
+                              kind="video"
+                              className="block max-h-64 w-auto max-w-full rounded-lg bg-black/80"
+                            />
+                          </div>
+                        )}
+                        {msg.type === 'file' && msg.mediaUrl && (
+                          <div
+                            className={`flex w-full max-w-[min(100%,20rem)] items-center gap-2 rounded-lg px-2.5 py-2 min-w-0 ${
+                              showCaption || msg.replyToDetails ? 'mb-1.5' : ''
+                            } ${
+                              isMe
+                                ? 'bg-black/8 dark:bg-white/10'
+                                : 'bg-black/6 dark:bg-white/10 border border-black/8 dark:border-white/10'
+                            }`}
+                          >
+                            <FileText className="w-8 h-8 shrink-0 text-muted-foreground" aria-hidden />
+                            <div className="min-w-0 flex-1">
+                              <p
+                                className="text-xs font-semibold text-foreground truncate"
+                                title={msg.mediaOriginalName?.trim() || 'Tệp đính kèm'}
+                              >
+                                {msg.mediaOriginalName?.trim() || 'Tệp đính kèm'}
+                              </p>
+                              {msg.mediaSize != null && msg.mediaSize > 0 ? (
+                                <p className="text-[10px] text-muted-foreground">{formatFileSize(msg.mediaSize)}</p>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              aria-label="Tải xuống"
+                              title="Tải xuống"
+                              onClick={() =>
+                                void downloadAuthedFile(
+                                  msg.mediaUrl as string,
+                                  msg.mediaOriginalName?.trim() || 'file',
+                                )
+                              }
+                              className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                        {isMediaMsg && showCaption && (
+                          <div
+                            className={`mt-0.5 max-w-[min(100%,20rem)] px-2.5 py-1.5 rounded-lg text-[13px] whitespace-pre-wrap wrap-break-word ${
+                              isMe
+                                ? 'bg-black/6 dark:bg-white/10 text-foreground'
+                                : 'bg-black/5 dark:bg-white/10 text-foreground'
+                            }`}
+                          >
+                            {msg.content}
+                          </div>
+                        )}
+                        {!isMediaMsg && showCaption && (
+                          <span className="whitespace-pre-wrap wrap-break-word">{msg.content}</span>
+                        )}
                         {msg.isEdited && (
                           <span
-                            className={`ml-1.5 text-[10px] ${isMe ? 'text-blue-100/70' : 'text-muted-foreground/60'}`}
+                            className={`ml-1.5 text-[10px] ${
+                              isMe && !isMediaMsg ? 'text-blue-100/70' : 'text-muted-foreground/70'
+                            }`}
                           >
                             (đã sửa)
                           </span>

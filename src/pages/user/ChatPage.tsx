@@ -34,6 +34,8 @@ import {
   useUpdateTaskStatusMutation,
   useGenerateAIRecapMutation,
 } from '@/store/api/chatApi';
+import { useUploadMediaMultiMutation, type MediaUploadResult } from '@/store/api/mediaApi';
+import type { PendingAttachment } from '@/components/chat/ChatComposer';
 import {
   setActiveConversation,
   messageEdited,
@@ -74,6 +76,22 @@ type MessageConfirmState =
   | { kind: 'delete'; msg: IMessage };
 
 const CHAT_NEAR_BOTTOM_PX = 80;
+const MAX_PENDING_FILES = 10;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
+
+function roughMaxBytesForFile(file: File): number {
+  if (file.type.startsWith('image/')) return MAX_IMAGE_BYTES;
+  if (file.type.startsWith('video/')) return MAX_VIDEO_BYTES;
+  return MAX_FILE_BYTES;
+}
+
+function messageTypeFromUploadResult(r: MediaUploadResult): IMessage['type'] {
+  if (r.type === 'image') return 'image';
+  if (r.type === 'video') return 'video';
+  return 'file';
+}
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -132,6 +150,9 @@ export default function ChatPage() {
     allMessages.length > 0 ? allMessages[allMessages.length - 1].messageId : undefined;
 
   const [sendMessage, { isLoading: isSending }] = useSendMessageMutation();
+  const [uploadMediaMulti] = useUploadMediaMultiMutation();
+  const [mediaUploading, setMediaUploading] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [createConversation] = useCreateConversationMutation();
   const [editMessage, { isLoading: isEditing }] = useEditMessageMutation();
   const [deleteMessage] = useDeleteMessageMutation();
@@ -242,6 +263,32 @@ export default function ChatPage() {
   }, [activeConversationId, refetchConversations]);
 
   const [inputText, setInputText] = useState('');
+
+  const addPendingFiles = useCallback((files: File[]) => {
+    setPendingAttachments((prev) => {
+      if (prev.length >= MAX_PENDING_FILES) return prev;
+      const next = [...prev];
+      for (const file of files) {
+        if (next.length >= MAX_PENDING_FILES) break;
+        if (file.size > roughMaxBytesForFile(file)) continue;
+        const previewUrl =
+          file.type.startsWith('image/') || file.type.startsWith('video/')
+            ? URL.createObjectURL(file)
+            : null;
+        next.push({ localId: crypto.randomUUID(), file, previewUrl });
+      }
+      return next;
+    });
+  }, []);
+
+  const removePendingAttachment = useCallback((localId: string) => {
+    setPendingAttachments((prev) => {
+      const hit = prev.find((p) => p.localId === localId);
+      if (hit?.previewUrl) URL.revokeObjectURL(hit.previewUrl);
+      return prev.filter((p) => p.localId !== localId);
+    });
+  }, []);
+
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevLastMessageIdRef = useRef<string | null>(null);
@@ -289,6 +336,15 @@ export default function ChatPage() {
   useEffect(() => {
     setShowOtherPinnedPanel(false);
     setMessageConfirm(null);
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    setPendingAttachments((prev) => {
+      prev.forEach((p) => {
+        if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+      });
+      return [];
+    });
   }, [activeConversationId]);
 
   useEffect(() => {
@@ -399,25 +455,70 @@ export default function ChatPage() {
     [navigate],
   );
 
-  const handleSendMessage = useCallback(async (overrideText?: string) => {
-    // Determine content, falling back to state. Force string explicitly if browser passes an Event.
-    const rawContent = typeof overrideText === 'string' ? overrideText : inputText;
-    const content = rawContent.trim();
+  const handleSendMessage = useCallback(
+    async (overrideText?: string) => {
+      const rawContent = typeof overrideText === 'string' ? overrideText : inputText;
+      const content = rawContent.trim();
 
-    if (!content || !activeConversationId || isSending) return;
-    setInputText('');
-    try {
-      await sendMessage({
-        conversationId: activeConversationId,
-        type: 'text',
-        content,
-        replyTo: replyingTo?.messageId,
-      }).unwrap();
-      dispatch(clearReplyingTo());
-    } catch {
-      setInputText(content);
-    }
-  }, [inputText, activeConversationId, isSending, sendMessage, replyingTo, dispatch]);
+      if (!activeConversationId || isSending || mediaUploading) return;
+
+      if (pendingAttachments.length > 0) {
+        const files = pendingAttachments.map((p) => p.file);
+        setMediaUploading(true);
+        try {
+          const up = await uploadMediaMulti(files).unwrap();
+          const results = up.data;
+          const captionFirst = content.length > 0 ? content : ' ';
+          for (let i = 0; i < results.length; i++) {
+            const r = results[i]!;
+            await sendMessage({
+              conversationId: activeConversationId,
+              type: messageTypeFromUploadResult(r),
+              content: i === 0 ? captionFirst : ' ',
+              mediaId: r.mediaId,
+              replyTo: i === 0 ? replyingTo?.messageId : undefined,
+            }).unwrap();
+          }
+          pendingAttachments.forEach((p) => {
+            if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+          });
+          setPendingAttachments([]);
+          setInputText('');
+          dispatch(clearReplyingTo());
+        } catch {
+          /* giữ queue + text */
+        } finally {
+          setMediaUploading(false);
+        }
+        return;
+      }
+
+      if (!content) return;
+      setInputText('');
+      try {
+        await sendMessage({
+          conversationId: activeConversationId,
+          type: 'text',
+          content,
+          replyTo: replyingTo?.messageId,
+        }).unwrap();
+        dispatch(clearReplyingTo());
+      } catch {
+        setInputText(content);
+      }
+    },
+    [
+      inputText,
+      activeConversationId,
+      isSending,
+      mediaUploading,
+      pendingAttachments,
+      uploadMediaMulti,
+      sendMessage,
+      replyingTo,
+      dispatch,
+    ],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -612,7 +713,15 @@ export default function ChatPage() {
     } catch (err) {
       console.error('Failed to create task:', err);
     }
-  }, [activeConversationId, taskTitle, taskNote, taskAssignees, taskDeadline, createTask, closeTaskModal]);
+  }, [
+    activeConversationId,
+    taskTitle,
+    taskNote,
+    taskAssignees,
+    taskDeadline,
+    createTask,
+    closeTaskModal,
+  ]);
 
   const openAISummaryFromPanel = useCallback(async () => {
     setShowAISummaryModal(true);
@@ -652,7 +761,7 @@ export default function ChatPage() {
       await createPoll({
         groupId: activeConversationId,
         question: pollQuestion.trim(),
-        options: pollOptions.filter(o => !!o.trim()),
+        options: pollOptions.filter((o) => !!o.trim()),
       }).unwrap();
       setShowPollModal(false);
       setPollQuestion('');
@@ -675,34 +784,43 @@ export default function ChatPage() {
     setAddFriendQuery('');
   }, [addFriendQuery]);
 
-  const handleApproveRequest = useCallback(async (userId: string) => {
-    if (!activeConversationId) return;
-    try {
-      await approveRequest({ groupId: activeConversationId, userId }).unwrap();
-    } catch (err) {
-      console.error('Failed to approve request:', err);
-    }
-  }, [activeConversationId, approveRequest]);
-
-  const handleRejectRequest = useCallback(async (userId: string) => {
-    if (!activeConversationId) return;
-    try {
-      await rejectRequest({ groupId: activeConversationId, userId }).unwrap();
-    } catch (err) {
-      console.error('Failed to reject request:', err);
-    }
-  }, [activeConversationId, rejectRequest]);
-
-  const handleKickMember = useCallback(async (userId: string) => {
-    if (!activeConversationId) return;
-    if (window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) {
+  const handleApproveRequest = useCallback(
+    async (userId: string) => {
+      if (!activeConversationId) return;
       try {
-        await removeMember({ groupId: activeConversationId, userId }).unwrap();
+        await approveRequest({ groupId: activeConversationId, userId }).unwrap();
       } catch (err) {
-        console.error('Failed to kick member:', err);
+        console.error('Failed to approve request:', err);
       }
-    }
-  }, [activeConversationId, removeMember]);
+    },
+    [activeConversationId, approveRequest],
+  );
+
+  const handleRejectRequest = useCallback(
+    async (userId: string) => {
+      if (!activeConversationId) return;
+      try {
+        await rejectRequest({ groupId: activeConversationId, userId }).unwrap();
+      } catch (err) {
+        console.error('Failed to reject request:', err);
+      }
+    },
+    [activeConversationId, rejectRequest],
+  );
+
+  const handleKickMember = useCallback(
+    async (userId: string) => {
+      if (!activeConversationId) return;
+      if (window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) {
+        try {
+          await removeMember({ groupId: activeConversationId, userId }).unwrap();
+        } catch (err) {
+          console.error('Failed to kick member:', err);
+        }
+      }
+    },
+    [activeConversationId, removeMember],
+  );
 
   return (
     <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
@@ -787,15 +905,20 @@ export default function ChatPage() {
           onTyping={handleTyping}
           onSend={handleSendMessage}
           isSending={isSending}
+          isUploadingMedia={mediaUploading}
           replyingTo={replyingTo}
           onClearReply={() => dispatch(clearReplyingTo())}
           onOpenPoll={() => setShowPollModal(true)}
           onOpenTask={() => setShowTaskModal(true)}
+          pendingAttachments={pendingAttachments}
+          onAddPendingFiles={addPendingFiles}
+          onRemovePendingAttachment={removePendingAttachment}
         />
       </div>
 
       {showInfo && (
         <ConversationInfoPanel
+          numRequests={groupRequests.length}
           activeConversation={activeConversation}
           onOpenAISummaryFromPanel={openAISummaryFromPanel}
           onOpenMemberModal={(tab) => {
@@ -882,11 +1005,11 @@ export default function ChatPage() {
       <TaskModal
         open={showTaskModal}
         onClose={closeTaskModal}
-        members={conversationMembers.map(m => ({
+        members={conversationMembers.map((m) => ({
           id: m.userId,
           name: m.name,
           avatar: m.avatar,
-          role: m.role
+          role: m.role,
         }))}
         taskTitle={taskTitle}
         onTaskTitleChange={setTaskTitle}

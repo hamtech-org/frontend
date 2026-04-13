@@ -48,6 +48,9 @@ export interface IMessage {
   type: MessageType;
   content: string;
   mediaUrl: string | null;
+  mediaType?: string | null;
+  mediaSize?: number | null;
+  mediaOriginalName?: string | null;
   thumbnailUrl: string | null;
   replyTo: string | null;
   replyToDetails?: IReplyToDetails | null;
