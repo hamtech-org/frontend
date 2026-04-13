@@ -594,6 +594,11 @@ export default function ChatPage() {
     const key = `${activeConversationId}:${latestMessageIdForRead}`;
     if (lastMarkReadKeyRef.current === key) return;
     lastMarkReadKeyRef.current = key;
+    // Gửi sự kiện đã đọc qua socket để đồng bộ realtime unreadCount
+    socketService.emit('message:read', {
+      conversationId: activeConversationId,
+      messageId: latestMessageIdForRead,
+    });
     void markAsRead({ conversationId: activeConversationId, messageId: latestMessageIdForRead });
   }, [activeConversationId, latestMessageIdForRead, markAsRead]);
 
@@ -1539,19 +1544,22 @@ export default function ChatPage() {
             />
 
             <ChatComposer
-              activeConversation={activeConversation}
-              activeConversationId={activeConversationId}
-              inputText={inputText}
-              onInputTextChange={setInputText}
-              onKeyDown={handleKeyDown}
-              onTyping={handleTyping}
-              onSend={handleSendMessage}
-              isSending={isSending}
-              replyingTo={replyingTo}
-              onClearReply={() => dispatch(clearReplyingTo())}
-              onOpenPoll={() => setShowPollModal(true)}
-              onOpenTask={() => setShowTaskModal(true)}
-            />
+                activeConversation={activeConversation}
+                activeConversationId={activeConversationId}
+                inputText={inputText}
+                onInputTextChange={setInputText}
+                onKeyDown={handleKeyDown}
+                onTyping={handleTyping}
+                onSend={handleSendMessage}
+                isSending={isSending}
+                replyingTo={replyingTo}
+                onClearReply={() => dispatch(clearReplyingTo())}
+                onOpenPoll={() => setShowPollModal(true)}
+                onOpenTask={() => setShowTaskModal(true)} pendingAttachments={[]} onAddPendingFiles={function (files: File[]): void {
+                  throw new Error('Function not implemented.');
+                } } onRemovePendingAttachment={function (localId: string): void {
+                  throw new Error('Function not implemented.');
+                } }            />
           </>
         )}
       </div>
