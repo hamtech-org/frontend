@@ -42,6 +42,10 @@ class SocketService {
     this.socket?.on(event, handler);
   }
 
+  once(event: string, handler: (data: unknown) => void): void {
+    this.socket?.once(event, handler);
+  }
+
   off(event: string, handler?: (data: unknown) => void): void {
     this.socket?.off(event, handler);
   }

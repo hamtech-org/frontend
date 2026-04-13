@@ -16,6 +16,8 @@ import {
   useUnpinMessageMutation,
   useReactMessageMutation,
 } from '@/store/api/chatApi';
+import { useUploadMediaMultiMutation, type MediaUploadResult } from '@/store/api/mediaApi';
+import type { PendingAttachment } from '@/components/chat/ChatComposer';
 import {
   setActiveConversation,
   messageEdited,
@@ -125,6 +127,22 @@ type GroupActionLoading = {
 };
 
 const CHAT_NEAR_BOTTOM_PX = 80;
+const MAX_PENDING_FILES = 10;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
+
+function roughMaxBytesForFile(file: File): number {
+  if (file.type.startsWith('image/')) return MAX_IMAGE_BYTES;
+  if (file.type.startsWith('video/')) return MAX_VIDEO_BYTES;
+  return MAX_FILE_BYTES;
+}
+
+function messageTypeFromUploadResult(r: MediaUploadResult): IMessage['type'] {
+  if (r.type === 'image') return 'image';
+  if (r.type === 'video') return 'video';
+  return 'file';
+}
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -183,6 +201,9 @@ export default function ChatPage() {
     allMessages.length > 0 ? allMessages[allMessages.length - 1].messageId : undefined;
 
   const [sendMessage, { isLoading: isSending }] = useSendMessageMutation();
+  const [uploadMediaMulti] = useUploadMediaMultiMutation();
+  const [mediaUploading, setMediaUploading] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [createConversation] = useCreateConversationMutation();
   const [editMessage, { isLoading: isEditing }] = useEditMessageMutation();
   const [deleteMessage] = useDeleteMessageMutation();
@@ -229,11 +250,13 @@ export default function ChatPage() {
 
   const handleAudioCall = useCallback(() => {
     if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
+    // CallContext sẽ lưu returnTo = location.pathname (đang là /chat/:conversationId)
     initiateCall(activeConversation.otherUserId, 'audio');
   }, [activeConversation, initiateCall]);
 
   const handleVideoCall = useCallback(() => {
     if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
+    // CallContext sẽ lưu returnTo = location.pathname (đang là /chat/:conversationId)
     initiateCall(activeConversation.otherUserId, 'video');
   }, [activeConversation, initiateCall]);
 
@@ -281,6 +304,32 @@ export default function ChatPage() {
   }, [activeConversationId, refetchConversations]);
 
   const [inputText, setInputText] = useState('');
+
+  const addPendingFiles = useCallback((files: File[]) => {
+    setPendingAttachments((prev) => {
+      if (prev.length >= MAX_PENDING_FILES) return prev;
+      const next = [...prev];
+      for (const file of files) {
+        if (next.length >= MAX_PENDING_FILES) break;
+        if (file.size > roughMaxBytesForFile(file)) continue;
+        const previewUrl =
+          file.type.startsWith('image/') || file.type.startsWith('video/')
+            ? URL.createObjectURL(file)
+            : null;
+        next.push({ localId: crypto.randomUUID(), file, previewUrl });
+      }
+      return next;
+    });
+  }, []);
+
+  const removePendingAttachment = useCallback((localId: string) => {
+    setPendingAttachments((prev) => {
+      const hit = prev.find((p) => p.localId === localId);
+      if (hit?.previewUrl) URL.revokeObjectURL(hit.previewUrl);
+      return prev.filter((p) => p.localId !== localId);
+    });
+  }, []);
+
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevLastMessageIdRef = useRef<string | null>(null);
@@ -523,6 +572,15 @@ export default function ChatPage() {
   }, [activeConversationId]);
 
   useEffect(() => {
+    setPendingAttachments((prev) => {
+      prev.forEach((p) => {
+        if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+      });
+      return [];
+    });
+  }, [activeConversationId]);
+
+  useEffect(() => {
     if (!activeConversationId) return;
     socketService.emit('conversation:join', activeConversationId);
     dispatch(resetUnread(activeConversationId));
@@ -630,25 +688,70 @@ export default function ChatPage() {
     [navigate],
   );
 
-  const handleSendMessage = useCallback(async (overrideText?: string) => {
-    // Determine content, falling back to state. Force string explicitly if browser passes an Event.
-    const rawContent = typeof overrideText === 'string' ? overrideText : inputText;
-    const content = rawContent.trim();
+  const handleSendMessage = useCallback(
+    async (overrideText?: string) => {
+      const rawContent = typeof overrideText === 'string' ? overrideText : inputText;
+      const content = rawContent.trim();
 
-    if (!content || !activeConversationId || isSending) return;
-    setInputText('');
-    try {
-      await sendMessage({
-        conversationId: activeConversationId,
-        type: 'text',
-        content,
-        replyTo: replyingTo?.messageId,
-      }).unwrap();
-      dispatch(clearReplyingTo());
-    } catch {
-      setInputText(content);
-    }
-  }, [inputText, activeConversationId, isSending, sendMessage, replyingTo, dispatch]);
+      if (!activeConversationId || isSending || mediaUploading) return;
+
+      if (pendingAttachments.length > 0) {
+        const files = pendingAttachments.map((p) => p.file);
+        setMediaUploading(true);
+        try {
+          const up = await uploadMediaMulti(files).unwrap();
+          const results = up.data;
+          const captionFirst = content.length > 0 ? content : ' ';
+          for (let i = 0; i < results.length; i++) {
+            const r = results[i]!;
+            await sendMessage({
+              conversationId: activeConversationId,
+              type: messageTypeFromUploadResult(r),
+              content: i === 0 ? captionFirst : ' ',
+              mediaId: r.mediaId,
+              replyTo: i === 0 ? replyingTo?.messageId : undefined,
+            }).unwrap();
+          }
+          pendingAttachments.forEach((p) => {
+            if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+          });
+          setPendingAttachments([]);
+          setInputText('');
+          dispatch(clearReplyingTo());
+        } catch {
+          /* giữ queue + text */
+        } finally {
+          setMediaUploading(false);
+        }
+        return;
+      }
+
+      if (!content) return;
+      setInputText('');
+      try {
+        await sendMessage({
+          conversationId: activeConversationId,
+          type: 'text',
+          content,
+          replyTo: replyingTo?.messageId,
+        }).unwrap();
+        dispatch(clearReplyingTo());
+      } catch {
+        setInputText(content);
+      }
+    },
+    [
+      inputText,
+      activeConversationId,
+      isSending,
+      mediaUploading,
+      pendingAttachments,
+      uploadMediaMulti,
+      sendMessage,
+      replyingTo,
+      dispatch,
+    ],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1451,10 +1554,56 @@ export default function ChatPage() {
             />
           </>
         )}
+<<<<<<< HEAD
+=======
+
+        <ChatMessageList
+          messagesContainerRef={messagesContainerRef}
+          messagesEndRef={messagesEndRef}
+          allMessages={allMessages}
+          activeConversationId={activeConversationId}
+          activeConversation={activeConversation}
+          currentUserId={currentUserId}
+          typingUsers={typingUsers}
+          unreadIncomingCount={unreadIncomingCount}
+          actionMenuMsgId={actionMenuMsgId}
+          onActionMenuMsgIdChange={setActionMenuMsgId}
+          onStartEdit={(msg) => {
+            setEditingMessage(msg);
+            setEditDraft(msg.content);
+          }}
+          onTogglePin={handleTogglePinMsg}
+          onRecall={handleRecallMsg}
+          onDelete={handleDeleteMsg}
+          onReply={(msg) => dispatch(setReplyingTo(msg))}
+          onReact={handleReactMessage}
+          onJumpToLatest={handleJumpToLatest}
+        />
+
+        <ChatComposer
+          activeConversation={activeConversation}
+          activeConversationId={activeConversationId}
+          inputText={inputText}
+          onInputTextChange={setInputText}
+          onKeyDown={handleKeyDown}
+          onTyping={handleTyping}
+          onSend={handleSendMessage}
+          isSending={isSending}
+          isUploadingMedia={mediaUploading}
+          replyingTo={replyingTo}
+          onClearReply={() => dispatch(clearReplyingTo())}
+          onOpenPoll={() => setShowPollModal(true)}
+          onOpenTask={() => setShowTaskModal(true)}
+          pendingAttachments={pendingAttachments}
+          onAddPendingFiles={addPendingFiles}
+          onRemovePendingAttachment={removePendingAttachment}
+        />
+>>>>>>> 6e391742628571767d0f1be80f043805aa1f746f
       </div>
 
       {showInfo && !showContactsManagement && (
         <ConversationInfoPanel
+          numRequests={groupRequests.length}
           activeConversation={activeConversation}
           onOpenAISummaryFromPanel={openAISummaryFromPanel}
           onEditGroup={openEditGroupModal}
@@ -1570,11 +1719,19 @@ export default function ChatPage() {
       <TaskModal
         open={showTaskModal}
         onClose={closeTaskModal}
+<<<<<<< HEAD
         members={groupMembers.map(m => ({
           id: m.userId,
           name: m.name ?? m.userId,
           avatar: m.avatar ?? 'https://via.placeholder.com/40',
           role: m.role
+=======
+        members={conversationMembers.map((m) => ({
+          id: m.userId,
+          name: m.name,
+          avatar: m.avatar,
+          role: m.role,
+>>>>>>> 6e391742628571767d0f1be80f043805aa1f746f
         }))}
         taskTitle={taskTitle}
         onTaskTitleChange={setTaskTitle}
