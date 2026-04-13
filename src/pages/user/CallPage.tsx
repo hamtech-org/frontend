@@ -21,13 +21,16 @@ import AgoraRTC, {
   type IAgoraRTCRemoteUser,
 } from 'agora-rtc-react';
 import { useCallContext } from '@/contexts/CallContext';
+import { socketService } from '@/services/socket';
 import type { RootState, AppDispatch } from '@/store/store';
 import {
   setCallConnected,
   setCallEnded,
   resetCall,
   setScreenSharing,
+  setEndReason,
 } from '@/store/slices/callSlice';
+import outgoingRingback from '@/assets/ringtones/amThanhGoi.mp3';
 
 export default function CallPage() {
   const navigate = useNavigate();
@@ -35,6 +38,8 @@ export default function CallPage() {
   const [searchParams] = useSearchParams();
   const channelName = searchParams.get('channel');
   const urlCallType = searchParams.get('type') as 'audio' | 'video' | null;
+  const conversationIdParam = searchParams.get('conversationId');
+  const returnToParam = searchParams.get('returnTo');
 
   const {
     endCall,
@@ -52,13 +57,21 @@ export default function CallPage() {
     isCameraOn,
     upgradeStatus,
     isScreenSharing,
+    returnTo,
+    conversationId,
+    calleeId,
+    endReason,
   } = useSelector((state: RootState) => state.call);
+
+  const resolvedReturnTo = decodeURIComponent(returnToParam || returnTo || '/chat');
+  const resolvedConversationId = decodeURIComponent(conversationIdParam || conversationId || '');
 
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [timer, setTimer] = useState(0);
   const [remoteUser, setRemoteUser] = useState<IAgoraRTCRemoteUser | null>(null);
   const [joined, setJoined] = useState(false);
   const [remoteHasVideo, setRemoteHasVideo] = useState(false);
+  const ringbackRef = useRef<HTMLAudioElement | null>(null);
 
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const micTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
@@ -89,9 +102,34 @@ export default function CallPage() {
     throw new Error('Track creation failed');
   };
 
+  // Ringback for caller while waiting (outgoing-ringing)
+  useEffect(() => {
+    const audio = new Audio(outgoingRingback);
+    audio.loop = true;
+    audio.volume = 0.55;
+    ringbackRef.current = audio;
+    return () => {
+      audio.pause();
+      audio.currentTime = 0;
+      ringbackRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const audio = ringbackRef.current;
+    if (!audio) return;
+    const shouldPlay = status === 'outgoing-ringing';
+    if (shouldPlay) {
+      void audio.play().catch(() => undefined);
+    } else {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+  }, [status]);
+
   useEffect(() => {
     if (!channelName) {
-      navigate('/chat');
+      navigate(resolvedReturnTo);
       return;
     }
 
@@ -162,7 +200,7 @@ export default function CallPage() {
         }
       } catch (err) {
         console.error('Agora join failed:', err);
-        if (!cancelled) navigate('/chat');
+        if (!cancelled) navigate(resolvedReturnTo);
       }
     };
 
@@ -173,10 +211,14 @@ export default function CallPage() {
       micTrackRef.current?.close();
       camTrackRef.current?.close();
       screenTrackRef.current?.close();
-      if (clientRef.current?.connectionState === 'CONNECTED') {
-        clientRef.current.leave();
+      micTrackRef.current = null;
+      camTrackRef.current = null;
+      screenTrackRef.current = null;
+      // Luôn leave đúng instance client của effect này (StrictMode: ref có thể đã trỏ client khác)
+      void client.leave().catch(() => undefined);
+      if (clientRef.current === client) {
+        clientRef.current = null;
       }
-      clientRef.current = null;
     };
   }, [channelName, appId, fetchAgoraToken, dispatch, navigate]);
 
@@ -225,9 +267,38 @@ export default function CallPage() {
     if (clientRef.current?.connectionState === 'CONNECTED') {
       clientRef.current.leave();
     }
+    // Nếu có endReason (missed/rejected) thì show full-screen UI một lúc rồi mới thoát
+    if (endReason) {
+      const t = window.setTimeout(() => {
+        dispatch(resetCall());
+        navigate(resolvedReturnTo);
+      }, 2200);
+      return () => window.clearTimeout(t);
+    }
     dispatch(resetCall());
-    navigate('/chat');
-  }, [status, dispatch, navigate]);
+    navigate(resolvedReturnTo);
+  }, [status, dispatch, navigate, resolvedReturnTo, endReason]);
+
+  // Timeout outgoing call: nếu B không accept/reject trong X giây => coi như bận
+  useEffect(() => {
+    if (status !== 'outgoing-ringing') return;
+    const timeoutMs = 25_000;
+    const t = window.setTimeout(() => {
+      // Nếu vẫn đang ringing thì timeout
+      dispatch(setEndReason('missed'));
+      // Notify backend to log missed call + close callee modal
+      if (channelName && resolvedConversationId && calleeId) {
+        socketService.emit('call:missed', {
+          channelName,
+          peerId: calleeId,
+          conversationId: resolvedConversationId,
+          type: (urlCallType ?? callType ?? 'audio'),
+        });
+      }
+      dispatch(setCallEnded());
+    }, timeoutMs);
+    return () => window.clearTimeout(t);
+  }, [status, dispatch, channelName, resolvedConversationId, calleeId, urlCallType, callType]);
 
   useEffect(() => {
     if (status !== 'connected') return;
@@ -242,7 +313,9 @@ export default function CallPage() {
   };
 
   const handleEndCall = useCallback(() => {
-    endCall();
+    // Include duration + completed result
+    // endCall() will emit call:end; backend will create call log message
+    endCall({ durationSec: timer, result: 'completed' });
     micTrackRef.current?.close();
     camTrackRef.current?.close();
     screenTrackRef.current?.close();
@@ -251,9 +324,9 @@ export default function CallPage() {
     }
     setTimeout(() => {
       dispatch(resetCall());
-      navigate('/chat');
+      navigate(resolvedReturnTo);
     }, 500);
-  }, [endCall, dispatch, navigate]);
+  }, [endCall, timer, dispatch, navigate, resolvedReturnTo]);
 
   const toggleFullScreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -330,6 +403,45 @@ export default function CallPage() {
 
   return (
     <div className="fixed inset-0 z-[100] bg-gray-950 text-white flex flex-col overflow-hidden">
+      {/* Full-screen failure UI (missed / rejected) */}
+      <AnimatePresence>
+        {status === 'ended' && endReason && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[120] flex items-center justify-center bg-gray-950"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 240 }}
+              className="w-[360px] max-w-[92vw] rounded-3xl bg-white/5 border border-white/10 p-7 text-center shadow-2xl"
+            >
+              <div className="mx-auto mb-5 w-20 h-20 rounded-full bg-blue-600/15 flex items-center justify-center">
+                {endReason === 'rejected' ? (
+                  <PhoneOff className="w-8 h-8 text-red-400" />
+                ) : (
+                  <PhoneOff className="w-8 h-8 text-yellow-300" />
+                )}
+              </div>
+              <p className="text-xl font-bold">
+                {endReason === 'rejected' ? 'Cuộc gọi bị từ chối' : 'Cuộc gọi nhỡ'}
+              </p>
+              <p className="text-sm text-white/60 mt-2">
+                {endReason === 'rejected'
+                  ? 'Người nghe đã từ chối cuộc gọi.'
+                  : 'Người nghe không phản hồi.'}
+              </p>
+              <p className="text-xs text-white/40 mt-5">
+                Tự động quay lại cuộc trò chuyện...
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Remote video — always in DOM, visibility controlled by CSS */}
       <div
         ref={remoteVideoRef}

@@ -4,17 +4,23 @@ import {
   CheckCheck,
   MessageCircle,
   MoreHorizontal,
+  Phone,
   Pin,
   Pencil,
   Reply,
   RotateCcw,
   SmilePlus,
   Trash2,
+  Video,
 } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/store/slices/chatSlice';
 import { formatTime } from '@/utils/formatDate';
 import { typingInitial, typingLabel } from '@/utils/chatUtils';
+
+type CallLogContent =
+  | { kind: 'completed' | 'missed' | 'rejected'; callType: 'audio' | 'video'; durationSec?: number }
+  | Record<string, unknown>;
 
 export type ChatMessageListProps = {
   messagesContainerRef: Ref<HTMLDivElement>;
@@ -83,6 +89,54 @@ export function ChatMessageList({
             </span>
           </div>
           {allMessages.map((msg, index) => {
+            if (msg.type === 'call') {
+              let payload: CallLogContent | null = null;
+              try {
+                payload = JSON.parse(msg.content) as CallLogContent;
+              } catch {
+                payload = null;
+              }
+              const kind = (payload as any)?.kind as string | undefined;
+              const callType = (payload as any)?.callType as string | undefined;
+              const durationSec = Number((payload as any)?.durationSec ?? 0);
+              const durationLabel =
+                durationSec > 0
+                  ? `${Math.floor(durationSec / 60)} phút ${durationSec % 60} giây`
+                  : '0 phút 0 giây';
+
+              const title =
+                kind === 'missed'
+                  ? 'Cuộc gọi nhỡ'
+                  : kind === 'rejected'
+                    ? 'Cuộc gọi bị từ chối'
+                    : callType === 'video'
+                      ? 'Cuộc gọi video'
+                      : 'Cuộc gọi thoại';
+
+              return (
+                <motion.div
+                  id={`chat-msg-${msg.messageId}`}
+                  key={msg.messageId}
+                  initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="flex justify-center my-3"
+                >
+                  <div className="min-w-[260px] max-w-[360px] rounded-2xl bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      {callType === 'video' ? (
+                        <Video className="w-4 h-4 text-blue-600" />
+                      ) : (
+                        <Phone className="w-4 h-4 text-blue-600" />
+                      )}
+                      <p className="text-sm font-bold text-foreground">{title}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{durationLabel}</p>
+                  </div>
+                </motion.div>
+              );
+            }
+
             const isMe = msg.senderId === currentUserId;
             const prevMsg = index > 0 ? allMessages[index - 1] : undefined;
             const nextMsg = index < allMessages.length - 1 ? allMessages[index + 1] : undefined;

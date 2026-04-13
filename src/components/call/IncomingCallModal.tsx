@@ -1,8 +1,10 @@
+import { useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'motion/react';
 import { Phone, PhoneOff, Video } from 'lucide-react';
 import { useCallContext } from '@/contexts/CallContext';
 import type { RootState } from '@/store/store';
+import incomingRingtone from '@/assets/ringtones/amThanhNhan.mp3';
 
 export default function IncomingCallModal() {
   const { acceptCall, rejectCall } = useCallContext();
@@ -11,6 +13,30 @@ export default function IncomingCallModal() {
   );
 
   const isVisible = status === 'incoming-ringing';
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = new Audio(incomingRingtone);
+    audio.loop = true;
+    audio.volume = 0.9;
+    audioRef.current = audio;
+    return () => {
+      audio.pause();
+      audio.currentTime = 0;
+      audioRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isVisible) {
+      void audio.play().catch(() => undefined);
+    } else {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+  }, [isVisible]);
 
   return (
     <AnimatePresence>
