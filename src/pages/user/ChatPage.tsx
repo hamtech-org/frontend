@@ -14,6 +14,25 @@ import {
   usePinMessageMutation,
   useUnpinMessageMutation,
   useReactMessageMutation,
+  useGetConversationMembersQuery,
+  useGetPollsQuery,
+  useGetTasksQuery,
+  useGetGroupRequestsQuery,
+  useGetLatestAIRecapQuery,
+  useUpdateGroupMutation,
+  useDeleteGroupMutation,
+  useLeaveGroupMutation,
+  useAddMembersMutation,
+  useRemoveMemberMutation,
+  useChangeMemberRoleMutation,
+  useApproveRequestMutation,
+  useRejectRequestMutation,
+  useCreatePollMutation,
+  useVotePollMutation,
+  useUnvotePollMutation,
+  useCreateTaskMutation,
+  useUpdateTaskStatusMutation,
+  useGenerateAIRecapMutation,
 } from '@/store/api/chatApi';
 import {
   setActiveConversation,
@@ -122,7 +141,48 @@ export default function ChatPage() {
   const [unpinMessage] = useUnpinMessageMutation();
   const [reactMessage] = useReactMessageMutation();
 
+  const [updateGroup] = useUpdateGroupMutation();
+  const [deleteGroup] = useDeleteGroupMutation();
+  const [leaveGroup] = useLeaveGroupMutation();
+  const [addMembers] = useAddMembersMutation();
+  const [removeMember] = useRemoveMemberMutation();
+  const [changeMemberRole] = useChangeMemberRoleMutation();
+  const [approveRequest] = useApproveRequestMutation();
+  const [rejectRequest] = useRejectRequestMutation();
+  const [createPoll] = useCreatePollMutation();
+  const [votePoll] = useVotePollMutation();
+  const [unvotePoll] = useUnvotePollMutation();
+  const [createTask] = useCreateTaskMutation();
+  const [updateTaskStatus] = useUpdateTaskStatusMutation();
+  const [generateAIRecap] = useGenerateAIRecapMutation();
+
   const activeConversation = conversations.find((c) => c.conversationId === activeConversationId);
+
+  // Queries for active group
+  const { data: conversationMembersData } = useGetConversationMembersQuery(activeConversationId!, {
+    skip: !activeConversationId || activeConversation?.type !== 'group',
+  });
+  const conversationMembers = conversationMembersData?.data ?? [];
+
+  const { data: groupRequestsData } = useGetGroupRequestsQuery(activeConversationId!, {
+    skip: !activeConversationId || activeConversation?.type !== 'group',
+  });
+  const groupRequests = groupRequestsData?.data ?? [];
+
+  const { data: pollsData } = useGetPollsQuery(activeConversationId!, {
+    skip: !activeConversationId || activeConversation?.type !== 'group',
+  });
+  const polls = pollsData?.data ?? [];
+
+  const { data: tasksData } = useGetTasksQuery(activeConversationId!, {
+    skip: !activeConversationId || activeConversation?.type !== 'group',
+  });
+  const tasks = tasksData?.data ?? [];
+
+  const { data: latestRecapData } = useGetLatestAIRecapQuery(activeConversationId!, {
+    skip: !activeConversationId || activeConversation?.type !== 'group',
+  });
+  const latestRecap = latestRecapData?.data;
 
   const { initiateCall } = useCallContext();
 
@@ -343,7 +403,7 @@ export default function ChatPage() {
     // Determine content, falling back to state. Force string explicitly if browser passes an Event.
     const rawContent = typeof overrideText === 'string' ? overrideText : inputText;
     const content = rawContent.trim();
-    
+
     if (!content || !activeConversationId || isSending) return;
     setInputText('');
     try {
@@ -538,32 +598,69 @@ export default function ChatPage() {
     setTaskAssignees([]);
   }, []);
 
-  const handleSubmitTask = useCallback(() => {
-    closeTaskModal();
-  }, [closeTaskModal]);
+  const handleSubmitTask = useCallback(async () => {
+    if (!activeConversationId || !taskTitle.trim()) return;
+    try {
+      await createTask({
+        groupId: activeConversationId,
+        title: taskTitle.trim(),
+        description: taskNote.trim(),
+        assignees: taskAssignees,
+        dueDate: taskDeadline || undefined,
+      }).unwrap();
+      closeTaskModal();
+    } catch (err) {
+      console.error('Failed to create task:', err);
+    }
+  }, [activeConversationId, taskTitle, taskNote, taskAssignees, taskDeadline, createTask, closeTaskModal]);
 
-  const openAISummaryFromPanel = useCallback(() => {
+  const openAISummaryFromPanel = useCallback(async () => {
     setShowAISummaryModal(true);
+    if (latestRecap) {
+      setAiSummaryResult(latestRecap.content);
+      return;
+    }
     setAiSummaryResult('');
     setAiSummaryLoading(true);
-    window.setTimeout(() => {
+    try {
+      const result = await generateAIRecap(activeConversationId!).unwrap();
+      setAiSummaryResult(result.data.content);
+    } catch {
+      setAiSummaryResult('Không thể tạo tóm tắt vào lúc này.');
+    } finally {
       setAiSummaryLoading(false);
-      setAiSummaryResult(
-        '📌 **Chủ đề chính:** Nhóm đang thảo luận về tiến độ dự án HamTech UI và deadline thiết kế.\n\n🗣️ **Người hoạt động nhiều nhất:** Elena Vance (12 tin), Marcus Chen (8 tin).\n\n✅ **Kết luận đã đạt được:** Chốt họp chiều nay lúc 2h. Elena sẽ gửi bản mockup mới nhất.\n\n⚠️ **Việc cần làm:** Marcus cần review và phản hồi trước 5h chiều.',
-      );
-    }, 2000);
-  }, []);
+    }
+  }, [activeConversationId, latestRecap, generateAIRecap]);
 
-  const handleRerunAISummary = useCallback(() => {
+  const handleRerunAISummary = useCallback(async () => {
+    if (!activeConversationId) return;
     setAiSummaryResult('');
     setAiSummaryLoading(true);
-    window.setTimeout(() => {
+    try {
+      const result = await generateAIRecap(activeConversationId).unwrap();
+      setAiSummaryResult(result.data.content);
+    } catch {
+      setAiSummaryResult('Không thể làm mới tóm tắt.');
+    } finally {
       setAiSummaryLoading(false);
-      setAiSummaryResult(
-        '📌 **Chủ đề chính:** Nhóm đang thảo luận về tiến độ dự án HamTech UI và deadline thiết kế.\n\n🗣️ **Người hoạt động nhiều nhất:** Elena Vance (12 tin), Marcus Chen (8 tin).\n\n✅ **Kết luận đã đạt được:** Chốt họp chiều nay lúc 2h. Elena sẽ gửi bản mockup mới nhất.\n\n⚠️ **Việc cần làm:** Marcus cần review và phản hồi trước 5h chiều.',
-      );
-    }, 2000);
-  }, []);
+    }
+  }, [activeConversationId, generateAIRecap]);
+
+  const handleCreatePoll = useCallback(async () => {
+    if (!activeConversationId || !pollQuestion.trim()) return;
+    try {
+      await createPoll({
+        groupId: activeConversationId,
+        question: pollQuestion.trim(),
+        options: pollOptions.filter(o => !!o.trim()),
+      }).unwrap();
+      setShowPollModal(false);
+      setPollQuestion('');
+      setPollOptions(['', '']);
+    } catch (err) {
+      console.error('Failed to create poll:', err);
+    }
+  }, [activeConversationId, pollQuestion, pollOptions, createPoll]);
 
   const openCreateGroupModal = useCallback(() => {
     setShowCreateGroupModal(true);
@@ -577,6 +674,35 @@ export default function ChatPage() {
     setShowAddFriendModal(false);
     setAddFriendQuery('');
   }, [addFriendQuery]);
+
+  const handleApproveRequest = useCallback(async (userId: string) => {
+    if (!activeConversationId) return;
+    try {
+      await approveRequest({ groupId: activeConversationId, userId }).unwrap();
+    } catch (err) {
+      console.error('Failed to approve request:', err);
+    }
+  }, [activeConversationId, approveRequest]);
+
+  const handleRejectRequest = useCallback(async (userId: string) => {
+    if (!activeConversationId) return;
+    try {
+      await rejectRequest({ groupId: activeConversationId, userId }).unwrap();
+    } catch (err) {
+      console.error('Failed to reject request:', err);
+    }
+  }, [activeConversationId, rejectRequest]);
+
+  const handleKickMember = useCallback(async (userId: string) => {
+    if (!activeConversationId) return;
+    if (window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) {
+      try {
+        await removeMember({ groupId: activeConversationId, userId }).unwrap();
+      } catch (err) {
+        console.error('Failed to kick member:', err);
+      }
+    }
+  }, [activeConversationId, removeMember]);
 
   return (
     <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
@@ -732,12 +858,18 @@ export default function ChatPage() {
         onPollQuestionChange={setPollQuestion}
         pollOptions={pollOptions}
         onPollOptionsChange={setPollOptions}
+        onCreatePoll={handleCreatePoll}
       />
       <MemberManagementModal
         open={showMemberModal}
         onClose={() => setShowMemberModal(false)}
         memberTab={memberTab}
         onMemberTabChange={setMemberTab}
+        members={conversationMembers}
+        requests={groupRequests}
+        onApprove={handleApproveRequest}
+        onReject={handleRejectRequest}
+        onKick={handleKickMember}
       />
       <AISummaryModal
         open={showAISummaryModal}
@@ -750,6 +882,12 @@ export default function ChatPage() {
       <TaskModal
         open={showTaskModal}
         onClose={closeTaskModal}
+        members={conversationMembers.map(m => ({
+          id: m.userId,
+          name: m.name,
+          avatar: m.avatar,
+          role: m.role
+        }))}
         taskTitle={taskTitle}
         onTaskTitleChange={setTaskTitle}
         taskDeadline={taskDeadline}

@@ -106,6 +106,21 @@ export function useChatSocketListeners(
       }, 1000);
     };
 
+    const handleGroupUpdate = (data: any) => {
+      // Khi có thay đổi về nhóm (member, role, poll, task, etc.)
+      const { groupId } = data;
+      // Invalidate các tags liên quan để FE tự động fetch lại dữ liệu mới nhất
+      if (data.type === 'poll') dispatch(chatApi.util.invalidateTags([{ type: 'Polls', id: groupId }]));
+      if (data.type === 'task') dispatch(chatApi.util.invalidateTags([{ type: 'Tasks', id: groupId }]));
+      if (data.type === 'request') dispatch(chatApi.util.invalidateTags([{ type: 'GroupRequests', id: groupId }]));
+      
+      // Mặc định luôn refresh Conversations để cập nhật memberCount hoặc status
+      dispatch(chatApi.util.invalidateTags(['Conversations']));
+      if (groupId === activeConversationIdRef.current) {
+        dispatch(chatApi.util.invalidateTags([{ type: 'Conversations', id: `MEMBERS-${groupId}` }]));
+      }
+    };
+
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:recall', handleRecall);
     socketService.on('message:edited', handleEdited);
@@ -113,6 +128,24 @@ export function useChatSocketListeners(
     socketService.on('message:pin_updated', handlePinUpdated);
     socketService.on('message:reacted', handleReacted);
     socketService.on('message:typing_indicator', handleTyping);
+
+    // Lắng nghe các sự kiện nhóm
+    socketService.on('group:updated', handleGroupUpdate);
+    socketService.on('group:member_joined', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
+    socketService.on('group:member_left', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
+    socketService.on('group:members_added', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
+    socketService.on('group:member_removed', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
+    socketService.on('group:role_changed', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
+    socketService.on('group:join_request_new', (data: any) => handleGroupUpdate({ ...data, type: 'request' }));
+    socketService.on('group:join_request_updated', (data: any) => handleGroupUpdate({ ...data, type: 'request' }));
+    socketService.on('group:poll_new', (data: any) => handleGroupUpdate({ ...data, type: 'poll' }));
+    socketService.on('group:poll_updated', (data: any) => handleGroupUpdate({ ...data, type: 'poll' }));
+    socketService.on('group:task_new', (data: any) => handleGroupUpdate({ ...data, type: 'task' }));
+    socketService.on('group:task_updated', (data: any) => handleGroupUpdate({ ...data, type: 'task' }));
+    socketService.on('group:recap_new', (data: any) => {
+      // Có thể hiển thị thông báo "AI vừa tạo tóm tắt mới!"
+      dispatch(chatApi.util.invalidateTags(['Conversations']));
+    });
 
     return () => {
       socketService.off('message:new', handleNewMessage);
@@ -122,6 +155,21 @@ export function useChatSocketListeners(
       socketService.off('message:pin_updated', handlePinUpdated);
       socketService.off('message:reacted', handleReacted);
       socketService.off('message:typing_indicator', handleTyping);
+      
+      socketService.off('group:updated');
+      socketService.off('group:member_joined');
+      socketService.off('group:member_left');
+      socketService.off('group:members_added');
+      socketService.off('group:member_removed');
+      socketService.off('group:role_changed');
+      socketService.off('group:join_request_new');
+      socketService.off('group:join_request_updated');
+      socketService.off('group:poll_new');
+      socketService.off('group:poll_updated');
+      socketService.off('group:task_new');
+      socketService.off('group:task_updated');
+      socketService.off('group:recap_new');
+
       Object.values(typingCleanupTimersRef.current).forEach(clearTimeout);
       typingCleanupTimersRef.current = {};
     };
