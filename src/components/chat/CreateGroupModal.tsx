@@ -1,6 +1,8 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Camera, CheckSquare, Search, User, Users, X } from 'lucide-react';
+import { Camera, CheckSquare, Search, User, Users, X, Loader } from 'lucide-react';
 import type { IConversation } from '@/types/chat.types';
+import { useGetFriendsQuery } from '@/store/api/contactApi';
+import { useState, useMemo } from 'react';
 
 type CreateGroupModalProps = {
   open: boolean;
@@ -23,6 +25,21 @@ export function CreateGroupModal({
   onToggleMember,
   onConfirmCreate,
 }: CreateGroupModalProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const { data: friendsResponse, isLoading, error } = useGetFriendsQuery();
+  
+  const friends = friendsResponse?.data ?? [];
+  
+  const filteredFriends = useMemo(() => {
+    if (!searchTerm.trim()) return friends;
+    
+    const query = searchTerm.toLowerCase();
+    return friends.filter((friend: any) =>
+      friend.displayName?.toLowerCase().includes(query) ||
+      friend.email?.toLowerCase().includes(query) ||
+      friend.phone?.includes(query)
+    );
+  }, [friends, searchTerm]);
   return (
     <AnimatePresence>
       {open && (
@@ -67,6 +84,8 @@ export function CreateGroupModal({
                   <input
                     type="text"
                     placeholder="Tìm tên hoặc số điện thoại..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:bg-white dark:focus:bg-black focus:border-blue-600/50 shadow-sm text-[14px] font-medium transition-all text-black dark:text-white"
                   />
                 </div>
@@ -74,35 +93,57 @@ export function CreateGroupModal({
                 <div className="border border-black/5 dark:border-white/10 rounded-2xl overflow-hidden divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-black/20">
                   <div className="px-4 py-2.5 bg-black/[0.02] dark:bg-white/[0.02] border-b border-black/5 dark:border-white/5">
                     <span className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider">
-                      Danh sách liên hệ
+                      Danh sách bạn bè ({filteredFriends.length})
                     </span>
                   </div>
-                  {conversations
-                    .filter((c) => c.type === 'direct')
-                    .map((conv) => (
+                  
+                  {isLoading ? (
+                    <div className="px-4 py-8 flex items-center justify-center text-muted-foreground">
+                      <Loader className="w-4 h-4 animate-spin" />
+                    </div>
+                  ) : error ? (
+                    <div className="px-4 py-6 text-center text-red-500 text-[13px]">
+                      Lỗi tải danh sách bạn bè
+                    </div>
+                  ) : filteredFriends.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-muted-foreground text-[13px]">
+                      {searchTerm ? 'Không tìm thấy bạn bè' : 'Chưa có bạn bè'}
+                    </div>
+                  ) : (
+                    filteredFriends.map((friend: any) => (
                       <label
-                        key={conv.conversationId}
+                        key={friend.userId}
                         className="flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors group"
                       >
                         <div className="relative flex items-center justify-center">
                           <input
                             type="checkbox"
-                            checked={selectedGroupMembers.includes(conv.conversationId)}
-                            onChange={(e) => onToggleMember(conv.conversationId, e.target.checked)}
+                            checked={selectedGroupMembers.includes(friend.userId)}
+                            onChange={(e) => onToggleMember(friend.userId, e.target.checked)}
                             className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer appearance-none checked:bg-blue-600 checked:border-blue-600 transition-colors"
                           />
-                          {selectedGroupMembers.includes(conv.conversationId) && (
+                          {selectedGroupMembers.includes(friend.userId) && (
                             <CheckSquare className="absolute w-[14px] h-[14px] text-white pointer-events-none" />
                           )}
                         </div>
-                        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
-                          <User className="w-5 h-5 text-blue-600" />
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
+                          {friend.avatar ? (
+                            <img src={friend.avatar} alt={friend.displayName} className="w-full h-full object-cover" />
+                          ) : (
+                            <User className="w-5 h-5 text-white" />
+                          )}
                         </div>
-                        <span className="font-semibold text-[14px] text-black dark:text-white flex-1 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                          {conv.name ?? 'Hội thoại'}
-                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-[14px] text-black dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                            {friend.displayName || 'Unknown'}
+                          </div>
+                          <div className="text-[12px] text-muted-foreground truncate">
+                            {friend.email}
+                          </div>
+                        </div>
                       </label>
-                    ))}
+                    ))
+                  )}
                 </div>
               </div>
             </div>

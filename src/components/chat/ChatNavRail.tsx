@@ -42,7 +42,11 @@ export function ChatNavRail({
       <div className="flex-1 w-full flex flex-col items-center gap-2">
         <button
           type="button"
-          className="w-12 h-12 shrink-0 rounded-2xl bg-black/20 flex flex-col items-center justify-center text-white cursor-pointer transition-colors shadow-sm"
+          onClick={onToggleContacts}
+          title="Trở lại chat"
+          className={`w-12 h-12 shrink-0 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-colors ${
+            !showContactsManagement ? 'bg-white/20 text-white' : 'text-white/80 hover:bg-white/10'
+          }`}
         >
           <MessageCircle className="w-6 h-6 fill-white" />
         </button>

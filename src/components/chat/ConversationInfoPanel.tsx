@@ -1,9 +1,9 @@
 import {
   BellOff,
   CheckSquare,
+  Edit3,
   ChevronRight,
   FileText,
-  Palette,
   PinOff,
   Settings,
   Sparkles,
@@ -12,7 +12,19 @@ import {
   User,
 } from 'lucide-react';
 import type { IConversation } from '@/types/chat.types';
-import { mockMembers } from './chatMocks';
+
+type GroupPoll = {
+  pollId: string;
+  question: string;
+  options: Array<{ text: string; voters?: string[] }>;
+  isClosed?: boolean;
+};
+
+type GroupTask = {
+  taskId: string;
+  title: string;
+  status: 'todo' | 'in_progress' | 'done';
+};
 
 type ConversationInfoPanelProps = {
   activeConversation: IConversation | undefined;
@@ -20,6 +32,23 @@ type ConversationInfoPanelProps = {
   onOpenMemberModal: (tab: 'list' | 'pending') => void;
   onLeaveGroup?: () => void;
   onDeleteGroup?: () => void;
+  onEditGroup?: () => void;
+  onAddMembers?: () => void;
+  onRequestJoin?: () => void;
+  onVotePoll?: (pollId: string, optionIndex: number) => void;
+  onAddPollOption?: (pollId: string) => void;
+  onClosePoll?: (pollId: string) => void;
+  onToggleTask?: (taskId: string) => void;
+  polls?: GroupPoll[];
+  tasks?: GroupTask[];
+  isJoinRequested?: boolean;
+  loading?: {
+    polls?: boolean;
+    tasks?: boolean;
+    recap?: boolean;
+    requestJoin?: boolean;
+    updateGroup?: boolean;
+  };
   numRequests: number;
 };
 
@@ -29,6 +58,17 @@ export function ConversationInfoPanel({
   onOpenMemberModal,
   onLeaveGroup,
   onDeleteGroup,
+  onEditGroup,
+  onAddMembers,
+  onRequestJoin,
+  onVotePoll,
+  onAddPollOption,
+  onClosePoll,
+  onToggleTask,
+  polls = [],
+  tasks = [],
+  isJoinRequested = false,
+  loading,
   numRequests,
 }: ConversationInfoPanelProps) {
   return (
@@ -56,9 +96,11 @@ export function ConversationInfoPanel({
             {activeConversation?.name ?? 'Hội thoại'}
             <button
               type="button"
+              onClick={onEditGroup}
+              disabled={loading?.updateGroup}
               className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
             >
-              <Palette className="w-3 h-3 text-muted-foreground" />
+              <Edit3 className="w-3 h-3 text-muted-foreground" />
             </button>
           </h3>
           {activeConversation?.type === 'group' && (
@@ -68,7 +110,7 @@ export function ConversationInfoPanel({
           )}
 
           <div className="flex items-start justify-center gap-2 lg:gap-6 mt-6 w-full px-2">
-            <button type="button" className="flex flex-col items-center gap-2 group w-16">
+            <button type="button" onClick={onAddMembers} className="flex flex-col items-center gap-2 group w-16">
               <div className="w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
                 <BellOff className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
               </div>
@@ -142,6 +184,17 @@ export function ConversationInfoPanel({
               </p>
             </div>
 
+            <div className="px-4 py-3 border-b border-black/5 dark:border-white/5 bg-white dark:bg-transparent">
+              <button
+                type="button"
+                onClick={onRequestJoin}
+                disabled={isJoinRequested || loading?.requestJoin}
+                className="w-full rounded-xl py-2.5 text-sm font-bold bg-blue-600 text-white disabled:bg-blue-200 disabled:cursor-not-allowed"
+              >
+                {isJoinRequested ? 'Đã gửi yêu cầu' : loading?.requestJoin ? 'Đang gửi...' : 'Yêu cầu tham gia'}
+              </button>
+            </div>
+
             <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5">
               <div
                 role="button"
@@ -203,6 +256,77 @@ export function ConversationInfoPanel({
               <FileText className="w-4 h-4 opacity-70" /> Ghi chú, ghim, bình chọn
             </div>
           </div>
+
+          <div className="px-4 pb-4">
+            <div className="font-bold text-xs text-muted-foreground uppercase tracking-wider mb-2">Bình chọn</div>
+            {loading?.polls ? (
+              <p className="text-xs text-muted-foreground">Đang tải bình chọn...</p>
+            ) : polls.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Chưa có bình chọn.</p>
+            ) : (
+              <div className="space-y-2">
+                {polls.slice(0, 2).map((poll) => {
+                  const total = poll.options.reduce((sum, option) => sum + (option.voters?.length ?? 0), 0);
+                  return (
+                    <div key={poll.pollId} className="rounded-xl border border-black/5 dark:border-white/10 p-2.5">
+                      <p className="text-xs font-bold mb-2">{poll.question}</p>
+                      <div className="space-y-1.5">
+                        {poll.options.map((option, idx) => {
+                          const votes = option.voters?.length ?? 0;
+                          const pct = total > 0 ? Math.round((votes / total) * 100) : 0;
+                          return (
+                            <button
+                              key={`${poll.pollId}-${idx}`}
+                              type="button"
+                              disabled={poll.isClosed}
+                              onClick={() => onVotePoll?.(poll.pollId, idx)}
+                              className="w-full text-left"
+                            >
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span>{option.text}</span>
+                                <span>{votes} ({pct}%)</span>
+                              </div>
+                              <div className="mt-1 h-1.5 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
+                                <div className="h-full bg-blue-600" style={{ width: `${pct}%` }} />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-2 flex gap-1.5">
+                        <button type="button" onClick={() => onAddPollOption?.(poll.pollId)} className="text-[10px] px-2 py-1 rounded bg-black/5 dark:bg-white/10">+ Option</button>
+                        <button type="button" onClick={() => onClosePoll?.(poll.pollId)} className="text-[10px] px-2 py-1 rounded bg-black/5 dark:bg-white/10">Đóng</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="px-4 pb-4">
+            <div className="font-bold text-xs text-muted-foreground uppercase tracking-wider mb-2">Công việc</div>
+            {loading?.tasks ? (
+              <p className="text-xs text-muted-foreground">Đang tải công việc...</p>
+            ) : tasks.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Chưa có công việc.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {tasks.slice(0, 3).map((task) => (
+                  <label key={task.taskId} className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={task.status === 'done'}
+                      onChange={() => onToggleTask?.(task.taskId)}
+                    />
+                    <span className={task.status === 'done' ? 'line-through text-muted-foreground' : ''}>
+                      {task.title}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5 mt-2 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
@@ -233,7 +357,13 @@ export function ConversationInfoPanel({
             >
               Rời nhóm
             </button>
-            {/* Logic for delete group if owner can be added here */}
+            <button
+              type="button"
+              onClick={onDeleteGroup}
+              className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl transition-colors"
+            >
+              Giải tán nhóm
+            </button>
           </div>
         )}
       </div>
