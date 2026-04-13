@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { Trash2, UserPlus, Users, X } from 'lucide-react';
-import { mockMembers, mockPendingMembers } from './chatMocks';
 
 type MemberTab = 'list' | 'pending';
 
@@ -14,6 +13,13 @@ type MemberManagementModalProps = {
   onApprove: (userId: string) => Promise<void>;
   onReject: (userId: string) => Promise<void>;
   onKick: (userId: string) => Promise<void>;
+  onChangeRole: (userId: string, role: 'admin' | 'member') => Promise<void>;
+  busy?: {
+    approving?: boolean;
+    rejecting?: boolean;
+    removing?: boolean;
+    changingRole?: boolean;
+  };
 };
 
 export function MemberManagementModal({
@@ -26,6 +32,8 @@ export function MemberManagementModal({
   onApprove,
   onReject,
   onKick,
+  onChangeRole,
+  busy,
 }: MemberManagementModalProps) {
   return (
     <AnimatePresence>
@@ -94,12 +102,25 @@ export function MemberManagementModal({
                       />
                       <div className="flex-1 overflow-hidden">
                         <p className="font-bold text-[14px] text-black dark:text-white truncate">{member.name}</p>
-                        <p className="text-[12px] text-muted-foreground font-medium">{member.role}</p>
+                        {member.role === 'owner' ? (
+                          <p className="text-[12px] text-muted-foreground font-medium">owner</p>
+                        ) : (
+                          <select
+                            className="text-[12px] rounded-lg bg-black/5 dark:bg-white/5 px-2 py-1"
+                            value={member.role}
+                            onChange={(e) => void onChangeRole(member.userId, e.target.value as 'admin' | 'member')}
+                            disabled={busy?.changingRole}
+                          >
+                            <option value="member">member</option>
+                            <option value="admin">admin</option>
+                          </select>
+                        )}
                       </div>
                       {member.role !== 'owner' && (
                         <button
                           type="button"
                           onClick={() => onKick(member.userId)}
+                          disabled={busy?.removing}
                           className="opacity-0 group-hover:opacity-100 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-[12px] font-bold transition-all flex items-center gap-1 shrink-0"
                         >
                           <Trash2 className="w-3 h-3" /> Kick
@@ -130,6 +151,7 @@ export function MemberManagementModal({
                         <button
                           type="button"
                           onClick={() => onReject(person.userId)}
+                          disabled={busy?.rejecting}
                           className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-[12px] font-bold transition-all"
                         >
                           Từ chối
@@ -137,6 +159,7 @@ export function MemberManagementModal({
                         <button
                           type="button"
                           onClick={() => onApprove(person.userId)}
+                          disabled={busy?.approving}
                           className="px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-[12px] font-bold transition-all shadow-sm"
                         >
                           Duyệt
