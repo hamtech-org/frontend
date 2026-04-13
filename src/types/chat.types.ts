@@ -7,7 +7,8 @@ export type MessageType =
   | 'emoji'
   | 'location'
   | 'poll'
-  | 'schedule';
+  | 'schedule'
+  | 'call';
 export type MessageStatus = 'sent' | 'delivered' | 'read';
 export type ConversationType = 'direct' | 'group';
 

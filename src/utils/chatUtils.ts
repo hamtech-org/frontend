@@ -27,12 +27,27 @@ export function formatConversationListLastPreview(conv: IConversation, currentUs
   const lm = conv.lastMessage;
   if (!lm) return 'Chưa có tin nhắn';
   const content = lm.content ?? '';
+  const formatCallPreview = (): string => {
+    try {
+      const payload = JSON.parse(content) as { kind?: string; callType?: string };
+      const kind = payload.kind;
+      const callType = payload.callType;
+      if (kind === 'missed') return 'Cuộc gọi nhỡ';
+      if (kind === 'rejected') return 'Cuộc gọi bị từ chối';
+      if (callType === 'video') return 'Cuộc gọi video';
+      return 'Cuộc gọi thoại';
+    } catch {
+      return 'Cuộc gọi';
+    }
+  };
+
+  const previewText = lm.type === 'call' ? formatCallPreview() : content;
   if (currentUserId && lm.senderId === currentUserId) {
-    return `Bạn: ${content}`;
+    return `Bạn: ${previewText}`;
   }
   if (conv.type === 'direct') {
-    return content;
+    return previewText;
   }
   const name = lm.senderDisplayName?.trim() || 'Thành viên';
-  return `${name}: ${content}`;
+  return `${name}: ${previewText}`;
 }

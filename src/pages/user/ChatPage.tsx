@@ -188,11 +188,13 @@ export default function ChatPage() {
 
   const handleAudioCall = useCallback(() => {
     if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
+    // CallContext sẽ lưu returnTo = location.pathname (đang là /chat/:conversationId)
     initiateCall(activeConversation.otherUserId, 'audio');
   }, [activeConversation, initiateCall]);
 
   const handleVideoCall = useCallback(() => {
     if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
+    // CallContext sẽ lưu returnTo = location.pathname (đang là /chat/:conversationId)
     initiateCall(activeConversation.otherUserId, 'video');
   }, [activeConversation, initiateCall]);
 
