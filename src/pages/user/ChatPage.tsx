@@ -1554,51 +1554,6 @@ export default function ChatPage() {
             />
           </>
         )}
-<<<<<<< HEAD
-=======
-
-        <ChatMessageList
-          messagesContainerRef={messagesContainerRef}
-          messagesEndRef={messagesEndRef}
-          allMessages={allMessages}
-          activeConversationId={activeConversationId}
-          activeConversation={activeConversation}
-          currentUserId={currentUserId}
-          typingUsers={typingUsers}
-          unreadIncomingCount={unreadIncomingCount}
-          actionMenuMsgId={actionMenuMsgId}
-          onActionMenuMsgIdChange={setActionMenuMsgId}
-          onStartEdit={(msg) => {
-            setEditingMessage(msg);
-            setEditDraft(msg.content);
-          }}
-          onTogglePin={handleTogglePinMsg}
-          onRecall={handleRecallMsg}
-          onDelete={handleDeleteMsg}
-          onReply={(msg) => dispatch(setReplyingTo(msg))}
-          onReact={handleReactMessage}
-          onJumpToLatest={handleJumpToLatest}
-        />
-
-        <ChatComposer
-          activeConversation={activeConversation}
-          activeConversationId={activeConversationId}
-          inputText={inputText}
-          onInputTextChange={setInputText}
-          onKeyDown={handleKeyDown}
-          onTyping={handleTyping}
-          onSend={handleSendMessage}
-          isSending={isSending}
-          isUploadingMedia={mediaUploading}
-          replyingTo={replyingTo}
-          onClearReply={() => dispatch(clearReplyingTo())}
-          onOpenPoll={() => setShowPollModal(true)}
-          onOpenTask={() => setShowTaskModal(true)}
-          pendingAttachments={pendingAttachments}
-          onAddPendingFiles={addPendingFiles}
-          onRemovePendingAttachment={removePendingAttachment}
-        />
->>>>>>> 6e391742628571767d0f1be80f043805aa1f746f
       </div>
 
       {showInfo && !showContactsManagement && (
@@ -1719,19 +1674,11 @@ export default function ChatPage() {
       <TaskModal
         open={showTaskModal}
         onClose={closeTaskModal}
-<<<<<<< HEAD
         members={groupMembers.map(m => ({
           id: m.userId,
           name: m.name ?? m.userId,
           avatar: m.avatar ?? 'https://via.placeholder.com/40',
           role: m.role
-=======
-        members={conversationMembers.map((m) => ({
-          id: m.userId,
-          name: m.name,
-          avatar: m.avatar,
-          role: m.role,
->>>>>>> 6e391742628571767d0f1be80f043805aa1f746f
         }))}
         taskTitle={taskTitle}
         onTaskTitleChange={setTaskTitle}
