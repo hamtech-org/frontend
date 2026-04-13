@@ -1,4 +1,5 @@
 import {
+  Edit3,
   PanelRight,
   PanelRightClose,
   Phone,
@@ -17,6 +18,8 @@ type ChatHeaderProps = {
   typingUsers: TypingUserEntry[];
   showInfo: boolean;
   onToggleShowInfo: () => void;
+  onAddMember?: () => void;
+  onEditGroup?: () => void;
   onAudioCall?: () => void;
   onVideoCall?: () => void;
 };
@@ -26,6 +29,8 @@ export function ChatHeader({
   typingUsers,
   showInfo,
   onToggleShowInfo,
+  onAddMember,
+  onEditGroup,
   onAudioCall,
   onVideoCall,
 }: ChatHeaderProps) {
@@ -47,7 +52,19 @@ export function ChatHeader({
           )}
         </div>
         <div>
-          <h2 className="font-bold leading-tight">{activeConversation?.name ?? 'Chọn hội thoại'}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-bold leading-tight">{activeConversation?.name ?? 'Chọn hội thoại'}</h2>
+            {activeConversation?.type === 'group' && (
+              <button
+                type="button"
+                title="Sửa tên nhóm"
+                onClick={onEditGroup}
+                className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground font-medium">
             {activeConversation?.type === 'group' ? (
               `${activeConversation.memberCount} thành viên`
@@ -69,6 +86,7 @@ export function ChatHeader({
             <button
               type="button"
               title="Thêm thành viên"
+              onClick={onAddMember}
               className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600"
             >
               <UserPlus className="w-5 h-5" />

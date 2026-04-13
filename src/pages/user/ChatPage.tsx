@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import {
   chatApi,
   useGetConversationsQuery,
@@ -14,25 +15,6 @@ import {
   usePinMessageMutation,
   useUnpinMessageMutation,
   useReactMessageMutation,
-  useGetConversationMembersQuery,
-  useGetPollsQuery,
-  useGetTasksQuery,
-  useGetGroupRequestsQuery,
-  useGetLatestAIRecapQuery,
-  useUpdateGroupMutation,
-  useDeleteGroupMutation,
-  useLeaveGroupMutation,
-  useAddMembersMutation,
-  useRemoveMemberMutation,
-  useChangeMemberRoleMutation,
-  useApproveRequestMutation,
-  useRejectRequestMutation,
-  useCreatePollMutation,
-  useVotePollMutation,
-  useUnvotePollMutation,
-  useCreateTaskMutation,
-  useUpdateTaskStatusMutation,
-  useGenerateAIRecapMutation,
 } from '@/store/api/chatApi';
 import { useUploadMediaMultiMutation, type MediaUploadResult } from '@/store/api/mediaApi';
 import type { PendingAttachment } from '@/components/chat/ChatComposer';
@@ -69,12 +51,80 @@ import { PollModal } from '@/components/chat/PollModal';
 import { MemberManagementModal } from '@/components/chat/MemberManagementModal';
 import { AISummaryModal } from '@/components/chat/AISummaryModal';
 import { TaskModal } from '@/components/chat/TaskModal';
+import { AddMembersModal } from '@/components/chat/AddMembersModal';
+import { EditGroupModal } from '@/components/chat/EditGroupModal';
 import { useCallContext } from '@/contexts/CallContext';
+import { apiClient } from '@/services/api';
+import type { ApiSuccessResponse } from '@/types/api.types';
 
 type MessageConfirmState =
   | null
   | { kind: 'recall'; msg: IMessage }
   | { kind: 'delete'; msg: IMessage };
+
+type GroupMemberRole = 'owner' | 'admin' | 'member';
+
+type GroupMember = {
+  userId: string;
+  name?: string;
+  avatar?: string;
+  role: GroupMemberRole;
+  joinedAt?: string;
+};
+
+type GroupRequest = {
+  userId: string;
+  avatar?: string;
+  name?: string;
+  requestedAt?: string;
+};
+
+type GroupPollOption = {
+  text: string;
+  voters?: string[];
+};
+
+type GroupPoll = {
+  pollId: string;
+  question: string;
+  options: GroupPollOption[];
+  createdAt: string;
+  isClosed?: boolean;
+};
+
+type GroupTask = {
+  taskId: string;
+  title: string;
+  description?: string;
+  assignees: string[];
+  status: 'todo' | 'in_progress' | 'done';
+  dueDate?: string;
+};
+
+type AIRecap = {
+  summaryId: string;
+  content: string;
+  createdAt: string;
+};
+
+type GroupActionLoading = {
+  updateGroup: boolean;
+  deleteGroup: boolean;
+  leaveGroup: boolean;
+  addMembers: boolean;
+  removeMember: boolean;
+  changeRole: boolean;
+  requestJoin: boolean;
+  approveRequest: boolean;
+  rejectRequest: boolean;
+  createPoll: boolean;
+  votePoll: boolean;
+  addPollOption: boolean;
+  closePoll: boolean;
+  createTask: boolean;
+  updateTask: boolean;
+  generateRecap: boolean;
+};
 
 const CHAT_NEAR_BOTTOM_PX = 80;
 const MAX_PENDING_FILES = 10;
@@ -163,48 +213,38 @@ export default function ChatPage() {
   const [unpinMessage] = useUnpinMessageMutation();
   const [reactMessage] = useReactMessageMutation();
 
-  const [updateGroup] = useUpdateGroupMutation();
-  const [deleteGroup] = useDeleteGroupMutation();
-  const [leaveGroup] = useLeaveGroupMutation();
-  const [addMembers] = useAddMembersMutation();
-  const [removeMember] = useRemoveMemberMutation();
-  const [changeMemberRole] = useChangeMemberRoleMutation();
-  const [approveRequest] = useApproveRequestMutation();
-  const [rejectRequest] = useRejectRequestMutation();
-  const [createPoll] = useCreatePollMutation();
-  const [votePoll] = useVotePollMutation();
-  const [unvotePoll] = useUnvotePollMutation();
-  const [createTask] = useCreateTaskMutation();
-  const [updateTaskStatus] = useUpdateTaskStatusMutation();
-  const [generateAIRecap] = useGenerateAIRecapMutation();
-
   const activeConversation = conversations.find((c) => c.conversationId === activeConversationId);
-
-  // Queries for active group
-  const { data: conversationMembersData } = useGetConversationMembersQuery(activeConversationId!, {
-    skip: !activeConversationId || activeConversation?.type !== 'group',
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  const [groupRequests, setGroupRequests] = useState<GroupRequest[]>([]);
+  const [groupPolls, setGroupPolls] = useState<GroupPoll[]>([]);
+  const [groupTasks, setGroupTasks] = useState<GroupTask[]>([]);
+  const [latestRecap, setLatestRecap] = useState<AIRecap | null>(null);
+  const [groupJoinRequested, setGroupJoinRequested] = useState(false);
+  const [groupLoading, setGroupLoading] = useState({
+    members: false,
+    requests: false,
+    polls: false,
+    tasks: false,
+    recap: false,
   });
-  const conversationMembers = conversationMembersData?.data ?? [];
-
-  const { data: groupRequestsData } = useGetGroupRequestsQuery(activeConversationId!, {
-    skip: !activeConversationId || activeConversation?.type !== 'group',
+  const [groupActionLoading, setGroupActionLoading] = useState<GroupActionLoading>({
+    updateGroup: false,
+    deleteGroup: false,
+    leaveGroup: false,
+    addMembers: false,
+    removeMember: false,
+    changeRole: false,
+    requestJoin: false,
+    approveRequest: false,
+    rejectRequest: false,
+    createPoll: false,
+    votePoll: false,
+    addPollOption: false,
+    closePoll: false,
+    createTask: false,
+    updateTask: false,
+    generateRecap: false,
   });
-  const groupRequests = groupRequestsData?.data ?? [];
-
-  const { data: pollsData } = useGetPollsQuery(activeConversationId!, {
-    skip: !activeConversationId || activeConversation?.type !== 'group',
-  });
-  const polls = pollsData?.data ?? [];
-
-  const { data: tasksData } = useGetTasksQuery(activeConversationId!, {
-    skip: !activeConversationId || activeConversation?.type !== 'group',
-  });
-  const tasks = tasksData?.data ?? [];
-
-  const { data: latestRecapData } = useGetLatestAIRecapQuery(activeConversationId!, {
-    skip: !activeConversationId || activeConversation?.type !== 'group',
-  });
-  const latestRecap = latestRecapData?.data;
 
   const { initiateCall } = useCallContext();
 
@@ -307,6 +347,12 @@ export default function ChatPage() {
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
   const [showMemberModal, setShowMemberModal] = useState(false);
+  const [showAddMembersModal, setShowAddMembersModal] = useState(false);
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
+  const [editGroupName, setEditGroupName] = useState('');
+  const [editGroupAvatarFile, setEditGroupAvatarFile] = useState<File | null>(null);
+  const [editGroupAvatarPreview, setEditGroupAvatarPreview] = useState<string | null>(null);
+  const [selectedAddMembers, setSelectedAddMembers] = useState<string[]>([]);
   const [showAISummaryModal, setShowAISummaryModal] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskTitle, setTaskTitle] = useState('');
@@ -320,6 +366,192 @@ export default function ChatPage() {
   const [contactsTab, setContactsTab] = useState<ContactsTabId>('friends');
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [addFriendQuery, setAddFriendQuery] = useState('');
+
+  const setActionBusy = useCallback((key: keyof GroupActionLoading, value: boolean) => {
+    setGroupActionLoading((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const fetchGroupMembers = useCallback(async (groupId: string) => {
+    setGroupLoading((prev) => ({ ...prev, members: true }));
+    try {
+      const res = await apiClient.get<ApiSuccessResponse<GroupMember[]>>(`/chat/conversations/${groupId}/members`);
+      setGroupMembers(res.data.data ?? []);
+    } finally {
+      setGroupLoading((prev) => ({ ...prev, members: false }));
+    }
+  }, []);
+
+  const fetchGroupRequests = useCallback(async (groupId: string) => {
+    setGroupLoading((prev) => ({ ...prev, requests: true }));
+    try {
+      const res = await apiClient.get<ApiSuccessResponse<GroupRequest[]>>(`/chat/groups/${groupId}/requests`);
+      setGroupRequests(res.data.data ?? []);
+    } finally {
+      setGroupLoading((prev) => ({ ...prev, requests: false }));
+    }
+  }, []);
+
+  const fetchGroupPolls = useCallback(async (groupId: string) => {
+    setGroupLoading((prev) => ({ ...prev, polls: true }));
+    try {
+      const res = await apiClient.get<ApiSuccessResponse<GroupPoll[]>>(`/chat/groups/${groupId}/polls`);
+      setGroupPolls(res.data.data ?? []);
+    } finally {
+      setGroupLoading((prev) => ({ ...prev, polls: false }));
+    }
+  }, []);
+
+  const fetchGroupTasks = useCallback(async (groupId: string) => {
+    setGroupLoading((prev) => ({ ...prev, tasks: true }));
+    try {
+      const res = await apiClient.get<ApiSuccessResponse<GroupTask[]>>(`/chat/groups/${groupId}/tasks`);
+      setGroupTasks(res.data.data ?? []);
+    } finally {
+      setGroupLoading((prev) => ({ ...prev, tasks: false }));
+    }
+  }, []);
+
+  const fetchLatestRecap = useCallback(async (groupId: string) => {
+    setGroupLoading((prev) => ({ ...prev, recap: true }));
+    try {
+      const res = await apiClient.get<ApiSuccessResponse<AIRecap | null>>(`/chat/groups/${groupId}/ai-recap/latest`);
+      setLatestRecap(res.data.data ?? null);
+    } catch {
+      setLatestRecap(null);
+    } finally {
+      setGroupLoading((prev) => ({ ...prev, recap: false }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeConversationId || activeConversation?.type !== 'group') {
+      setGroupMembers([]);
+      setGroupRequests([]);
+      setGroupPolls([]);
+      setGroupTasks([]);
+      setLatestRecap(null);
+      setGroupJoinRequested(false);
+      return;
+    }
+
+    void Promise.all([
+      fetchGroupMembers(activeConversationId),
+      fetchGroupRequests(activeConversationId),
+      fetchGroupPolls(activeConversationId),
+      fetchGroupTasks(activeConversationId),
+      fetchLatestRecap(activeConversationId),
+    ]);
+  }, [
+    activeConversationId,
+    activeConversation?.type,
+    fetchGroupMembers,
+    fetchGroupRequests,
+    fetchGroupPolls,
+    fetchGroupTasks,
+    fetchLatestRecap,
+  ]);
+
+  useEffect(() => {
+    if (!activeConversationId || activeConversation?.type !== 'group') return;
+
+    const isCurrentGroup = (data: unknown): boolean => {
+      const payload = data as { groupId?: string; conversationId?: string };
+      const eventGroupId = payload?.groupId ?? payload?.conversationId;
+      return eventGroupId === activeConversationId;
+    };
+
+    const refreshMembers = () => {
+      void fetchGroupMembers(activeConversationId);
+      void refetchConversations();
+    };
+
+    const refreshRequests = () => {
+      void fetchGroupRequests(activeConversationId);
+      void refetchConversations();
+    };
+
+    const refreshPolls = () => {
+      void fetchGroupPolls(activeConversationId);
+    };
+
+    const refreshTasks = () => {
+      void fetchGroupTasks(activeConversationId);
+    };
+
+    const refreshRecap = () => {
+      void fetchLatestRecap(activeConversationId);
+    };
+
+    const handleGroupUpdated = (data: unknown) => {
+      if (!isCurrentGroup(data)) return;
+      refreshMembers();
+    };
+
+    const handleMemberChanged = (data: unknown) => {
+      if (!isCurrentGroup(data)) return;
+      refreshMembers();
+      refreshRequests();
+    };
+
+    const handleRequestsChanged = (data: unknown) => {
+      if (!isCurrentGroup(data)) return;
+      refreshRequests();
+    };
+
+    const handlePollChanged = (data: unknown) => {
+      if (!isCurrentGroup(data)) return;
+      refreshPolls();
+    };
+
+    const handleTaskChanged = (data: unknown) => {
+      if (!isCurrentGroup(data)) return;
+      refreshTasks();
+    };
+
+    const handleRecapChanged = (data: unknown) => {
+      if (!isCurrentGroup(data)) return;
+      refreshRecap();
+    };
+
+    socketService.on('group:updated', handleGroupUpdated);
+    socketService.on('group:member_joined', handleMemberChanged);
+    socketService.on('group:member_left', handleMemberChanged);
+    socketService.on('group:members_added', handleMemberChanged);
+    socketService.on('group:member_removed', handleMemberChanged);
+    socketService.on('group:role_changed', handleMemberChanged);
+    socketService.on('group:join_request_new', handleRequestsChanged);
+    socketService.on('group:join_request_updated', handleRequestsChanged);
+    socketService.on('group:poll_new', handlePollChanged);
+    socketService.on('group:poll_updated', handlePollChanged);
+    socketService.on('group:task_new', handleTaskChanged);
+    socketService.on('group:task_updated', handleTaskChanged);
+    socketService.on('group:recap_new', handleRecapChanged);
+
+    return () => {
+      socketService.off('group:updated', handleGroupUpdated);
+      socketService.off('group:member_joined', handleMemberChanged);
+      socketService.off('group:member_left', handleMemberChanged);
+      socketService.off('group:members_added', handleMemberChanged);
+      socketService.off('group:member_removed', handleMemberChanged);
+      socketService.off('group:role_changed', handleMemberChanged);
+      socketService.off('group:join_request_new', handleRequestsChanged);
+      socketService.off('group:join_request_updated', handleRequestsChanged);
+      socketService.off('group:poll_new', handlePollChanged);
+      socketService.off('group:poll_updated', handlePollChanged);
+      socketService.off('group:task_new', handleTaskChanged);
+      socketService.off('group:task_updated', handleTaskChanged);
+      socketService.off('group:recap_new', handleRecapChanged);
+    };
+  }, [
+    activeConversationId,
+    activeConversation?.type,
+    fetchGroupMembers,
+    fetchGroupRequests,
+    fetchGroupPolls,
+    fetchGroupTasks,
+    fetchLatestRecap,
+    refetchConversations,
+  ]);
 
   useEffect(() => {
     dispatch(setActiveConversation(routeConversationId ?? null));
@@ -735,19 +967,194 @@ export default function ChatPage() {
     setTaskAssignees([]);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (editGroupAvatarPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(editGroupAvatarPreview);
+      }
+    };
+  }, [editGroupAvatarPreview]);
+
+  const openEditGroupModal = useCallback(() => {
+    if (activeConversation?.type !== 'group') return;
+    if (editGroupAvatarPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(editGroupAvatarPreview);
+    }
+    setEditGroupName(activeConversation.name ?? '');
+    setEditGroupAvatarFile(null);
+    setEditGroupAvatarPreview(activeConversation.avatar ?? null);
+    setShowEditGroupModal(true);
+  }, [activeConversation, editGroupAvatarPreview]);
+
+  const handleEditGroupAvatarFileChange = useCallback(
+    (file: File | null) => {
+      setEditGroupAvatarFile(file);
+      if (editGroupAvatarPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(editGroupAvatarPreview);
+      }
+      if (file) {
+        setEditGroupAvatarPreview(URL.createObjectURL(file));
+        return;
+      }
+      setEditGroupAvatarPreview(activeConversation?.avatar ?? null);
+    },
+    [activeConversation?.avatar, editGroupAvatarPreview],
+  );
+
+  const handleUpdateGroup = useCallback(async () => {
+    if (!activeConversationId || activeConversation?.type !== 'group') return;
+    const nextName = editGroupName.trim();
+    if (!nextName) {
+      toast.error('Tên nhóm không được để trống');
+      return;
+    }
+
+    setActionBusy('updateGroup', true);
+    const previousName = activeConversation.name;
+    const previousAvatar = activeConversation.avatar;
+    let nextAvatar = previousAvatar;
+
+    if (editGroupAvatarFile) {
+      const formData = new FormData();
+      formData.append('file', editGroupAvatarFile);
+      const uploadResult = await apiClient.post<ApiSuccessResponse<{ url?: string; fileUrl?: string }>>(
+        '/media/upload',
+        formData,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        },
+      );
+      nextAvatar = uploadResult.data.data?.url ?? uploadResult.data.data?.fileUrl ?? previousAvatar;
+    }
+
+    dispatch(
+      chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+        const conv = draft?.data?.find((item) => item.conversationId === activeConversationId);
+        if (conv) {
+          conv.name = nextName;
+          if (nextAvatar) conv.avatar = nextAvatar;
+        }
+      }),
+    );
+
+    try {
+      await apiClient.put(`/chat/groups/${activeConversationId}`, {
+        name: nextName,
+        avatar: nextAvatar,
+      });
+      setShowEditGroupModal(false);
+      setEditGroupAvatarFile(null);
+      toast.success('Cập nhật nhóm thành công');
+    } catch (error) {
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          const conv = draft?.data?.find((item) => item.conversationId === activeConversationId);
+          if (conv) {
+            conv.name = previousName ?? conv.name;
+            conv.avatar = previousAvatar;
+          }
+        }),
+      );
+      toast.error('Không thể cập nhật nhóm');
+      console.error('Failed to update group:', error);
+    } finally {
+      setActionBusy('updateGroup', false);
+    }
+  }, [
+    activeConversationId,
+    activeConversation,
+    editGroupName,
+    editGroupAvatarFile,
+    dispatch,
+    setActionBusy,
+  ]);
+
+  const handleDeleteGroup = useCallback(async () => {
+    if (!activeConversationId) return;
+    if (!window.confirm('Giải tán nhóm?')) return;
+
+    setActionBusy('deleteGroup', true);
+    try {
+      await apiClient.delete(`/chat/groups/${activeConversationId}`);
+      toast.success('Giải tán nhóm thành công');
+      void navigate('/chat', { replace: true });
+    } catch (error) {
+      toast.error('Không thể giải tán nhóm');
+      console.error('Failed to delete group:', error);
+    } finally {
+      setActionBusy('deleteGroup', false);
+    }
+  }, [activeConversationId, navigate, setActionBusy]);
+
+  const handleLeaveGroup = useCallback(async () => {
+    if (!activeConversationId) return;
+    if (!window.confirm('Bạn chắc chắn muốn rời nhóm?')) return;
+
+    setActionBusy('leaveGroup', true);
+    try {
+      await apiClient.post(`/chat/groups/${activeConversationId}/leave`);
+      toast.success('Đã rời nhóm');
+      void navigate('/chat', { replace: true });
+    } catch (error) {
+      toast.error('Không thể rời nhóm');
+      console.error('Failed to leave group:', error);
+    } finally {
+      setActionBusy('leaveGroup', false);
+    }
+  }, [activeConversationId, navigate, setActionBusy]);
+
+  const handleAddMembers = useCallback(async (memberIds: string[]) => {
+    if (!activeConversationId || memberIds.length === 0) return;
+    setActionBusy('addMembers', true);
+    const before = groupMembers;
+    const optimistic: GroupMember[] = [
+      ...groupMembers,
+      ...memberIds.map((id) => ({ userId: id, name: id, avatar: '', role: 'member' as GroupMemberRole })),
+    ];
+    setGroupMembers(optimistic);
+    try {
+      await apiClient.post(`/chat/groups/${activeConversationId}/members`, { memberIds });
+      toast.success('Đã thêm thành viên');
+      await fetchGroupMembers(activeConversationId);
+      setSelectedAddMembers([]);
+      setShowAddMembersModal(false);
+    } catch (error) {
+      setGroupMembers(before);
+      toast.error('Không thể thêm thành viên');
+      console.error('Failed to add members:', error);
+    } finally {
+      setActionBusy('addMembers', false);
+    }
+  }, [activeConversationId, groupMembers, fetchGroupMembers, setActionBusy]);
+
   const handleSubmitTask = useCallback(async () => {
     if (!activeConversationId || !taskTitle.trim()) return;
+    setActionBusy('createTask', true);
+    const optimisticTask: GroupTask = {
+      taskId: `tmp-${Date.now()}`,
+      title: taskTitle.trim(),
+      description: taskNote.trim(),
+      assignees: taskAssignees,
+      status: 'todo',
+      dueDate: taskDeadline || undefined,
+    };
+    setGroupTasks((prev) => [optimisticTask, ...prev]);
     try {
-      await createTask({
-        groupId: activeConversationId,
+      await apiClient.post(`/chat/groups/${activeConversationId}/tasks`, {
         title: taskTitle.trim(),
         description: taskNote.trim(),
         assignees: taskAssignees,
         dueDate: taskDeadline || undefined,
-      }).unwrap();
+      });
+      toast.success('Đã tạo công việc');
+      await fetchGroupTasks(activeConversationId);
       closeTaskModal();
     } catch (err) {
+      setGroupTasks((prev) => prev.filter((task) => task.taskId !== optimisticTask.taskId));
+      toast.error('Không thể tạo công việc');
       console.error('Failed to create task:', err);
+    } finally {
+      setActionBusy('createTask', false);
     }
   }, [
     activeConversationId,
@@ -755,8 +1162,9 @@ export default function ChatPage() {
     taskNote,
     taskAssignees,
     taskDeadline,
-    createTask,
     closeTaskModal,
+    fetchGroupTasks,
+    setActionBusy,
   ]);
 
   const openAISummaryFromPanel = useCallback(async () => {
@@ -768,44 +1176,63 @@ export default function ChatPage() {
     setAiSummaryResult('');
     setAiSummaryLoading(true);
     try {
-      const result = await generateAIRecap(activeConversationId!).unwrap();
-      setAiSummaryResult(result.data.content);
+      if (!activeConversationId) return;
+      const result = await apiClient.post<ApiSuccessResponse<AIRecap>>(`/chat/groups/${activeConversationId}/ai-recap`);
+      setLatestRecap(result.data.data);
+      setAiSummaryResult(result.data.data?.content ?? '');
     } catch {
       setAiSummaryResult('Không thể tạo tóm tắt vào lúc này.');
     } finally {
       setAiSummaryLoading(false);
     }
-  }, [activeConversationId, latestRecap, generateAIRecap]);
+  }, [activeConversationId, latestRecap]);
 
   const handleRerunAISummary = useCallback(async () => {
     if (!activeConversationId) return;
     setAiSummaryResult('');
     setAiSummaryLoading(true);
     try {
-      const result = await generateAIRecap(activeConversationId).unwrap();
-      setAiSummaryResult(result.data.content);
+      const result = await apiClient.post<ApiSuccessResponse<AIRecap>>(`/chat/groups/${activeConversationId}/ai-recap`);
+      setLatestRecap(result.data.data);
+      setAiSummaryResult(result.data.data?.content ?? '');
+      toast.success('Đã tạo AI recap');
     } catch {
       setAiSummaryResult('Không thể làm mới tóm tắt.');
+      toast.error('Không thể tạo AI recap');
     } finally {
       setAiSummaryLoading(false);
     }
-  }, [activeConversationId, generateAIRecap]);
+  }, [activeConversationId]);
 
   const handleCreatePoll = useCallback(async () => {
     if (!activeConversationId || !pollQuestion.trim()) return;
+    setActionBusy('createPoll', true);
+    const optimisticPoll: GroupPoll = {
+      pollId: `tmp-${Date.now()}`,
+      question: pollQuestion.trim(),
+      options: pollOptions.filter((o) => o.trim()).map((text) => ({ text, voters: [] })),
+      createdAt: new Date().toISOString(),
+      isClosed: false,
+    };
+    setGroupPolls((prev) => [optimisticPoll, ...prev]);
     try {
-      await createPoll({
-        groupId: activeConversationId,
+      await apiClient.post(`/chat/groups/${activeConversationId}/polls`, {
         question: pollQuestion.trim(),
         options: pollOptions.filter((o) => !!o.trim()),
-      }).unwrap();
+      });
+      toast.success('Tạo bình chọn thành công');
+      await fetchGroupPolls(activeConversationId);
       setShowPollModal(false);
       setPollQuestion('');
       setPollOptions(['', '']);
     } catch (err) {
+      setGroupPolls((prev) => prev.filter((poll) => poll.pollId !== optimisticPoll.pollId));
+      toast.error('Không thể tạo bình chọn');
       console.error('Failed to create poll:', err);
+    } finally {
+      setActionBusy('createPoll', false);
     }
-  }, [activeConversationId, pollQuestion, pollOptions, createPoll]);
+  }, [activeConversationId, pollQuestion, pollOptions, fetchGroupPolls, setActionBusy]);
 
   const openCreateGroupModal = useCallback(() => {
     setShowCreateGroupModal(true);
@@ -813,49 +1240,223 @@ export default function ChatPage() {
     setGroupName('');
   }, []);
 
+  const openAddMembersModal = useCallback(() => {
+    setSelectedAddMembers([]);
+    setShowAddMembersModal(true);
+  }, []);
+
+  const handleToggleAddMember = useCallback((userId: string, checked: boolean) => {
+    setSelectedAddMembers((prev) => (checked ? [...prev, userId] : prev.filter((id) => id !== userId)));
+  }, []);
+
+  const handleRequestJoin = useCallback(async () => {
+    if (!activeConversationId || groupJoinRequested) return;
+    setActionBusy('requestJoin', true);
+    setGroupJoinRequested(true);
+    try {
+      await apiClient.post(`/chat/groups/${activeConversationId}/request`);
+      toast.success('Đã gửi yêu cầu tham gia');
+    } catch (error) {
+      setGroupJoinRequested(false);
+      toast.error('Không thể gửi yêu cầu tham gia');
+      console.error('Failed to request join:', error);
+    } finally {
+      setActionBusy('requestJoin', false);
+    }
+  }, [activeConversationId, groupJoinRequested, setActionBusy]);
+
+  const handleAddPollOption = useCallback(async (pollId: string) => {
+    if (!activeConversationId) return;
+    const optionText = window.prompt('Nhập lựa chọn mới');
+    if (!optionText?.trim()) return;
+    setActionBusy('addPollOption', true);
+    const before = groupPolls;
+    setGroupPolls((prev) =>
+      prev.map((poll) =>
+        poll.pollId === pollId
+          ? { ...poll, options: [...poll.options, { text: optionText.trim(), voters: [] }] }
+          : poll,
+      ),
+    );
+    try {
+      await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/options`, {
+        text: optionText.trim(),
+      });
+      toast.success('Đã thêm lựa chọn');
+      await fetchGroupPolls(activeConversationId);
+    } catch (error) {
+      setGroupPolls(before);
+      toast.error('Không thể thêm lựa chọn');
+      console.error('Failed to add poll option:', error);
+    } finally {
+      setActionBusy('addPollOption', false);
+    }
+  }, [activeConversationId, groupPolls, fetchGroupPolls, setActionBusy]);
+
+  const handleClosePoll = useCallback(async (pollId: string) => {
+    if (!activeConversationId) return;
+    setActionBusy('closePoll', true);
+    const before = groupPolls;
+    setGroupPolls((prev) => prev.map((poll) => (poll.pollId === pollId ? { ...poll, isClosed: true } : poll)));
+    try {
+      await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/close`);
+      toast.success('Đã đóng bình chọn');
+    } catch (error) {
+      setGroupPolls(before);
+      toast.error('Không thể đóng bình chọn');
+      console.error('Failed to close poll:', error);
+    } finally {
+      setActionBusy('closePoll', false);
+    }
+  }, [activeConversationId, groupPolls, setActionBusy]);
+
   const handleAddFriendSubmit = useCallback(() => {
     // Modal now handles all friend request logic internally
     setShowAddFriendModal(false);
     setAddFriendQuery('');
   }, []);
 
-  const handleApproveRequest = useCallback(
-    async (userId: string) => {
-      if (!activeConversationId) return;
-      try {
-        await approveRequest({ groupId: activeConversationId, userId }).unwrap();
-      } catch (err) {
-        console.error('Failed to approve request:', err);
-      }
-    },
-    [activeConversationId, approveRequest],
-  );
+  const handleApproveRequest = useCallback(async (userId: string) => {
+    if (!activeConversationId) return;
+    setActionBusy('approveRequest', true);
+    const targetRequest = groupRequests.find((item) => item.userId === userId);
+    const beforeRequests = groupRequests;
+    const beforeMembers = groupMembers;
+    setGroupRequests((prev) => prev.filter((item) => item.userId !== userId));
+    if (targetRequest) {
+      setGroupMembers((prev) => [
+        ...prev,
+        {
+          userId: targetRequest.userId,
+          name: targetRequest.name,
+          avatar: targetRequest.avatar,
+          role: 'member',
+          joinedAt: new Date().toISOString(),
+        },
+      ]);
+    }
+    try {
+      await apiClient.post(`/chat/groups/${activeConversationId}/requests/${userId}/approve`);
+      toast.success('Đã duyệt yêu cầu');
+    } catch (err) {
+      setGroupRequests(beforeRequests);
+      setGroupMembers(beforeMembers);
+      toast.error('Không thể duyệt yêu cầu');
+      console.error('Failed to approve request:', err);
+    } finally {
+      setActionBusy('approveRequest', false);
+    }
+  }, [activeConversationId, groupRequests, groupMembers, setActionBusy]);
 
-  const handleRejectRequest = useCallback(
-    async (userId: string) => {
-      if (!activeConversationId) return;
-      try {
-        await rejectRequest({ groupId: activeConversationId, userId }).unwrap();
-      } catch (err) {
-        console.error('Failed to reject request:', err);
-      }
-    },
-    [activeConversationId, rejectRequest],
-  );
+  const handleRejectRequest = useCallback(async (userId: string) => {
+    if (!activeConversationId) return;
+    setActionBusy('rejectRequest', true);
+    const before = groupRequests;
+    setGroupRequests((prev) => prev.filter((item) => item.userId !== userId));
+    try {
+      await apiClient.post(`/chat/groups/${activeConversationId}/requests/${userId}/reject`);
+      toast.success('Đã từ chối yêu cầu');
+    } catch (err) {
+      setGroupRequests(before);
+      toast.error('Không thể từ chối yêu cầu');
+      console.error('Failed to reject request:', err);
+    } finally {
+      setActionBusy('rejectRequest', false);
+    }
+  }, [activeConversationId, groupRequests, setActionBusy]);
 
-  const handleKickMember = useCallback(
-    async (userId: string) => {
-      if (!activeConversationId) return;
-      if (window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) {
-        try {
-          await removeMember({ groupId: activeConversationId, userId }).unwrap();
-        } catch (err) {
-          console.error('Failed to kick member:', err);
-        }
+  const handleKickMember = useCallback(async (userId: string) => {
+    if (!activeConversationId) return;
+    if (window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) {
+      setActionBusy('removeMember', true);
+      const before = groupMembers;
+      setGroupMembers((prev) => prev.filter((member) => member.userId !== userId));
+      try {
+        await apiClient.delete(`/chat/groups/${activeConversationId}/members/${userId}`);
+        toast.success('Đã xóa thành viên');
+      } catch (err) {
+        setGroupMembers(before);
+        toast.error('Không thể xóa thành viên');
+        console.error('Failed to kick member:', err);
+      } finally {
+        setActionBusy('removeMember', false);
       }
-    },
-    [activeConversationId, removeMember],
-  );
+    }
+  }, [activeConversationId, groupMembers, setActionBusy]);
+
+  const handleChangeMemberRole = useCallback(async (userId: string, role: GroupMemberRole) => {
+    if (!activeConversationId) return;
+    setActionBusy('changeRole', true);
+    const before = groupMembers;
+    setGroupMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
+    try {
+      await apiClient.put(`/chat/groups/${activeConversationId}/members/${userId}/role`, { role });
+      toast.success('Đã cập nhật vai trò');
+    } catch (error) {
+      setGroupMembers(before);
+      toast.error('Không thể cập nhật vai trò');
+      console.error('Failed to change member role:', error);
+    } finally {
+      setActionBusy('changeRole', false);
+    }
+  }, [activeConversationId, groupMembers, setActionBusy]);
+
+  const handleVotePoll = useCallback(async (pollId: string, optionIndex: number) => {
+    if (!activeConversationId) return;
+    setActionBusy('votePoll', true);
+    const before = groupPolls;
+    setGroupPolls((prev) =>
+      prev.map((poll) => {
+        if (poll.pollId !== pollId) return poll;
+        const nextOptions = poll.options.map((option, index) => {
+          const currentVoters = option.voters ?? [];
+          if (index === optionIndex) {
+            if (currentVoters.includes(currentUserId)) {
+              return { ...option, voters: currentVoters.filter((id) => id !== currentUserId) };
+            }
+            return { ...option, voters: [...currentVoters, currentUserId] };
+          }
+          return option;
+        });
+        return { ...poll, options: nextOptions };
+      }),
+    );
+    try {
+      const isVoted = before
+        .find((poll) => poll.pollId === pollId)
+        ?.options[optionIndex]?.voters?.includes(currentUserId);
+      if (isVoted) {
+        await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/unvote`, { optionIndex });
+      } else {
+        await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/vote`, { optionIndex });
+      }
+    } catch (error) {
+      setGroupPolls(before);
+      toast.error('Không thể cập nhật bình chọn');
+      console.error('Failed to vote poll:', error);
+    } finally {
+      setActionBusy('votePoll', false);
+    }
+  }, [activeConversationId, currentUserId, groupPolls, setActionBusy]);
+
+  const handleToggleTaskStatus = useCallback(async (taskId: string) => {
+    if (!activeConversationId) return;
+    setActionBusy('updateTask', true);
+    const before = groupTasks;
+    const currentTask = groupTasks.find((task) => task.taskId === taskId);
+    if (!currentTask) return;
+    const nextStatus: GroupTask['status'] = currentTask.status === 'done' ? 'todo' : 'done';
+    setGroupTasks((prev) => prev.map((task) => (task.taskId === taskId ? { ...task, status: nextStatus } : task)));
+    try {
+      await apiClient.put(`/chat/groups/${activeConversationId}/tasks/${taskId}`, { status: nextStatus });
+    } catch (error) {
+      setGroupTasks(before);
+      toast.error('Không thể cập nhật công việc');
+      console.error('Failed to update task:', error);
+    } finally {
+      setActionBusy('updateTask', false);
+    }
+  }, [activeConversationId, groupTasks, setActionBusy]);
 
   return (
     <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
@@ -896,6 +1497,8 @@ export default function ChatPage() {
               typingUsers={typingUsers}
               showInfo={showInfo}
               onToggleShowInfo={() => setShowInfo(!showInfo)}
+              onAddMember={openAddMembersModal}
+              onEditGroup={openEditGroupModal}
               onAudioCall={handleAudioCall}
               onVideoCall={handleVideoCall}
             />
@@ -962,6 +1565,26 @@ export default function ChatPage() {
           numRequests={groupRequests.length}
           activeConversation={activeConversation}
           onOpenAISummaryFromPanel={openAISummaryFromPanel}
+          onEditGroup={openEditGroupModal}
+          onAddMembers={openAddMembersModal}
+          onRequestJoin={() => void handleRequestJoin()}
+          onVotePoll={(pollId, optionIndex) => void handleVotePoll(pollId, optionIndex)}
+          onAddPollOption={(pollId) => void handleAddPollOption(pollId)}
+          onClosePoll={(pollId) => void handleClosePoll(pollId)}
+          onToggleTask={(taskId) => void handleToggleTaskStatus(taskId)}
+          polls={groupPolls}
+          tasks={groupTasks}
+          isJoinRequested={groupJoinRequested}
+          loading={{
+            polls: groupLoading.polls || groupActionLoading.votePoll,
+            tasks: groupLoading.tasks || groupActionLoading.updateTask,
+            recap: groupLoading.recap || groupActionLoading.generateRecap,
+            requestJoin: groupActionLoading.requestJoin,
+            updateGroup: groupActionLoading.updateGroup,
+          }}
+          numRequests={groupRequests.length}
+          onLeaveGroup={() => void handleLeaveGroup()}
+          onDeleteGroup={() => void handleDeleteGroup()}
           onOpenMemberModal={(tab) => {
             setMemberTab(tab);
             setShowMemberModal(true);
@@ -1029,11 +1652,20 @@ export default function ChatPage() {
         onClose={() => setShowMemberModal(false)}
         memberTab={memberTab}
         onMemberTabChange={setMemberTab}
-        members={conversationMembers}
+        members={groupMembers}
         requests={groupRequests}
         onApprove={handleApproveRequest}
         onReject={handleRejectRequest}
         onKick={handleKickMember}
+        onChangeRole={async (userId, role) => {
+          await handleChangeMemberRole(userId, role);
+        }}
+        busy={{
+          approving: groupActionLoading.approveRequest,
+          rejecting: groupActionLoading.rejectRequest,
+          removing: groupActionLoading.removeMember,
+          changingRole: groupActionLoading.changeRole,
+        }}
       />
       <AISummaryModal
         open={showAISummaryModal}
@@ -1046,11 +1678,11 @@ export default function ChatPage() {
       <TaskModal
         open={showTaskModal}
         onClose={closeTaskModal}
-        members={conversationMembers.map((m) => ({
+        members={groupMembers.map(m => ({
           id: m.userId,
-          name: m.name,
-          avatar: m.avatar,
-          role: m.role,
+          name: m.name ?? m.userId,
+          avatar: m.avatar ?? 'https://via.placeholder.com/40',
+          role: m.role
         }))}
         taskTitle={taskTitle}
         onTaskTitleChange={setTaskTitle}
@@ -1061,6 +1693,30 @@ export default function ChatPage() {
         taskAssignees={taskAssignees}
         onTaskAssigneesChange={setTaskAssignees}
         onSubmitTask={handleSubmitTask}
+      />
+
+      <AddMembersModal
+        open={showAddMembersModal}
+        onClose={() => setShowAddMembersModal(false)}
+        selectedIds={selectedAddMembers}
+        existingMemberIds={groupMembers.map((member) => member.userId)}
+        onToggleSelect={handleToggleAddMember}
+        onConfirm={() => void handleAddMembers(selectedAddMembers)}
+        isSubmitting={groupActionLoading.addMembers}
+      />
+
+      <EditGroupModal
+        open={showEditGroupModal}
+        groupName={editGroupName}
+        avatarPreview={editGroupAvatarPreview}
+        isSaving={groupActionLoading.updateGroup}
+        onClose={() => {
+          setShowEditGroupModal(false);
+          setEditGroupAvatarFile(null);
+        }}
+        onGroupNameChange={setEditGroupName}
+        onAvatarFileChange={handleEditGroupAvatarFileChange}
+        onSubmit={() => void handleUpdateGroup()}
       />
 
       <EditMessageDialog
