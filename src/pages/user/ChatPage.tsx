@@ -944,10 +944,14 @@ export default function ChatPage() {
               onTyping={handleTyping}
               onSend={handleSendMessage}
               isSending={isSending}
+              isUploadingMedia={mediaUploading}
               replyingTo={replyingTo}
               onClearReply={() => dispatch(clearReplyingTo())}
               onOpenPoll={() => setShowPollModal(true)}
               onOpenTask={() => setShowTaskModal(true)}
+              pendingAttachments={pendingAttachments}
+              onAddPendingFiles={addPendingFiles}
+              onRemovePendingAttachment={removePendingAttachment}
             />
           </>
         )}
