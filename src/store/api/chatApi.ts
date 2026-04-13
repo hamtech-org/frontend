@@ -17,6 +17,7 @@ export interface SendMessageRequest {
   type: IMessage['type'];
   content: string;
   mediaUrl?: string;
+  mediaId?: string;
   replyTo?: string;
 }
 
@@ -106,14 +107,24 @@ export function patchConversationsFromNewMessage(
       if (!draft?.data) return;
       const conv = draft.data.find((c) => c.conversationId === msg.conversationId);
       if (!conv) return;
+      const previewContent =
+        msg.content?.trim() !== ''
+          ? msg.content
+          : msg.type === 'image'
+            ? '[Ảnh]'
+            : msg.type === 'video'
+              ? '[Video]'
+              : msg.type === 'file'
+                ? '[File]'
+                : msg.content;
       const alreadySamePreview =
         conv.lastMessage &&
-        conv.lastMessage.content === msg.content &&
+        conv.lastMessage.content === previewContent &&
         conv.lastMessage.senderId === msg.senderId &&
         conv.lastMessage.createdAt === msg.createdAt;
       conv.lastMessage = {
         messageId: msg.messageId,
-        content: msg.content,
+        content: previewContent,
         senderId: msg.senderId,
         type: msg.type,
         createdAt: msg.createdAt,

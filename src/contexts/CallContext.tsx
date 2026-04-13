@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { socketService } from '@/services/socket';
 import { apiClient } from '@/services/api';
 import type { RootState, AppDispatch } from '@/store/store';
@@ -10,6 +10,8 @@ import {
   setIncomingCall,
   setCallAccepted,
   setCallEnded,
+  setReturnTo,
+  setEndReason,
   toggleMic,
   toggleCamera,
   resetCall,
@@ -31,7 +33,7 @@ interface CallContextValue {
   initiateCall: (calleeId: string, type: CallType) => void;
   acceptCall: () => void;
   rejectCall: () => void;
-  endCall: () => void;
+  endCall: (meta?: { durationSec?: number; result?: 'completed' | 'missed' | 'rejected' }) => void;
   onToggleMic: () => void;
   onToggleCamera: () => void;
   requestUpgradeToVideo: () => void;
@@ -44,12 +46,22 @@ const CallContext = createContext<CallContextValue | null>(null);
 
 export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const dispatch = useDispatch<AppDispatch>();
+  const location = useLocation();
   const navigate = useNavigate();
   const callState = useSelector((state: RootState) => state.call);
+
+  const getConversationIdFromPath = (pathname: string): string | null => {
+    // /chat/:conversationId
+    const parts = pathname.split('/').filter(Boolean);
+    if (parts[0] !== 'chat') return null;
+    return parts[1] ?? null;
+  };
 
   useEffect(() => {
     const onIncoming = (data: unknown) => {
       const payload = data as IncomingCallData;
+      // Lưu route hiện tại để sau khi kết thúc call quay lại đúng cuộc chat
+      dispatch(setReturnTo(location.pathname));
       dispatch(setIncomingCall(payload));
     };
 
@@ -58,10 +70,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const onRejected = () => {
-      dispatch(resetCall());
+      dispatch(setEndReason('rejected'));
+      dispatch(setCallEnded());
     };
 
     const onEnded = () => {
+      // Nếu đang rung ở phía người nhận mà bị kết thúc (caller cancel/timeout) => coi như call nhỡ
+      if (callState.status === 'incoming-ringing') {
+        dispatch(setEndReason('missed'));
+      }
       dispatch(setCallEnded());
     };
 
@@ -93,7 +110,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       socketService.off('call:upgrade-request', onUpgradeRequest);
       socketService.off('call:upgrade-response', onUpgradeResponse);
     };
-  }, [dispatch, navigate]);
+  }, [dispatch, navigate, callState.status]);
 
   const fetchAgoraToken = useCallback(async (channelName: string): Promise<AgoraTokenResponse> => {
     const res = await apiClient.get('/agora/rtc-token', {
@@ -106,17 +123,32 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (calleeId: string, type: CallType) => {
       if (callState.status !== 'idle') return;
 
-      socketService.emit('call:initiate', { calleeId, type });
+      // Nếu đang ở /chat/:conversationId thì ưu tiên quay lại đúng màn hình này
+      dispatch(setReturnTo(location.pathname));
+      const conversationId = getConversationIdFromPath(location.pathname);
+      if (!conversationId) return;
+      socketService.emit('call:initiate', { calleeId, type, conversationId });
 
-      const onChannelReady = (data: unknown) => {
-        const payload = data as { channelName: string };
-        dispatch(setOutgoingCall({ calleeId, callType: type, channelName: payload.channelName }));
-        navigate(`/call?channel=${payload.channelName}&type=${type}`);
-        socketService.off('call:channel-ready', onChannelReady);
-      };
-      socketService.on('call:channel-ready', onChannelReady);
+      // once: tránh chồng listener khi bấm gọi nhanh / StrictMode; tự gỡ sau 1 lần nhận
+      socketService.once('call:channel-ready', (data: unknown) => {
+        const payload = data as { channelName: string; conversationId?: string };
+        dispatch(
+          setOutgoingCall({
+            calleeId,
+            callType: type,
+            channelName: payload.channelName,
+            conversationId: payload.conversationId ?? conversationId,
+            returnTo: location.pathname,
+          }),
+        );
+        navigate(
+          `/call?channel=${payload.channelName}&type=${type}&conversationId=${encodeURIComponent(
+            payload.conversationId ?? conversationId,
+          )}&returnTo=${encodeURIComponent(location.pathname)}`,
+        );
+      });
     },
-    [callState.status, dispatch, navigate],
+    [callState.status, dispatch, navigate, location.pathname],
   );
 
   const acceptCall = useCallback(() => {
@@ -126,9 +158,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     socketService.emit('call:accept', {
       channelName: callState.channelName,
       callerId: callState.callerId,
+      conversationId: callState.conversationId,
+      type: callState.callType || 'audio',
     });
     dispatch(setCallAccepted());
-    navigate(`/call?channel=${callState.channelName}&type=${callState.callType || 'audio'}`);
+    const rt = callState.returnTo ?? location.pathname;
+    navigate(
+      `/call?channel=${callState.channelName}&type=${callState.callType || 'audio'}&conversationId=${encodeURIComponent(
+        callState.conversationId || '',
+      )}&returnTo=${encodeURIComponent(rt)}`,
+    );
   }, [callState, dispatch, navigate]);
 
   const rejectCall = useCallback(() => {
@@ -137,17 +176,23 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     socketService.emit('call:reject', {
       channelName: callState.channelName,
       callerId: callState.callerId,
+      conversationId: callState.conversationId,
+      type: callState.callType || 'audio',
     });
     dispatch(resetCall());
   }, [callState, dispatch]);
 
-  const endCall = useCallback(() => {
+  const endCall = useCallback((meta?: { durationSec?: number; result?: 'completed' | 'missed' | 'rejected' }) => {
     const peerId = callState.callerId || callState.calleeId;
-    if (!callState.channelName || !peerId) return;
+    if (!callState.channelName || !peerId || !callState.conversationId) return;
 
     socketService.emit('call:end', {
       channelName: callState.channelName,
       peerId,
+      conversationId: callState.conversationId,
+      type: callState.callType || 'audio',
+      durationSec: meta?.durationSec,
+      result: meta?.result,
     });
     dispatch(setCallEnded());
   }, [callState, dispatch]);

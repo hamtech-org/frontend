@@ -7,7 +7,8 @@ export type MessageType =
   | 'emoji'
   | 'location'
   | 'poll'
-  | 'schedule';
+  | 'schedule'
+  | 'call';
 export type MessageStatus = 'sent' | 'delivered' | 'read';
 export type ConversationType = 'direct' | 'group';
 
@@ -47,6 +48,9 @@ export interface IMessage {
   type: MessageType;
   content: string;
   mediaUrl: string | null;
+  mediaType?: string | null;
+  mediaSize?: number | null;
+  mediaOriginalName?: string | null;
   thumbnailUrl: string | null;
   replyTo: string | null;
   replyToDetails?: IReplyToDetails | null;

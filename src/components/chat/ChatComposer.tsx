@@ -3,6 +3,7 @@ import EmojiPicker from 'emoji-picker-react';
 import {
   BarChart2,
   CheckSquare,
+  FileText,
   Image,
   Mic,
   Paperclip,
@@ -10,8 +11,21 @@ import {
   Send,
   Smile,
   Sparkles,
+  X,
 } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
+
+export type PendingAttachment = {
+  localId: string;
+  file: File;
+  previewUrl: string | null;
+};
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 type ChatComposerProps = {
   activeConversation: IConversation | undefined;
@@ -22,10 +36,14 @@ type ChatComposerProps = {
   onTyping: () => void;
   onSend: (text?: string) => void;
   isSending: boolean;
+  isUploadingMedia?: boolean;
   replyingTo: IMessage | null;
   onClearReply: () => void;
   onOpenPoll: () => void;
   onOpenTask: () => void;
+  pendingAttachments: PendingAttachment[];
+  onAddPendingFiles: (files: File[]) => void;
+  onRemovePendingAttachment: (localId: string) => void;
 };
 
 export function ChatComposer({
@@ -37,13 +55,21 @@ export function ChatComposer({
   onTyping,
   onSend,
   isSending,
+  isUploadingMedia = false,
   replyingTo,
   onClearReply,
   onOpenPoll,
   onOpenTask,
+  pendingAttachments,
+  onAddPendingFiles,
+  onRemovePendingAttachment,
 }: ChatComposerProps) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const busy = isSending || isUploadingMedia;
+  const hasSendable = inputText.trim().length > 0 || pendingAttachments.length > 0;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -59,13 +85,28 @@ export function ChatComposer({
     };
   }, [showEmojiPicker]);
 
-  const onEmojiClick = (emojiObject: any) => {
+  const onEmojiClick = (emojiObject: { emoji: string }) => {
     onInputTextChange(inputText + emojiObject.emoji);
   };
 
   const handleLikeClick = () => {
-    if (isSending || !activeConversationId) return;
+    if (busy || !activeConversationId) return;
     onSend('👍');
+  };
+
+  const appendFromFileList = (list: FileList | null) => {
+    if (!list?.length) return;
+    onAddPendingFiles(Array.from(list));
+  };
+
+  const handleGalleryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    appendFromFileList(e.target.files);
+    e.target.value = '';
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    appendFromFileList(e.target.files);
+    e.target.value = '';
   };
 
   return (
@@ -81,6 +122,7 @@ export function ChatComposer({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClearReply}
             className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-muted-foreground"
           >
@@ -88,6 +130,50 @@ export function ChatComposer({
           </button>
         </div>
       )}
+
+      {pendingAttachments.length > 0 && (
+        <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.04] p-2">
+          {pendingAttachments.map((p) => (
+            <div
+              key={p.localId}
+              className="relative group/at shrink-0 w-[4.5rem] rounded-lg border border-black/10 dark:border-white/10 bg-white/80 dark:bg-zinc-900/80 overflow-hidden"
+            >
+              {p.previewUrl ? (
+                p.file.type.startsWith('video/') ? (
+                  <video
+                    src={p.previewUrl}
+                    muted
+                    playsInline
+                    className="h-16 w-full object-cover"
+                  />
+                ) : (
+                  <img src={p.previewUrl} alt="" className="h-16 w-full object-cover" />
+                )
+              ) : (
+                <div className="h-16 w-full flex flex-col items-center justify-center gap-0.5 px-1 bg-black/5 dark:bg-white/5">
+                  <FileText className="w-6 h-6 text-muted-foreground shrink-0" />
+                </div>
+              )}
+              <div className="px-1 py-0.5 border-t border-black/5 dark:border-white/5">
+                <p className="text-[9px] font-medium truncate leading-tight" title={p.file.name}>
+                  {p.file.name}
+                </p>
+                <p className="text-[8px] text-muted-foreground">{formatFileSize(p.file.size)}</p>
+              </div>
+              <button
+                type="button"
+                title="Bỏ file"
+                onClick={() => onRemovePendingAttachment(p.localId)}
+                disabled={busy}
+                className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white opacity-90 hover:opacity-100 disabled:opacity-40"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 sm:gap-2">
           <div className="relative" ref={emojiPickerRef}>
@@ -105,17 +191,37 @@ export function ChatComposer({
               </div>
             )}
           </div>
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            className="hidden"
+            onChange={handleGalleryChange}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,audio/*"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
           <button
             type="button"
-            title="Gửi ảnh/video"
-            className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0"
+            title="Thêm ảnh/video"
+            disabled={!activeConversationId || busy}
+            onClick={() => galleryInputRef.current?.click()}
+            className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0 disabled:opacity-40 disabled:pointer-events-none"
           >
             <Image className="w-5 h-5" />
           </button>
           <button
             type="button"
-            title="Đính kèm tài liệu"
-            className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0"
+            title="Thêm tài liệu"
+            disabled={!activeConversationId || busy}
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0 disabled:opacity-40 disabled:pointer-events-none"
           >
             <Paperclip className="w-5 h-5" />
           </button>
@@ -216,11 +322,11 @@ export function ChatComposer({
           >
             <Mic className="w-5 h-5" />
           </button>
-          {inputText.trim() ? (
+          {hasSendable ? (
             <button
               type="button"
               onClick={() => void onSend()}
-              disabled={!activeConversationId || isSending}
+              disabled={!activeConversationId || busy}
               className="p-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 transition-all group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600 animate-in fade-in zoom-in"
             >
               <Send className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
@@ -229,10 +335,12 @@ export function ChatComposer({
             <button
               type="button"
               onClick={handleLikeClick}
-              disabled={!activeConversationId || isSending}
+              disabled={!activeConversationId || busy}
               className="p-3 rounded-xl bg-black/5 hover:bg-blue-600 dark:bg-white/5 dark:hover:bg-blue-600 text-blue-600 hover:text-white transition-all animate-in fade-in zoom-in group"
             >
-              <span className="text-xl leading-none group-hover:scale-125 transition-transform inline-block">👍</span>
+              <span className="text-xl leading-none group-hover:scale-125 transition-transform inline-block">
+                👍
+              </span>
             </button>
           )}
         </div>
