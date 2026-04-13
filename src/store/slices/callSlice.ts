@@ -5,6 +5,7 @@ const initialState: CallState = {
   status: 'idle',
   callType: null,
   channelName: null,
+  conversationId: null,
   callerId: null,
   callerName: null,
   calleeId: null,
@@ -12,6 +13,8 @@ const initialState: CallState = {
   isCameraOn: true,
   upgradeStatus: 'none',
   isScreenSharing: false,
+  returnTo: null,
+  endReason: null,
 };
 
 const callSlice = createSlice({
@@ -20,24 +23,40 @@ const callSlice = createSlice({
   reducers: {
     setOutgoingCall: (
       state,
-      action: PayloadAction<{ calleeId: string; callType: CallType; channelName: string }>,
+      action: PayloadAction<{
+        calleeId: string;
+        callType: CallType;
+        channelName: string;
+        conversationId?: string | null;
+        returnTo?: string | null;
+      }>,
     ) => {
       state.status = 'outgoing-ringing';
       state.callType = action.payload.callType;
       state.calleeId = action.payload.calleeId;
       state.channelName = action.payload.channelName;
+      state.conversationId = action.payload.conversationId ?? state.conversationId ?? null;
       state.isMicOn = true;
       state.isCameraOn = action.payload.callType === 'video';
+      state.returnTo = action.payload.returnTo ?? state.returnTo ?? null;
+      state.endReason = null;
     },
     setIncomingCall: (state, action: PayloadAction<IncomingCallData>) => {
-      if (state.status !== 'idle') return;
+      // Cho phép 'ended': B nhận call:ended trên màn chat không qua CallPage → resetCall không chạy,
+      // nếu chỉ cho 'idle' thì cuộc gọi sau bị bỏ qua (IncomingCallModal không hiện).
+      if (state.status !== 'idle' && state.status !== 'ended') return;
       state.status = 'incoming-ringing';
       state.callType = action.payload.type;
       state.callerId = action.payload.callerId;
       state.callerName = action.payload.callerName;
       state.channelName = action.payload.channelName;
+      state.conversationId = action.payload.conversationId;
+      state.calleeId = null;
       state.isMicOn = true;
       state.isCameraOn = action.payload.type === 'video';
+      state.upgradeStatus = 'none';
+      state.isScreenSharing = false;
+      state.endReason = null;
     },
     setCallAccepted: (state) => {
       state.status = 'connecting';
@@ -47,6 +66,12 @@ const callSlice = createSlice({
     },
     setCallEnded: (state) => {
       state.status = 'ended';
+    },
+    setEndReason: (state, action: PayloadAction<'missed' | 'rejected' | null>) => {
+      state.endReason = action.payload;
+    },
+    setReturnTo: (state, action: PayloadAction<string | null>) => {
+      state.returnTo = action.payload;
     },
     toggleMic: (state) => {
       state.isMicOn = !state.isMicOn;
@@ -81,6 +106,8 @@ export const {
   setCallAccepted,
   setCallConnected,
   setCallEnded,
+  setReturnTo,
+  setEndReason,
   toggleMic,
   toggleCamera,
   setUpgradePendingOutgoing,
