@@ -102,6 +102,7 @@ type GroupTask = {
   title: string;
   description?: string;
   assignees: string[];
+  participants?: string[];
   status: 'todo' | 'in_progress' | 'done';
   dueDate?: string;
 };
@@ -382,6 +383,7 @@ export default function ChatPage() {
   const [taskDeadline, setTaskDeadline] = useState('');
   const [taskNote, setTaskNote] = useState('');
   const [taskAssignees, setTaskAssignees] = useState<string[]>([]);
+  const [taskAssignToAll, setTaskAssignToAll] = useState(false);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryResult, setAiSummaryResult] = useState('');
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
@@ -1167,6 +1169,7 @@ export default function ChatPage() {
     setTaskDeadline('');
     setTaskNote('');
     setTaskAssignees([]);
+    setTaskAssignToAll(false);
   }, []);
 
   useEffect(() => {
@@ -1409,6 +1412,7 @@ export default function ChatPage() {
         title: taskTitle.trim(),
         description: taskNote.trim(),
         assignees: taskAssignees,
+        assignToAll: taskAssignToAll,
         dueDate: taskDeadline || undefined,
       });
       toast.success('Đã tạo công việc');
@@ -1426,6 +1430,7 @@ export default function ChatPage() {
     taskTitle,
     taskNote,
     taskAssignees,
+    taskAssignToAll,
     taskDeadline,
     closeTaskModal,
     fetchGroupTasks,
@@ -1842,6 +1847,16 @@ export default function ChatPage() {
               onReply={(msg) => dispatch(setReplyingTo(msg))}
               onReact={handleReactMessage}
               onJumpToLatest={handleJumpToLatest}
+              groupTasks={groupTasks}
+              onTaskJoined={(taskId) => {
+                setGroupTasks((prev) =>
+                  prev.map((t) => {
+                    if (t.taskId !== taskId) return t;
+                    const p = Array.isArray(t.participants) ? t.participants : [];
+                    return p.includes(currentUserId) ? t : { ...t, participants: [...p, currentUserId] };
+                  }),
+                );
+              }}
             />
 
             <ChatComposer
@@ -1995,6 +2010,12 @@ export default function ChatPage() {
       <TaskModal
         open={showTaskModal}
         onClose={closeTaskModal}
+        currentUserId={currentUserId}
+        assignToAll={taskAssignToAll}
+        onAssignToAllChange={(v) => {
+          setTaskAssignToAll(v);
+          if (v) setTaskAssignees([]);
+        }}
         members={groupMembers.map(m => ({
           id: m.userId,
           name: m.name ?? m.userId,
