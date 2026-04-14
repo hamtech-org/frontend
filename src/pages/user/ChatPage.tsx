@@ -53,6 +53,7 @@ import { ConfirmModal } from '@/components/chat/ConfirmModal';
 import { ProfileModal } from '@/components/chat/ProfileModal';
 import { CreateGroupModal } from '@/components/chat/CreateGroupModal';
 import { PollModal } from '@/components/chat/PollModal';
+import { PollVoteModal } from '@/components/chat/PollVoteModal';
 import { MemberManagementModal } from '@/components/chat/MemberManagementModal';
 import { AISummaryModal } from '@/components/chat/AISummaryModal';
 import { TaskModal } from '@/components/chat/TaskModal';
@@ -95,6 +96,7 @@ type GroupPoll = {
   options: GroupPollOption[];
   createdAt: string;
   isClosed?: boolean;
+  isMultipleChoice?: boolean;
 };
 
 type GroupTask = {
@@ -370,6 +372,9 @@ export default function ChatPage() {
   const [showPollModal, setShowPollModal] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
+  const [pollMultipleChoice, setPollMultipleChoice] = useState(false);
+  const [showPollVoteModal, setShowPollVoteModal] = useState(false);
+  const [activePollId, setActivePollId] = useState<string | null>(null);
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showAddMembersModal, setShowAddMembersModal] = useState(false);
   const [showEditGroupModal, setShowEditGroupModal] = useState(false);
@@ -625,6 +630,33 @@ export default function ChatPage() {
           }
         })
       );
+
+      // Khi có poll mới trong hội thoại đang mở -> hiện toast/banner, click để mở modal (đỡ gián đoạn)
+      try {
+        if (msg.conversationId === activeConversationIdRef.current && (msg as any).type === 'system') {
+          const raw = String(msg.content ?? '').trim();
+          if (raw.startsWith('{')) {
+            const obj = JSON.parse(raw) as any;
+            if (obj?.kind === 'poll_created' && obj?.poll?.pollId) {
+              const pollId = String(obj.poll.pollId);
+              const question = String(obj?.poll?.question ?? '').trim();
+              const toastId = `poll-created-${pollId}`;
+              if (!toast.isActive(toastId)) {
+                toast.info(question ? `Có bình chọn mới: ${question}` : 'Có bình chọn mới', {
+                  toastId,
+                  autoClose: 7000,
+                  onClick: () => {
+                    setActivePollId(pollId);
+                    setShowPollVoteModal(true);
+                  },
+                });
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
     };
 
     const handleEditedMessage = (payload: {
@@ -1487,18 +1519,21 @@ export default function ChatPage() {
       options: pollOptions.filter((o) => o.trim()).map((text) => ({ text, voters: [] })),
       createdAt: new Date().toISOString(),
       isClosed: false,
+      isMultipleChoice: pollMultipleChoice,
     };
     setGroupPolls((prev) => [optimisticPoll, ...prev]);
     try {
       await apiClient.post(`/chat/groups/${activeConversationId}/polls`, {
         question: pollQuestion.trim(),
         options: pollOptions.filter((o) => !!o.trim()),
+        isMultipleChoice: pollMultipleChoice,
       });
       toast.success('Tạo bình chọn thành công');
       await fetchGroupPolls(activeConversationId);
       setShowPollModal(false);
       setPollQuestion('');
       setPollOptions(['', '']);
+      setPollMultipleChoice(false);
     } catch (err) {
       setGroupPolls((prev) => prev.filter((poll) => poll.pollId !== optimisticPoll.pollId));
       toast.error('Không thể tạo bình chọn');
@@ -1506,7 +1541,7 @@ export default function ChatPage() {
     } finally {
       setActionBusy('createPoll', false);
     }
-  }, [activeConversationId, pollQuestion, pollOptions, fetchGroupPolls, setActionBusy]);
+  }, [activeConversationId, pollQuestion, pollOptions, pollMultipleChoice, fetchGroupPolls, setActionBusy]);
 
   const openCreateGroupModal = useCallback(() => {
     setShowCreateGroupModal(true);
@@ -1720,16 +1755,29 @@ export default function ChatPage() {
     if (!activeConversationId) return;
     setActionBusy('votePoll', true);
     const before = groupPolls;
+    const pollBefore = groupPolls.find((p) => p.pollId === pollId);
+    const hadVotedHereBefore = !!pollBefore?.options?.[optionIndex]?.voters?.includes(currentUserId);
     setGroupPolls((prev) =>
       prev.map((poll) => {
         if (poll.pollId !== pollId) return poll;
+        const isMultiple = poll.isMultipleChoice === true;
         const nextOptions = poll.options.map((option, index) => {
           const currentVoters = option.voters ?? [];
-          if (index === optionIndex) {
-            if (currentVoters.includes(currentUserId)) {
-              return { ...option, voters: currentVoters.filter((id) => id !== currentUserId) };
+          const hasVotedHere = currentVoters.includes(currentUserId);
+          if (!isMultiple) {
+            // single-choice: only one option can contain currentUserId
+            if (index === optionIndex) {
+              return hasVotedHere
+                ? { ...option, voters: currentVoters.filter((id) => id !== currentUserId) }
+                : { ...option, voters: [...currentVoters, currentUserId] };
             }
-            return { ...option, voters: [...currentVoters, currentUserId] };
+            return { ...option, voters: currentVoters.filter((id) => id !== currentUserId) };
+          }
+          // multiple-choice: toggle only this option
+          if (index === optionIndex) {
+            return hasVotedHere
+              ? { ...option, voters: currentVoters.filter((id) => id !== currentUserId) }
+              : { ...option, voters: [...currentVoters, currentUserId] };
           }
           return option;
         });
@@ -1737,7 +1785,11 @@ export default function ChatPage() {
       })
     );
     try {
-      await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/vote`, { optionIndex });
+      if (hadVotedHereBefore) {
+        await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/unvote`, { optionIndex });
+      } else {
+        await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/vote`, { optionIndex });
+      }
     } catch (error) {
       setGroupPolls(before);
       toast.error('Không thể bình chọn');
@@ -1746,6 +1798,11 @@ export default function ChatPage() {
       setActionBusy('votePoll', false);
     }
   }, [activeConversationId, groupPolls, currentUserId, setActionBusy]);
+
+  const openPollVoteModal = useCallback((pollId: string) => {
+    setActivePollId(pollId);
+    setShowPollVoteModal(true);
+  }, []);
 
   const handleToggleTaskStatus = useCallback(async (taskId: string) => {
     if (!activeConversationId) return;
@@ -1857,6 +1914,7 @@ export default function ChatPage() {
                   }),
                 );
               }}
+              onOpenPollVote={(pollId) => openPollVoteModal(pollId)}
             />
 
             <ChatComposer
@@ -1889,6 +1947,7 @@ export default function ChatPage() {
           onAddMembers={openAddMembersModal}
           onRequestJoin={() => void handleRequestJoin()}
           onVotePoll={(pollId, optionIndex) => void handleVotePoll(pollId, optionIndex)}
+          onOpenPollVote={(pollId) => openPollVoteModal(pollId)}
           onAddPollOption={(pollId) => void handleAddPollOption(pollId)}
           onClosePoll={(pollId) => void handleClosePoll(pollId)}
           onToggleTask={(taskId) => void handleToggleTaskStatus(taskId)}
@@ -1921,6 +1980,14 @@ export default function ChatPage() {
           }}
         />
       )}
+
+      <PollVoteModal
+        open={showPollVoteModal}
+        onClose={() => setShowPollVoteModal(false)}
+        poll={activePollId ? (groupPolls.find((p) => p.pollId === activePollId) as any) : null}
+        currentUserId={currentUserId}
+        onToggleVote={(pollId, optionIndex) => void handleVotePoll(pollId, optionIndex)}
+      />
 
       <MarkReadModal open={showMarkReadModal} onClose={() => setShowMarkReadModal(false)} />
       <AddFriendModal
@@ -1975,6 +2042,8 @@ export default function ChatPage() {
         onPollQuestionChange={setPollQuestion}
         pollOptions={pollOptions}
         onPollOptionsChange={setPollOptions}
+        multipleChoice={pollMultipleChoice}
+        onMultipleChoiceChange={setPollMultipleChoice}
         onCreatePoll={handleCreatePoll}
       />
       {false && (
