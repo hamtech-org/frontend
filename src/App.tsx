@@ -462,13 +462,22 @@ const App: React.FC = () => {
                 <Bell className="w-5 h-5" />
                 <span className="absolute top-2 right-2 w-2 h-2 bg-blue-600 rounded-full border-2 border-inherit" />
               </button>
-              <div className="flex items-center gap-3 pl-6 border-l border-inherit">
+              <div className="flex items-center gap-3 pl-6 border-l border-inherit cursor-pointer hover:opacity-75 transition-opacity" onClick={() => navigate('/profile')}>
                 <div className="text-right hidden sm:block">
-                  <p className="text-sm font-semibold">Người dùng</p>
-                  <p className="text-xs text-muted-foreground">Thành viên</p>
+                  <p className="text-sm font-semibold">{currentUser?.displayName || 'Người dùng'}</p>
+                  <p className="text-xs text-muted-foreground">{currentUser?.role === 'admin' ? 'Quản trị viên' : 'Thành viên'}</p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-[#f4c25f] flex items-center justify-center text-white font-bold">
-                  Z
+                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-tr from-blue-600 to-[#f4c25f] flex items-center justify-center text-white font-bold">
+                  {currentUser?.avatar ? (
+                    <img 
+                      src={currentUser.avatar} 
+                      alt={currentUser.displayName} 
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span>{currentUser?.displayName?.charAt(0).toUpperCase() || 'U'}</span>
+                  )}
                 </div>
               </div>
             </div>
