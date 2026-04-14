@@ -1892,6 +1892,7 @@ export default function ChatPage() {
           // Modal "Thành viên" đã render ngay trong panel, giữ callback cũ để tương thích nhưng không dùng nữa.
           onOpenMemberModal={() => {}}
           currentUserRole={currentUserRole}
+          currentUserId={currentUserId}
           members={groupMembers}
           requests={groupRequests}
           onApproveMember={handleApproveRequest}
