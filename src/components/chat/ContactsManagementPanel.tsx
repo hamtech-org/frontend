@@ -49,7 +49,7 @@ function rowMembersCount(row: unknown): string {
 
 export function ContactsManagementPanel({ contactsTab, onContactsTabChange }: ContactsManagementPanelProps) {
   const { data: friendsRes, isLoading: friendsLoading, refetch: refetchFriends } = useGetFriendsQuery();
-  const { data: groupsRes, isLoading: groupsLoading, refetch: refetchGroups } = useGetGroupsQuery();
+  const { data: groupsRes, isLoading: groupsLoading } = useGetGroupsQuery();
   const { data: pendingRes, refetch: refetchPending } = useGetPendingRequestsQuery();
   const { data: suggestedRes, refetch: refetchSuggested } = useGetSuggestedFriendsQuery({ limit: 10 });
 

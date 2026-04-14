@@ -1,5 +1,5 @@
 import { UserPlus, Check, X, Users } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useGetPendingRequestsQuery, useAcceptFriendRequestMutation, useRejectFriendRequestMutation, useSendFriendRequestMutation, useCancelFriendRequestMutation, useGetSuggestedFriendsQuery } from '@/store/api/userApi';
 
 type PendingFriendsTabId = 'received' | 'sent' | 'suggestions';
@@ -28,9 +28,9 @@ export function PendingFriendsPanel({ onFriendRequestAccepted }: PendingFriendsP
   const [sendFriendRequest] = useSendFriendRequestMutation();
   const [cancelFriendRequest] = useCancelFriendRequestMutation();
 
-  const receivedRequests = (pendingRes?.data?.received ?? []) as FriendRequest[];
-  const sentRequests = (pendingRes?.data?.sent ?? []) as FriendRequest[];
-  const suggestedFriends = (suggestedRes?.data ?? []) as FriendRequest[];
+  const receivedRequests = (pendingRes?.data?.received ?? []) as unknown as FriendRequest[];
+  const sentRequests = (pendingRes?.data?.sent ?? []) as unknown as FriendRequest[];
+  const suggestedFriends = (suggestedRes?.data ?? []) as unknown as FriendRequest[];
 
   const tabs = [
     { id: 'received' as PendingFriendsTabId, label: 'Nhận được', count: receivedRequests.length },

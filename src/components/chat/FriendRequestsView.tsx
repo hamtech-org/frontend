@@ -21,7 +21,7 @@ export function FriendRequestsView({ onRequestAction }: FriendRequestsViewProps)
   const [rejectFriendRequest] = useRejectFriendRequestMutation();
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
-  const pendingRequests = (pendingRes?.data?.received ?? []) as FriendRequest[];
+  const pendingRequests = (pendingRes?.data?.received ?? []) as unknown as FriendRequest[];
 
   // Listen for real-time friend request events
   useEffect(() => {
