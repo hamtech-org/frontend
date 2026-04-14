@@ -754,6 +754,37 @@ export function ChatMessageList({
                             )}
                           </div>
                         )}
+                        {!isMe && (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              title="Thao tác"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onActionMenuMsgIdChange(
+                                  actionMenuMsgId === msg.messageId ? null : msg.messageId,
+                                );
+                              }}
+                              className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
+                            >
+                              <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
+                            </button>
+                            {actionMenuMsgId === msg.messageId && (
+                              <div
+                                className="absolute z-50 min-w-[168px] rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl py-1 left-0 bottom-full mb-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-red-500/10 text-red-600 flex items-center gap-2"
+                                  onClick={() => void onDelete(msg)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 shrink-0" /> Xóa
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
