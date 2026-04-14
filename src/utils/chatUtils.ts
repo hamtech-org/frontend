@@ -61,6 +61,30 @@ export function formatConversationListLastPreview(conv: IConversation, currentUs
         const title = String(obj?.task?.title ?? '').trim();
         return title ? `${who} đã giao việc "${title}"` : `${who} đã giao việc`;
       }
+      if (kind === 'poll_created') {
+        const question = String(obj?.poll?.question ?? '').trim();
+        return question ? `${who} đã tạo một bình chọn: ${question}` : `${who} đã tạo một bình chọn`;
+      }
+      if (kind === 'poll_voted') {
+        const optionText = String(obj?.poll?.optionText ?? '').trim();
+        return optionText ? `${who} đã bình chọn: ${optionText}` : `${who} đã bình chọn`;
+      }
+      if (kind === 'poll_vote_changed') {
+        const optionText = String(obj?.poll?.optionText ?? '').trim();
+        return optionText ? `${who} đã thay đổi bình chọn: ${optionText}` : `${who} đã thay đổi bình chọn`;
+      }
+      if (kind === 'poll_unvoted') {
+        const optionText = String(obj?.poll?.optionText ?? '').trim();
+        return optionText ? `${who} đã rút phiếu: ${optionText}` : `${who} đã rút phiếu`;
+      }
+      if (kind === 'poll_option_added') {
+        const optionText = String(obj?.poll?.optionText ?? '').trim();
+        return optionText ? `${who} đã thêm lựa chọn: ${optionText}` : `${who} đã thêm lựa chọn`;
+      }
+      if (kind === 'poll_closed') {
+        const question = String(obj?.poll?.question ?? '').trim();
+        return question ? `${who} đã đóng bình chọn: ${question}` : `${who} đã đóng bình chọn`;
+      }
       return null;
     } catch {
       return null;
