@@ -24,6 +24,7 @@ import {
 import { cn } from '@/utils/cn';
 import logoUrl from '@/assets/images/logo_vuong.png';
 import { searchService } from '@/services/search.service';
+import { socketService } from '@/services/socket';
 import { useAuth } from '@/hooks/useAuth';
 import { useGetProfileQuery } from '@/store/api/userApi';
 import { useDispatch } from 'react-redux';
@@ -67,7 +68,7 @@ const App: React.FC = () => {
   const [searchLoading, setSearchLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { user: currentUser, isAuthenticated } = useAuth();
+  const { user: currentUser, isAuthenticated, logout } = useAuth();
   const dispatch = useDispatch();
   
   // Load user profile when authenticated (only if profile not yet loaded)
@@ -252,7 +253,14 @@ const App: React.FC = () => {
               {isDarkMode ? <Sun className="w-5 h-5 shrink-0" /> : <Moon className="w-5 h-5 shrink-0" />}
               {isSidebarOpen && <span className="whitespace-nowrap">{isDarkMode ? 'Sáng' : 'Tối'}</span>}
             </button>
-            <button onClick={() => navigate('/login')} className={cn('w-full flex items-center p-3 rounded-xl hover:bg-red-500/10 text-red-500 transition-all', isSidebarOpen ? 'gap-4' : 'justify-center')}>
+            <button 
+              onClick={() => {
+                socketService.emit('friend:statusChanged', 'offline');
+                logout();
+                navigate('/login'); 
+              }} 
+              className={cn('w-full flex items-center p-3 rounded-xl hover:bg-red-500/10 text-red-500 transition-all', isSidebarOpen ? 'gap-4' : 'justify-center')}
+            >
               <LogOut className="w-5 h-5 shrink-0" />
               {isSidebarOpen && <span className="whitespace-nowrap">Đăng xuất</span>}
             </button>

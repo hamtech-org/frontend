@@ -47,6 +47,7 @@ export function FriendsListView({ onFriendClick }: FriendsListViewProps) {
   const [filterStatus, setFilterStatus] = useState<'all' | 'online' | 'offline'>('all');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [selectedFriendForProfile, setSelectedFriendForProfile] = useState<Friend | null>(null);
+  const [friendStatuses, setFriendStatuses] = useState<Record<string, 'online' | 'offline' | 'away'>>({});
 
   // Listen for real-time friend list changes
   useEffect(() => {
@@ -60,8 +61,19 @@ export function FriendsListView({ onFriendClick }: FriendsListViewProps) {
       refetch();
     };
 
-    const handleFriendStatusChanged = () => {
-      console.log('Friend status changed');
+    const handleFriendStatusChanged = (data: any) => {
+      console.log('Friend status changed:', data);
+      const { userId, status } = data;
+      // Update local status state for real-time display
+      setFriendStatuses((prev) => ({
+        ...prev,
+        [userId]: status,
+      }));
+      // Also update selected friend profile if it's open
+      if (selectedFriendForProfile?.userId === userId) {
+        setSelectedFriendForProfile((prev) => prev ? { ...prev, status } : prev);
+      }
+      // Refetch to get the latest data from server
       refetch();
     };
 
@@ -74,7 +86,7 @@ export function FriendsListView({ onFriendClick }: FriendsListViewProps) {
       socketService.off('friend:removed', handleFriendRemoved);
       socketService.off('friend:statusChanged', handleFriendStatusChanged);
     };
-  }, [refetch]);
+  }, [refetch, selectedFriendForProfile]);
 
   // Extract and process friends data
   const processedFriends = useMemo(() => {
@@ -106,6 +118,12 @@ export function FriendsListView({ onFriendClick }: FriendsListViewProps) {
 
     console.log('Processed friends:', friends);
 
+    // Merge with local status updates
+    friends = friends.map((friend) => ({
+      ...friend,
+      status: friendStatuses[friend.userId] || friend.status,
+    }));
+
     // Filter by search query
     if (searchQuery) {
       friends = friends.filter((friend) =>
@@ -129,7 +147,7 @@ export function FriendsListView({ onFriendClick }: FriendsListViewProps) {
 
     console.log('Final processed friends:', friends);
     return friends;
-  }, [friendsRes?.data, searchQuery, sortOrder, filterStatus]);
+  }, [friendsRes?.data, searchQuery, sortOrder, filterStatus, friendStatuses]);
 
   const handleDeleteFriend = async (friendId: string, friendName: string) => {
     if (window.confirm(`Bạn có chắc chắn muốn xóa ${friendName} khỏi danh sách bạn bè?`)) {
