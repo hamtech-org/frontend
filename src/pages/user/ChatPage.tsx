@@ -411,7 +411,9 @@ export default function ChatPage() {
   const fetchGroupRequests = useCallback(async (groupId: string) => {
     setGroupLoading((prev) => ({ ...prev, requests: true }));
     try {
-      const res = await apiClient.get<ApiSuccessResponse<GroupRequest[]>>(`/chat/groups/${groupId}/requests`);
+      const res = await apiClient.get<ApiSuccessResponse<GroupRequest[]>>(
+        `/chat/groups/${groupId}/requests`,
+      );
       setGroupRequests(res.data.data ?? []);
     } catch (err: any) {
       if (err.response?.status !== 403) {
@@ -426,7 +428,9 @@ export default function ChatPage() {
   const fetchGroupPolls = useCallback(async (groupId: string) => {
     setGroupLoading((prev) => ({ ...prev, polls: true }));
     try {
-      const res = await apiClient.get<ApiSuccessResponse<GroupPoll[]>>(`/chat/groups/${groupId}/polls`);
+      const res = await apiClient.get<ApiSuccessResponse<GroupPoll[]>>(
+        `/chat/groups/${groupId}/polls`,
+      );
       setGroupPolls(res.data.data ?? []);
     } catch (err) {
       console.error('[fetchGroupPolls] Error:', err);
@@ -439,7 +443,9 @@ export default function ChatPage() {
   const fetchGroupTasks = useCallback(async (groupId: string) => {
     setGroupLoading((prev) => ({ ...prev, tasks: true }));
     try {
-      const res = await apiClient.get<ApiSuccessResponse<GroupTask[]>>(`/chat/groups/${groupId}/tasks`);
+      const res = await apiClient.get<ApiSuccessResponse<GroupTask[]>>(
+        `/chat/groups/${groupId}/tasks`,
+      );
       setGroupTasks(res.data.data ?? []);
     } catch (err) {
       console.error('[fetchGroupTasks] Error:', err);
@@ -452,7 +458,9 @@ export default function ChatPage() {
   const fetchLatestRecap = useCallback(async (groupId: string) => {
     setGroupLoading((prev) => ({ ...prev, recap: true }));
     try {
-      const res = await apiClient.get<ApiSuccessResponse<AIRecap | null>>(`/chat/groups/${groupId}/ai-recap/latest`);
+      const res = await apiClient.get<ApiSuccessResponse<AIRecap | null>>(
+        `/chat/groups/${groupId}/ai-recap/latest`,
+      );
       setLatestRecap(res.data.data ?? null);
     } catch (err) {
       // Just failing silently for recap
@@ -1114,7 +1122,7 @@ export default function ChatPage() {
     async (friendId: string, friendName: string) => {
       try {
         console.log('👤 handleFriendClick - friendId:', friendId, 'friendName:', friendName);
-        
+
         // Check if conversation already exists with this friend
         let existingConversation = conversations.find(
           (c) => c.type === 'direct' && (c.otherUserId === friendId || c.name === friendName),
@@ -1204,13 +1212,11 @@ export default function ChatPage() {
     if (editGroupAvatarFile) {
       const formData = new FormData();
       formData.append('file', editGroupAvatarFile);
-      const uploadResult = await apiClient.post<ApiSuccessResponse<{ url?: string; fileUrl?: string }>>(
-        '/media/upload',
-        formData,
-        {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        },
-      );
+      const uploadResult = await apiClient.post<
+        ApiSuccessResponse<{ url?: string; fileUrl?: string }>
+      >('/media/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       nextAvatar = uploadResult.data.data?.url ?? uploadResult.data.data?.fileUrl ?? previousAvatar;
     }
 
@@ -1337,29 +1343,37 @@ export default function ChatPage() {
     }
   }, [activeConversationId, navigate, setActionBusy]);
 
-  const handleAddMembers = useCallback(async (memberIds: string[]) => {
-    if (!activeConversationId || memberIds.length === 0) return;
-    setActionBusy('addMembers', true);
-    const before = groupMembers;
-    const optimistic: GroupMember[] = [
-      ...groupMembers,
-      ...memberIds.map((id) => ({ userId: id, name: id, avatar: '', role: 'member' as GroupMemberRole })),
-    ];
-    setGroupMembers(optimistic);
-    try {
-      await apiClient.post(`/chat/groups/${activeConversationId}/members`, { memberIds });
-      toast.success('Đã thêm thành viên');
-      await fetchGroupMembers(activeConversationId);
-      setSelectedAddMembers([]);
-      setShowAddMembersModal(false);
-    } catch (error) {
-      setGroupMembers(before);
-      toast.error('Không thể thêm thành viên');
-      console.error('Failed to add members:', error);
-    } finally {
-      setActionBusy('addMembers', false);
-    }
-  }, [activeConversationId, groupMembers, fetchGroupMembers, setActionBusy]);
+  const handleAddMembers = useCallback(
+    async (memberIds: string[]) => {
+      if (!activeConversationId || memberIds.length === 0) return;
+      setActionBusy('addMembers', true);
+      const before = groupMembers;
+      const optimistic: GroupMember[] = [
+        ...groupMembers,
+        ...memberIds.map((id) => ({
+          userId: id,
+          name: id,
+          avatar: '',
+          role: 'member' as GroupMemberRole,
+        })),
+      ];
+      setGroupMembers(optimistic);
+      try {
+        await apiClient.post(`/chat/groups/${activeConversationId}/members`, { memberIds });
+        toast.success('Đã thêm thành viên');
+        await fetchGroupMembers(activeConversationId);
+        setSelectedAddMembers([]);
+        setShowAddMembersModal(false);
+      } catch (error) {
+        setGroupMembers(before);
+        toast.error('Không thể thêm thành viên');
+        console.error('Failed to add members:', error);
+      } finally {
+        setActionBusy('addMembers', false);
+      }
+    },
+    [activeConversationId, groupMembers, fetchGroupMembers, setActionBusy],
+  );
 
   const handleSubmitTask = useCallback(async () => {
     if (!activeConversationId || !taskTitle.trim()) return;
@@ -1411,7 +1425,9 @@ export default function ChatPage() {
     setAiSummaryLoading(true);
     try {
       if (!activeConversationId) return;
-      const result = await apiClient.post<ApiSuccessResponse<AIRecap>>(`/chat/groups/${activeConversationId}/ai-recap`);
+      const result = await apiClient.post<ApiSuccessResponse<AIRecap>>(
+        `/chat/groups/${activeConversationId}/ai-recap`,
+      );
       setLatestRecap(result.data.data);
       setAiSummaryResult(result.data.data?.content ?? '');
     } catch {
@@ -1426,7 +1442,9 @@ export default function ChatPage() {
     setAiSummaryResult('');
     setAiSummaryLoading(true);
     try {
-      const result = await apiClient.post<ApiSuccessResponse<AIRecap>>(`/chat/groups/${activeConversationId}/ai-recap`);
+      const result = await apiClient.post<ApiSuccessResponse<AIRecap>>(
+        `/chat/groups/${activeConversationId}/ai-recap`,
+      );
       setLatestRecap(result.data.data);
       setAiSummaryResult(result.data.data?.content ?? '');
       toast.success('Đã tạo AI recap');
@@ -1480,7 +1498,9 @@ export default function ChatPage() {
   }, []);
 
   const handleToggleAddMember = useCallback((userId: string, checked: boolean) => {
-    setSelectedAddMembers((prev) => (checked ? [...prev, userId] : prev.filter((id) => id !== userId)));
+    setSelectedAddMembers((prev) =>
+      checked ? [...prev, userId] : prev.filter((id) => id !== userId),
+    );
   }, []);
 
   const handleRequestJoin = useCallback(async () => {
@@ -1499,50 +1519,58 @@ export default function ChatPage() {
     }
   }, [activeConversationId, groupJoinRequested, setActionBusy]);
 
-  const handleAddPollOption = useCallback(async (pollId: string) => {
-    if (!activeConversationId) return;
-    const optionText = window.prompt('Nhập lựa chọn mới');
-    if (!optionText?.trim()) return;
-    setActionBusy('addPollOption', true);
-    const before = groupPolls;
-    setGroupPolls((prev) =>
-      prev.map((poll) =>
-        poll.pollId === pollId
-          ? { ...poll, options: [...poll.options, { text: optionText.trim(), voters: [] }] }
-          : poll,
-      ),
-    );
-    try {
-      await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/options`, {
-        text: optionText.trim(),
-      });
-      toast.success('Đã thêm lựa chọn');
-      await fetchGroupPolls(activeConversationId);
-    } catch (error) {
-      setGroupPolls(before);
-      toast.error('Không thể thêm lựa chọn');
-      console.error('Failed to add poll option:', error);
-    } finally {
-      setActionBusy('addPollOption', false);
-    }
-  }, [activeConversationId, groupPolls, fetchGroupPolls, setActionBusy]);
+  const handleAddPollOption = useCallback(
+    async (pollId: string) => {
+      if (!activeConversationId) return;
+      const optionText = window.prompt('Nhập lựa chọn mới');
+      if (!optionText?.trim()) return;
+      setActionBusy('addPollOption', true);
+      const before = groupPolls;
+      setGroupPolls((prev) =>
+        prev.map((poll) =>
+          poll.pollId === pollId
+            ? { ...poll, options: [...poll.options, { text: optionText.trim(), voters: [] }] }
+            : poll,
+        ),
+      );
+      try {
+        await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/options`, {
+          text: optionText.trim(),
+        });
+        toast.success('Đã thêm lựa chọn');
+        await fetchGroupPolls(activeConversationId);
+      } catch (error) {
+        setGroupPolls(before);
+        toast.error('Không thể thêm lựa chọn');
+        console.error('Failed to add poll option:', error);
+      } finally {
+        setActionBusy('addPollOption', false);
+      }
+    },
+    [activeConversationId, groupPolls, fetchGroupPolls, setActionBusy],
+  );
 
-  const handleClosePoll = useCallback(async (pollId: string) => {
-    if (!activeConversationId) return;
-    setActionBusy('closePoll', true);
-    const before = groupPolls;
-    setGroupPolls((prev) => prev.map((poll) => (poll.pollId === pollId ? { ...poll, isClosed: true } : poll)));
-    try {
-      await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/close`);
-      toast.success('Đã đóng bình chọn');
-    } catch (error) {
-      setGroupPolls(before);
-      toast.error('Không thể đóng bình chọn');
-      console.error('Failed to close poll:', error);
-    } finally {
-      setActionBusy('closePoll', false);
-    }
-  }, [activeConversationId, groupPolls, setActionBusy]);
+  const handleClosePoll = useCallback(
+    async (pollId: string) => {
+      if (!activeConversationId) return;
+      setActionBusy('closePoll', true);
+      const before = groupPolls;
+      setGroupPolls((prev) =>
+        prev.map((poll) => (poll.pollId === pollId ? { ...poll, isClosed: true } : poll)),
+      );
+      try {
+        await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/close`);
+        toast.success('Đã đóng bình chọn');
+      } catch (error) {
+        setGroupPolls(before);
+        toast.error('Không thể đóng bình chọn');
+        console.error('Failed to close poll:', error);
+      } finally {
+        setActionBusy('closePoll', false);
+      }
+    },
+    [activeConversationId, groupPolls, setActionBusy],
+  );
 
   const handleAddFriendSubmit = useCallback(() => {
     // Modal now handles all friend request logic internally
@@ -1625,7 +1653,7 @@ export default function ChatPage() {
     if (window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) {
       setActionBusy('removeMember', true);
       const before = groupMembers;
-      setGroupMembers((prev) => prev.filter((member) => member.userId !== userId));
+      setGroupMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
       try {
         await apiClient.delete(`/chat/groups/${activeConversationId}/members/${userId}`);
         toast.success('Đã xóa thành viên');
@@ -1679,26 +1707,17 @@ export default function ChatPage() {
           }
           return option;
         });
-        return { ...poll, options: nextOptions };
-      }),
-    );
-    try {
-      const isVoted = before
-        .find((poll) => poll.pollId === pollId)
-        ?.options[optionIndex]?.voters?.includes(currentUserId);
-      if (isVoted) {
-        await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/unvote`, { optionIndex });
-      } else {
-        await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/vote`, { optionIndex });
+        toast.success('Đã cập nhật vai trò');
+      } catch (error) {
+        setGroupMembers(before);
+        toast.error('Không thể cập nhật vai trò');
+        console.error('Failed to change member role:', error);
+      } finally {
+        setActionBusy('changeRole', false);
       }
-    } catch (error) {
-      setGroupPolls(before);
-      toast.error('Không thể cập nhật bình chọn');
-      console.error('Failed to vote poll:', error);
-    } finally {
-      setActionBusy('votePoll', false);
-    }
-  }, [activeConversationId, currentUserId, groupPolls, setActionBusy]);
+    },
+    [activeConversationId, groupMembers, setActionBusy],
+  );
 
   const handleToggleTaskStatus = useCallback(async (taskId: string) => {
     if (!activeConversationId) return;
