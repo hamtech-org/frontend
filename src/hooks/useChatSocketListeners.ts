@@ -3,6 +3,17 @@ import { socketService } from '@/services/socket';
 import type { AppDispatch } from '@/store/store';
 import { chatApi } from '@/store/api/chatApi';
 import type { IConversation } from '@/types/chat.types';
+import {
+  messageReceived,
+  messageRecalled,
+  messageEdited,
+  messageHiddenForMe,
+  messagePinUpdated,
+  messageReacted,
+  typingStarted,
+  typingStopped,
+} from '@/store/slices/chatSlice';
+import type { IMessage } from '@/types/chat.types';
 
 // Helper: sort conversations by lastMessage.createdAt desc
 function sortConversationsByLastMessage(convs: IConversation[]) {
@@ -12,17 +23,6 @@ function sortConversationsByLastMessage(convs: IConversation[]) {
     return bTime - aTime;
   });
 }
-import {
-  messageReceived,
-  messageRecalled,
-  messageEdited,
-  messageDeleted,
-  messagePinUpdated,
-  messageReacted,
-  typingStarted,
-  typingStopped,
-} from '@/store/slices/chatSlice';
-import type { IMessage } from '@/types/chat.types';
 
 type PatchMessageInCache = (
   conversationId: string,
@@ -95,10 +95,15 @@ export function useChatSocketListeners(
       dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
 
-    const handleDeleted = (data: unknown) => {
+    const handleHiddenForMe = (data: unknown) => {
       const { messageId, conversationId } = data as { messageId: string; conversationId: string };
-      dispatch(messageDeleted({ messageId, conversationId }));
-      patchMessageInCache(conversationId, messageId, { isDeleted: true, content: '' });
+      dispatch(messageHiddenForMe({ messageId, conversationId }));
+      dispatch(
+        chatApi.util.updateQueryData('getMessages', { conversationId }, (draft) => {
+          if (!draft.data) return;
+          draft.data = draft.data.filter((x) => x.messageId !== messageId);
+        }),
+      );
       dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
 
@@ -162,7 +167,7 @@ export function useChatSocketListeners(
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:recall', handleRecall);
     socketService.on('message:edited', handleEdited);
-    socketService.on('message:deleted', handleDeleted);
+    socketService.on('message:hidden_for_me', handleHiddenForMe);
     socketService.on('message:pin_updated', handlePinUpdated);
     socketService.on('message:reacted', handleReacted);
     socketService.on('message:typing_indicator', handleTyping);
@@ -189,7 +194,7 @@ export function useChatSocketListeners(
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:recall', handleRecall);
       socketService.off('message:edited', handleEdited);
-      socketService.off('message:deleted', handleDeleted);
+      socketService.off('message:hidden_for_me', handleHiddenForMe);
       socketService.off('message:pin_updated', handlePinUpdated);
       socketService.off('message:reacted', handleReacted);
       socketService.off('message:typing_indicator', handleTyping);
