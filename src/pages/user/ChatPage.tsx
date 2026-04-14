@@ -24,7 +24,7 @@ import {
   messageReceived,
   messageEdited,
   messageRecalled,
-  messageDeleted,
+  messageHiddenForMe,
   messagePinUpdated,
   messageReacted,
   typingStarted,
@@ -290,6 +290,18 @@ export default function ChatPage() {
           if (!draft.data) return;
           const m = draft.data.find((x) => x.messageId === messageId);
           if (m) Object.assign(m, patch);
+        }),
+      );
+    },
+    [dispatch],
+  );
+
+  const removeMessageFromCache = useCallback(
+    (conversationId: string, messageId: string) => {
+      dispatch(
+        chatApi.util.updateQueryData('getMessages', { conversationId }, (draft) => {
+          if (!draft.data) return;
+          draft.data = draft.data.filter((x) => x.messageId !== messageId);
         }),
       );
     },
@@ -676,13 +688,10 @@ export default function ChatPage() {
       });
     };
 
-    const handleDeletedMessage = (payload: { messageId: string; conversationId: string }) => {
-      dispatch(messageDeleted(payload));
-      patchMessageInCache(payload.conversationId, payload.messageId, {
-        isDeleted: true,
-        content: '',
-        isPinned: false,
-      });
+    const handleHiddenForMe = (payload: { messageId: string; conversationId: string }) => {
+      dispatch(messageHiddenForMe(payload));
+      removeMessageFromCache(payload.conversationId, payload.messageId);
+      dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
 
     const handlePinUpdated = (payload: {
@@ -753,7 +762,8 @@ export default function ChatPage() {
     const wrappedHandleNewMessage = (data: unknown) => handleNewMessage(data as IMessage);
     const wrappedHandleEditedMessage = (data: unknown) => handleEditedMessage(data as { messageId: string; conversationId: string; content: string });
     const wrappedHandleRecalledMessage = (data: unknown) => handleRecalledMessage(data as { messageId: string; conversationId: string });
-    const wrappedHandleDeletedMessage = (data: unknown) => handleDeletedMessage(data as { messageId: string; conversationId: string });
+    const wrappedHandleHiddenForMe = (data: unknown) =>
+      handleHiddenForMe(data as { messageId: string; conversationId: string });
     const wrappedHandlePinUpdated = (data: unknown) => handlePinUpdated(data as { messageId: string; conversationId: string; isPinned: boolean });
     const wrappedHandleReactionEvent = (data: unknown) => handleReactionEvent(data as { messageId: string; conversationId: string; reactions: Record<string, string[]> });
     const wrappedHandleTypingEvent = (data: unknown) => handleTypingEvent(data as { conversationId: string; userId: string; isTyping: boolean; displayName?: string });
@@ -762,7 +772,7 @@ export default function ChatPage() {
     socketService.on('group:updated', handleGroupUpdated);
     socketService.on('message:edited', wrappedHandleEditedMessage);
     socketService.on('message:recalled', wrappedHandleRecalledMessage);
-    socketService.on('message:deleted', wrappedHandleDeletedMessage);
+    socketService.on('message:hidden_for_me', wrappedHandleHiddenForMe);
     socketService.on('message:pin_updated', wrappedHandlePinUpdated);
     socketService.on('message:reaction', wrappedHandleReactionEvent);
     socketService.on('message:typing', wrappedHandleTypingEvent);
@@ -772,12 +782,12 @@ export default function ChatPage() {
       socketService.off('group:updated', handleGroupUpdated);
       socketService.off('message:edited', wrappedHandleEditedMessage);
       socketService.off('message:recalled', wrappedHandleRecalledMessage);
-      socketService.off('message:deleted', wrappedHandleDeletedMessage);
+      socketService.off('message:hidden_for_me', wrappedHandleHiddenForMe);
       socketService.off('message:pin_updated', wrappedHandlePinUpdated);
       socketService.off('message:reaction', wrappedHandleReactionEvent);
       socketService.off('message:typing', wrappedHandleTypingEvent);
     };
-  }, [dispatch, patchMessageInCache, fetchGroupMembers, isConnected]);
+  }, [dispatch, patchMessageInCache, removeMessageFromCache, fetchGroupMembers, isConnected]);
 
   useEffect(() => {
     dispatch(setActiveConversation(routeConversationId ?? null));
@@ -1066,12 +1076,9 @@ export default function ChatPage() {
           conversationId: msg.conversationId,
           createdAt: msg.createdAt,
         }).unwrap();
-        dispatch(messageDeleted({ messageId: msg.messageId, conversationId: msg.conversationId }));
-        patchMessageInCache(msg.conversationId, msg.messageId, {
-          isDeleted: true,
-          content: '',
-          isPinned: false,
-        });
+        dispatch(messageHiddenForMe({ messageId: msg.messageId, conversationId: msg.conversationId }));
+        removeMessageFromCache(msg.conversationId, msg.messageId);
+        dispatch(chatApi.util.invalidateTags(['Conversations']));
       }
       setMessageConfirm(null);
       setActionMenuMsgId(null);
@@ -1080,7 +1087,7 @@ export default function ChatPage() {
     } finally {
       setMessageConfirmSubmitting(false);
     }
-  }, [messageConfirm, recallMessage, deleteMessage, dispatch, patchMessageInCache]);
+  }, [messageConfirm, recallMessage, deleteMessage, dispatch, patchMessageInCache, removeMessageFromCache]);
 
   const handleTogglePinMsg = useCallback(
     async (msg: IMessage) => {
@@ -2026,19 +2033,19 @@ export default function ChatPage() {
         open={messageConfirm !== null}
         title={
           messageConfirm?.kind === 'delete'
-            ? 'Xóa tin nhắn'
+            ? 'Ẩn tin nhắn'
             : messageConfirm?.kind === 'recall'
               ? 'Thu hồi tin nhắn'
               : ''
         }
         description={
           messageConfirm?.kind === 'delete'
-            ? 'Xóa tin nhắn này?'
+            ? 'Tin nhắn sẽ chỉ biến mất ở phía bạn; người khác vẫn thấy.'
             : messageConfirm?.kind === 'recall'
               ? 'Thu hồi tin nhắn này cho mọi người?'
               : undefined
         }
-        confirmLabel={messageConfirm?.kind === 'delete' ? 'Xóa' : 'Thu hồi'}
+        confirmLabel={messageConfirm?.kind === 'delete' ? 'Ẩn' : 'Thu hồi'}
         variant={messageConfirm?.kind === 'delete' ? 'danger' : 'primary'}
         isConfirming={messageConfirmSubmitting}
         onClose={() => {
