@@ -1,10 +1,13 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { CheckCheck, CheckSquare, X } from 'lucide-react';
+import { CheckCheck, CheckSquare, Users, X } from 'lucide-react';
 
 type TaskModalProps = {
   open: boolean;
   onClose: () => void;
   members: Array<{ id: string; name: string; avatar: string; role: string }>;
+  currentUserId?: string;
+  assignToAll?: boolean;
+  onAssignToAllChange?: (value: boolean) => void;
   taskTitle: string;
   onTaskTitleChange: (value: string) => void;
   taskDeadline: string;
@@ -20,6 +23,9 @@ export function TaskModal({
   open,
   onClose,
   members,
+  currentUserId,
+  assignToAll = false,
+  onAssignToAllChange,
   taskTitle,
   onTaskTitleChange,
   taskDeadline,
@@ -30,6 +36,13 @@ export function TaskModal({
   onTaskAssigneesChange,
   onSubmitTask,
 }: TaskModalProps) {
+  const labelFor = (id: string, name: string) => {
+    if (currentUserId && id === currentUserId) return 'Bạn';
+    return name;
+  };
+
+  const canSubmit = taskTitle.trim().length > 0 && (assignToAll || taskAssignees.length > 0);
+
   const resetAndClose = () => {
     onClose();
   };
@@ -88,20 +101,58 @@ export function TaskModal({
                 <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
                   Giao cho
                 </label>
+                <button
+                  type="button"
+                  onClick={() => onAssignToAllChange?.(!assignToAll)}
+                  className={`w-full mb-3 flex items-center justify-between px-4 py-3 rounded-2xl border transition-colors ${
+                    assignToAll
+                      ? 'border-green-500/40 bg-green-500/10'
+                      : 'border-black/5 dark:border-white/10 bg-white dark:bg-black/20 hover:bg-black/5 dark:hover:bg-white/5'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                      <Users className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-bold text-foreground">Giao cho cả nhóm</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Tự động áp dụng cho tất cả thành viên hiện tại
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    className={`w-11 h-6 rounded-full p-0.5 transition-colors ${
+                      assignToAll ? 'bg-green-500' : 'bg-black/15 dark:bg-white/15'
+                    }`}
+                  >
+                    <div
+                      className={`h-5 w-5 rounded-full bg-white transition-transform ${
+                        assignToAll ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </div>
+                </button>
                 <div className="border border-black/5 dark:border-white/10 rounded-2xl overflow-hidden divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-black/20">
                   {members.map((member) => (
                     <label
                       key={member.id}
-                      className="flex items-center gap-3.5 px-4 py-2.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors group"
+                      className={`flex items-center gap-3.5 px-4 py-2.5 transition-colors group ${
+                        assignToAll
+                          ? 'opacity-50 cursor-not-allowed'
+                          : 'cursor-pointer hover:bg-black/5 dark:hover:bg-white/5'
+                      }`}
                     >
                       <div className="relative flex items-center justify-center">
                         <input
                           type="checkbox"
                           checked={taskAssignees.includes(member.id)}
                           onChange={(e) => {
+                            if (assignToAll) return;
                             if (e.target.checked) onTaskAssigneesChange([...taskAssignees, member.id]);
                             else onTaskAssigneesChange(taskAssignees.filter((id) => id !== member.id));
                           }}
+                          disabled={assignToAll}
                           className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600 focus:ring-0 cursor-pointer appearance-none checked:bg-green-500 checked:border-green-500 transition-colors"
                         />
                         {taskAssignees.includes(member.id) && (
@@ -115,7 +166,7 @@ export function TaskModal({
                       />
                       <div className="flex-1 overflow-hidden">
                         <p className="font-semibold text-[14px] text-black dark:text-white truncate group-hover:text-green-600 transition-colors">
-                          {member.name}
+                          {labelFor(member.id, member.name)}
                         </p>
                         <p className="text-[11px] text-muted-foreground">{member.role}</p>
                       </div>
@@ -146,9 +197,13 @@ export function TaskModal({
               </button>
               <button
                 type="button"
-                disabled={!taskTitle.trim() || taskAssignees.length === 0}
+                disabled={!canSubmit}
                 onClick={() => void onSubmitTask()}
-                className={`flex-1 py-2.5 rounded-xl font-bold text-[14px] text-white transition-all flex items-center justify-center gap-2 ${taskTitle.trim() && taskAssignees.length > 0 ? 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-500/20 hover:-translate-y-0.5' : 'bg-black/10 dark:bg-white/10 text-black/40 dark:text-white/40 cursor-not-allowed'}`}
+                className={`flex-1 py-2.5 rounded-xl font-bold text-[14px] text-white transition-all flex items-center justify-center gap-2 ${
+                  canSubmit
+                    ? 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-500/20 hover:-translate-y-0.5'
+                    : 'bg-black/10 dark:bg-white/10 text-black/40 dark:text-white/40 cursor-not-allowed'
+                }`}
               >
                 <CheckSquare className="w-4 h-4" /> Giao việc
               </button>

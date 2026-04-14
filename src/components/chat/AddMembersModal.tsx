@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Search, UserPlus, X } from 'lucide-react';
+import { Check, Search, UserPlus, X } from 'lucide-react';
 import { useGetFriendsQuery } from '@/store/api/contactApi';
 
 type AddMembersModalProps = {
@@ -32,18 +32,42 @@ export function AddMembersModal({
 }: AddMembersModalProps) {
   const [query, setQuery] = useState('');
   const { data: friendsRes, isLoading } = useGetFriendsQuery();
-  const friends = (friendsRes?.data ?? []) as Friend[];
+  // Backend có thể trả `data` là array hoặc object { friends: [] }.
+  const friends = useMemo((): Friend[] => {
+    const data: unknown = friendsRes?.data;
+    if (!data) return [];
+    if (Array.isArray(data)) return data as Friend[];
+    if (typeof data === 'object') {
+      const asObj = data as { friends?: unknown };
+      if (Array.isArray(asObj.friends)) return asObj.friends as Friend[];
+      // fallback: nếu là 1 user object
+      return [data as Friend];
+    }
+    return [];
+  }, [friendsRes?.data]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return friends.filter((friend) => {
-      if (existingMemberIds.includes(friend.userId)) return false;
       if (!q) return true;
       return [friend.displayName, friend.email, friend.phone]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     });
   }, [friends, existingMemberIds, query]);
+
+  const { inGroup, notInGroup } = useMemo(() => {
+    const memberSet = new Set(existingMemberIds);
+    const inGroup: Friend[] = [];
+    const notInGroup: Friend[] = [];
+    for (const f of filtered) {
+      if (memberSet.has(f.userId)) inGroup.push(f);
+      else notInGroup.push(f);
+    }
+    return { inGroup, notInGroup };
+  }, [existingMemberIds, filtered]);
+
+  const rows = useMemo(() => [...notInGroup, ...inGroup], [inGroup, notInGroup]);
 
   return (
     <AnimatePresence>
@@ -75,7 +99,7 @@ export function AddMembersModal({
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Tìm kiếm người dùng"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-blue-500/30 outline-none text-sm"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-full bg-black/5 dark:bg-white/5 border border-transparent focus:border-blue-500/30 outline-none text-sm"
                 />
               </div>
             </div>
@@ -83,22 +107,35 @@ export function AddMembersModal({
             <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-2">
               {isLoading ? (
                 <p className="text-center text-sm text-muted-foreground py-6">Đang tải danh sách...</p>
-              ) : filtered.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground py-6">Không có người dùng phù hợp</p>
+              ) : rows.length === 0 ? (
+                <p className="text-center text-sm text-muted-foreground py-6">
+                  {friends.length === 0 ? 'Chưa có bạn bè để thêm' : 'Không có người dùng phù hợp'}
+                </p>
               ) : (
-                filtered.map((friend) => {
+                rows.map((friend) => {
                   const selected = selectedIds.includes(friend.userId);
+                  const isInGroup = existingMemberIds.includes(friend.userId);
                   return (
                     <label
                       key={friend.userId}
-                      className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+                      className={`flex items-center gap-3 p-3 rounded-xl ${
+                        isInGroup
+                          ? 'opacity-70 cursor-default'
+                          : 'hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer'
+                      }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={(e) => onToggleSelect(friend.userId, e.target.checked)}
-                        className="w-4 h-4"
-                      />
+                      {isInGroup ? (
+                        <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+                          <Check className="w-3.5 h-3.5 text-white" />
+                        </div>
+                      ) : (
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(e) => onToggleSelect(friend.userId, e.target.checked)}
+                          className="w-5 h-5 rounded-full accent-blue-600"
+                        />
+                      )}
                       <div className="w-10 h-10 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center">
                         {friend.avatar ? (
                           <img src={friend.avatar} alt={friend.displayName ?? ''} className="w-full h-full object-cover" />
@@ -110,7 +147,9 @@ export function AddMembersModal({
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold truncate">{friend.displayName ?? friend.userId}</p>
-                        <p className="text-xs text-muted-foreground truncate">{friend.email ?? friend.phone ?? ''}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {isInGroup ? 'Đã tham gia' : (friend.email ?? friend.phone ?? '')}
+                        </p>
                       </div>
                     </label>
                   );

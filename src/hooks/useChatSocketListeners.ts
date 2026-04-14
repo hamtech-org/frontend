@@ -1,7 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { socketService } from '@/services/socket';
 import type { AppDispatch } from '@/store/store';
-import { chatApi, patchConversationsFromNewMessage } from '@/store/api/chatApi';
+import { chatApi } from '@/store/api/chatApi';
+// Helper: sort conversations by lastMessage.createdAt desc
+function sortConversationsByLastMessage(convs) {
+  return [...convs].sort((a, b) => {
+    const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
+    const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+}
 import {
   messageReceived,
   messageRecalled,
@@ -39,7 +47,29 @@ export function useChatSocketListeners(
     const handleNewMessage = (data: unknown) => {
       const msg = data as IMessage;
       dispatch(messageReceived(msg));
-      patchConversationsFromNewMessage(dispatch, msg, activeConversationIdRef.current);
+      // Cập nhật lastMessage, updatedAt, unreadCount và sort lại danh sách
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          if (!draft?.data) return;
+          const conv = draft.data.find((c) => c.conversationId === msg.conversationId);
+          if (conv) {
+            conv.lastMessage = {
+              messageId: msg.messageId,
+              content: msg.content,
+              senderId: msg.senderId,
+              type: msg.type,
+              createdAt: msg.createdAt,
+              senderDisplayName: msg.senderDisplayName?.trim() ?? null,
+            };
+            conv.updatedAt = msg.createdAt;
+            // Nếu user chưa mở cuộc trò chuyện này thì tăng unreadCount
+            if (activeConversationIdRef.current !== msg.conversationId) {
+              conv.unreadCount = (conv.unreadCount ?? 0) + 1;
+            }
+          }
+          draft.data = sortConversationsByLastMessage(draft.data);
+        })
+      );
     };
 
     const handleRecall = (data: unknown) => {
@@ -108,7 +138,13 @@ export function useChatSocketListeners(
 
     const handleGroupUpdate = (data: any) => {
       // Khi có thay đổi về nhóm (member, role, poll, task, etc.)
-      const { groupId } = data;
+      // Server có thể emit `groupId` hoặc `conversationId` tùy nơi gọi.
+      // Giữ code cũ nhưng fallback để đảm bảo invalidate đúng.
+      const groupId = data?.groupId ?? data?.conversationId;
+      if (!groupId) {
+        dispatch(chatApi.util.invalidateTags(['Conversations']));
+        return;
+      }
       // Invalidate các tags liên quan để FE tự động fetch lại dữ liệu mới nhất
       if (data.type === 'poll') dispatch(chatApi.util.invalidateTags([{ type: 'Polls', id: groupId }]));
       if (data.type === 'task') dispatch(chatApi.util.invalidateTags([{ type: 'Tasks', id: groupId }]));

@@ -21,8 +21,8 @@ export const mediaApi = createApi({
     uploadMedia: builder.mutation<ApiSuccessResponse<MediaUploadResult>, { file: File; mediaType: MediaUploadType }>({
       query: ({ file, mediaType }) => {
         const body = new FormData();
-        body.append('file', file);
         body.append('mediaType', mediaType);
+        body.append('file', file);
         return {
           url: '/media/upload',
           method: 'POST',

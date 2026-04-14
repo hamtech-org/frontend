@@ -25,6 +25,15 @@ type ConversationListPanelProps = {
   onOpenAddFriend?: () => void;
 };
 
+// Sort conversations by lastMessage.createdAt desc
+function sortConversationsByLastMessage(convs: IConversation[]) {
+  return [...convs].sort((a, b) => {
+    const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
+    const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
 export function ConversationListPanel({
   conversations,
   convsLoading,
@@ -285,7 +294,7 @@ export function ConversationListPanel({
             </div>
           )}
           {!convsLoading &&
-            conversations.map((conv, index) => {
+            sortConversationsByLastMessage(conversations).map((conv, index) => {
               const isActive = activeConversationId === conv.conversationId;
               const hasUnread = (conv.unreadCount ?? 0) > 0;
               const isGroup = conv.type === 'group';

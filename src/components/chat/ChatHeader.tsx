@@ -22,6 +22,7 @@ type ChatHeaderProps = {
   onEditGroup?: () => void;
   onAudioCall?: () => void;
   onVideoCall?: () => void;
+  currentUserRole?: 'owner' | 'admin' | 'member';
 };
 
 export function ChatHeader({
@@ -33,7 +34,13 @@ export function ChatHeader({
   onEditGroup,
   onAudioCall,
   onVideoCall,
+  currentUserRole,
 }: ChatHeaderProps) {
+  const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+  // `currentUserRole` có thể chưa có ngay (đợi fetch members) nên không disable click theo role ở header.
+  // Quyền thêm thành viên vẫn được backend kiểm tra; FE chỉ mở modal chọn bạn bè.
+  const canOpenAddMembers = activeConversation?.type === 'group' && !!onAddMember;
+
   return (
     <div className="h-20 px-8 flex items-center justify-between border-b border-black/5 dark:border-white/5 bg-inherit/80 backdrop-blur-md sticky top-0 z-10">
       <div className="flex items-center gap-4">
@@ -85,9 +92,18 @@ export function ChatHeader({
           <>
             <button
               type="button"
-              title="Thêm thành viên"
-              onClick={onAddMember}
-              className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600"
+              title={
+                isAdminOrOwner
+                  ? 'Thêm thành viên'
+                  : 'Mở danh sách để chọn (backend sẽ kiểm tra quyền thêm)'
+              }
+              onClick={canOpenAddMembers ? onAddMember : undefined}
+              disabled={!canOpenAddMembers}
+              className={`p-2 sm:p-2.5 rounded-full transition-all text-muted-foreground ${
+                canOpenAddMembers
+                  ? 'hover:bg-black/5 dark:hover:bg-white/5 hover:text-blue-600'
+                  : 'opacity-50 cursor-not-allowed'
+              }`}
             >
               <UserPlus className="w-5 h-5" />
             </button>
