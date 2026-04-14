@@ -16,7 +16,8 @@ import {
   useUnpinMessageMutation,
   useReactMessageMutation,
 } from '@/store/api/chatApi';
-import { useUploadMediaMultiMutation, type MediaUploadResult } from '@/store/api/mediaApi';
+import { useUploadMediaMutation, useUploadMediaMultiMutation, type MediaUploadResult } from '@/store/api/mediaApi';
+import { useSocketContext } from '@/contexts/SocketContext';
 import type { PendingAttachment } from '@/components/chat/ChatComposer';
 import {
   setActiveConversation,
@@ -210,6 +211,7 @@ export default function ChatPage() {
     allMessages.length > 0 ? allMessages[allMessages.length - 1].messageId : undefined;
 
   const [sendMessage, { isLoading: isSending }] = useSendMessageMutation();
+  const [uploadMedia] = useUploadMediaMutation();
   const [uploadMediaMulti] = useUploadMediaMultiMutation();
   const [mediaUploading, setMediaUploading] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
@@ -256,6 +258,7 @@ export default function ChatPage() {
   });
 
   const { initiateCall } = useCallContext();
+  const { isConnected } = useSocketContext();
 
   const handleAudioCall = useCallback(() => {
     if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
@@ -416,10 +419,13 @@ export default function ChatPage() {
       );
       setGroupRequests(res.data.data ?? []);
     } catch (err: any) {
-      if (err.response?.status !== 403) {
+      // Bỏ qua lỗi 403 nếu người dùng không có quyền xem yêu cầu gia nhập
+      if (err.response?.status === 403) {
+        setGroupRequests([]);
+      } else {
         console.error('[fetchGroupRequests] Error:', err);
+        setGroupRequests([]);
       }
-      setGroupRequests([]);
     } finally {
       setGroupLoading((prev) => ({ ...prev, requests: false }));
     }
@@ -599,7 +605,8 @@ export default function ChatPage() {
   useEffect(() => {
     const handleNewMessage = (msg: IMessage) => {
       dispatch(messageReceived(msg));
-      
+      // Không hiện toast popup cho system message, chỉ hiển thị trong khung chat
+
       // Đồng bộ ngay lập tức tin nhắn cuối cùng (lastMessage) ở thanh sidebar
       dispatch(
         chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
@@ -613,10 +620,6 @@ export default function ChatPage() {
               createdAt: msg.createdAt,
               senderDisplayName: msg.senderDisplayName,
             };
-            // Nếu không phải hội thoại đang mở, có thể tăng unreadCount (tùy logic frontend)
-            // if (msg.conversationId !== activeConversationId) {
-            //   conv.unreadCount = (conv.unreadCount ?? 0) + 1;
-            // }
           }
         })
       );
@@ -706,6 +709,11 @@ export default function ChatPage() {
         })
       );
 
+      // Thông báo cho người dùng bằng Toast
+      if (data.conversationId !== activeConversationIdRef.current) {
+        toast.info(`Nhóm '${data.name}' vừa cập nhật thông tin`);
+      }
+
       if (data.conversationId === activeConversationIdRef.current) {
         console.log('🔄 Refreshing current active group details');
         void fetchGroupMembers(data.conversationId);
@@ -731,7 +739,7 @@ export default function ChatPage() {
       socketService.off('message:reaction', handleReactionEvent);
       socketService.off('message:typing', handleTypingEvent);
     };
-  }, [dispatch, patchMessageInCache, fetchGroupMembers]);
+  }, [dispatch, patchMessageInCache, fetchGroupMembers, isConnected]);
 
   useEffect(() => {
     dispatch(setActiveConversation(routeConversationId ?? null));
@@ -1210,6 +1218,7 @@ export default function ChatPage() {
     let nextAvatar = previousAvatar;
 
     if (editGroupAvatarFile) {
+      /* Code cũ bị thiếu mediaType dẫn đến lỗi 400:
       const formData = new FormData();
       formData.append('file', editGroupAvatarFile);
       const uploadResult = await apiClient.post<
@@ -1218,6 +1227,20 @@ export default function ChatPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       nextAvatar = uploadResult.data.data?.url ?? uploadResult.data.data?.fileUrl ?? previousAvatar;
+      */
+
+      // Code mới: Sử dụng mutation đã cấu hình chuẩn (gửi kèm cả mediaType)
+      try {
+        const uploadResult = await uploadMedia({ 
+          file: editGroupAvatarFile, 
+          mediaType: 'image' 
+        }).unwrap();
+        nextAvatar = uploadResult.data?.url ?? uploadResult.data?.fileUrl ?? previousAvatar;
+      } catch (err) {
+        console.error('Avatar upload failed:', err);
+        // Không ngắt luồng chính, nhưng thông báo cho người dùng
+        toast.error('Không thể tải lên ảnh đại diện mới');
+      }
     }
 
     dispatch(
@@ -1707,17 +1730,19 @@ export default function ChatPage() {
           }
           return option;
         });
-        toast.success('Đã cập nhật vai trò');
-      } catch (error) {
-        setGroupMembers(before);
-        toast.error('Không thể cập nhật vai trò');
-        console.error('Failed to change member role:', error);
-      } finally {
-        setActionBusy('changeRole', false);
-      }
-    },
-    [activeConversationId, groupMembers, setActionBusy],
-  );
+        return { ...poll, options: nextOptions };
+      })
+    );
+    try {
+      await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/vote`, { optionIndex });
+    } catch (error) {
+      setGroupPolls(before);
+      toast.error('Không thể bình chọn');
+      console.error('Failed to vote poll:', error);
+    } finally {
+      setActionBusy('votePoll', false);
+    }
+  }, [activeConversationId, groupPolls, currentUserId, setActionBusy]);
 
   const handleToggleTaskStatus = useCallback(async (taskId: string) => {
     if (!activeConversationId) return;
