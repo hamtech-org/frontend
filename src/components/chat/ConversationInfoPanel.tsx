@@ -50,6 +50,7 @@ type ConversationInfoPanelProps = {
     updateGroup?: boolean;
   };
   numRequests: number;
+  currentUserRole?: 'owner' | 'admin' | 'member';
 };
 
 export function ConversationInfoPanel({
@@ -70,7 +71,11 @@ export function ConversationInfoPanel({
   isJoinRequested = false,
   loading,
   numRequests,
+  currentUserRole,
 }: ConversationInfoPanelProps) {
+  const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+  const isOwner = currentUserRole === 'owner';
+
   return (
     <div className="w-[280px] lg:w-[340px] border-l border-black/5 dark:border-white/5 flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all hidden md:flex">
       <div className="h-20 px-6 flex items-center justify-center border-b border-black/5 dark:border-white/5 font-bold text-lg sticky top-0 bg-inherit z-10 shrink-0">
@@ -99,6 +104,7 @@ export function ConversationInfoPanel({
               onClick={onEditGroup}
               disabled={loading?.updateGroup}
               className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+              title="Chỉnh sửa nhóm"
             >
               <Edit3 className="w-3 h-3 text-muted-foreground" />
             </button>
@@ -353,17 +359,21 @@ export function ConversationInfoPanel({
             <button
               type="button"
               onClick={onLeaveGroup}
-              className="flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-2 rounded-xl transition-colors border border-red-500/20"
+              disabled={isOwner}
+              className="flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-2 rounded-xl transition-colors border border-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={isOwner ? "Chủ nhóm không thể rời. Hãy chuyển quyền hoặc giải tán nhóm." : "Rời khỏi nhóm này"}
             >
               Rời nhóm
             </button>
-            <button
-              type="button"
-              onClick={onDeleteGroup}
-              className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl transition-colors"
-            >
-              Giải tán nhóm
-            </button>
+            {isOwner && (
+              <button
+                type="button"
+                onClick={onDeleteGroup}
+                className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl transition-colors"
+              >
+                Giải tán nhóm
+              </button>
+            )}
           </div>
         )}
       </div>
