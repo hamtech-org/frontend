@@ -154,20 +154,15 @@ const chatSlice = createSlice({
       if (conv) conv.unreadCount = 0;
     },
 
-    // ─── Soft delete (đồng bộ với DynamoDB isDeleted) ─────────────────────
-    messageDeleted: (
+    /** Ẩn tin chỉ phía user hiện tại: gỡ khỏi state (server đã lưu MessageUserHide). */
+    messageHiddenForMe: (
       state,
       action: PayloadAction<{ messageId: string; conversationId: string }>,
     ) => {
       const { messageId, conversationId } = action.payload;
       const messages = state.messages[conversationId];
       if (!messages) return;
-      const msg = messages.find((m) => m.messageId === messageId);
-      if (msg) {
-        msg.isDeleted = true;
-        msg.content = '';
-        msg.isPinned = false;
-      }
+      state.messages[conversationId] = messages.filter((m) => m.messageId !== messageId);
     },
 
     messagePinUpdated: (
@@ -251,7 +246,7 @@ export const {
   typingStarted,
   typingStopped,
   resetUnread,
-  messageDeleted,
+  messageHiddenForMe,
   messagePinUpdated,
   messageReacted,
   setReplyingTo,
