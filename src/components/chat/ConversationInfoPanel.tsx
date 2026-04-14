@@ -54,6 +54,7 @@ type ConversationInfoPanelProps = {
   };
   numRequests: number;
   currentUserRole?: 'owner' | 'admin' | 'member';
+  currentUserId?: string;
 
   // Data + handlers để render modal "Thành viên" ngay trong tab này
   members?: any[];
@@ -88,6 +89,7 @@ export function ConversationInfoPanel({
   loading,
   numRequests,
   currentUserRole,
+  currentUserId,
   members = [],
   requests = [],
   onApproveMember,
@@ -98,6 +100,7 @@ export function ConversationInfoPanel({
   void onApproveMember;
   void onRejectMember;
   void onKickMember;
+  void currentUserId;
   const isOwner = currentUserRole === 'owner';
   const canModerateMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
 
@@ -128,6 +131,7 @@ export function ConversationInfoPanel({
             onMemberTabChange={setMemberTab}
             members={members}
             requests={requests}
+            currentUserId={currentUserId}
             // Không truyền handler từ ChatPage để tránh window.confirm (hộp browser "localhost").
             // Modal sẽ tự gọi API + dùng ConfirmModal UI.
             onApprove={undefined}
