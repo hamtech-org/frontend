@@ -1389,7 +1389,12 @@ export default function ChatPage() {
         setShowAddMembersModal(false);
       } catch (error) {
         setGroupMembers(before);
-        toast.error('Không thể thêm thành viên');
+        const status = (error as any)?.response?.status;
+        if (status === 403) {
+          toast.error('Bạn không có quyền thêm thành viên');
+        } else {
+          toast.error('Không thể thêm thành viên');
+        }
         console.error('Failed to add members:', error);
       } finally {
         setActionBusy('addMembers', false);
@@ -1517,8 +1522,12 @@ export default function ChatPage() {
 
   const openAddMembersModal = useCallback(() => {
     setSelectedAddMembers([]);
+    // Đảm bảo đã có danh sách member trước khi lọc bạn bè (tránh hiện cả người đã trong nhóm).
+    if (activeConversationId) {
+      void fetchGroupMembers(activeConversationId);
+    }
     setShowAddMembersModal(true);
-  }, []);
+  }, [activeConversationId, fetchGroupMembers]);
 
   const handleToggleAddMember = useCallback((userId: string, checked: boolean) => {
     setSelectedAddMembers((prev) =>
