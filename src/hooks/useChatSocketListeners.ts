@@ -138,7 +138,13 @@ export function useChatSocketListeners(
 
     const handleGroupUpdate = (data: any) => {
       // Khi có thay đổi về nhóm (member, role, poll, task, etc.)
-      const { groupId } = data;
+      // Server có thể emit `groupId` hoặc `conversationId` tùy nơi gọi.
+      // Giữ code cũ nhưng fallback để đảm bảo invalidate đúng.
+      const groupId = data?.groupId ?? data?.conversationId;
+      if (!groupId) {
+        dispatch(chatApi.util.invalidateTags(['Conversations']));
+        return;
+      }
       // Invalidate các tags liên quan để FE tự động fetch lại dữ liệu mới nhất
       if (data.type === 'poll') dispatch(chatApi.util.invalidateTags([{ type: 'Polls', id: groupId }]));
       if (data.type === 'task') dispatch(chatApi.util.invalidateTags([{ type: 'Tasks', id: groupId }]));
