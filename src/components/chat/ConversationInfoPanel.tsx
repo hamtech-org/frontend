@@ -2,7 +2,6 @@ import {
   BellOff,
   CheckSquare,
   Edit3,
-  ChevronDown,
   ChevronRight,
   FileText,
   PinOff,
@@ -96,7 +95,11 @@ export function ConversationInfoPanel({
   onKickMember,
   busyMemberActions,
 }: ConversationInfoPanelProps) {
+  void onApproveMember;
+  void onRejectMember;
+  void onKickMember;
   const isOwner = currentUserRole === 'owner';
+  const canModerateMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
 
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
   const [showInlineMembers, setShowInlineMembers] = useState(false);
@@ -125,21 +128,17 @@ export function ConversationInfoPanel({
             onMemberTabChange={setMemberTab}
             members={members}
             requests={requests}
-            onApprove={async (userId) => {
-              if (!onApproveMember) return;
-              await onApproveMember(userId);
-            }}
-            onReject={async (userId) => {
-              if (!onRejectMember) return;
-              await onRejectMember(userId);
-            }}
-            onKick={async (userId) => {
-              if (!onKickMember) return;
-              await onKickMember(userId);
-            }}
+            // Không truyền handler từ ChatPage để tránh window.confirm (hộp browser "localhost").
+            // Modal sẽ tự gọi API + dùng ConfirmModal UI.
+            onApprove={undefined}
+            onReject={undefined}
+            onKick={undefined}
             onChangeRole={async () => {}}
             busy={busyMemberActions}
             variant="inline"
+            canModerate={canModerateMembers}
+            onAddMembersClick={onAddMembers}
+            groupId={activeConversation?.conversationId}
           />
         </div>
       ) : (
@@ -234,25 +233,6 @@ export function ConversationInfoPanel({
         </div>
         {activeConversation?.type === 'group' && (
           <>
-            {/* Thành viên nhóm (xem chi tiết từng thành viên) */}
-            <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5 mt-2">
-              <button
-                type="button"
-                onClick={() => openMemberModalHere('list')}
-                className="w-full p-4 flex items-center justify-between hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-              >
-                <span className="font-bold text-sm">Thành viên nhóm</span>
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              </button>
-              <button
-                type="button"
-                onClick={() => openMemberModalHere('list')}
-                className="w-full px-4 pb-4 -mt-1 flex items-center gap-3 text-sm text-muted-foreground hover:text-blue-600 transition-colors"
-              >
-                <Users className="w-5 h-5 opacity-80" />
-                <span className="font-medium">{activeConversation.memberCount} thành viên</span>
-              </button>
-            </div>
 
             <div className="p-4 bg-gradient-to-r from-blue-600/5 to-purple-600/5 border-b border-black/5 dark:border-white/5 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-10 blur-xl group-hover:opacity-30 transition-opacity">
