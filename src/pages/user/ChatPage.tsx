@@ -1900,11 +1900,20 @@ export default function ChatPage() {
           }}
           onLeaveGroup={() => void handleLeaveGroup()}
           onDeleteGroup={() => void handleDeleteGroup()}
-          onOpenMemberModal={(tab) => {
-            setMemberTab(tab);
-            setShowMemberModal(true);
-          }}
+          // Modal "Thành viên" đã render ngay trong panel, giữ callback cũ để tương thích nhưng không dùng nữa.
+          onOpenMemberModal={() => {}}
           currentUserRole={currentUserRole}
+          members={groupMembers}
+          requests={groupRequests}
+          onApproveMember={handleApproveRequest}
+          onRejectMember={handleRejectRequest}
+          onKickMember={handleKickMember}
+          busyMemberActions={{
+            approving: groupActionLoading.approveRequest,
+            rejecting: groupActionLoading.rejectRequest,
+            removing: groupActionLoading.removeMember,
+            changingRole: groupActionLoading.changeRole,
+          }}
         />
       )}
 
@@ -1963,26 +1972,28 @@ export default function ChatPage() {
         onPollOptionsChange={setPollOptions}
         onCreatePoll={handleCreatePoll}
       />
-      <MemberManagementModal
-        open={showMemberModal}
-        onClose={() => setShowMemberModal(false)}
-        memberTab={memberTab}
-        onMemberTabChange={setMemberTab}
-        members={groupMembers}
-        requests={groupRequests}
-        onApprove={handleApproveRequest}
-        onReject={handleRejectRequest}
-        onKick={handleKickMember}
-        onChangeRole={async (userId, role) => {
-          await handleChangeMemberRole(userId, role);
-        }}
-        busy={{
-          approving: groupActionLoading.approveRequest,
-          rejecting: groupActionLoading.rejectRequest,
-          removing: groupActionLoading.removeMember,
-          changingRole: groupActionLoading.changeRole,
-        }}
-      />
+      {false && (
+        <MemberManagementModal
+          open={showMemberModal}
+          onClose={() => setShowMemberModal(false)}
+          memberTab={memberTab}
+          onMemberTabChange={setMemberTab}
+          members={groupMembers}
+          requests={groupRequests}
+          onApprove={handleApproveRequest}
+          onReject={handleRejectRequest}
+          onKick={handleKickMember}
+          onChangeRole={async (userId, role) => {
+            await handleChangeMemberRole(userId, role);
+          }}
+          busy={{
+            approving: groupActionLoading.approveRequest,
+            rejecting: groupActionLoading.rejectRequest,
+            removing: groupActionLoading.removeMember,
+            changingRole: groupActionLoading.changeRole,
+          }}
+        />
+      )}
       <AISummaryModal
         open={showAISummaryModal}
         onClose={() => setShowAISummaryModal(false)}
