@@ -87,7 +87,7 @@ export function AddMembersModal({
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Tìm kiếm người dùng"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-blue-500/30 outline-none text-sm"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-full bg-black/5 dark:bg-white/5 border border-transparent focus:border-blue-500/30 outline-none text-sm"
                 />
               </div>
             </div>
@@ -96,7 +96,9 @@ export function AddMembersModal({
               {isLoading ? (
                 <p className="text-center text-sm text-muted-foreground py-6">Đang tải danh sách...</p>
               ) : filtered.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground py-6">Không có người dùng phù hợp</p>
+                <p className="text-center text-sm text-muted-foreground py-6">
+                  {friends.length === 0 ? 'Chưa có bạn bè để thêm' : 'Không có người dùng phù hợp'}
+                </p>
               ) : (
                 filtered.map((friend) => {
                   const selected = selectedIds.includes(friend.userId);
@@ -109,7 +111,7 @@ export function AddMembersModal({
                         type="checkbox"
                         checked={selected}
                         onChange={(e) => onToggleSelect(friend.userId, e.target.checked)}
-                        className="w-4 h-4"
+                        className="w-5 h-5 rounded-full accent-blue-600"
                       />
                       <div className="w-10 h-10 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center">
                         {friend.avatar ? (
