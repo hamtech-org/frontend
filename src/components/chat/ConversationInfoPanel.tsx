@@ -12,6 +12,8 @@ import {
   User,
 } from 'lucide-react';
 import type { IConversation } from '@/types/chat.types';
+import { useCallback, useState } from 'react';
+import { MemberManagementModal } from '@/components/chat/MemberManagementModal';
 
 type GroupPoll = {
   pollId: string;
@@ -29,13 +31,15 @@ type GroupTask = {
 type ConversationInfoPanelProps = {
   activeConversation: IConversation | undefined;
   onOpenAISummaryFromPanel: () => void;
-  onOpenMemberModal: (tab: 'list' | 'pending') => void;
+  // Legacy external modal trigger (giữ để tương thích)
+  onOpenMemberModal?: (tab: 'list' | 'pending') => void;
   onLeaveGroup?: () => void;
   onDeleteGroup?: () => void;
   onEditGroup?: () => void;
   onAddMembers?: () => void;
   onRequestJoin?: () => void;
   onVotePoll?: (pollId: string, optionIndex: number) => void;
+  onOpenPollVote?: (pollId: string) => void;
   onAddPollOption?: (pollId: string) => void;
   onClosePoll?: (pollId: string) => void;
   onToggleTask?: (taskId: string) => void;
@@ -50,6 +54,21 @@ type ConversationInfoPanelProps = {
     updateGroup?: boolean;
   };
   numRequests: number;
+  currentUserRole?: 'owner' | 'admin' | 'member';
+  currentUserId?: string;
+
+  // Data + handlers để render modal "Thành viên" ngay trong tab này
+  members?: any[];
+  requests?: any[];
+  onApproveMember?: (userId: string) => Promise<void>;
+  onRejectMember?: (userId: string) => Promise<void>;
+  onKickMember?: (userId: string) => Promise<void>;
+  busyMemberActions?: {
+    approving?: boolean;
+    rejecting?: boolean;
+    removing?: boolean;
+    changingRole?: boolean;
+  };
 };
 
 export function ConversationInfoPanel({
@@ -62,6 +81,7 @@ export function ConversationInfoPanel({
   onAddMembers,
   onRequestJoin,
   onVotePoll,
+  onOpenPollVote,
   onAddPollOption,
   onClosePoll,
   onToggleTask,
@@ -70,13 +90,64 @@ export function ConversationInfoPanel({
   isJoinRequested = false,
   loading,
   numRequests,
+  currentUserRole,
+  currentUserId,
+  members = [],
+  requests = [],
+  onApproveMember,
+  onRejectMember,
+  onKickMember,
+  busyMemberActions,
 }: ConversationInfoPanelProps) {
+  void onApproveMember;
+  void onRejectMember;
+  void onKickMember;
+  void currentUserId;
+  const isOwner = currentUserRole === 'owner';
+  const canModerateMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
+
+  const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
+  const [showInlineMembers, setShowInlineMembers] = useState(false);
+
+  const openMemberModalHere = useCallback(
+    (tab: 'list' | 'pending') => {
+      setMemberTab(tab);
+      setShowInlineMembers(true);
+      onOpenMemberModal?.(tab);
+    },
+    [onOpenMemberModal],
+  );
+
   return (
     <div className="w-[280px] lg:w-[340px] border-l border-black/5 dark:border-white/5 flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all hidden md:flex">
       <div className="h-20 px-6 flex items-center justify-center border-b border-black/5 dark:border-white/5 font-bold text-lg sticky top-0 bg-inherit z-10 shrink-0">
         Thông tin {activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}
       </div>
 
+      {showInlineMembers ? (
+        <div className="flex-1 min-h-0">
+          <MemberManagementModal
+            open={true}
+            onClose={() => setShowInlineMembers(false)}
+            memberTab={memberTab}
+            onMemberTabChange={setMemberTab}
+            members={members}
+            requests={requests}
+            currentUserId={currentUserId}
+            // Không truyền handler từ ChatPage để tránh window.confirm (hộp browser "localhost").
+            // Modal sẽ tự gọi API + dùng ConfirmModal UI.
+            onApprove={undefined}
+            onReject={undefined}
+            onKick={undefined}
+            onChangeRole={async () => {}}
+            busy={busyMemberActions}
+            variant="inline"
+            canModerate={canModerateMembers}
+            onAddMembersClick={onAddMembers}
+            groupId={activeConversation?.conversationId}
+          />
+        </div>
+      ) : (
       <div className="flex-1 overflow-y-auto min-h-0 bg-black/5 dark:bg-transparent custom-scrollbar pb-12">
         <div className="p-6 flex flex-col items-center border-b border-black/5 dark:border-white/5 shrink-0 bg-white dark:bg-[#1a1a1a]">
           <div className="w-20 h-20 rounded-full overflow-hidden mb-4 relative bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
@@ -99,6 +170,7 @@ export function ConversationInfoPanel({
               onClick={onEditGroup}
               disabled={loading?.updateGroup}
               className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+              title="Chỉnh sửa nhóm"
             >
               <Edit3 className="w-3 h-3 text-muted-foreground" />
             </button>
@@ -167,6 +239,7 @@ export function ConversationInfoPanel({
         </div>
         {activeConversation?.type === 'group' && (
           <>
+
             <div className="p-4 bg-gradient-to-r from-blue-600/5 to-purple-600/5 border-b border-black/5 dark:border-white/5 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-10 blur-xl group-hover:opacity-30 transition-opacity">
                 <Sparkles className="w-16 h-16 text-purple-600" />
@@ -199,8 +272,8 @@ export function ConversationInfoPanel({
               <div
                 role="button"
                 tabIndex={0}
-                onClick={() => onOpenMemberModal('list')}
-                onKeyDown={(e) => e.key === 'Enter' && onOpenMemberModal('list')}
+                onClick={() => openMemberModalHere('list')}
+                onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('list')}
                 className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
               >
                 Quản lý thành viên ({activeConversation.memberCount})
@@ -217,8 +290,8 @@ export function ConversationInfoPanel({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => onOpenMemberModal('pending')}
-                  onKeyDown={(e) => e.key === 'Enter' && onOpenMemberModal('pending')}
+                  onClick={() => openMemberModalHere('pending')}
+                  onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('pending')}
                   className="flex items-center justify-between group/wait cursor-pointer p-2 -mx-2 rounded-lg hover:bg-blue-600/10 transition-colors"
                 >
                   <div className="flex items-center gap-3 text-sm text-muted-foreground group-hover/wait:text-blue-600 font-medium transition-colors">
@@ -233,8 +306,8 @@ export function ConversationInfoPanel({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => onOpenMemberModal('list')}
-                  onKeyDown={(e) => e.key === 'Enter' && onOpenMemberModal('list')}
+                  onClick={() => openMemberModalHere('list')}
+                  onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('list')}
                   className="flex items-center gap-3 text-sm text-muted-foreground hover:text-red-500 cursor-pointer hover:bg-red-500/10 p-2 -mx-2 rounded-lg transition-colors font-medium"
                 >
                   <Users className="w-4 h-4 opacity-70" /> Mời ra khỏi nhóm
@@ -279,7 +352,9 @@ export function ConversationInfoPanel({
                               key={`${poll.pollId}-${idx}`}
                               type="button"
                               disabled={poll.isClosed}
-                              onClick={() => onVotePoll?.(poll.pollId, idx)}
+                              onClick={() =>
+                                onOpenPollVote ? onOpenPollVote(poll.pollId) : onVotePoll?.(poll.pollId, idx)
+                              }
                               className="w-full text-left"
                             >
                               <div className="flex items-center justify-between text-[11px]">
@@ -353,20 +428,26 @@ export function ConversationInfoPanel({
             <button
               type="button"
               onClick={onLeaveGroup}
-              className="flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-2 rounded-xl transition-colors border border-red-500/20"
+              disabled={isOwner}
+              className="flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-2 rounded-xl transition-colors border border-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={isOwner ? "Chủ nhóm không thể rời. Hãy chuyển quyền hoặc giải tán nhóm." : "Rời khỏi nhóm này"}
             >
               Rời nhóm
             </button>
-            <button
-              type="button"
-              onClick={onDeleteGroup}
-              className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl transition-colors"
-            >
-              Giải tán nhóm
-            </button>
+            {isOwner && (
+              <button
+                type="button"
+                onClick={onDeleteGroup}
+                className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl transition-colors"
+              >
+                Giải tán nhóm
+              </button>
+            )}
           </div>
         )}
       </div>
+      )}
+
     </div>
   );
 }

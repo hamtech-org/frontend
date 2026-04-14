@@ -1,9 +1,9 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import type { ApiErrorResponse, ApiSuccessResponse } from '@/types/api.types';
 
-// Use relative URL to leverage Vite proxy for development
-// The Vite dev server will proxy calls to /api/* to http://localhost:3000
-const API_BASE_URL = '/api/v1';
+// Prefer explicit backend base URL from env.
+// Fallback to relative path (works only if dev proxy is configured).
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || '/api/v1';
 
 let isRefreshing = false;
 let failedQueue: Array<{

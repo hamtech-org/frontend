@@ -8,6 +8,8 @@ type PollModalProps = {
   onPollQuestionChange: (value: string) => void;
   pollOptions: string[];
   onPollOptionsChange: (options: string[]) => void;
+  multipleChoice: boolean;
+  onMultipleChoiceChange: (v: boolean) => void;
   onCreatePoll: () => void;
 };
 
@@ -18,6 +20,8 @@ export function PollModal({
   onPollQuestionChange,
   pollOptions,
   onPollOptionsChange,
+  multipleChoice,
+  onMultipleChoiceChange,
   onCreatePoll,
 }: PollModalProps) {
   return (
@@ -108,9 +112,15 @@ export function PollModal({
 
               <div className="flex items-center justify-between p-3 rounded-xl bg-black/5 dark:bg-white/5">
                 <span className="text-[13px] font-semibold">Cho phép chọn nhiều đáp án</span>
-                <div className="w-10 h-6 rounded-full bg-blue-600 flex items-center justify-end pr-1 cursor-pointer shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => onMultipleChoiceChange(!multipleChoice)}
+                  className={`w-10 h-6 rounded-full flex items-center shadow-inner transition-colors ${
+                    multipleChoice ? 'bg-blue-600 justify-end pr-1' : 'bg-black/15 dark:bg-white/15 justify-start pl-1'
+                  }`}
+                >
                   <div className="w-4 h-4 rounded-full bg-white shadow-md" />
-                </div>
+                </button>
               </div>
             </div>
 

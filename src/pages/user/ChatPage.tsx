@@ -16,14 +16,19 @@ import {
   useUnpinMessageMutation,
   useReactMessageMutation,
 } from '@/store/api/chatApi';
-import { useUploadMediaMultiMutation, type MediaUploadResult } from '@/store/api/mediaApi';
+import { useUploadMediaMutation, useUploadMediaMultiMutation, type MediaUploadResult } from '@/store/api/mediaApi';
+import { useSocketContext } from '@/contexts/SocketContext';
 import type { PendingAttachment } from '@/components/chat/ChatComposer';
 import {
   setActiveConversation,
+  messageReceived,
   messageEdited,
   messageRecalled,
   messageDeleted,
   messagePinUpdated,
+  messageReacted,
+  typingStarted,
+  typingStopped,
   resetUnread,
   setReplyingTo,
   clearReplyingTo,
@@ -48,6 +53,7 @@ import { ConfirmModal } from '@/components/chat/ConfirmModal';
 import { ProfileModal } from '@/components/chat/ProfileModal';
 import { CreateGroupModal } from '@/components/chat/CreateGroupModal';
 import { PollModal } from '@/components/chat/PollModal';
+import { PollVoteModal } from '@/components/chat/PollVoteModal';
 import { MemberManagementModal } from '@/components/chat/MemberManagementModal';
 import { AISummaryModal } from '@/components/chat/AISummaryModal';
 import { TaskModal } from '@/components/chat/TaskModal';
@@ -90,6 +96,7 @@ type GroupPoll = {
   options: GroupPollOption[];
   createdAt: string;
   isClosed?: boolean;
+  isMultipleChoice?: boolean;
 };
 
 type GroupTask = {
@@ -97,6 +104,7 @@ type GroupTask = {
   title: string;
   description?: string;
   assignees: string[];
+  participants?: string[];
   status: 'todo' | 'in_progress' | 'done';
   dueDate?: string;
 };
@@ -144,6 +152,8 @@ function messageTypeFromUploadResult(r: MediaUploadResult): IMessage['type'] {
   return 'file';
 }
 
+const EMPTY_ARRAY: any[] = [];
+
 export default function ChatPage() {
   const navigate = useNavigate();
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
@@ -165,12 +175,15 @@ export default function ChatPage() {
   const conversations = conversationsData?.data ?? [];
 
   const activeConversationId = useSelector((state: RootState) => state.chat.activeConversationId);
-  const socketMessages = useSelector((state: RootState) =>
-    activeConversationId ? (state.chat.messages[activeConversationId] ?? []) : [],
-  );
-  const typingUsers = useSelector((state: RootState) =>
-    activeConversationId ? (state.chat.typingUsers[activeConversationId] ?? []) : [],
-  );
+  const socketMessages = useSelector((state: RootState) => {
+    if (!activeConversationId) return EMPTY_ARRAY;
+    return state.chat.messages[activeConversationId] ?? EMPTY_ARRAY;
+  });
+
+  const typingUsers = useSelector((state: RootState) => {
+    if (!activeConversationId) return EMPTY_ARRAY;
+    return state.chat.typingUsers[activeConversationId] ?? EMPTY_ARRAY;
+  });
   const replyingTo = useSelector((state: RootState) => state.chat.replyingTo);
 
   const { data: messagesData } = useGetMessagesQuery(
@@ -201,6 +214,7 @@ export default function ChatPage() {
     allMessages.length > 0 ? allMessages[allMessages.length - 1].messageId : undefined;
 
   const [sendMessage, { isLoading: isSending }] = useSendMessageMutation();
+  const [uploadMedia] = useUploadMediaMutation();
   const [uploadMediaMulti] = useUploadMediaMultiMutation();
   const [mediaUploading, setMediaUploading] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
@@ -247,6 +261,7 @@ export default function ChatPage() {
   });
 
   const { initiateCall } = useCallContext();
+  const { isConnected } = useSocketContext();
 
   const handleAudioCall = useCallback(() => {
     if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
@@ -303,7 +318,13 @@ export default function ChatPage() {
     void refetchConversations();
   }, [activeConversationId, refetchConversations]);
 
-  const [inputText, setInputText] = useState('');
+  // Lưu inputText theo conversationId
+  const [inputTextMap, setInputTextMap] = useState<{ [convId: string]: string }>({});
+  const inputText = activeConversationId ? inputTextMap[activeConversationId] || '' : '';
+  const setInputText = (text: string) => {
+    if (!activeConversationId) return;
+    setInputTextMap((prev) => ({ ...prev, [activeConversationId]: text }));
+  };
 
   const addPendingFiles = useCallback((files: File[]) => {
     setPendingAttachments((prev) => {
@@ -333,6 +354,11 @@ export default function ChatPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevLastMessageIdRef = useRef<string | null>(null);
+  const activeConversationIdRef = useRef<string | null>(activeConversationId);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [unreadIncomingCount, setUnreadIncomingCount] = useState(0);
 
@@ -346,6 +372,9 @@ export default function ChatPage() {
   const [showPollModal, setShowPollModal] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
+  const [pollMultipleChoice, setPollMultipleChoice] = useState(false);
+  const [showPollVoteModal, setShowPollVoteModal] = useState(false);
+  const [activePollId, setActivePollId] = useState<string | null>(null);
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [showAddMembersModal, setShowAddMembersModal] = useState(false);
   const [showEditGroupModal, setShowEditGroupModal] = useState(false);
@@ -359,6 +388,7 @@ export default function ChatPage() {
   const [taskDeadline, setTaskDeadline] = useState('');
   const [taskNote, setTaskNote] = useState('');
   const [taskAssignees, setTaskAssignees] = useState<string[]>([]);
+  const [taskAssignToAll, setTaskAssignToAll] = useState(false);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryResult, setAiSummaryResult] = useState('');
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
@@ -374,10 +404,15 @@ export default function ChatPage() {
   const fetchGroupMembers = useCallback(async (groupId: string) => {
     setGroupLoading((prev) => ({ ...prev, members: true }));
     try {
-      const res = await apiClient.get<ApiSuccessResponse<GroupMember[]>>(
-        `/chat/conversations/${groupId}/members`,
-      );
-      setGroupMembers(res.data.data ?? []);
+      const res = await apiClient.get<ApiSuccessResponse<GroupMember[]>>(`/chat/groups/${groupId}/members`);
+      const members = res.data.data ?? [];
+      setGroupMembers(members);
+      
+      // Update join requested state if current user is not a member but in request list
+      // (This logic might be better elsewhere but for now let's ensure we have members)
+    } catch (err) {
+      console.error('[fetchGroupMembers] Error:', err);
+      setGroupMembers([]);
     } finally {
       setGroupLoading((prev) => ({ ...prev, members: false }));
     }
@@ -390,6 +425,14 @@ export default function ChatPage() {
         `/chat/groups/${groupId}/requests`,
       );
       setGroupRequests(res.data.data ?? []);
+    } catch (err: any) {
+      // Bỏ qua lỗi 403 nếu người dùng không có quyền xem yêu cầu gia nhập
+      if (err.response?.status === 403) {
+        setGroupRequests([]);
+      } else {
+        console.error('[fetchGroupRequests] Error:', err);
+        setGroupRequests([]);
+      }
     } finally {
       setGroupLoading((prev) => ({ ...prev, requests: false }));
     }
@@ -402,6 +445,9 @@ export default function ChatPage() {
         `/chat/groups/${groupId}/polls`,
       );
       setGroupPolls(res.data.data ?? []);
+    } catch (err) {
+      console.error('[fetchGroupPolls] Error:', err);
+      setGroupPolls([]);
     } finally {
       setGroupLoading((prev) => ({ ...prev, polls: false }));
     }
@@ -414,6 +460,9 @@ export default function ChatPage() {
         `/chat/groups/${groupId}/tasks`,
       );
       setGroupTasks(res.data.data ?? []);
+    } catch (err) {
+      console.error('[fetchGroupTasks] Error:', err);
+      setGroupTasks([]);
     } finally {
       setGroupLoading((prev) => ({ ...prev, tasks: false }));
     }
@@ -426,7 +475,8 @@ export default function ChatPage() {
         `/chat/groups/${groupId}/ai-recap/latest`,
       );
       setLatestRecap(res.data.data ?? null);
-    } catch {
+    } catch (err) {
+      // Just failing silently for recap
       setLatestRecap(null);
     } finally {
       setGroupLoading((prev) => ({ ...prev, recap: false }));
@@ -492,15 +542,17 @@ export default function ChatPage() {
       void fetchLatestRecap(activeConversationId);
     };
 
-    const handleGroupUpdated = (data: unknown) => {
+
+
+    // Realtime cập nhật thành viên nhóm
+    const handleMemberChanged = (data: any) => {
       if (!isCurrentGroup(data)) return;
-      refreshMembers();
+      if (activeConversationId) fetchGroupMembers(activeConversationId);
     };
 
-    const handleMemberChanged = (data: unknown) => {
+    const handleTaskChanged = (data: unknown) => {
       if (!isCurrentGroup(data)) return;
-      refreshMembers();
-      refreshRequests();
+      refreshTasks();
     };
 
     const handleRequestsChanged = (data: unknown) => {
@@ -513,17 +565,11 @@ export default function ChatPage() {
       refreshPolls();
     };
 
-    const handleTaskChanged = (data: unknown) => {
-      if (!isCurrentGroup(data)) return;
-      refreshTasks();
-    };
-
     const handleRecapChanged = (data: unknown) => {
       if (!isCurrentGroup(data)) return;
       refreshRecap();
     };
 
-    socketService.on('group:updated', handleGroupUpdated);
     socketService.on('group:member_joined', handleMemberChanged);
     socketService.on('group:member_left', handleMemberChanged);
     socketService.on('group:members_added', handleMemberChanged);
@@ -538,7 +584,6 @@ export default function ChatPage() {
     socketService.on('group:recap_new', handleRecapChanged);
 
     return () => {
-      socketService.off('group:updated', handleGroupUpdated);
       socketService.off('group:member_joined', handleMemberChanged);
       socketService.off('group:member_left', handleMemberChanged);
       socketService.off('group:members_added', handleMemberChanged);
@@ -561,7 +606,174 @@ export default function ChatPage() {
     fetchGroupTasks,
     fetchLatestRecap,
     refetchConversations,
+    dispatch,
   ]);
+
+  useEffect(() => {
+    const handleNewMessage = (msg: IMessage) => {
+      dispatch(messageReceived(msg));
+      // Không hiện toast popup cho system message, chỉ hiển thị trong khung chat
+
+      // Đồng bộ ngay lập tức tin nhắn cuối cùng (lastMessage) ở thanh sidebar
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          const conv = draft?.data?.find((item) => item.conversationId === msg.conversationId);
+          if (conv) {
+            conv.lastMessage = {
+              messageId: msg.messageId,
+              content: msg.content,
+              senderId: msg.senderId,
+              type: msg.type,
+              createdAt: msg.createdAt,
+              senderDisplayName: msg.senderDisplayName,
+            };
+          }
+        })
+      );
+
+      // Khi có poll mới trong hội thoại đang mở -> hiện toast/banner, click để mở modal (đỡ gián đoạn)
+      try {
+        if (msg.conversationId === activeConversationIdRef.current && (msg as any).type === 'system') {
+          const raw = String(msg.content ?? '').trim();
+          if (raw.startsWith('{')) {
+            const obj = JSON.parse(raw) as any;
+            if (obj?.kind === 'poll_created' && obj?.poll?.pollId) {
+              const pollId = String(obj.poll.pollId);
+              const question = String(obj?.poll?.question ?? '').trim();
+              const toastId = `poll-created-${pollId}`;
+              if (!toast.isActive(toastId)) {
+                toast.info(question ? `Có bình chọn mới: ${question}` : 'Có bình chọn mới', {
+                  toastId,
+                  autoClose: 7000,
+                  onClick: () => {
+                    setActivePollId(pollId);
+                    setShowPollVoteModal(true);
+                  },
+                });
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    const handleEditedMessage = (payload: {
+      messageId: string;
+      conversationId: string;
+      content: string;
+    }) => {
+      dispatch(messageEdited(payload));
+      patchMessageInCache(payload.conversationId, payload.messageId, {
+        content: payload.content,
+        isEdited: true,
+      });
+    };
+
+    const handleRecalledMessage = (payload: { messageId: string; conversationId: string }) => {
+      dispatch(messageRecalled(payload));
+      patchMessageInCache(payload.conversationId, payload.messageId, {
+        isRecalled: true,
+        content: 'Tin nhắn đã được thu hồi',
+        isPinned: false,
+      });
+    };
+
+    const handleDeletedMessage = (payload: { messageId: string; conversationId: string }) => {
+      dispatch(messageDeleted(payload));
+      patchMessageInCache(payload.conversationId, payload.messageId, {
+        isDeleted: true,
+        content: '',
+        isPinned: false,
+      });
+    };
+
+    const handlePinUpdated = (payload: {
+      messageId: string;
+      conversationId: string;
+      isPinned: boolean;
+    }) => {
+      dispatch(messagePinUpdated(payload));
+      patchMessageInCache(payload.conversationId, payload.messageId, { isPinned: payload.isPinned });
+    };
+
+    const handleReactionEvent = (payload: {
+      messageId: string;
+      conversationId: string;
+      reactions: Record<string, string[]>;
+    }) => {
+      dispatch(messageReacted(payload));
+      patchMessageInCache(payload.conversationId, payload.messageId, {
+        reactions: payload.reactions,
+      });
+    };
+
+    const handleTypingEvent = (payload: {
+      conversationId: string;
+      userId: string;
+      isTyping: boolean;
+      displayName?: string;
+    }) => {
+      if (payload.isTyping) {
+        dispatch(
+          typingStarted({
+            conversationId: payload.conversationId,
+            userId: payload.userId,
+            displayName: payload.displayName,
+          }),
+        );
+      } else {
+        dispatch(typingStopped({ conversationId: payload.conversationId, userId: payload.userId }));
+      }
+    };
+
+    const handleGroupUpdated = (data: any) => {
+      console.log('📢 Received group:updated:', data);
+      if (!data?.conversationId) return;
+      
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          const conv = draft?.data?.find((item) => item.conversationId === data.conversationId);
+          if (conv) {
+            console.log('✅ Patching conversation in sidebar:', data.name);
+            if (data.name) conv.name = data.name;
+            if (data.avatar) conv.avatar = data.avatar;
+          }
+        })
+      );
+
+      // Thông báo cho người dùng bằng Toast
+      if (data.conversationId !== activeConversationIdRef.current) {
+        toast.info(`Nhóm '${data.name}' vừa cập nhật thông tin`);
+      }
+
+      if (data.conversationId === activeConversationIdRef.current) {
+        console.log('🔄 Refreshing current active group details');
+        void fetchGroupMembers(data.conversationId);
+      }
+    };
+
+    socketService.on('message:new', handleNewMessage);
+    socketService.on('group:updated', handleGroupUpdated);
+    socketService.on('message:edited', handleEditedMessage);
+    socketService.on('message:recalled', handleRecalledMessage);
+    socketService.on('message:deleted', handleDeletedMessage);
+    socketService.on('message:pin_updated', handlePinUpdated);
+    socketService.on('message:reaction', handleReactionEvent);
+    socketService.on('message:typing', handleTypingEvent);
+
+    return () => {
+      socketService.off('message:new', handleNewMessage);
+      socketService.off('group:updated', handleGroupUpdated);
+      socketService.off('message:edited', handleEditedMessage);
+      socketService.off('message:recalled', handleRecalledMessage);
+      socketService.off('message:deleted', handleDeletedMessage);
+      socketService.off('message:pin_updated', handlePinUpdated);
+      socketService.off('message:reaction', handleReactionEvent);
+      socketService.off('message:typing', handleTypingEvent);
+    };
+  }, [dispatch, patchMessageInCache, fetchGroupMembers, isConnected]);
 
   useEffect(() => {
     dispatch(setActiveConversation(routeConversationId ?? null));
@@ -604,6 +816,11 @@ export default function ChatPage() {
     const key = `${activeConversationId}:${latestMessageIdForRead}`;
     if (lastMarkReadKeyRef.current === key) return;
     lastMarkReadKeyRef.current = key;
+    // Gửi sự kiện đã đọc qua socket để đồng bộ realtime unreadCount
+    socketService.emit('message:read', {
+      conversationId: activeConversationId,
+      messageId: latestMessageIdForRead,
+    });
     void markAsRead({ conversationId: activeConversationId, messageId: latestMessageIdForRead });
   }, [activeConversationId, latestMessageIdForRead, markAsRead]);
 
@@ -925,14 +1142,23 @@ export default function ChatPage() {
         name: groupName || `Nhóm (${selectedGroupMembers.length + 1} thành viên)`,
         memberIds: selectedGroupMembers,
       }).unwrap();
-      void navigate(`/chat/${result.data.conversationId}`);
-    } catch {
-      /* ignored */
+      const conversationId = result.data.conversationId;
+      // Log trạng thái socket và thời điểm join room
+      // eslint-disable-next-line no-console
+      console.log('[DEBUG] isConnected:', socketService.socket?.connected, 'conversationId:', conversationId, 'at', new Date().toISOString());
+      socketService.emit('conversation:join', conversationId);
+      // eslint-disable-next-line no-console
+      console.log('[DEBUG] Đã emit conversation:join', conversationId, 'at', new Date().toISOString());
+      void navigate(`/chat/${conversationId}`);
+      dispatch(chatApi.endpoints.getMessages.initiate({ conversationId }));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[DEBUG] Tạo nhóm lỗi:', err);
     }
     setShowCreateGroupModal(false);
     setSelectedGroupMembers([]);
     setGroupName('');
-  }, [selectedGroupMembers, groupName, createConversation, navigate]);
+  }, [selectedGroupMembers, groupName, createConversation, navigate, dispatch]);
 
   const handleFriendClick = useCallback(
     async (friendId: string, friendName: string) => {
@@ -975,6 +1201,7 @@ export default function ChatPage() {
     setTaskDeadline('');
     setTaskNote('');
     setTaskAssignees([]);
+    setTaskAssignToAll(false);
   }, []);
 
   useEffect(() => {
@@ -1013,6 +1240,7 @@ export default function ChatPage() {
 
   const handleUpdateGroup = useCallback(async () => {
     if (!activeConversationId || activeConversation?.type !== 'group') return;
+    
     const nextName = editGroupName.trim();
     if (!nextName) {
       toast.error('Tên nhóm không được để trống');
@@ -1025,6 +1253,7 @@ export default function ChatPage() {
     let nextAvatar = previousAvatar;
 
     if (editGroupAvatarFile) {
+      /* Code cũ bị thiếu mediaType dẫn đến lỗi 400:
       const formData = new FormData();
       formData.append('file', editGroupAvatarFile);
       const uploadResult = await apiClient.post<
@@ -1033,6 +1262,20 @@ export default function ChatPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       nextAvatar = uploadResult.data.data?.url ?? uploadResult.data.data?.fileUrl ?? previousAvatar;
+      */
+
+      // Code mới: Sử dụng mutation đã cấu hình chuẩn (gửi kèm cả mediaType)
+      try {
+        const uploadResult = await uploadMedia({ 
+          file: editGroupAvatarFile, 
+          mediaType: 'image' 
+        }).unwrap();
+        nextAvatar = uploadResult.data?.url ?? uploadResult.data?.fileUrl ?? previousAvatar;
+      } catch (err) {
+        console.error('Avatar upload failed:', err);
+        // Không ngắt luồng chính, nhưng thông báo cho người dùng
+        toast.error('Không thể tải lên ảnh đại diện mới');
+      }
     }
 
     dispatch(
@@ -1053,6 +1296,47 @@ export default function ChatPage() {
       setShowEditGroupModal(false);
       setEditGroupAvatarFile(null);
       toast.success('Cập nhật nhóm thành công');
+
+      // System message: group name changed (centered)
+      const now = new Date();
+      const userName = currentUser?.displayName || currentUser?.name || 'Bạn';
+      let content = '';
+      if (previousName && previousName !== nextName) {
+        content = `Tên nhóm đã đổi từ '${previousName}' thành '${nextName}'`;
+      } else {
+        content = `${userName} đã đổi tên nhóm thành '${nextName}'`;
+      }
+      const systemMsg = {
+        messageId: `system-${Date.now()}`,
+        conversationId: activeConversationId,
+        senderId: 'system',
+        senderDisplayName: 'Hệ thống',
+        type: 'system',
+        subtype: 'group_name_changed',
+        position: 'center',
+        content,
+        mediaUrl: null,
+        mediaType: null,
+        mediaSize: null,
+        thumbnailUrl: null,
+        replyTo: null,
+        replyToDetails: null,
+        isPinned: false,
+        isEdited: false,
+        isRecalled: false,
+        isDeleted: false,
+        reactions: {},
+        createdAt: now.toISOString(),
+      };
+      // Push to local message list
+      dispatch(
+        chatApi.util.updateQueryData('getMessages', { conversationId: activeConversationId }, (draft) => {
+          if (!draft.data) draft.data = [];
+          draft.data.push(systemMsg);
+        })
+      );
+      // Broadcast via socket to all group members
+      socketService.emit('message:new', systemMsg);
     } catch (error) {
       dispatch(
         chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
@@ -1079,6 +1363,12 @@ export default function ChatPage() {
 
   const handleDeleteGroup = useCallback(async () => {
     if (!activeConversationId) return;
+    
+    if (currentUserRole !== 'owner') {
+      toast.error('Chỉ Trưởng nhóm mới có quyền giải tán nhóm');
+      return;
+    }
+
     if (!window.confirm('Giải tán nhóm?')) return;
 
     setActionBusy('deleteGroup', true);
@@ -1115,32 +1405,26 @@ export default function ChatPage() {
     async (memberIds: string[]) => {
       if (!activeConversationId || memberIds.length === 0) return;
       setActionBusy('addMembers', true);
-      const before = groupMembers;
-      const optimistic: GroupMember[] = [
-        ...groupMembers,
-        ...memberIds.map((id) => ({
-          userId: id,
-          name: id,
-          avatar: '',
-          role: 'member' as GroupMemberRole,
-        })),
-      ];
-      setGroupMembers(optimistic);
       try {
         await apiClient.post(`/chat/groups/${activeConversationId}/members`, { memberIds });
-        toast.success('Đã thêm thành viên');
-        await fetchGroupMembers(activeConversationId);
+        toast.success('Đã gửi lời mời vào nhóm');
+        // Nghiệp vụ mới: người được mời nằm ở "Chờ duyệt" cho tới khi được duyệt/chấp nhận.
+        await fetchGroupRequests(activeConversationId);
         setSelectedAddMembers([]);
         setShowAddMembersModal(false);
       } catch (error) {
-        setGroupMembers(before);
-        toast.error('Không thể thêm thành viên');
+        const status = (error as any)?.response?.status;
+        if (status === 403) {
+          toast.error('Bạn không có quyền mời thành viên');
+        } else {
+          toast.error('Không thể gửi lời mời');
+        }
         console.error('Failed to add members:', error);
       } finally {
         setActionBusy('addMembers', false);
       }
     },
-    [activeConversationId, groupMembers, fetchGroupMembers, setActionBusy],
+    [activeConversationId, fetchGroupRequests, setActionBusy],
   );
 
   const handleSubmitTask = useCallback(async () => {
@@ -1160,6 +1444,7 @@ export default function ChatPage() {
         title: taskTitle.trim(),
         description: taskNote.trim(),
         assignees: taskAssignees,
+        assignToAll: taskAssignToAll,
         dueDate: taskDeadline || undefined,
       });
       toast.success('Đã tạo công việc');
@@ -1177,6 +1462,7 @@ export default function ChatPage() {
     taskTitle,
     taskNote,
     taskAssignees,
+    taskAssignToAll,
     taskDeadline,
     closeTaskModal,
     fetchGroupTasks,
@@ -1233,18 +1519,21 @@ export default function ChatPage() {
       options: pollOptions.filter((o) => o.trim()).map((text) => ({ text, voters: [] })),
       createdAt: new Date().toISOString(),
       isClosed: false,
+      isMultipleChoice: pollMultipleChoice,
     };
     setGroupPolls((prev) => [optimisticPoll, ...prev]);
     try {
       await apiClient.post(`/chat/groups/${activeConversationId}/polls`, {
         question: pollQuestion.trim(),
         options: pollOptions.filter((o) => !!o.trim()),
+        isMultipleChoice: pollMultipleChoice,
       });
       toast.success('Tạo bình chọn thành công');
       await fetchGroupPolls(activeConversationId);
       setShowPollModal(false);
       setPollQuestion('');
       setPollOptions(['', '']);
+      setPollMultipleChoice(false);
     } catch (err) {
       setGroupPolls((prev) => prev.filter((poll) => poll.pollId !== optimisticPoll.pollId));
       toast.error('Không thể tạo bình chọn');
@@ -1252,7 +1541,7 @@ export default function ChatPage() {
     } finally {
       setActionBusy('createPoll', false);
     }
-  }, [activeConversationId, pollQuestion, pollOptions, fetchGroupPolls, setActionBusy]);
+  }, [activeConversationId, pollQuestion, pollOptions, pollMultipleChoice, fetchGroupPolls, setActionBusy]);
 
   const openCreateGroupModal = useCallback(() => {
     setShowCreateGroupModal(true);
@@ -1262,8 +1551,12 @@ export default function ChatPage() {
 
   const openAddMembersModal = useCallback(() => {
     setSelectedAddMembers([]);
+    // Đảm bảo đã có danh sách member trước khi lọc bạn bè (tránh hiện cả người đã trong nhóm).
+    if (activeConversationId) {
+      void fetchGroupMembers(activeConversationId);
+    }
     setShowAddMembersModal(true);
-  }, []);
+  }, [activeConversationId, fetchGroupMembers]);
 
   const handleToggleAddMember = useCallback((userId: string, checked: boolean) => {
     setSelectedAddMembers((prev) =>
@@ -1346,175 +1639,191 @@ export default function ChatPage() {
     setAddFriendQuery('');
   }, []);
 
-  const handleApproveRequest = useCallback(
-    async (userId: string) => {
-      if (!activeConversationId) return;
-      setActionBusy('approveRequest', true);
-      const targetRequest = groupRequests.find((item) => item.userId === userId);
-      const beforeRequests = groupRequests;
-      const beforeMembers = groupMembers;
-      setGroupRequests((prev) => prev.filter((item) => item.userId !== userId));
-      if (targetRequest) {
-        setGroupMembers((prev) => [
-          ...prev,
-          {
-            userId: targetRequest.userId,
-            name: targetRequest.name,
-            avatar: targetRequest.avatar,
-            role: 'member',
-            joinedAt: new Date().toISOString(),
-          },
-        ]);
-      }
-      try {
-        await apiClient.post(`/chat/groups/${activeConversationId}/requests/${userId}/approve`);
-        toast.success('Đã duyệt yêu cầu');
-      } catch (err) {
-        setGroupRequests(beforeRequests);
-        setGroupMembers(beforeMembers);
-        toast.error('Không thể duyệt yêu cầu');
-        console.error('Failed to approve request:', err);
-      } finally {
-        setActionBusy('approveRequest', false);
-      }
-    },
-    [activeConversationId, groupRequests, groupMembers, setActionBusy],
-  );
+  const handleApproveRequest = useCallback(async (userId: string) => {
+    if (!activeConversationId) return;
+    
+    const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+    if (!isAdminOrOwner) {
+      toast.error('Bạn không có quyền duyệt yêu cầu tham gia');
+      return;
+    }
 
-  const handleRejectRequest = useCallback(
-    async (userId: string) => {
-      if (!activeConversationId) return;
-      setActionBusy('rejectRequest', true);
-      const before = groupRequests;
-      setGroupRequests((prev) => prev.filter((item) => item.userId !== userId));
-      try {
-        await apiClient.post(`/chat/groups/${activeConversationId}/requests/${userId}/reject`);
-        toast.success('Đã từ chối yêu cầu');
-      } catch (err) {
-        setGroupRequests(before);
-        toast.error('Không thể từ chối yêu cầu');
-        console.error('Failed to reject request:', err);
-      } finally {
-        setActionBusy('rejectRequest', false);
-      }
-    },
-    [activeConversationId, groupRequests, setActionBusy],
-  );
+    setActionBusy('approveRequest', true);
+    const targetRequest = groupRequests.find((item) => item.userId === userId);
+    const beforeRequests = groupRequests;
+    const beforeMembers = groupMembers;
+    setGroupRequests((prev) => prev.filter((item) => item.userId !== userId));
+    if (targetRequest) {
+      setGroupMembers((prev) => [
+        ...prev,
+        {
+          userId: targetRequest.userId,
+          name: targetRequest.name,
+          avatar: targetRequest.avatar,
+          role: 'member',
+          joinedAt: new Date().toISOString(),
+        },
+      ]);
+    }
+    try {
+      await apiClient.post(`/chat/groups/${activeConversationId}/requests/${userId}/approve`);
+      toast.success('Đã duyệt yêu cầu');
+    } catch (err) {
+      setGroupRequests(beforeRequests);
+      setGroupMembers(beforeMembers);
+      toast.error('Không thể duyệt yêu cầu');
+      console.error('Failed to approve request:', err);
+    } finally {
+      setActionBusy('approveRequest', false);
+    }
+  }, [activeConversationId, groupRequests, groupMembers, setActionBusy]);
 
-  const handleKickMember = useCallback(
-    async (userId: string) => {
-      if (!activeConversationId) return;
-      if (window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) {
-        setActionBusy('removeMember', true);
-        const before = groupMembers;
-        setGroupMembers((prev) => prev.filter((member) => member.userId !== userId));
-        try {
-          await apiClient.delete(`/chat/groups/${activeConversationId}/members/${userId}`);
-          toast.success('Đã xóa thành viên');
-        } catch (err) {
-          setGroupMembers(before);
-          toast.error('Không thể xóa thành viên');
-          console.error('Failed to kick member:', err);
-        } finally {
-          setActionBusy('removeMember', false);
-        }
-      }
-    },
-    [activeConversationId, groupMembers, setActionBusy],
-  );
+  const handleRejectRequest = useCallback(async (userId: string) => {
+    if (!activeConversationId) return;
+    
+    const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+    if (!isAdminOrOwner) {
+      toast.error('Bạn không có quyền từ chối yêu cầu tham gia');
+      return;
+    }
 
-  const handleChangeMemberRole = useCallback(
-    async (userId: string, role: GroupMemberRole) => {
-      if (!activeConversationId) return;
-      setActionBusy('changeRole', true);
+    setActionBusy('rejectRequest', true);
+    const before = groupRequests;
+    setGroupRequests((prev) => prev.filter((item) => item.userId !== userId));
+    try {
+      await apiClient.post(`/chat/groups/${activeConversationId}/requests/${userId}/reject`);
+      toast.success('Đã từ chối yêu cầu');
+    } catch (err) {
+      setGroupRequests(before);
+      toast.error('Không thể từ chối yêu cầu');
+      console.error('Failed to reject request:', err);
+    } finally {
+      setActionBusy('rejectRequest', false);
+    }
+  }, [activeConversationId, groupRequests, setActionBusy]);
+
+  const handleKickMember = useCallback(async (userId: string) => {
+    if (!activeConversationId) return;
+    
+    const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+    if (!isAdminOrOwner) {
+      toast.error('Bạn không có quyền mời thành viên ra khỏi nhóm');
+      return;
+    }
+
+    if (window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) {
+      setActionBusy('removeMember', true);
       const before = groupMembers;
       setGroupMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
       try {
-        await apiClient.put(`/chat/groups/${activeConversationId}/members/${userId}/role`, {
-          role,
-        });
-        toast.success('Đã cập nhật vai trò');
-      } catch (error) {
+        await apiClient.delete(`/chat/groups/${activeConversationId}/members/${userId}`);
+        toast.success('Đã xóa thành viên');
+      } catch (err) {
         setGroupMembers(before);
-        toast.error('Không thể cập nhật vai trò');
-        console.error('Failed to change member role:', error);
+        toast.error('Không thể xóa thành viên');
+        console.error('Failed to kick member:', err);
       } finally {
-        setActionBusy('changeRole', false);
+        setActionBusy('removeMember', false);
       }
-    },
-    [activeConversationId, groupMembers, setActionBusy],
-  );
+    }
+  }, [activeConversationId, groupMembers, setActionBusy]);
 
-  const handleVotePoll = useCallback(
-    async (pollId: string, optionIndex: number) => {
-      if (!activeConversationId) return;
-      setActionBusy('votePoll', true);
-      const before = groupPolls;
-      setGroupPolls((prev) =>
-        prev.map((poll) => {
-          if (poll.pollId !== pollId) return poll;
-          const nextOptions = poll.options.map((option, index) => {
-            const currentVoters = option.voters ?? [];
+  const handleChangeMemberRole = useCallback(async (userId: string, role: GroupMemberRole) => {
+    if (!activeConversationId) return;
+    
+    if (currentUserRole !== 'owner') {
+      toast.error('Chỉ Trưởng nhóm mới có quyền phân quyền thành viên');
+      return;
+    }
+
+    setActionBusy('changeRole', true);
+    const before = groupMembers;
+    setGroupMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
+    try {
+      await apiClient.put(`/chat/groups/${activeConversationId}/members/${userId}/role`, { role });
+      toast.success('Đã cập nhật vai trò');
+    } catch (error) {
+      setGroupMembers(before);
+      toast.error('Không thể cập nhật vai trò');
+      console.error('Failed to change member role:', error);
+    } finally {
+      setActionBusy('changeRole', false);
+    }
+  }, [activeConversationId, groupMembers, setActionBusy]);
+
+  const handleVotePoll = useCallback(async (pollId: string, optionIndex: number) => {
+    if (!activeConversationId) return;
+    setActionBusy('votePoll', true);
+    const before = groupPolls;
+    const pollBefore = groupPolls.find((p) => p.pollId === pollId);
+    const hadVotedHereBefore = !!pollBefore?.options?.[optionIndex]?.voters?.includes(currentUserId);
+    setGroupPolls((prev) =>
+      prev.map((poll) => {
+        if (poll.pollId !== pollId) return poll;
+        const isMultiple = poll.isMultipleChoice === true;
+        const nextOptions = poll.options.map((option, index) => {
+          const currentVoters = option.voters ?? [];
+          const hasVotedHere = currentVoters.includes(currentUserId);
+          if (!isMultiple) {
+            // single-choice: only one option can contain currentUserId
             if (index === optionIndex) {
-              if (currentVoters.includes(currentUserId)) {
-                return { ...option, voters: currentVoters.filter((id) => id !== currentUserId) };
-              }
-              return { ...option, voters: [...currentVoters, currentUserId] };
+              return hasVotedHere
+                ? { ...option, voters: currentVoters.filter((id) => id !== currentUserId) }
+                : { ...option, voters: [...currentVoters, currentUserId] };
             }
-            return option;
-          });
-          return { ...poll, options: nextOptions };
-        }),
-      );
-      try {
-        const isVoted = before
-          .find((poll) => poll.pollId === pollId)
-          ?.options[optionIndex]?.voters?.includes(currentUserId);
-        if (isVoted) {
-          await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/unvote`, {
-            optionIndex,
-          });
-        } else {
-          await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/vote`, {
-            optionIndex,
-          });
-        }
-      } catch (error) {
-        setGroupPolls(before);
-        toast.error('Không thể cập nhật bình chọn');
-        console.error('Failed to vote poll:', error);
-      } finally {
-        setActionBusy('votePoll', false);
-      }
-    },
-    [activeConversationId, currentUserId, groupPolls, setActionBusy],
-  );
-
-  const handleToggleTaskStatus = useCallback(
-    async (taskId: string) => {
-      if (!activeConversationId) return;
-      setActionBusy('updateTask', true);
-      const before = groupTasks;
-      const currentTask = groupTasks.find((task) => task.taskId === taskId);
-      if (!currentTask) return;
-      const nextStatus: GroupTask['status'] = currentTask.status === 'done' ? 'todo' : 'done';
-      setGroupTasks((prev) =>
-        prev.map((task) => (task.taskId === taskId ? { ...task, status: nextStatus } : task)),
-      );
-      try {
-        await apiClient.put(`/chat/groups/${activeConversationId}/tasks/${taskId}`, {
-          status: nextStatus,
+            return { ...option, voters: currentVoters.filter((id) => id !== currentUserId) };
+          }
+          // multiple-choice: toggle only this option
+          if (index === optionIndex) {
+            return hasVotedHere
+              ? { ...option, voters: currentVoters.filter((id) => id !== currentUserId) }
+              : { ...option, voters: [...currentVoters, currentUserId] };
+          }
+          return option;
         });
-      } catch (error) {
-        setGroupTasks(before);
-        toast.error('Không thể cập nhật công việc');
-        console.error('Failed to update task:', error);
-      } finally {
-        setActionBusy('updateTask', false);
+        return { ...poll, options: nextOptions };
+      })
+    );
+    try {
+      if (hadVotedHereBefore) {
+        await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/unvote`, { optionIndex });
+      } else {
+        await apiClient.post(`/chat/groups/${activeConversationId}/polls/${pollId}/vote`, { optionIndex });
       }
-    },
-    [activeConversationId, groupTasks, setActionBusy],
-  );
+    } catch (error) {
+      setGroupPolls(before);
+      toast.error('Không thể bình chọn');
+      console.error('Failed to vote poll:', error);
+    } finally {
+      setActionBusy('votePoll', false);
+    }
+  }, [activeConversationId, groupPolls, currentUserId, setActionBusy]);
+
+  const openPollVoteModal = useCallback((pollId: string) => {
+    setActivePollId(pollId);
+    setShowPollVoteModal(true);
+  }, []);
+
+  const handleToggleTaskStatus = useCallback(async (taskId: string) => {
+    if (!activeConversationId) return;
+    setActionBusy('updateTask', true);
+    const before = groupTasks;
+    const currentTask = groupTasks.find((task) => task.taskId === taskId);
+    if (!currentTask) return;
+    const nextStatus: GroupTask['status'] = currentTask.status === 'done' ? 'todo' : 'done';
+    setGroupTasks((prev) => prev.map((task) => (task.taskId === taskId ? { ...task, status: nextStatus } : task)));
+    try {
+      await apiClient.put(`/chat/groups/${activeConversationId}/tasks/${taskId}`, { status: nextStatus });
+    } catch (error) {
+      setGroupTasks(before);
+      toast.error('Không thể cập nhật công việc');
+      console.error('Failed to update task:', error);
+    } finally {
+      setActionBusy('updateTask', false);
+    }
+  }, [activeConversationId, groupTasks, setActionBusy]);
+
+  const currentUserRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
 
   return (
     <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
@@ -1559,6 +1868,7 @@ export default function ChatPage() {
               onEditGroup={openEditGroupModal}
               onAudioCall={handleAudioCall}
               onVideoCall={handleVideoCall}
+              currentUserRole={currentUserRole}
             />
 
             {activeConversationId && primaryPinnedMessage && (
@@ -1594,25 +1904,36 @@ export default function ChatPage() {
               onReply={(msg) => dispatch(setReplyingTo(msg))}
               onReact={handleReactMessage}
               onJumpToLatest={handleJumpToLatest}
+              groupTasks={groupTasks}
+              onTaskJoined={(taskId) => {
+                setGroupTasks((prev) =>
+                  prev.map((t) => {
+                    if (t.taskId !== taskId) return t;
+                    const p = Array.isArray(t.participants) ? t.participants : [];
+                    return p.includes(currentUserId) ? t : { ...t, participants: [...p, currentUserId] };
+                  }),
+                );
+              }}
+              onOpenPollVote={(pollId) => openPollVoteModal(pollId)}
             />
 
             <ChatComposer
-              onAddPendingFiles={addPendingFiles}
-              onRemovePendingAttachment={removePendingAttachment}
-              pendingAttachments={pendingAttachments}
-              activeConversation={activeConversation}
-              activeConversationId={activeConversationId}
-              inputText={inputText}
-              onInputTextChange={setInputText}
-              onKeyDown={handleKeyDown}
-              onTyping={handleTyping}
-              onSend={handleSendMessage}
-              isSending={isSending}
-              replyingTo={replyingTo}
-              onClearReply={() => dispatch(clearReplyingTo())}
-              onOpenPoll={() => setShowPollModal(true)}
-              onOpenTask={() => setShowTaskModal(true)}
-            />
+                activeConversation={activeConversation}
+                activeConversationId={activeConversationId}
+                inputText={inputText}
+                onInputTextChange={setInputText}
+                onKeyDown={handleKeyDown}
+                onTyping={handleTyping}
+                onSend={handleSendMessage}
+                isSending={isSending}
+                replyingTo={replyingTo}
+                onClearReply={() => dispatch(clearReplyingTo())}
+                onOpenPoll={() => setShowPollModal(true)}
+                onOpenTask={() => setShowTaskModal(true)} pendingAttachments={[]} onAddPendingFiles={function (files: File[]): void {
+                  throw new Error('Function not implemented.');
+                } } onRemovePendingAttachment={function (localId: string): void {
+                  throw new Error('Function not implemented.');
+                } }            />
           </>
         )}
       </div>
@@ -1626,6 +1947,7 @@ export default function ChatPage() {
           onAddMembers={openAddMembersModal}
           onRequestJoin={() => void handleRequestJoin()}
           onVotePoll={(pollId, optionIndex) => void handleVotePoll(pollId, optionIndex)}
+          onOpenPollVote={(pollId) => openPollVoteModal(pollId)}
           onAddPollOption={(pollId) => void handleAddPollOption(pollId)}
           onClosePoll={(pollId) => void handleClosePoll(pollId)}
           onToggleTask={(taskId) => void handleToggleTaskStatus(taskId)}
@@ -1641,12 +1963,31 @@ export default function ChatPage() {
           }}
           onLeaveGroup={() => void handleLeaveGroup()}
           onDeleteGroup={() => void handleDeleteGroup()}
-          onOpenMemberModal={(tab) => {
-            setMemberTab(tab);
-            setShowMemberModal(true);
+          // Modal "Thành viên" đã render ngay trong panel, giữ callback cũ để tương thích nhưng không dùng nữa.
+          onOpenMemberModal={() => {}}
+          currentUserRole={currentUserRole}
+          currentUserId={currentUserId}
+          members={groupMembers}
+          requests={groupRequests}
+          onApproveMember={handleApproveRequest}
+          onRejectMember={handleRejectRequest}
+          onKickMember={handleKickMember}
+          busyMemberActions={{
+            approving: groupActionLoading.approveRequest,
+            rejecting: groupActionLoading.rejectRequest,
+            removing: groupActionLoading.removeMember,
+            changingRole: groupActionLoading.changeRole,
           }}
         />
       )}
+
+      <PollVoteModal
+        open={showPollVoteModal}
+        onClose={() => setShowPollVoteModal(false)}
+        poll={activePollId ? (groupPolls.find((p) => p.pollId === activePollId) as any) : null}
+        currentUserId={currentUserId}
+        onToggleVote={(pollId, optionIndex) => void handleVotePoll(pollId, optionIndex)}
+      />
 
       <MarkReadModal open={showMarkReadModal} onClose={() => setShowMarkReadModal(false)} />
       <AddFriendModal
@@ -1701,28 +2042,32 @@ export default function ChatPage() {
         onPollQuestionChange={setPollQuestion}
         pollOptions={pollOptions}
         onPollOptionsChange={setPollOptions}
+        multipleChoice={pollMultipleChoice}
+        onMultipleChoiceChange={setPollMultipleChoice}
         onCreatePoll={handleCreatePoll}
       />
-      <MemberManagementModal
-        open={showMemberModal}
-        onClose={() => setShowMemberModal(false)}
-        memberTab={memberTab}
-        onMemberTabChange={setMemberTab}
-        members={groupMembers}
-        requests={groupRequests}
-        onApprove={handleApproveRequest}
-        onReject={handleRejectRequest}
-        onKick={handleKickMember}
-        onChangeRole={async (userId, role) => {
-          await handleChangeMemberRole(userId, role);
-        }}
-        busy={{
-          approving: groupActionLoading.approveRequest,
-          rejecting: groupActionLoading.rejectRequest,
-          removing: groupActionLoading.removeMember,
-          changingRole: groupActionLoading.changeRole,
-        }}
-      />
+      {false && (
+        <MemberManagementModal
+          open={showMemberModal}
+          onClose={() => setShowMemberModal(false)}
+          memberTab={memberTab}
+          onMemberTabChange={setMemberTab}
+          members={groupMembers}
+          requests={groupRequests}
+          onApprove={handleApproveRequest}
+          onReject={handleRejectRequest}
+          onKick={handleKickMember}
+          onChangeRole={async (userId, role) => {
+            await handleChangeMemberRole(userId, role);
+          }}
+          busy={{
+            approving: groupActionLoading.approveRequest,
+            rejecting: groupActionLoading.rejectRequest,
+            removing: groupActionLoading.removeMember,
+            changingRole: groupActionLoading.changeRole,
+          }}
+        />
+      )}
       <AISummaryModal
         open={showAISummaryModal}
         onClose={() => setShowAISummaryModal(false)}
@@ -1734,11 +2079,17 @@ export default function ChatPage() {
       <TaskModal
         open={showTaskModal}
         onClose={closeTaskModal}
-        members={groupMembers.map((m) => ({
+        currentUserId={currentUserId}
+        assignToAll={taskAssignToAll}
+        onAssignToAllChange={(v) => {
+          setTaskAssignToAll(v);
+          if (v) setTaskAssignees([]);
+        }}
+        members={groupMembers.map(m => ({
           id: m.userId,
           name: m.name ?? m.userId,
           avatar: m.avatar ?? 'https://via.placeholder.com/40',
-          role: m.role,
+          role: m.role
         }))}
         taskTitle={taskTitle}
         onTaskTitleChange={setTaskTitle}

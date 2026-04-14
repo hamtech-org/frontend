@@ -2,6 +2,9 @@ import { useState, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CheckCheck,
+  CalendarClock,
+  ClipboardList,
+  BarChart2,
   Download,
   FileText,
   MessageCircle,
@@ -13,14 +16,17 @@ import {
   RotateCcw,
   SmilePlus,
   Trash2,
+  Users,
   Video,
 } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/store/slices/chatSlice';
-import { formatTime } from '@/utils/formatDate';
+import { formatTime, formatDate } from '@/utils/formatDate';
 import { typingInitial, typingLabel } from '@/utils/chatUtils';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { formatFileSize } from '@/utils/fileHelper';
+import { apiClient } from '@/services/api';
+import { toast } from 'react-toastify';
 
 async function downloadAuthedFile(url: string, filename: string): Promise<void> {
   const token = localStorage.getItem('accessToken');
@@ -67,6 +73,9 @@ export type ChatMessageListProps = {
   onReply: (msg: IMessage) => void;
   onReact: (msg: IMessage, emoji: string) => void;
   onJumpToLatest: () => void;
+  groupTasks?: any[];
+  onTaskJoined?: (taskId: string) => void;
+  onOpenPollVote?: (pollId: string) => void;
 };
 
 export function ChatMessageList({
@@ -87,6 +96,9 @@ export function ChatMessageList({
   onReply,
   onReact,
   onJumpToLatest,
+  groupTasks,
+  onTaskJoined,
+  onOpenPollVote,
 }: ChatMessageListProps) {
   const scrollToMessage = (messageId: string) => {
     document.getElementById(`chat-msg-${messageId}`)?.scrollIntoView({
@@ -110,12 +122,282 @@ export function ChatMessageList({
       )}
       {activeConversationId && (
         <>
-          <div className="flex justify-center">
-            <span className="px-4 py-1 rounded-full bg-black/5 dark:bg-white/5 text-xs font-bold text-muted-foreground uppercase tracking-widest">
-              Hôm nay
-            </span>
-          </div>
           {allMessages.map((msg, index) => {
+            // Centered system message for group events (e.g. name change, received, etc.)
+            if (
+              (msg as any).type === 'system' || (msg as any).position === 'center'
+            ) {
+              // Show date above bubble if first system message of the day or first message
+              const prevMsg = index > 0 ? allMessages[index - 1] : undefined;
+              const prevDate = prevMsg ? prevMsg.createdAt?.slice(0, 10) : null;
+              const currDate = msg.createdAt?.slice(0, 10);
+              const showDate = !prevMsg || prevDate !== currDate;
+              // Show 'Hôm nay' if date is today
+              const todayStr = new Date().toISOString().slice(0, 10);
+              const isToday = currDate === todayStr;
+              const dateLabel = showDate ? (isToday ? 'Hôm nay' : formatDate(msg.createdAt)) : '';
+              const timeLabel = formatTime(msg.createdAt);
+              // Nếu là thông báo hệ thống do chính mình thực hiện thì xưng "Bạn" (chỉ phía người cập nhật).
+              let content = msg.content;
+              // Giữ logic cũ (case avatar nhóm) để tránh thay đổi hành vi đang ổn định.
+              if (
+                msg.content?.includes('đã cập nhật ảnh đại diện nhóm') &&
+                msg.senderId === currentUserId
+              ) {
+                content = 'Bạn đã cập nhật ảnh đại diện nhóm';
+              }
+              // Bổ sung: các system message khác có format "Tên đã ..." thì thay "Tên" -> "Bạn" khi chính mình là sender.
+              // Không đụng tới nội dung phía người nhận (senderId != currentUserId) nên người nhận vẫn thấy đúng tên người cập nhật.
+              if (msg.senderId === currentUserId && msg.senderDisplayName) {
+                const name = msg.senderDisplayName.trim();
+                if (name) {
+                  // Chỉ replace 1 lần để tránh "Tên" xuất hiện ở chỗ khác trong câu.
+                  content = content.replace(name, 'Bạn');
+                }
+              }
+
+              // Task assigned card payload (JSON) -> render modern card UI.
+              let taskCard: null | {
+                taskId: string;
+                actorName: string;
+                title: string;
+                dueDate: string | null;
+                note: string | null;
+                assigneeLabel: string;
+              } = null;
+              let taskJoinedLine: null | { actorName: string; title: string } = null;
+              if (typeof content === 'string' && content.trim().startsWith('{')) {
+                try {
+                  const obj = JSON.parse(content) as any;
+                  if (obj?.kind === 'task_assigned' && obj?.task?.title) {
+                    taskCard = {
+                      taskId: String(obj?.task?.taskId ?? ''),
+                      actorName: String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó'),
+                      title: String(obj.task.title ?? ''),
+                      dueDate: obj.task.dueDate ? String(obj.task.dueDate) : null,
+                      note: obj.task.note ? String(obj.task.note) : null,
+                      assigneeLabel: String(obj.task.assigneeLabel ?? 'cả nhóm'),
+                    };
+                  }
+                  if (obj?.kind === 'task_joined') {
+                    taskJoinedLine = {
+                      actorName: String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó'),
+                      title: String(obj?.task?.title ?? ''),
+                    };
+                  }
+                } catch {
+                  taskCard = null;
+                }
+              }
+
+              return (
+                <div key={msg.messageId} className="w-full flex flex-col items-center my-3 select-none">
+                  <span className="mb-2 bg-black/10 dark:bg-white/10 text-black/60 dark:text-white/60 text-xs px-3 py-1 rounded-full font-medium">
+                    {showDate ? `${timeLabel} ${dateLabel}` : timeLabel}
+                  </span>
+                  <div
+                    className="bg-[#f1f1f1] dark:bg-zinc-800 px-3 py-2 rounded-2xl shadow-sm"
+                    style={{ minWidth: 220, maxWidth: 420 }}
+                  >
+                    {taskCard ? (
+                      <div className="w-full">
+                        {(() => {
+                          const t = (groupTasks ?? []).find((x: any) => String(x?.taskId) === String(taskCard?.taskId));
+                          const participants = Array.isArray(t?.participants) ? (t.participants as string[]) : [];
+                          const participantsCount = participants.length;
+                          const joined = participants.includes(currentUserId);
+                          const assignees = Array.isArray(t?.assignees) ? (t.assignees as string[]) : [];
+                          const canJoinThisTask = assignees.includes(currentUserId);
+                          const onJoin = async (): Promise<void> => {
+                            if (!activeConversationId || !taskCard?.taskId) return;
+                            try {
+                              await apiClient.post(`/chat/groups/${activeConversationId}/tasks/${taskCard.taskId}/join`);
+                              onTaskJoined?.(taskCard.taskId);
+                              toast.success('Bạn đã tham gia công việc');
+                            } catch (e) {
+                              const status = (e as any)?.response?.status;
+                              if (status === 403) toast.error('Bạn không được giao công việc này');
+                              else toast.error('Không thể tham gia công việc');
+                              console.error('[joinTask]', e);
+                            }
+                          };
+                          return (
+                            <div className="flex items-center justify-center gap-2 mb-2">
+                              <span className="text-[12px] font-semibold text-muted-foreground">
+                                {participantsCount} người đã tham gia
+                              </span>
+                              <button
+                                type="button"
+                                onClick={onJoin}
+                                disabled={joined || !canJoinThisTask}
+                                className={
+                                  joined
+                                    ? 'px-3 py-1 rounded-full text-[12px] font-semibold bg-black/5 dark:bg-white/10 text-muted-foreground cursor-not-allowed'
+                                    : !canJoinThisTask
+                                      ? 'px-3 py-1 rounded-full text-[12px] font-semibold bg-blue-600/40 text-white/70 cursor-not-allowed'
+                                      : 'px-3 py-1 rounded-full text-[12px] font-semibold bg-blue-600 text-white hover:bg-blue-700'
+                                }
+                              >
+                                {joined ? 'Đã tham gia' : 'Tham gia'}
+                              </button>
+                            </div>
+                          );
+                        })()}
+                        <div className="flex items-center justify-center gap-2 text-[12px] font-bold text-foreground mb-1.5">
+                          <ClipboardList className="w-4 h-4 text-green-600 dark:text-green-400" />
+                          Giao việc
+                        </div>
+                        <div className="rounded-xl bg-white/70 dark:bg-black/20 border border-black/5 dark:border-white/10 px-3 py-2">
+                          <div className="text-[12px] font-semibold text-muted-foreground text-center mb-1">
+                            {msg.senderId === currentUserId ? 'Bạn' : taskCard.actorName} đã giao việc
+                          </div>
+                          <div className="text-[13px] font-extrabold text-foreground text-center">
+                            {taskCard.title}
+                          </div>
+                          <div className="mt-2 space-y-1.5 text-[12px] text-muted-foreground">
+                            <div className="flex items-center justify-center gap-2">
+                              <Users className="w-3.5 h-3.5" />
+                              <span className="font-semibold">Giao cho:</span> {taskCard.assigneeLabel}
+                            </div>
+                            {taskCard.dueDate ? (
+                              <div className="flex items-center justify-center gap-2">
+                                <CalendarClock className="w-3.5 h-3.5" />
+                                <span className="font-semibold">Deadline:</span>{' '}
+                                {new Date(taskCard.dueDate).toLocaleString()}
+                              </div>
+                            ) : null}
+                            {taskCard.note ? (
+                              <div className="text-center whitespace-pre-line">
+                                <span className="font-semibold">Ghi chú:</span> {taskCard.note}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    ) : taskJoinedLine ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <CheckCheck className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
+                        <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                          {(msg.senderId === currentUserId ? 'Bạn' : taskJoinedLine.actorName) + ' đã tham gia công việc'}
+                          {taskJoinedLine.title ? ` \"${taskJoinedLine.title}\"` : ''}
+                        </span>
+                      </div>
+                    ) : typeof content === 'string' && content.trim().startsWith('{') ? (
+                      (() => {
+                        try {
+                          const obj = JSON.parse(content) as any;
+                          if (obj?.kind === 'poll_created') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const question = String(obj?.poll?.question ?? '').trim();
+                            const pollId = String(obj?.poll?.pollId ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã tạo một bình chọn'}
+                                  {question ? `: ${question}` : ''}
+                                </span>
+                                {pollId && onOpenPollVote ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenPollVote(pollId)}
+                                    className="ml-1 px-2 py-1 rounded-full text-[11px] font-bold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+                                  >
+                                    Bình chọn
+                                  </button>
+                                ) : null}
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'poll_voted') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const optionText = String(obj?.poll?.optionText ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã bình chọn'}
+                                  {optionText ? `: ${optionText}` : ''}
+                                </span>
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'poll_vote_changed') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const optionText = String(obj?.poll?.optionText ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã thay đổi bình chọn'}
+                                  {optionText ? `: ${optionText}` : ''}
+                                </span>
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'poll_unvoted') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const optionText = String(obj?.poll?.optionText ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã rút phiếu'}
+                                  {optionText ? `: ${optionText}` : ''}
+                                </span>
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'poll_option_added') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const optionText = String(obj?.poll?.optionText ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã thêm lựa chọn'}
+                                  {optionText ? `: ${optionText}` : ''}
+                                </span>
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'poll_closed') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const question = String(obj?.poll?.question ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã đóng bình chọn'}
+                                  {question ? `: ${question}` : ''}
+                                </span>
+                              </div>
+                            );
+                          }
+                        } catch {
+                          // ignore
+                        }
+                        return (
+                          <div className="flex items-center justify-center gap-2">
+                            <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                            <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                              {content}
+                            </span>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div className="flex items-center justify-center gap-2">
+                        <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                        <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                          {content}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            }
             if (msg.type === 'call') {
               let payload: CallLogContent | null = null;
               try {
