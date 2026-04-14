@@ -19,13 +19,17 @@ const FALLBACK_SOCKET_URL = inferSocketUrl();
 class SocketService {
   private socket: Socket | null = null;
   private triedFallback = false;
+  private lastToken: string | null = null;
+  private triedTokenRefresh = false;
 
   connect(token: string): void {
     this.disconnect();
+    const normalizedToken = token?.startsWith('Bearer ') ? token.slice('Bearer '.length) : token;
+    this.lastToken = normalizedToken;
 
     const connectTo = (url: string) => {
       this.socket = io(url, {
-        auth: { token },
+        auth: { token: normalizedToken },
         transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionAttempts: 5,
@@ -44,6 +48,20 @@ class SocketService {
 
       this.socket.on('connect_error', (err: any) => {
         console.warn('Socket.io connect_error:', err?.message ?? err);
+        // Nếu token stale (thường do refresh token flow chỉ update localStorage), thử lấy token mới nhất rồi reconnect 1 lần.
+        const msg = String(err?.message ?? '');
+        if (!this.triedTokenRefresh && msg.includes('Token không hợp lệ')) {
+          const latest = localStorage.getItem('accessToken');
+          const latestNormalized = latest?.startsWith('Bearer ') ? latest.slice('Bearer '.length) : latest;
+          if (latestNormalized && latestNormalized !== this.lastToken) {
+            this.triedTokenRefresh = true;
+            this.lastToken = latestNormalized;
+            this.disconnect();
+            // Giữ nguyên URL hiện tại, chỉ đổi token
+            connectTo(url);
+            return;
+          }
+        }
         // Nếu cấu hình URL sai (thường nhầm port/proxy), thử fallback 1 lần.
         if (this.triedFallback) return;
         const primary = PRIMARY_SOCKET_URL || '';
@@ -81,6 +99,7 @@ class SocketService {
   disconnect(): void {
     this.socket?.disconnect();
     this.socket = null;
+    this.triedTokenRefresh = false;
   }
 
   getSocket(): Socket {
