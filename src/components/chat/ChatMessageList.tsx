@@ -110,11 +110,6 @@ export function ChatMessageList({
       )}
       {activeConversationId && (
         <>
-          <div className="flex justify-center">
-            <span className="px-4 py-1 rounded-full bg-black/5 dark:bg-white/5 text-xs font-bold text-muted-foreground uppercase tracking-widest">
-              Hôm nay
-            </span>
-          </div>
           {allMessages.map((msg, index) => {
             // Centered system message for group events (e.g. name change, received, etc.)
             if (
@@ -130,18 +125,25 @@ export function ChatMessageList({
               const isToday = currDate === todayStr;
               const dateLabel = showDate ? (isToday ? 'Hôm nay' : formatDate(msg.createdAt)) : '';
               const timeLabel = formatTime(msg.createdAt);
+              // Nếu là thông báo cập nhật avatar nhóm và là chính mình thì xưng "Bạn"
+              let content = msg.content;
+              if (
+                msg.content?.includes('đã cập nhật ảnh đại diện nhóm') &&
+                msg.senderId === currentUserId
+              ) {
+                content = 'Bạn đã cập nhật ảnh đại diện nhóm';
+              }
               return (
                 <div key={msg.messageId} className="w-full flex flex-col items-center my-3 select-none">
-                  {showDate && (
-                    <span className="mb-1 text-[11px] text-muted-foreground font-semibold uppercase tracking-widest">{dateLabel}</span>
-                  )}
-                  <span className="mb-1 text-[10px] text-muted-foreground font-normal">{timeLabel}</span>
+                  <span className="mb-2 bg-black/10 dark:bg-white/10 text-black/60 dark:text-white/60 text-xs px-3 py-1 rounded-full font-medium">
+                    {showDate ? `${timeLabel} ${dateLabel}` : timeLabel}
+                  </span>
                   <div
                     className="flex items-center justify-center gap-2 bg-[#f1f1f1] dark:bg-zinc-800 px-3 py-1.5 rounded-2xl shadow-sm"
                     style={{ minWidth: 180, maxWidth: 360 }}
                   >
                     <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
-                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300">{msg.content}</span>
+                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300">{content}</span>
                   </div>
                 </div>
               );
