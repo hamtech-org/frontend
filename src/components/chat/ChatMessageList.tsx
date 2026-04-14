@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/store/slices/chatSlice';
-import { formatTime } from '@/utils/formatDate';
+import { formatTime, formatDate } from '@/utils/formatDate';
 import { typingInitial, typingLabel } from '@/utils/chatUtils';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { formatFileSize } from '@/utils/fileHelper';
@@ -116,6 +116,36 @@ export function ChatMessageList({
             </span>
           </div>
           {allMessages.map((msg, index) => {
+            // Centered system message for group events (e.g. name change, received, etc.)
+            if (
+              msg.type === 'system' || (msg as any).position === 'center'
+            ) {
+              // Show date above bubble if first system message of the day or first message
+              const prevMsg = index > 0 ? allMessages[index - 1] : undefined;
+              const prevDate = prevMsg ? prevMsg.createdAt?.slice(0, 10) : null;
+              const currDate = msg.createdAt?.slice(0, 10);
+              const showDate = !prevMsg || prevDate !== currDate;
+              // Show 'Hôm nay' if date is today
+              const todayStr = new Date().toISOString().slice(0, 10);
+              const isToday = currDate === todayStr;
+              const dateLabel = showDate ? (isToday ? 'Hôm nay' : formatDate(msg.createdAt)) : '';
+              const timeLabel = formatTime(msg.createdAt);
+              return (
+                <div key={msg.messageId} className="w-full flex flex-col items-center my-3 select-none">
+                  {showDate && (
+                    <span className="mb-1 text-[11px] text-muted-foreground font-semibold uppercase tracking-widest">{dateLabel}</span>
+                  )}
+                  <span className="mb-1 text-[10px] text-muted-foreground font-normal">{timeLabel}</span>
+                  <div
+                    className="flex items-center justify-center gap-2 bg-[#f1f1f1] dark:bg-zinc-800 px-3 py-1.5 rounded-2xl shadow-sm"
+                    style={{ minWidth: 180, maxWidth: 360 }}
+                  >
+                    <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300">{msg.content}</span>
+                  </div>
+                </div>
+              );
+            }
             if (msg.type === 'call') {
               let payload: CallLogContent | null = null;
               try {
