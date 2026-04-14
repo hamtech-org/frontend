@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Trash2, UserPlus, Users, X } from 'lucide-react';
+import { KeyRound, Trash2, UserPlus, Users, X } from 'lucide-react';
 
 type MemberTab = 'list' | 'pending';
+type MemberUiVariant = 'modal' | 'inline';
 
 type MemberManagementModalProps = {
   open: boolean;
@@ -20,6 +21,7 @@ type MemberManagementModalProps = {
     removing?: boolean;
     changingRole?: boolean;
   };
+  variant?: MemberUiVariant;
 };
 
 export function MemberManagementModal({
@@ -34,7 +36,137 @@ export function MemberManagementModal({
   onKick,
   onChangeRole,
   busy,
+  variant = 'modal',
 }: MemberManagementModalProps) {
+  // Inline: render thẳng trong panel (không overlay)
+  if (variant === 'inline') {
+    if (!open) return null;
+    return (
+      <div className="h-full w-full flex flex-col bg-white dark:bg-[#1a1a1a]">
+        <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <Users className="w-4 h-4 text-blue-600" />
+            </div>
+            <h3 className="font-bold text-[17px] text-black dark:text-white">Thành viên</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 transition-colors"
+            title="Quay lại"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex px-5 pt-4 gap-1 shrink-0">
+          {(['list', 'pending'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => onMemberTabChange(tab)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
+                memberTab === tab
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                  : 'bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10'
+              }`}
+            >
+              {tab === 'list' ? (
+                <>
+                  <Users className="w-3.5 h-3.5" /> Thành viên ({members.length})
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-3.5 h-3.5" /> Chờ duyệt{' '}
+                  {requests.length > 0 && (
+                    <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 leading-none">
+                      {requests.length}
+                    </span>
+                  )}
+                </>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-2">
+          {memberTab === 'list'
+            ? members.map((member) => (
+                <div
+                  key={member.userId}
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors group"
+                >
+                  <img
+                    src={member.avatar || 'https://via.placeholder.com/40'}
+                    className="w-10 h-10 rounded-full object-cover shrink-0"
+                    alt=""
+                  />
+                  <div className="flex-1 overflow-hidden">
+                    <p className="font-bold text-[14px] text-black dark:text-white truncate">{member.name}</p>
+                    {member.role === 'owner' ? (
+                      <div className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground font-semibold">
+                        <KeyRound className="w-3.5 h-3.5 text-amber-500" />
+                        Trưởng nhóm
+                      </div>
+                    ) : null}
+                  </div>
+                  {member.role !== 'owner' && (
+                    <button
+                      type="button"
+                      onClick={() => onKick(member.userId)}
+                      disabled={busy?.removing}
+                      className="opacity-0 group-hover:opacity-100 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-[12px] font-bold transition-all flex items-center gap-1 shrink-0"
+                    >
+                      <Trash2 className="w-3 h-3" /> Kick
+                    </button>
+                  )}
+                  {member.role === 'owner' && (
+                    <span className="px-2 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[11px] font-bold shrink-0">
+                      Trưởng nhóm
+                    </span>
+                  )}
+                </div>
+              ))
+            : requests.map((person) => (
+                <div
+                  key={person.userId}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5"
+                >
+                  <img
+                    src={person.avatar || 'https://via.placeholder.com/40'}
+                    className="w-10 h-10 rounded-full object-cover shrink-0"
+                    alt=""
+                  />
+                  <div className="flex-1 overflow-hidden">
+                    <p className="font-bold text-[14px] text-black dark:text-white truncate">{person.userId}</p>
+                    <p className="text-[12px] text-muted-foreground font-medium">Yêu cầu tham gia</p>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => onReject(person.userId)}
+                      disabled={busy?.rejecting}
+                      className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-[12px] font-bold transition-all"
+                    >
+                      Từ chối
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onApprove(person.userId)}
+                      disabled={busy?.approving}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-[12px] font-bold transition-all shadow-sm"
+                    >
+                      Duyệt
+                    </button>
+                  </div>
+                </div>
+              ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <AnimatePresence>
       {open && (
@@ -103,18 +235,11 @@ export function MemberManagementModal({
                       <div className="flex-1 overflow-hidden">
                         <p className="font-bold text-[14px] text-black dark:text-white truncate">{member.name}</p>
                         {member.role === 'owner' ? (
-                          <p className="text-[12px] text-muted-foreground font-medium">owner</p>
-                        ) : (
-                          <select
-                            className="text-[12px] rounded-lg bg-black/5 dark:bg-white/5 px-2 py-1"
-                            value={member.role}
-                            onChange={(e) => void onChangeRole(member.userId, e.target.value as 'admin' | 'member')}
-                            disabled={busy?.changingRole}
-                          >
-                            <option value="member">member</option>
-                            <option value="admin">admin</option>
-                          </select>
-                        )}
+                          <div className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground font-semibold">
+                            <KeyRound className="w-3.5 h-3.5 text-amber-500" />
+                            Trưởng nhóm
+                          </div>
+                        ) : null}
                       </div>
                       {member.role !== 'owner' && (
                         <button
@@ -127,8 +252,8 @@ export function MemberManagementModal({
                         </button>
                       )}
                       {member.role === 'owner' && (
-                        <span className="px-2 py-1 rounded-lg bg-blue-600/10 text-blue-600 text-[11px] font-bold shrink-0">
-                          Admin
+                        <span className="px-2 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[11px] font-bold shrink-0">
+                          Trưởng nhóm
                         </span>
                       )}
                     </div>
