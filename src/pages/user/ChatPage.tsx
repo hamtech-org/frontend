@@ -20,10 +20,14 @@ import { useUploadMediaMultiMutation, type MediaUploadResult } from '@/store/api
 import type { PendingAttachment } from '@/components/chat/ChatComposer';
 import {
   setActiveConversation,
+  messageReceived,
   messageEdited,
   messageRecalled,
   messageDeleted,
   messagePinUpdated,
+  messageReacted,
+  typingStarted,
+  typingStopped,
   resetUnread,
   setReplyingTo,
   clearReplyingTo,
@@ -144,6 +148,8 @@ function messageTypeFromUploadResult(r: MediaUploadResult): IMessage['type'] {
   return 'file';
 }
 
+const EMPTY_ARRAY: any[] = [];
+
 export default function ChatPage() {
   const navigate = useNavigate();
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
@@ -165,12 +171,15 @@ export default function ChatPage() {
   const conversations = conversationsData?.data ?? [];
 
   const activeConversationId = useSelector((state: RootState) => state.chat.activeConversationId);
-  const socketMessages = useSelector((state: RootState) =>
-    activeConversationId ? (state.chat.messages[activeConversationId] ?? []) : [],
-  );
-  const typingUsers = useSelector((state: RootState) =>
-    activeConversationId ? (state.chat.typingUsers[activeConversationId] ?? []) : [],
-  );
+  const socketMessages = useSelector((state: RootState) => {
+    if (!activeConversationId) return EMPTY_ARRAY;
+    return state.chat.messages[activeConversationId] ?? EMPTY_ARRAY;
+  });
+
+  const typingUsers = useSelector((state: RootState) => {
+    if (!activeConversationId) return EMPTY_ARRAY;
+    return state.chat.typingUsers[activeConversationId] ?? EMPTY_ARRAY;
+  });
   const replyingTo = useSelector((state: RootState) => state.chat.replyingTo);
 
   const { data: messagesData } = useGetMessagesQuery(
@@ -339,6 +348,11 @@ export default function ChatPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevLastMessageIdRef = useRef<string | null>(null);
+  const activeConversationIdRef = useRef<string | null>(activeConversationId);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [unreadIncomingCount, setUnreadIncomingCount] = useState(0);
 
@@ -380,8 +394,15 @@ export default function ChatPage() {
   const fetchGroupMembers = useCallback(async (groupId: string) => {
     setGroupLoading((prev) => ({ ...prev, members: true }));
     try {
-      const res = await apiClient.get<ApiSuccessResponse<GroupMember[]>>(`/chat/conversations/${groupId}/members`);
-      setGroupMembers(res.data.data ?? []);
+      const res = await apiClient.get<ApiSuccessResponse<GroupMember[]>>(`/chat/groups/${groupId}/members`);
+      const members = res.data.data ?? [];
+      setGroupMembers(members);
+      
+      // Update join requested state if current user is not a member but in request list
+      // (This logic might be better elsewhere but for now let's ensure we have members)
+    } catch (err) {
+      console.error('[fetchGroupMembers] Error:', err);
+      setGroupMembers([]);
     } finally {
       setGroupLoading((prev) => ({ ...prev, members: false }));
     }
@@ -392,6 +413,11 @@ export default function ChatPage() {
     try {
       const res = await apiClient.get<ApiSuccessResponse<GroupRequest[]>>(`/chat/groups/${groupId}/requests`);
       setGroupRequests(res.data.data ?? []);
+    } catch (err: any) {
+      if (err.response?.status !== 403) {
+        console.error('[fetchGroupRequests] Error:', err);
+      }
+      setGroupRequests([]);
     } finally {
       setGroupLoading((prev) => ({ ...prev, requests: false }));
     }
@@ -402,6 +428,9 @@ export default function ChatPage() {
     try {
       const res = await apiClient.get<ApiSuccessResponse<GroupPoll[]>>(`/chat/groups/${groupId}/polls`);
       setGroupPolls(res.data.data ?? []);
+    } catch (err) {
+      console.error('[fetchGroupPolls] Error:', err);
+      setGroupPolls([]);
     } finally {
       setGroupLoading((prev) => ({ ...prev, polls: false }));
     }
@@ -412,6 +441,9 @@ export default function ChatPage() {
     try {
       const res = await apiClient.get<ApiSuccessResponse<GroupTask[]>>(`/chat/groups/${groupId}/tasks`);
       setGroupTasks(res.data.data ?? []);
+    } catch (err) {
+      console.error('[fetchGroupTasks] Error:', err);
+      setGroupTasks([]);
     } finally {
       setGroupLoading((prev) => ({ ...prev, tasks: false }));
     }
@@ -422,7 +454,8 @@ export default function ChatPage() {
     try {
       const res = await apiClient.get<ApiSuccessResponse<AIRecap | null>>(`/chat/groups/${groupId}/ai-recap/latest`);
       setLatestRecap(res.data.data ?? null);
-    } catch {
+    } catch (err) {
+      // Just failing silently for recap
       setLatestRecap(null);
     } finally {
       setGroupLoading((prev) => ({ ...prev, recap: false }));
@@ -488,15 +521,17 @@ export default function ChatPage() {
       void fetchLatestRecap(activeConversationId);
     };
 
-    const handleGroupUpdated = (data: unknown) => {
+
+
+    // Realtime cập nhật thành viên nhóm
+    const handleMemberChanged = (data: any) => {
       if (!isCurrentGroup(data)) return;
-      refreshMembers();
+      if (activeConversationId) fetchGroupMembers(activeConversationId);
     };
 
-    const handleMemberChanged = (data: unknown) => {
+    const handleTaskChanged = (data: unknown) => {
       if (!isCurrentGroup(data)) return;
-      refreshMembers();
-      refreshRequests();
+      refreshTasks();
     };
 
     const handleRequestsChanged = (data: unknown) => {
@@ -509,17 +544,11 @@ export default function ChatPage() {
       refreshPolls();
     };
 
-    const handleTaskChanged = (data: unknown) => {
-      if (!isCurrentGroup(data)) return;
-      refreshTasks();
-    };
-
     const handleRecapChanged = (data: unknown) => {
       if (!isCurrentGroup(data)) return;
       refreshRecap();
     };
 
-    socketService.on('group:updated', handleGroupUpdated);
     socketService.on('group:member_joined', handleMemberChanged);
     socketService.on('group:member_left', handleMemberChanged);
     socketService.on('group:members_added', handleMemberChanged);
@@ -534,7 +563,6 @@ export default function ChatPage() {
     socketService.on('group:recap_new', handleRecapChanged);
 
     return () => {
-      socketService.off('group:updated', handleGroupUpdated);
       socketService.off('group:member_joined', handleMemberChanged);
       socketService.off('group:member_left', handleMemberChanged);
       socketService.off('group:members_added', handleMemberChanged);
@@ -557,7 +585,145 @@ export default function ChatPage() {
     fetchGroupTasks,
     fetchLatestRecap,
     refetchConversations,
+    dispatch,
   ]);
+
+  useEffect(() => {
+    const handleNewMessage = (msg: IMessage) => {
+      dispatch(messageReceived(msg));
+      
+      // Đồng bộ ngay lập tức tin nhắn cuối cùng (lastMessage) ở thanh sidebar
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          const conv = draft?.data?.find((item) => item.conversationId === msg.conversationId);
+          if (conv) {
+            conv.lastMessage = {
+              messageId: msg.messageId,
+              content: msg.content,
+              senderId: msg.senderId,
+              type: msg.type,
+              createdAt: msg.createdAt,
+              senderDisplayName: msg.senderDisplayName,
+            };
+            // Nếu không phải hội thoại đang mở, có thể tăng unreadCount (tùy logic frontend)
+            // if (msg.conversationId !== activeConversationId) {
+            //   conv.unreadCount = (conv.unreadCount ?? 0) + 1;
+            // }
+          }
+        })
+      );
+    };
+
+    const handleEditedMessage = (payload: {
+      messageId: string;
+      conversationId: string;
+      content: string;
+    }) => {
+      dispatch(messageEdited(payload));
+      patchMessageInCache(payload.conversationId, payload.messageId, {
+        content: payload.content,
+        isEdited: true,
+      });
+    };
+
+    const handleRecalledMessage = (payload: { messageId: string; conversationId: string }) => {
+      dispatch(messageRecalled(payload));
+      patchMessageInCache(payload.conversationId, payload.messageId, {
+        isRecalled: true,
+        content: 'Tin nhắn đã được thu hồi',
+        isPinned: false,
+      });
+    };
+
+    const handleDeletedMessage = (payload: { messageId: string; conversationId: string }) => {
+      dispatch(messageDeleted(payload));
+      patchMessageInCache(payload.conversationId, payload.messageId, {
+        isDeleted: true,
+        content: '',
+        isPinned: false,
+      });
+    };
+
+    const handlePinUpdated = (payload: {
+      messageId: string;
+      conversationId: string;
+      isPinned: boolean;
+    }) => {
+      dispatch(messagePinUpdated(payload));
+      patchMessageInCache(payload.conversationId, payload.messageId, { isPinned: payload.isPinned });
+    };
+
+    const handleReactionEvent = (payload: {
+      messageId: string;
+      conversationId: string;
+      reactions: Record<string, string[]>;
+    }) => {
+      dispatch(messageReacted(payload));
+      patchMessageInCache(payload.conversationId, payload.messageId, {
+        reactions: payload.reactions,
+      });
+    };
+
+    const handleTypingEvent = (payload: {
+      conversationId: string;
+      userId: string;
+      isTyping: boolean;
+      displayName?: string;
+    }) => {
+      if (payload.isTyping) {
+        dispatch(
+          typingStarted({
+            conversationId: payload.conversationId,
+            userId: payload.userId,
+            displayName: payload.displayName,
+          }),
+        );
+      } else {
+        dispatch(typingStopped({ conversationId: payload.conversationId, userId: payload.userId }));
+      }
+    };
+
+    const handleGroupUpdated = (data: any) => {
+      console.log('📢 Received group:updated:', data);
+      if (!data?.conversationId) return;
+      
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          const conv = draft?.data?.find((item) => item.conversationId === data.conversationId);
+          if (conv) {
+            console.log('✅ Patching conversation in sidebar:', data.name);
+            if (data.name) conv.name = data.name;
+            if (data.avatar) conv.avatar = data.avatar;
+          }
+        })
+      );
+
+      if (data.conversationId === activeConversationIdRef.current) {
+        console.log('🔄 Refreshing current active group details');
+        void fetchGroupMembers(data.conversationId);
+      }
+    };
+
+    socketService.on('message:new', handleNewMessage);
+    socketService.on('group:updated', handleGroupUpdated);
+    socketService.on('message:edited', handleEditedMessage);
+    socketService.on('message:recalled', handleRecalledMessage);
+    socketService.on('message:deleted', handleDeletedMessage);
+    socketService.on('message:pin_updated', handlePinUpdated);
+    socketService.on('message:reaction', handleReactionEvent);
+    socketService.on('message:typing', handleTypingEvent);
+
+    return () => {
+      socketService.off('message:new', handleNewMessage);
+      socketService.off('group:updated', handleGroupUpdated);
+      socketService.off('message:edited', handleEditedMessage);
+      socketService.off('message:recalled', handleRecalledMessage);
+      socketService.off('message:deleted', handleDeletedMessage);
+      socketService.off('message:pin_updated', handlePinUpdated);
+      socketService.off('message:reaction', handleReactionEvent);
+      socketService.off('message:typing', handleTypingEvent);
+    };
+  }, [dispatch, patchMessageInCache, fetchGroupMembers]);
 
   useEffect(() => {
     dispatch(setActiveConversation(routeConversationId ?? null));
@@ -926,14 +1092,23 @@ export default function ChatPage() {
         name: groupName || `Nhóm (${selectedGroupMembers.length + 1} thành viên)`,
         memberIds: selectedGroupMembers,
       }).unwrap();
-      void navigate(`/chat/${result.data.conversationId}`);
-    } catch {
-      /* ignored */
+      const conversationId = result.data.conversationId;
+      // Log trạng thái socket và thời điểm join room
+      // eslint-disable-next-line no-console
+      console.log('[DEBUG] isConnected:', socketService.socket?.connected, 'conversationId:', conversationId, 'at', new Date().toISOString());
+      socketService.emit('conversation:join', conversationId);
+      // eslint-disable-next-line no-console
+      console.log('[DEBUG] Đã emit conversation:join', conversationId, 'at', new Date().toISOString());
+      void navigate(`/chat/${conversationId}`);
+      dispatch(chatApi.endpoints.getMessages.initiate({ conversationId }));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[DEBUG] Tạo nhóm lỗi:', err);
     }
     setShowCreateGroupModal(false);
     setSelectedGroupMembers([]);
     setGroupName('');
-  }, [selectedGroupMembers, groupName, createConversation, navigate]);
+  }, [selectedGroupMembers, groupName, createConversation, navigate, dispatch]);
 
   const handleFriendClick = useCallback(
     async (friendId: string, friendName: string) => {
@@ -1014,6 +1189,7 @@ export default function ChatPage() {
 
   const handleUpdateGroup = useCallback(async () => {
     if (!activeConversationId || activeConversation?.type !== 'group') return;
+    
     const nextName = editGroupName.trim();
     if (!nextName) {
       toast.error('Tên nhóm không được để trống');
@@ -1056,6 +1232,47 @@ export default function ChatPage() {
       setShowEditGroupModal(false);
       setEditGroupAvatarFile(null);
       toast.success('Cập nhật nhóm thành công');
+
+      // System message: group name changed (centered)
+      const now = new Date();
+      const userName = currentUser?.displayName || currentUser?.name || 'Bạn';
+      let content = '';
+      if (previousName && previousName !== nextName) {
+        content = `Tên nhóm đã đổi từ '${previousName}' thành '${nextName}'`;
+      } else {
+        content = `${userName} đã đổi tên nhóm thành '${nextName}'`;
+      }
+      const systemMsg = {
+        messageId: `system-${Date.now()}`,
+        conversationId: activeConversationId,
+        senderId: 'system',
+        senderDisplayName: 'Hệ thống',
+        type: 'system',
+        subtype: 'group_name_changed',
+        position: 'center',
+        content,
+        mediaUrl: null,
+        mediaType: null,
+        mediaSize: null,
+        thumbnailUrl: null,
+        replyTo: null,
+        replyToDetails: null,
+        isPinned: false,
+        isEdited: false,
+        isRecalled: false,
+        isDeleted: false,
+        reactions: {},
+        createdAt: now.toISOString(),
+      };
+      // Push to local message list
+      dispatch(
+        chatApi.util.updateQueryData('getMessages', { conversationId: activeConversationId }, (draft) => {
+          if (!draft.data) draft.data = [];
+          draft.data.push(systemMsg);
+        })
+      );
+      // Broadcast via socket to all group members
+      socketService.emit('message:new', systemMsg);
     } catch (error) {
       dispatch(
         chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
@@ -1082,6 +1299,12 @@ export default function ChatPage() {
 
   const handleDeleteGroup = useCallback(async () => {
     if (!activeConversationId) return;
+    
+    if (currentUserRole !== 'owner') {
+      toast.error('Chỉ Trưởng nhóm mới có quyền giải tán nhóm');
+      return;
+    }
+
     if (!window.confirm('Giải tán nhóm?')) return;
 
     setActionBusy('deleteGroup', true);
@@ -1329,6 +1552,13 @@ export default function ChatPage() {
 
   const handleApproveRequest = useCallback(async (userId: string) => {
     if (!activeConversationId) return;
+    
+    const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+    if (!isAdminOrOwner) {
+      toast.error('Bạn không có quyền duyệt yêu cầu tham gia');
+      return;
+    }
+
     setActionBusy('approveRequest', true);
     const targetRequest = groupRequests.find((item) => item.userId === userId);
     const beforeRequests = groupRequests;
@@ -1361,6 +1591,13 @@ export default function ChatPage() {
 
   const handleRejectRequest = useCallback(async (userId: string) => {
     if (!activeConversationId) return;
+    
+    const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+    if (!isAdminOrOwner) {
+      toast.error('Bạn không có quyền từ chối yêu cầu tham gia');
+      return;
+    }
+
     setActionBusy('rejectRequest', true);
     const before = groupRequests;
     setGroupRequests((prev) => prev.filter((item) => item.userId !== userId));
@@ -1378,6 +1615,13 @@ export default function ChatPage() {
 
   const handleKickMember = useCallback(async (userId: string) => {
     if (!activeConversationId) return;
+    
+    const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+    if (!isAdminOrOwner) {
+      toast.error('Bạn không có quyền mời thành viên ra khỏi nhóm');
+      return;
+    }
+
     if (window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) {
       setActionBusy('removeMember', true);
       const before = groupMembers;
@@ -1397,6 +1641,12 @@ export default function ChatPage() {
 
   const handleChangeMemberRole = useCallback(async (userId: string, role: GroupMemberRole) => {
     if (!activeConversationId) return;
+    
+    if (currentUserRole !== 'owner') {
+      toast.error('Chỉ Trưởng nhóm mới có quyền phân quyền thành viên');
+      return;
+    }
+
     setActionBusy('changeRole', true);
     const before = groupMembers;
     setGroupMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
@@ -1469,6 +1719,8 @@ export default function ChatPage() {
     }
   }, [activeConversationId, groupTasks, setActionBusy]);
 
+  const currentUserRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
+
   return (
     <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
       <ChatNavRail
@@ -1512,6 +1764,7 @@ export default function ChatPage() {
               onEditGroup={openEditGroupModal}
               onAudioCall={handleAudioCall}
               onVideoCall={handleVideoCall}
+              currentUserRole={currentUserRole}
             />
 
             {activeConversationId && primaryPinnedMessage && (
@@ -1592,13 +1845,13 @@ export default function ChatPage() {
             requestJoin: groupActionLoading.requestJoin,
             updateGroup: groupActionLoading.updateGroup,
           }}
-          numRequests={groupRequests.length}
           onLeaveGroup={() => void handleLeaveGroup()}
           onDeleteGroup={() => void handleDeleteGroup()}
           onOpenMemberModal={(tab) => {
             setMemberTab(tab);
             setShowMemberModal(true);
           }}
+          currentUserRole={currentUserRole}
         />
       )}
 
