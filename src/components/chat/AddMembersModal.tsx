@@ -32,7 +32,19 @@ export function AddMembersModal({
 }: AddMembersModalProps) {
   const [query, setQuery] = useState('');
   const { data: friendsRes, isLoading } = useGetFriendsQuery();
-  const friends = (friendsRes?.data ?? []) as Friend[];
+  // Backend có thể trả `data` là array hoặc object { friends: [] }.
+  const friends = useMemo((): Friend[] => {
+    const data: unknown = friendsRes?.data;
+    if (!data) return [];
+    if (Array.isArray(data)) return data as Friend[];
+    if (typeof data === 'object') {
+      const asObj = data as { friends?: unknown };
+      if (Array.isArray(asObj.friends)) return asObj.friends as Friend[];
+      // fallback: nếu là 1 user object
+      return [data as Friend];
+    }
+    return [];
+  }, [friendsRes?.data]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
