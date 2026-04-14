@@ -4,6 +4,7 @@ import {
   CheckCheck,
   CalendarClock,
   ClipboardList,
+  BarChart2,
   Download,
   FileText,
   MessageCircle,
@@ -74,6 +75,7 @@ export type ChatMessageListProps = {
   onJumpToLatest: () => void;
   groupTasks?: any[];
   onTaskJoined?: (taskId: string) => void;
+  onOpenPollVote?: (pollId: string) => void;
 };
 
 export function ChatMessageList({
@@ -96,6 +98,7 @@ export function ChatMessageList({
   onJumpToLatest,
   groupTasks,
   onTaskJoined,
+  onOpenPollVote,
 }: ChatMessageListProps) {
   const scrollToMessage = (messageId: string) => {
     document.getElementById(`chat-msg-${messageId}`)?.scrollIntoView({
@@ -279,6 +282,110 @@ export function ChatMessageList({
                           {taskJoinedLine.title ? ` \"${taskJoinedLine.title}\"` : ''}
                         </span>
                       </div>
+                    ) : typeof content === 'string' && content.trim().startsWith('{') ? (
+                      (() => {
+                        try {
+                          const obj = JSON.parse(content) as any;
+                          if (obj?.kind === 'poll_created') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const question = String(obj?.poll?.question ?? '').trim();
+                            const pollId = String(obj?.poll?.pollId ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã tạo một bình chọn'}
+                                  {question ? `: ${question}` : ''}
+                                </span>
+                                {pollId && onOpenPollVote ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenPollVote(pollId)}
+                                    className="ml-1 px-2 py-1 rounded-full text-[11px] font-bold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+                                  >
+                                    Bình chọn
+                                  </button>
+                                ) : null}
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'poll_voted') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const optionText = String(obj?.poll?.optionText ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã bình chọn'}
+                                  {optionText ? `: ${optionText}` : ''}
+                                </span>
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'poll_vote_changed') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const optionText = String(obj?.poll?.optionText ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã thay đổi bình chọn'}
+                                  {optionText ? `: ${optionText}` : ''}
+                                </span>
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'poll_unvoted') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const optionText = String(obj?.poll?.optionText ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã rút phiếu'}
+                                  {optionText ? `: ${optionText}` : ''}
+                                </span>
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'poll_option_added') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const optionText = String(obj?.poll?.optionText ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã thêm lựa chọn'}
+                                  {optionText ? `: ${optionText}` : ''}
+                                </span>
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'poll_closed') {
+                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const question = String(obj?.poll?.question ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã đóng bình chọn'}
+                                  {question ? `: ${question}` : ''}
+                                </span>
+                              </div>
+                            );
+                          }
+                        } catch {
+                          // ignore
+                        }
+                        return (
+                          <div className="flex items-center justify-center gap-2">
+                            <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                            <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                              {content}
+                            </span>
+                          </div>
+                        );
+                      })()
                     ) : (
                       <div className="flex items-center justify-center gap-2">
                         <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
