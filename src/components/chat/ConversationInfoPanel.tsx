@@ -39,6 +39,7 @@ type ConversationInfoPanelProps = {
   onAddMembers?: () => void;
   onRequestJoin?: () => void;
   onVotePoll?: (pollId: string, optionIndex: number) => void;
+  onOpenPollVote?: (pollId: string) => void;
   onAddPollOption?: (pollId: string) => void;
   onClosePoll?: (pollId: string) => void;
   onToggleTask?: (taskId: string) => void;
@@ -80,6 +81,7 @@ export function ConversationInfoPanel({
   onAddMembers,
   onRequestJoin,
   onVotePoll,
+  onOpenPollVote,
   onAddPollOption,
   onClosePoll,
   onToggleTask,
@@ -350,7 +352,9 @@ export function ConversationInfoPanel({
                               key={`${poll.pollId}-${idx}`}
                               type="button"
                               disabled={poll.isClosed}
-                              onClick={() => onVotePoll?.(poll.pollId, idx)}
+                              onClick={() =>
+                                onOpenPollVote ? onOpenPollVote(poll.pollId) : onVotePoll?.(poll.pollId, idx)
+                              }
                               className="w-full text-left"
                             >
                               <div className="flex items-center justify-between text-[11px]">
