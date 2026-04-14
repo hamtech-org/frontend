@@ -2033,7 +2033,7 @@ export default function ChatPage() {
         open={messageConfirm !== null}
         title={
           messageConfirm?.kind === 'delete'
-            ? 'Ẩn tin nhắn'
+            ? 'Xóa tin nhắn'
             : messageConfirm?.kind === 'recall'
               ? 'Thu hồi tin nhắn'
               : ''
@@ -2045,7 +2045,7 @@ export default function ChatPage() {
               ? 'Thu hồi tin nhắn này cho mọi người?'
               : undefined
         }
-        confirmLabel={messageConfirm?.kind === 'delete' ? 'Ẩn' : 'Thu hồi'}
+        confirmLabel={messageConfirm?.kind === 'delete' ? 'Xóa' : 'Thu hồi'}
         variant={messageConfirm?.kind === 'delete' ? 'danger' : 'primary'}
         isConfirming={messageConfirmSubmitting}
         onClose={() => {
