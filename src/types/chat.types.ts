@@ -20,6 +20,7 @@ export interface IConversation {
   lastMessage: ILastMessage | null;
   memberCount: number;
   unreadCount: number;
+  updatedAt?: string;
   otherUserId?: string;
 }
 

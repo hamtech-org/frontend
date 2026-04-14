@@ -38,16 +38,16 @@ class SocketService {
         withCredentials: true,
       });
 
-      this.socket.on('connect', () => {
+      this.socket!.on('connect', () => {
         this.triedFallback = false;
         console.info('Socket.io kết nối thành công');
       });
 
-      this.socket.on('disconnect', (reason) => {
+      this.socket!.on('disconnect', (reason) => {
         console.warn('Socket.io ngắt kết nối:', reason);
       });
 
-      this.socket.on('connect_error', (err: any) => {
+      this.socket!.on('connect_error', (err: any) => {
         console.warn('Socket.io connect_error:', err?.message ?? err);
         // Nếu token stale (thường do refresh token flow chỉ update localStorage), thử lấy token mới nhất rồi reconnect 1 lần.
         const msg = String(err?.message ?? '');
@@ -76,30 +76,6 @@ class SocketService {
     };
 
     connectTo(PRIMARY_SOCKET_URL || FALLBACK_SOCKET_URL);
-    return;
-
-    // Legacy code (giữ để đối chiếu)
-    this.socket = io(PRIMARY_SOCKET_URL || FALLBACK_SOCKET_URL, {
-      auth: { token },
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      withCredentials: true,
-    });
-
-    this.socket.on('connect', () => {
-      console.info('✅ Socket.io kết nối thành công');
-    });
-
-    this.socket.on('disconnect', (reason) => {
-      console.warn('⚠️ Socket.io ngắt kết nối:', reason);
-    });
-
-    // Log all incoming events for debugging
-    this.socket.onAny((eventName, ...args) => {
-      console.debug(`📨 Socket event received: ${eventName}`, args);
-    });
   }
 
   disconnect(): void {
