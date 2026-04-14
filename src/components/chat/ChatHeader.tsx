@@ -22,6 +22,7 @@ type ChatHeaderProps = {
   onEditGroup?: () => void;
   onAudioCall?: () => void;
   onVideoCall?: () => void;
+  currentUserRole?: 'owner' | 'admin' | 'member';
 };
 
 export function ChatHeader({
@@ -33,7 +34,10 @@ export function ChatHeader({
   onEditGroup,
   onAudioCall,
   onVideoCall,
+  currentUserRole,
 }: ChatHeaderProps) {
+  const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+
   return (
     <div className="h-20 px-8 flex items-center justify-between border-b border-black/5 dark:border-white/5 bg-inherit/80 backdrop-blur-md sticky top-0 z-10">
       <div className="flex items-center gap-4">
