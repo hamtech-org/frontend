@@ -113,7 +113,7 @@ export function ChatMessageList({
           {allMessages.map((msg, index) => {
             // Centered system message for group events (e.g. name change, received, etc.)
             if (
-              msg.type === 'system' || (msg as any).position === 'center'
+              (msg as any).type === 'system' || (msg as any).position === 'center'
             ) {
               // Show date above bubble if first system message of the day or first message
               const prevMsg = index > 0 ? allMessages[index - 1] : undefined;
@@ -125,13 +125,23 @@ export function ChatMessageList({
               const isToday = currDate === todayStr;
               const dateLabel = showDate ? (isToday ? 'Hôm nay' : formatDate(msg.createdAt)) : '';
               const timeLabel = formatTime(msg.createdAt);
-              // Nếu là thông báo cập nhật avatar nhóm và là chính mình thì xưng "Bạn"
+              // Nếu là thông báo hệ thống do chính mình thực hiện thì xưng "Bạn" (chỉ phía người cập nhật).
               let content = msg.content;
+              // Giữ logic cũ (case avatar nhóm) để tránh thay đổi hành vi đang ổn định.
               if (
                 msg.content?.includes('đã cập nhật ảnh đại diện nhóm') &&
                 msg.senderId === currentUserId
               ) {
                 content = 'Bạn đã cập nhật ảnh đại diện nhóm';
+              }
+              // Bổ sung: các system message khác có format "Tên đã ..." thì thay "Tên" -> "Bạn" khi chính mình là sender.
+              // Không đụng tới nội dung phía người nhận (senderId != currentUserId) nên người nhận vẫn thấy đúng tên người cập nhật.
+              if (msg.senderId === currentUserId && msg.senderDisplayName) {
+                const name = msg.senderDisplayName.trim();
+                if (name) {
+                  // Chỉ replace 1 lần để tránh "Tên" xuất hiện ở chỗ khác trong câu.
+                  content = content.replace(name, 'Bạn');
+                }
               }
               return (
                 <div key={msg.messageId} className="w-full flex flex-col items-center my-3 select-none">
