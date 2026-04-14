@@ -1,15 +1,26 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { Calendar, Camera, Mail, Phone, Quote, User, X } from 'lucide-react';
+import { useState } from 'react';
 
 type ProfileModalProps = {
-  open: boolean;
-  onClose: () => void;
+  open?: boolean;
+  onClose?: () => void;
 };
 
-export function ProfileModal({ open, onClose }: ProfileModalProps) {
+export function ProfileModal({ open: externalOpen, onClose: externalOnClose }: ProfileModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  
+  // Use external state if provided, otherwise use internal state
+  const isOpen = externalOpen !== undefined ? externalOpen : internalOpen;
+  const handleClose = externalOnClose || (() => setInternalOpen(false));
+  const handleOpen = () => {
+    if (externalOpen === undefined) {
+      setInternalOpen(true);
+    }
+  };
   return (
     <AnimatePresence>
-      {open && (
+      {isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 shadow-2xl backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -20,7 +31,7 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
           >
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center text-white hover:bg-black/50 backdrop-blur-md transition-colors z-20 shadow-sm"
             >
               <X className="w-5 h-5 stroke-[2]" />
@@ -44,7 +55,7 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
 
               <div className="px-6 relative pb-6">
                 <div className="flex flex-col items-center -mt-12 relative z-10">
-                  <div className="relative group/avatar cursor-pointer">
+                  <div className="relative group/avatar cursor-pointer" onClick={handleOpen}>
                     <div className="w-24 h-24 rounded-full border-[4px] border-white dark:border-[#1a1a1a] overflow-hidden bg-white shadow-md">
                       <img
                         src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop"

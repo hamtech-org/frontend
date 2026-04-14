@@ -13,6 +13,7 @@ export interface IUser {
   role: UserRole;
   isVerified: boolean;
   createdAt: string;
+  name?: string; // Fallback property for compatibility
 }
 
 export interface IUserPublic {

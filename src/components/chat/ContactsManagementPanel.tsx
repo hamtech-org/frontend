@@ -1,5 +1,8 @@
 import { UserPlus, Users } from 'lucide-react';
+import { useEffect } from 'react';
 import { useGetFriendsQuery, useGetGroupsQuery } from '@/store/api/contactApi';
+import { useGetPendingRequestsQuery, useGetSuggestedFriendsQuery } from '@/store/api/userApi';
+import { socketService } from '@/services/socket';
 
 export type ContactsTabId = 'friends' | 'groups' | 'friendRequests' | 'groupInvites';
 
@@ -45,11 +48,56 @@ function rowMembersCount(row: unknown): string {
 }
 
 export function ContactsManagementPanel({ contactsTab, onContactsTabChange }: ContactsManagementPanelProps) {
-  const { data: friendsRes, isLoading: friendsLoading } = useGetFriendsQuery();
+  const { data: friendsRes, isLoading: friendsLoading, refetch: refetchFriends } = useGetFriendsQuery();
   const { data: groupsRes, isLoading: groupsLoading } = useGetGroupsQuery();
+  const { data: pendingRes, refetch: refetchPending } = useGetPendingRequestsQuery();
+  const { data: suggestedRes, refetch: refetchSuggested } = useGetSuggestedFriendsQuery({ limit: 10 });
 
   const friends = (friendsRes?.data ?? []) as unknown[];
   const groups = (groupsRes?.data ?? []) as unknown[];
+  const receivedRequests = (pendingRes?.data?.received ?? []) as unknown[];
+  const sentRequests = (pendingRes?.data?.sent ?? []) as unknown[];
+  const suggestedFriends = (suggestedRes?.data ?? []) as unknown[];
+  const totalPendingFriendRequests = receivedRequests.length + sentRequests.length + suggestedFriends.length;
+
+  // Listen for real-time updates
+  useEffect(() => {
+    const handleFriendAdded = () => {
+      refetchFriends();
+    };
+
+    const handleFriendRemoved = () => {
+      refetchFriends();
+    };
+
+    const handleNewRequest = () => {
+      refetchPending();
+      refetchSuggested();
+    };
+
+    const handleRequestAccepted = () => {
+      refetchFriends();
+      refetchPending();
+    };
+
+    const handleRequestRejected = () => {
+      refetchPending();
+    };
+
+    socketService.on('friend:added', handleFriendAdded);
+    socketService.on('friend:removed', handleFriendRemoved);
+    socketService.on('friendRequest:new', handleNewRequest);
+    socketService.on('friendRequest:accepted', handleRequestAccepted);
+    socketService.on('friendRequest:rejected', handleRequestRejected);
+
+    return () => {
+      socketService.off('friend:added', handleFriendAdded);
+      socketService.off('friend:removed', handleFriendRemoved);
+      socketService.off('friendRequest:new', handleNewRequest);
+      socketService.off('friendRequest:accepted', handleRequestAccepted);
+      socketService.off('friendRequest:rejected', handleRequestRejected);
+    };
+  }, [refetchFriends, refetchPending, refetchSuggested]);
 
   const tabs: {
     id: ContactsTabId;
@@ -59,7 +107,7 @@ export function ContactsManagementPanel({ contactsTab, onContactsTabChange }: Co
   }[] = [
     { id: 'friends', label: 'Danh sách bạn bè', icon: Users, count: friends.length },
     { id: 'groups', label: 'Danh sách nhóm', icon: Users, count: groups.length },
-    { id: 'friendRequests', label: 'Lời mời kết bạn', icon: UserPlus, count: 0 },
+    { id: 'friendRequests', label: 'Lời mời kết bạn', icon: UserPlus, count: totalPendingFriendRequests },
     { id: 'groupInvites', label: 'Lời mời vào nhóm', icon: UserPlus, count: 0 },
   ];
 

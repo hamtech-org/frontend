@@ -16,8 +16,16 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     if (accessToken) {
       socketService.connect(accessToken);
-      socketService.on('connect', () => setIsConnected(true));
-      socketService.on('disconnect', () => setIsConnected(false));
+      
+      socketService.on('connect', () => {
+        setIsConnected(true);
+        // Emit online status to notify friends
+        socketService.emit('friend:statusChanged', 'online');
+      });
+      
+      socketService.on('disconnect', () => {
+        setIsConnected(false);
+      });
     }
     return () => { socketService.disconnect(); };
   }, [accessToken]);

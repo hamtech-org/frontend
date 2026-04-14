@@ -20,11 +20,9 @@ type AddFriendModalProps = {
   query: string;
   onQueryChange: (value: string) => void;
   onClose: () => void;
-  /** Gọi khi bấm gửi lời mời (chưa có API thì parent có thể no-op). */
-  onSubmit: () => void;
 };
 
-export function AddFriendModal({ open, query, onQueryChange, onClose, onSubmit }: AddFriendModalProps) {
+export function AddFriendModal({ open, query, onQueryChange, onClose }: AddFriendModalProps) {
   const trimmed = query.trim();
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);

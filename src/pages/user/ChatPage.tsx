@@ -41,6 +41,7 @@ import { decodeJwtUserId } from '@/utils/chatUtils';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
 import { ConversationListPanel, type ContactsTabId } from '@/components/chat/ConversationListPanel';
 import { FriendsListView } from '@/components/chat/FriendsListView';
+import { PendingFriendsPanel } from '@/components/chat/PendingFriendsPanel';
 import { AddFriendModal } from '@/components/chat/AddFriendModal';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import { PinnedMessagesBar } from '@/components/chat/PinnedMessagesBar';
@@ -520,11 +521,6 @@ export default function ChatPage() {
       return eventGroupId === activeConversationId;
     };
 
-    const refreshMembers = () => {
-      void fetchGroupMembers(activeConversationId);
-      void refetchConversations();
-    };
-
     const refreshRequests = () => {
       void fetchGroupRequests(activeConversationId);
       void refetchConversations();
@@ -754,24 +750,32 @@ export default function ChatPage() {
       }
     };
 
-    socketService.on('message:new', handleNewMessage);
+    const wrappedHandleNewMessage = (data: unknown) => handleNewMessage(data as IMessage);
+    const wrappedHandleEditedMessage = (data: unknown) => handleEditedMessage(data as { messageId: string; conversationId: string; content: string });
+    const wrappedHandleRecalledMessage = (data: unknown) => handleRecalledMessage(data as { messageId: string; conversationId: string });
+    const wrappedHandleDeletedMessage = (data: unknown) => handleDeletedMessage(data as { messageId: string; conversationId: string });
+    const wrappedHandlePinUpdated = (data: unknown) => handlePinUpdated(data as { messageId: string; conversationId: string; isPinned: boolean });
+    const wrappedHandleReactionEvent = (data: unknown) => handleReactionEvent(data as { messageId: string; conversationId: string; reactions: Record<string, string[]> });
+    const wrappedHandleTypingEvent = (data: unknown) => handleTypingEvent(data as { conversationId: string; userId: string; isTyping: boolean; displayName?: string });
+
+    socketService.on('message:new', wrappedHandleNewMessage);
     socketService.on('group:updated', handleGroupUpdated);
-    socketService.on('message:edited', handleEditedMessage);
-    socketService.on('message:recalled', handleRecalledMessage);
-    socketService.on('message:deleted', handleDeletedMessage);
-    socketService.on('message:pin_updated', handlePinUpdated);
-    socketService.on('message:reaction', handleReactionEvent);
-    socketService.on('message:typing', handleTypingEvent);
+    socketService.on('message:edited', wrappedHandleEditedMessage);
+    socketService.on('message:recalled', wrappedHandleRecalledMessage);
+    socketService.on('message:deleted', wrappedHandleDeletedMessage);
+    socketService.on('message:pin_updated', wrappedHandlePinUpdated);
+    socketService.on('message:reaction', wrappedHandleReactionEvent);
+    socketService.on('message:typing', wrappedHandleTypingEvent);
 
     return () => {
-      socketService.off('message:new', handleNewMessage);
+      socketService.off('message:new', wrappedHandleNewMessage);
       socketService.off('group:updated', handleGroupUpdated);
-      socketService.off('message:edited', handleEditedMessage);
-      socketService.off('message:recalled', handleRecalledMessage);
-      socketService.off('message:deleted', handleDeletedMessage);
-      socketService.off('message:pin_updated', handlePinUpdated);
-      socketService.off('message:reaction', handleReactionEvent);
-      socketService.off('message:typing', handleTypingEvent);
+      socketService.off('message:edited', wrappedHandleEditedMessage);
+      socketService.off('message:recalled', wrappedHandleRecalledMessage);
+      socketService.off('message:deleted', wrappedHandleDeletedMessage);
+      socketService.off('message:pin_updated', wrappedHandlePinUpdated);
+      socketService.off('message:reaction', wrappedHandleReactionEvent);
+      socketService.off('message:typing', wrappedHandleTypingEvent);
     };
   }, [dispatch, patchMessageInCache, fetchGroupMembers, isConnected]);
 
@@ -1144,11 +1148,7 @@ export default function ChatPage() {
       }).unwrap();
       const conversationId = result.data.conversationId;
       // Log trạng thái socket và thời điểm join room
-      // eslint-disable-next-line no-console
-      console.log('[DEBUG] isConnected:', socketService.socket?.connected, 'conversationId:', conversationId, 'at', new Date().toISOString());
       socketService.emit('conversation:join', conversationId);
-      // eslint-disable-next-line no-console
-      console.log('[DEBUG] Đã emit conversation:join', conversationId, 'at', new Date().toISOString());
       void navigate(`/chat/${conversationId}`);
       dispatch(chatApi.endpoints.getMessages.initiate({ conversationId }));
     } catch (err) {
@@ -1190,6 +1190,38 @@ export default function ChatPage() {
         console.error('❌ Failed to open conversation with friend:', error);
         // Log the full error object to see what went wrong
         console.error('Error details:', JSON.stringify(error, null, 2));
+      }
+    },
+    [conversations, createConversation, navigate],
+  );
+
+  const handleFriendRequestAccepted = useCallback(
+    async (friendId: string, friendName: string) => {
+      try {
+        console.log('✅ Friend request accepted, creating conversation with:', friendId, friendName);
+        
+        // Check if conversation already exists
+        let existingConversation = conversations.find(
+          (c) => c.type === 'direct' && c.otherUserId === friendId,
+        );
+
+        // If not found, create a new direct conversation
+        if (!existingConversation) {
+          console.log('🆕 Creating new direct conversation...');
+          const result = await createConversation({
+            type: 'direct',
+            memberIds: [friendId],
+          }).unwrap();
+          existingConversation = result.data;
+          console.log('✅ Conversation created:', result.data.conversationId);
+          
+          // Navigate to the new conversation
+          void navigate(`/chat/${existingConversation.conversationId}`);
+        } else {
+          console.log('✅ Found existing conversation:', existingConversation.conversationId);
+        }
+      } catch (error) {
+        console.error('❌ Failed to create conversation after accepting friend request:', error);
       }
     },
     [conversations, createConversation, navigate],
@@ -1270,7 +1302,7 @@ export default function ChatPage() {
           file: editGroupAvatarFile, 
           mediaType: 'image' 
         }).unwrap();
-        nextAvatar = uploadResult.data?.url ?? uploadResult.data?.fileUrl ?? previousAvatar;
+        nextAvatar = uploadResult.data.url ?? previousAvatar;
       } catch (err) {
         console.error('Avatar upload failed:', err);
         // Không ngắt luồng chính, nhưng thông báo cho người dùng
@@ -1299,25 +1331,21 @@ export default function ChatPage() {
 
       // System message: group name changed (centered)
       const now = new Date();
-      const userName = currentUser?.displayName || currentUser?.name || 'Bạn';
+      const userName = currentUser?.displayName || 'Bạn';
       let content = '';
       if (previousName && previousName !== nextName) {
         content = `Tên nhóm đã đổi từ '${previousName}' thành '${nextName}'`;
       } else {
         content = `${userName} đã đổi tên nhóm thành '${nextName}'`;
       }
-      const systemMsg = {
+      const systemMsg: IMessage = {
         messageId: `system-${Date.now()}`,
         conversationId: activeConversationId,
         senderId: 'system',
         senderDisplayName: 'Hệ thống',
-        type: 'system',
-        subtype: 'group_name_changed',
-        position: 'center',
+        type: 'system' as any,
         content,
         mediaUrl: null,
-        mediaType: null,
-        mediaSize: null,
         thumbnailUrl: null,
         replyTo: null,
         replyToDetails: null,
@@ -1326,6 +1354,7 @@ export default function ChatPage() {
         isRecalled: false,
         isDeleted: false,
         reactions: {},
+        status: 'sent',
         createdAt: now.toISOString(),
       };
       // Push to local message list
@@ -1633,12 +1662,6 @@ export default function ChatPage() {
     [activeConversationId, groupPolls, setActionBusy],
   );
 
-  const handleAddFriendSubmit = useCallback(() => {
-    // Modal now handles all friend request logic internally
-    setShowAddFriendModal(false);
-    setAddFriendQuery('');
-  }, []);
-
   const handleApproveRequest = useCallback(async (userId: string) => {
     if (!activeConversationId) return;
     
@@ -1714,7 +1737,7 @@ export default function ChatPage() {
     if (window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) {
       setActionBusy('removeMember', true);
       const before = groupMembers;
-      setGroupMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
+      setGroupMembers((prev) => prev.filter((m) => m.userId !== userId));
       try {
         await apiClient.delete(`/chat/groups/${activeConversationId}/members/${userId}`);
         toast.success('Đã xóa thành viên');
@@ -1856,7 +1879,11 @@ export default function ChatPage() {
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
         {showContactsManagement ? (
-          <FriendsListView onFriendClick={handleFriendClick} />
+          contactsTab === 'friendRequests' ? (
+            <PendingFriendsPanel onFriendRequestAccepted={handleFriendRequestAccepted} />
+          ) : (
+            <FriendsListView onFriendClick={handleFriendClick} />
+          )
         ) : (
           <>
             <ChatHeader
@@ -1929,11 +1956,7 @@ export default function ChatPage() {
                 replyingTo={replyingTo}
                 onClearReply={() => dispatch(clearReplyingTo())}
                 onOpenPoll={() => setShowPollModal(true)}
-                onOpenTask={() => setShowTaskModal(true)} pendingAttachments={[]} onAddPendingFiles={function (files: File[]): void {
-                  throw new Error('Function not implemented.');
-                } } onRemovePendingAttachment={function (localId: string): void {
-                  throw new Error('Function not implemented.');
-                } }            />
+                onOpenTask={() => setShowTaskModal(true)} pendingAttachments={pendingAttachments} onAddPendingFiles={addPendingFiles} onRemovePendingAttachment={removePendingAttachment}            />
           </>
         )}
       </div>
@@ -1998,7 +2021,6 @@ export default function ChatPage() {
           setShowAddFriendModal(false);
           setAddFriendQuery('');
         }}
-        onSubmit={handleAddFriendSubmit}
       />
       <ConfirmModal
         open={messageConfirm !== null}
@@ -2028,7 +2050,6 @@ export default function ChatPage() {
       <CreateGroupModal
         open={showCreateGroupModal}
         onClose={() => setShowCreateGroupModal(false)}
-        conversations={conversations}
         groupName={groupName}
         onGroupNameChange={setGroupName}
         selectedGroupMembers={selectedGroupMembers}

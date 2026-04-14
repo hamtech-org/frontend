@@ -24,11 +24,13 @@ import {
 import { cn } from '@/utils/cn';
 import logoUrl from '@/assets/images/logo_vuong.png';
 import { searchService } from '@/services/search.service';
+import { socketService } from '@/services/socket';
 import { useAuth } from '@/hooks/useAuth';
 import { useGetProfileQuery } from '@/store/api/userApi';
 import { useDispatch } from 'react-redux';
 import { setUser } from '@/store/slices/authSlice';
 import { CallProvider } from '@/contexts/CallContext';
+import IncomingCallModal from '@/components/call/IncomingCallModal';
 import type { ISearchAllResult } from '@/types/search.types';
 // Lazy-loaded pages
 const LoginPage = React.lazy(() => import('@/pages/user/LoginPage'));
@@ -66,7 +68,7 @@ const App: React.FC = () => {
   const [searchLoading, setSearchLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { user: currentUser, isAuthenticated } = useAuth();
+  const { user: currentUser, isAuthenticated, logout } = useAuth();
   const dispatch = useDispatch();
   
   // Load user profile when authenticated (only if profile not yet loaded)
@@ -189,9 +191,11 @@ const App: React.FC = () => {
   if (isCallRoute) {
     return (
       <Suspense fallback={<PageLoader />}>
-        <Routes>
-          <Route path="/call" element={<CallPage />} />
-        </Routes>
+        <CallProvider>
+          <Routes>
+            <Route path="/call" element={<CallPage />} />
+          </Routes>
+        </CallProvider>
       </Suspense>
     );
   }
@@ -249,7 +253,14 @@ const App: React.FC = () => {
               {isDarkMode ? <Sun className="w-5 h-5 shrink-0" /> : <Moon className="w-5 h-5 shrink-0" />}
               {isSidebarOpen && <span className="whitespace-nowrap">{isDarkMode ? 'Sáng' : 'Tối'}</span>}
             </button>
-            <button onClick={() => navigate('/login')} className={cn('w-full flex items-center p-3 rounded-xl hover:bg-red-500/10 text-red-500 transition-all', isSidebarOpen ? 'gap-4' : 'justify-center')}>
+            <button 
+              onClick={() => {
+                socketService.emit('friend:statusChanged', 'offline');
+                logout();
+                navigate('/login'); 
+              }} 
+              className={cn('w-full flex items-center p-3 rounded-xl hover:bg-red-500/10 text-red-500 transition-all', isSidebarOpen ? 'gap-4' : 'justify-center')}
+            >
               <LogOut className="w-5 h-5 shrink-0" />
               {isSidebarOpen && <span className="whitespace-nowrap">Đăng xuất</span>}
             </button>
@@ -451,13 +462,22 @@ const App: React.FC = () => {
                 <Bell className="w-5 h-5" />
                 <span className="absolute top-2 right-2 w-2 h-2 bg-blue-600 rounded-full border-2 border-inherit" />
               </button>
-              <div className="flex items-center gap-3 pl-6 border-l border-inherit">
+              <div className="flex items-center gap-3 pl-6 border-l border-inherit cursor-pointer hover:opacity-75 transition-opacity" onClick={() => navigate('/profile')}>
                 <div className="text-right hidden sm:block">
-                  <p className="text-sm font-semibold">Người dùng</p>
-                  <p className="text-xs text-muted-foreground">Thành viên</p>
+                  <p className="text-sm font-semibold">{currentUser?.displayName || 'Người dùng'}</p>
+                  <p className="text-xs text-muted-foreground">{currentUser?.role === 'admin' ? 'Quản trị viên' : 'Thành viên'}</p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-[#f4c25f] flex items-center justify-center text-white font-bold">
-                  Z
+                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-gradient-to-tr from-blue-600 to-[#f4c25f] flex items-center justify-center text-white font-bold">
+                  {currentUser?.avatar ? (
+                    <img 
+                      src={currentUser.avatar} 
+                      alt={currentUser.displayName} 
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span>{currentUser?.displayName?.charAt(0).toUpperCase() || 'U'}</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -476,6 +496,7 @@ const App: React.FC = () => {
             >
               <Suspense fallback={<PageLoader />}>
                 <CallProvider>
+                  <IncomingCallModal />
                   <Routes>
                     <Route path="/" element={<HomePage />} />
                     <Route path="/community" element={<ContactsPage />} />
