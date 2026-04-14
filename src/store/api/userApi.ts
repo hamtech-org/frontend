@@ -71,6 +71,11 @@ export const userApi = createApi({
       query: () => '/users/friends/requests/pending',
       providesTags: ['Friend'],
     }),
+
+    getSuggestedFriends: builder.query<ApiSuccessResponse<IUser[]>, { limit?: number }>({
+      query: ({ limit = 10 }) => `/users/friends/suggestions?limit=${limit}`,
+      providesTags: ['Friend'],
+    }),
   }),
 });
 
@@ -84,4 +89,5 @@ export const {
   useRemoveFriendMutation,
   useGetFriendsQuery,
   useGetPendingRequestsQuery,
+  useGetSuggestedFriendsQuery,
 } = userApi;

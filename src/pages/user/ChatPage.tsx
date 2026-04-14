@@ -36,6 +36,7 @@ import { decodeJwtUserId } from '@/utils/chatUtils';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
 import { ConversationListPanel, type ContactsTabId } from '@/components/chat/ConversationListPanel';
 import { FriendsListView } from '@/components/chat/FriendsListView';
+import { PendingFriendsPanel } from '@/components/chat/PendingFriendsPanel';
 import { AddFriendModal } from '@/components/chat/AddFriendModal';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import { PinnedMessagesBar } from '@/components/chat/PinnedMessagesBar';
@@ -959,6 +960,38 @@ export default function ChatPage() {
     [conversations, createConversation, navigate],
   );
 
+  const handleFriendRequestAccepted = useCallback(
+    async (friendId: string, friendName: string) => {
+      try {
+        console.log('✅ Friend request accepted, creating conversation with:', friendId, friendName);
+        
+        // Check if conversation already exists
+        let existingConversation = conversations.find(
+          (c) => c.type === 'direct' && c.otherUserId === friendId,
+        );
+
+        // If not found, create a new direct conversation
+        if (!existingConversation) {
+          console.log('🆕 Creating new direct conversation...');
+          const result = await createConversation({
+            type: 'direct',
+            memberIds: [friendId],
+          }).unwrap();
+          existingConversation = result.data;
+          console.log('✅ Conversation created:', result.data.conversationId);
+          
+          // Navigate to the new conversation
+          void navigate(`/chat/${existingConversation.conversationId}`);
+        } else {
+          console.log('✅ Found existing conversation:', existingConversation.conversationId);
+        }
+      } catch (error) {
+        console.error('❌ Failed to create conversation after accepting friend request:', error);
+      }
+    },
+    [conversations, createConversation, navigate],
+  );
+
   const closeTaskModal = useCallback(() => {
     setShowTaskModal(false);
     setTaskTitle('');
@@ -1483,7 +1516,11 @@ export default function ChatPage() {
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
         {showContactsManagement ? (
-          <FriendsListView onFriendClick={handleFriendClick} />
+          contactsTab === 'friendRequests' ? (
+            <PendingFriendsPanel onFriendRequestAccepted={handleFriendRequestAccepted} />
+          ) : (
+            <FriendsListView onFriendClick={handleFriendClick} />
+          )
         ) : (
           <>
             <ChatHeader

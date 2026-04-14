@@ -1,6 +1,7 @@
-import { Users, MessageCircle } from 'lucide-react';
-import { useState, useMemo } from 'react';
-import { useGetFriendsQuery } from '@/store/api/contactApi';
+import { Users, MessageCircle, MoreVertical, Trash2, User, Mail, Phone, X } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { useGetFriendsQuery, useDeleteFriendMutation } from '@/store/api/contactApi';
+import { socketService } from '@/services/socket';
 
 type FriendsListViewProps = {
   onFriendClick?: (friendId: string, friendName: string) => void;
@@ -39,10 +40,41 @@ function groupFriendsByLetter(friends: Friend[]): Record<string, Friend[]> {
 }
 
 export function FriendsListView({ onFriendClick }: FriendsListViewProps) {
-  const { data: friendsRes, isLoading: friendsLoading, error: friendsError } = useGetFriendsQuery();
+  const { data: friendsRes, isLoading: friendsLoading, error: friendsError, refetch } = useGetFriendsQuery();
+  const [deleteFriend, { isLoading: isDeleting }] = useDeleteFriendMutation();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [filterStatus, setFilterStatus] = useState<'all' | 'online' | 'offline'>('all');
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [selectedFriendForProfile, setSelectedFriendForProfile] = useState<Friend | null>(null);
+
+  // Listen for real-time friend list changes
+  useEffect(() => {
+    const handleFriendAdded = () => {
+      console.log('Friend added');
+      refetch();
+    };
+
+    const handleFriendRemoved = () => {
+      console.log('Friend removed');
+      refetch();
+    };
+
+    const handleFriendStatusChanged = () => {
+      console.log('Friend status changed');
+      refetch();
+    };
+
+    socketService.on('friend:added', handleFriendAdded);
+    socketService.on('friend:removed', handleFriendRemoved);
+    socketService.on('friend:statusChanged', handleFriendStatusChanged);
+
+    return () => {
+      socketService.off('friend:added', handleFriendAdded);
+      socketService.off('friend:removed', handleFriendRemoved);
+      socketService.off('friend:statusChanged', handleFriendStatusChanged);
+    };
+  }, [refetch]);
 
   // Extract and process friends data
   const processedFriends = useMemo(() => {
@@ -99,6 +131,26 @@ export function FriendsListView({ onFriendClick }: FriendsListViewProps) {
     return friends;
   }, [friendsRes?.data, searchQuery, sortOrder, filterStatus]);
 
+  const handleDeleteFriend = async (friendId: string, friendName: string) => {
+    if (window.confirm(`Bạn có chắc chắn muốn xóa ${friendName} khỏi danh sách bạn bè?`)) {
+      try {
+        await deleteFriend(friendId).unwrap();
+        // Emit socket event to notify others
+        socketService.emit('friend:remove', friendId);
+        console.log('Delete friend successfully:', friendId, friendName);
+        setOpenMenuId(null);
+      } catch (error) {
+        console.error('Error deleting friend:', error);
+        alert('Lỗi khi xóa bạn bè. Vui lòng thử lại.');
+      }
+    }
+  };
+
+  const handleViewProfile = (friend: Friend) => {
+    setSelectedFriendForProfile(friend);
+    setOpenMenuId(null);
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-[#1a1a1a] px-6 py-4">
       {/* Header */}
@@ -154,7 +206,6 @@ export function FriendsListView({ onFriendClick }: FriendsListViewProps) {
         {!friendsLoading && !friendsError && processedFriends.length === 0 && (
           <div className="text-center text-sm text-muted-foreground py-8 space-y-2">
             <p>Chưa có bạn bè. Hãy thêm bạn mới!</p>
-            <p className="text-[11px]">(API returned: {JSON.stringify(friendsRes?.data?.length ?? 'none')})</p>
           </div>
         )}
         {!friendsLoading && !friendsError && processedFriends.length > 0 &&
@@ -195,16 +246,56 @@ export function FriendsListView({ onFriendClick }: FriendsListViewProps) {
                           </p>
                         </div>
                       </div>
-                      <button
-                        className="opacity-0 group-hover:opacity-100 p-2 hover:bg-blue-600/20 dark:hover:bg-blue-500/20 rounded-lg transition-all text-blue-600 dark:text-blue-400"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onFriendClick?.(friend.userId, displayName);
-                        }}
-                        title="Nhắn tin"
-                      >
-                        <MessageCircle className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          className="opacity-0 group-hover:opacity-100 p-2 hover:bg-blue-600/20 dark:hover:bg-blue-500/20 rounded-lg transition-all text-blue-600 dark:text-blue-400"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onFriendClick?.(friend.userId, displayName);
+                          }}
+                          title="Nhắn tin"
+                        >
+                          <MessageCircle className="w-5 h-5" />
+                        </button>
+                        <div className="relative">
+                          <button
+                            className="opacity-0 group-hover:opacity-100 p-2 hover:bg-black/10 dark:hover:bg-white/10 rounded-lg transition-all text-black dark:text-white"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuId(openMenuId === friend.userId ? null : friend.userId);
+                            }}
+                            title="Thêm tùy chọn"
+                          >
+                            <MoreVertical className="w-5 h-5" />
+                          </button>
+                          {openMenuId === friend.userId && (
+                            <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-[#2a2a2a] rounded-lg shadow-lg border border-black/10 dark:border-white/10 z-50 overflow-hidden">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewProfile(friend);
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-sm font-medium text-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-3"
+                              >
+                                <User className="w-4 h-4" />
+                                Xem hồ sơ
+                              </button>
+                              <div className="border-t border-black/5 dark:border-white/5" />
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteFriend(friend.userId, displayName);
+                                }}
+                                disabled={isDeleting}
+                                className="w-full px-4 py-2.5 text-left text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-600/10 dark:hover:bg-red-500/10 transition-colors flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <Trash2 className={`w-4 h-4 ${isDeleting ? 'animate-spin' : ''}`} />
+                                {isDeleting ? 'Đang xóa...' : 'Xóa kết bạn'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -212,6 +303,105 @@ export function FriendsListView({ onFriendClick }: FriendsListViewProps) {
             </div>
           ))}
       </div>
+
+      {/* Friend Profile Modal */}
+      {selectedFriendForProfile && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 shadow-2xl backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl max-w-[400px] w-full shadow-2xl border border-black/5 dark:border-white/10 relative max-h-[90vh] flex flex-col overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setSelectedFriendForProfile(null)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center text-white hover:bg-black/50 backdrop-blur-md transition-colors z-20 shadow-sm"
+            >
+              <X className="w-5 h-5 stroke-[2]" />
+            </button>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar w-full">
+              <div className="relative h-32 shrink-0 group bg-gradient-to-r from-blue-500 to-blue-600" />
+
+              <div className="px-6 relative pb-6">
+                <div className="flex flex-col items-center -mt-12 relative z-10">
+                  <div className="relative">
+                    <div className="w-24 h-24 rounded-full border-[4px] border-white dark:border-[#1a1a1a] overflow-hidden bg-white shadow-md">
+                      {selectedFriendForProfile.avatar ? (
+                        <img
+                          src={selectedFriendForProfile.avatar}
+                          alt={selectedFriendForProfile.displayName}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-2xl font-bold text-blue-600">
+                          {selectedFriendForProfile.displayName.trim().slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <h3 className="font-bold text-2xl text-black dark:text-white mt-2 text-center">
+                    {selectedFriendForProfile.displayName}
+                  </h3>
+                  <div className="text-[13px] font-medium text-muted-foreground mt-0.5 flex items-center gap-1.5 justify-center">
+                    {selectedFriendForProfile.status === 'online' ? (
+                      <>
+                        Đang hoạt động{' '}
+                        <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                      </>
+                    ) : (
+                      <>
+                        Ngoại tuyến{' '}
+                        <span className="w-2 h-2 rounded-full bg-gray-400" />
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-6 space-y-2">
+                  {selectedFriendForProfile.email && (
+                    <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
+                      <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                        <Mail className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div className="flex-1">
+                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block">
+                          Email
+                        </span>
+                        <p className="text-[14px] font-semibold text-black dark:text-white/90">{selectedFriendForProfile.email}</p>
+                      </div>
+                    </div>
+                  )}
+                  {selectedFriendForProfile.phone && (
+                    <div className="bg-black/5 dark:bg-white/5 rounded-xl p-3 flex items-start gap-4">
+                      <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                        <Phone className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div className="flex-1">
+                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5 block">
+                          Điện thoại
+                        </span>
+                        <p className="text-[14px] font-semibold text-black dark:text-white/90">{selectedFriendForProfile.phone}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 flex gap-3 pb-2 shrink-0">
+                  <button
+                    type="button"
+                    className="flex-1 py-2.5 rounded-xl font-bold text-[14px] bg-[#0068ff] text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all hover:-translate-y-0.5"
+                    onClick={() => {
+                      onFriendClick?.(selectedFriendForProfile.userId, selectedFriendForProfile.displayName);
+                      setSelectedFriendForProfile(null);
+                    }}
+                  >
+                    Nhắn tin
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

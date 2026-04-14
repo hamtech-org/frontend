@@ -15,7 +15,14 @@ export const contactApi = createApi({
       query: () => '/contacts/groups',
       providesTags: ['Groups'],
     }),
+    deleteFriend: builder.mutation<ApiSuccessResponse<void>, string>({
+      query: (friendId) => ({
+        url: `/users/friends/${friendId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Friends'],
+    }),
   }),
 });
 
-export const { useGetFriendsQuery, useGetGroupsQuery } = contactApi;
+export const { useGetFriendsQuery, useGetGroupsQuery, useDeleteFriendMutation } = contactApi;
