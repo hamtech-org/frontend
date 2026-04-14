@@ -38,15 +38,15 @@ class SocketService {
     this.socket?.emit(event, data);
   }
 
-  on(event: string, handler: (data: unknown) => void): void {
+  on(event: string, handler: (data: any) => void): void {
     this.socket?.on(event, handler);
   }
 
-  once(event: string, handler: (data: unknown) => void): void {
+  once(event: string, handler: (data: any) => void): void {
     this.socket?.once(event, handler);
   }
 
-  off(event: string, handler?: (data: unknown) => void): void {
+  off(event: string, handler?: (data: any) => void): void {
     this.socket?.off(event, handler);
   }
 }
