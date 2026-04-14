@@ -1370,37 +1370,26 @@ export default function ChatPage() {
     async (memberIds: string[]) => {
       if (!activeConversationId || memberIds.length === 0) return;
       setActionBusy('addMembers', true);
-      const before = groupMembers;
-      const optimistic: GroupMember[] = [
-        ...groupMembers,
-        ...memberIds.map((id) => ({
-          userId: id,
-          name: id,
-          avatar: '',
-          role: 'member' as GroupMemberRole,
-        })),
-      ];
-      setGroupMembers(optimistic);
       try {
         await apiClient.post(`/chat/groups/${activeConversationId}/members`, { memberIds });
-        toast.success('Đã thêm thành viên');
-        await fetchGroupMembers(activeConversationId);
+        toast.success('Đã gửi lời mời vào nhóm');
+        // Nghiệp vụ mới: người được mời nằm ở "Chờ duyệt" cho tới khi được duyệt/chấp nhận.
+        await fetchGroupRequests(activeConversationId);
         setSelectedAddMembers([]);
         setShowAddMembersModal(false);
       } catch (error) {
-        setGroupMembers(before);
         const status = (error as any)?.response?.status;
         if (status === 403) {
-          toast.error('Bạn không có quyền thêm thành viên');
+          toast.error('Bạn không có quyền mời thành viên');
         } else {
-          toast.error('Không thể thêm thành viên');
+          toast.error('Không thể gửi lời mời');
         }
         console.error('Failed to add members:', error);
       } finally {
         setActionBusy('addMembers', false);
       }
     },
-    [activeConversationId, groupMembers, fetchGroupMembers, setActionBusy],
+    [activeConversationId, fetchGroupRequests, setActionBusy],
   );
 
   const handleSubmitTask = useCallback(async () => {
