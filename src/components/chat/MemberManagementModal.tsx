@@ -3,7 +3,7 @@ import { KeyRound, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { apiClient } from '@/services/api';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type MemberTab = 'list' | 'pending';
 type MemberUiVariant = 'modal' | 'inline';
@@ -15,6 +15,7 @@ type MemberManagementModalProps = {
   onMemberTabChange: (tab: MemberTab) => void;
   members: any[];
   requests: any[];
+  currentUserId?: string;
   onApprove?: (userId: string) => Promise<void>;
   onReject?: (userId: string) => Promise<void>;
   onKick?: (userId: string) => Promise<void>;
@@ -38,6 +39,7 @@ export function MemberManagementModal({
   onMemberTabChange,
   members,
   requests,
+  currentUserId,
   onApprove,
   onReject,
   onKick,
@@ -52,6 +54,7 @@ export function MemberManagementModal({
   const [brokenAvatars, setBrokenAvatars] = useState<Record<string, true>>({});
   const [kickConfirmUserId, setKickConfirmUserId] = useState<string | null>(null);
   const [kickSubmitting, setKickSubmitting] = useState(false);
+  const [actionMenuUserId, setActionMenuUserId] = useState<string | null>(null);
 
   const renderAvatar = (opts: { userId: string; name?: string; avatar?: string | null }) => {
     const label = (opts.name ?? opts.userId ?? 'U').trim();
@@ -76,10 +79,23 @@ export function MemberManagementModal({
     );
   };
 
+  const displayNameFor = (userId: string, rawName?: string | null) => {
+    if (currentUserId && userId === currentUserId) return 'Bạn';
+    const name = (rawName ?? '').trim();
+    return name || userId;
+  };
+
   const kickTarget = useMemo(() => {
     if (!kickConfirmUserId) return null;
     return members.find((m) => m.userId === kickConfirmUserId) ?? null;
   }, [kickConfirmUserId, members]);
+
+  useEffect(() => {
+    if (!actionMenuUserId) return;
+    const close = () => setActionMenuUserId(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [actionMenuUserId]);
 
   const approve = async (userId: string) => {
     if (onApprove) return onApprove(userId);
@@ -189,9 +205,15 @@ export function MemberManagementModal({
                   key={member.userId}
                   className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors group"
                 >
-                  {renderAvatar({ userId: member.userId, name: member.name, avatar: member.avatar })}
+                  {renderAvatar({
+                    userId: member.userId,
+                    name: displayNameFor(member.userId, member.name),
+                    avatar: member.avatar,
+                  })}
                   <div className="flex-1 overflow-hidden">
-                    <p className="font-bold text-[14px] text-black dark:text-white truncate">{member.name}</p>
+                    <p className="font-bold text-[14px] text-black dark:text-white truncate">
+                      {displayNameFor(member.userId, member.name)}
+                    </p>
                     {member.role === 'owner' ? (
                       <div className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground font-semibold">
                         <KeyRound className="w-3.5 h-3.5 text-amber-500" />
@@ -219,9 +241,13 @@ export function MemberManagementModal({
             : !canModerate
               ? null
               : requests.map((person) => {
-                  const displayName = (person.name ?? person.displayName ?? person.userId) as string;
+                  const displayName = displayNameFor(
+                    person.userId,
+                    (person.name ?? person.displayName ?? person.userId) as string,
+                  );
                   const subtitle =
                     person.status === 'invited' ? 'Được mời vào nhóm' : 'Yêu cầu tham gia';
+                  const menuOpen = actionMenuUserId === person.userId;
                   return (
                     <div
                       key={person.userId}
@@ -230,7 +256,7 @@ export function MemberManagementModal({
                       <div className="flex items-center gap-3 min-w-0">
                         {renderAvatar({ userId: person.userId, name: displayName, avatar: person.avatar })}
                         <div className="min-w-0">
-                          <p className="font-bold text-[14px] text-black dark:text-white truncate">
+                          <p className="font-bold text-[14px] text-black dark:text-white truncate" title={displayName}>
                             {displayName}
                           </p>
                           <p className="text-[12px] text-muted-foreground font-medium truncate">
@@ -239,33 +265,65 @@ export function MemberManagementModal({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        {!person.isFriend && (
-                          <button
-                            type="button"
-                            onClick={() => void addFriend(person.userId)}
-                            className="h-9 px-3 rounded-xl bg-blue-600/10 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white text-[12px] font-bold transition-colors"
-                            title="Kết bạn"
+                      <div className="relative shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActionMenuUserId((prev) => (prev === person.userId ? null : person.userId));
+                          }}
+                          className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
+                          title="Tùy chọn"
+                          aria-label="Tùy chọn"
+                        >
+                          ⋯
+                        </button>
+
+                        {menuOpen && (
+                          <div
+                            role="menu"
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute right-0 top-10 w-40 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
                           >
-                            Kết bạn
-                          </button>
+                            {!person.isFriend && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setActionMenuUserId(null);
+                                  void addFriend(person.userId);
+                                }}
+                                className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-blue-700 dark:text-blue-300"
+                              >
+                                Kết bạn
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              role="menuitem"
+                              disabled={busy?.rejecting}
+                              onClick={() => {
+                                setActionMenuUserId(null);
+                                void reject(person.userId);
+                              }}
+                              className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
+                            >
+                              Từ chối
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              disabled={busy?.approving}
+                              onClick={() => {
+                                setActionMenuUserId(null);
+                                void approve(person.userId);
+                              }}
+                              className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
+                            >
+                              Duyệt
+                            </button>
+                          </div>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => void reject(person.userId)}
-                          disabled={busy?.rejecting}
-                          className="h-9 px-3 rounded-xl bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white text-[12px] font-bold transition-colors disabled:opacity-50"
-                        >
-                          Từ chối
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void approve(person.userId)}
-                          disabled={busy?.approving}
-                          className="h-9 px-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-[12px] font-bold transition-colors shadow-sm disabled:opacity-50"
-                        >
-                          Duyệt
-                        </button>
                       </div>
                     </div>
                   );
@@ -398,6 +456,7 @@ export function MemberManagementModal({
                     const displayName = (person.name ?? person.displayName ?? person.userId) as string;
                     const subtitle =
                       person.status === 'invited' ? 'Được mời vào nhóm' : 'Yêu cầu tham gia';
+                    const menuOpen = actionMenuUserId === person.userId;
                     return (
                       <div
                         key={person.userId}
@@ -406,39 +465,72 @@ export function MemberManagementModal({
                         <div className="flex items-center gap-3 min-w-0">
                           {renderAvatar({ userId: person.userId, name: displayName, avatar: person.avatar })}
                           <div className="min-w-0">
-                            <p className="font-bold text-[14px] text-black dark:text-white truncate">
+                            <p className="font-bold text-[14px] text-black dark:text-white truncate" title={displayName}>
                               {displayName}
                             </p>
                             <p className="text-[12px] text-muted-foreground font-medium truncate">{subtitle}</p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          {!person.isFriend && (
-                            <button
-                              type="button"
-                              onClick={() => void addFriend(person.userId)}
-                              className="h-9 px-3 rounded-xl bg-blue-600/10 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white text-[12px] font-bold transition-colors"
+                        <div className="relative shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActionMenuUserId((prev) => (prev === person.userId ? null : person.userId));
+                            }}
+                            className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
+                            title="Tùy chọn"
+                            aria-label="Tùy chọn"
+                          >
+                            ⋯
+                          </button>
+
+                          {menuOpen && (
+                            <div
+                              role="menu"
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute right-0 top-10 w-40 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
                             >
-                              Kết bạn
-                            </button>
+                              {!person.isFriend && (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setActionMenuUserId(null);
+                                    void addFriend(person.userId);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-blue-700 dark:text-blue-300"
+                                >
+                                  Kết bạn
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={busy?.rejecting}
+                                onClick={() => {
+                                  setActionMenuUserId(null);
+                                  void reject(person.userId);
+                                }}
+                                className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
+                              >
+                                Từ chối
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={busy?.approving}
+                                onClick={() => {
+                                  setActionMenuUserId(null);
+                                  void approve(person.userId);
+                                }}
+                                className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
+                              >
+                                Duyệt
+                              </button>
+                            </div>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => void reject(person.userId)}
-                            disabled={busy?.rejecting}
-                            className="h-9 px-3 rounded-xl bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white text-[12px] font-bold transition-colors disabled:opacity-50"
-                          >
-                            Từ chối
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void approve(person.userId)}
-                            disabled={busy?.approving}
-                            className="h-9 px-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-[12px] font-bold transition-colors shadow-sm disabled:opacity-50"
-                          >
-                            Duyệt
-                          </button>
                         </div>
                       </div>
                     );
