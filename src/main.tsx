@@ -5,6 +5,7 @@ import { Provider } from 'react-redux';
 import { ToastContainer } from 'react-toastify';
 import { store } from '@/store/store';
 import { SocketProvider } from '@/contexts/SocketContext';
+import { TooltipProvider } from '@/components/ui';
 import App from './App';
 import 'react-toastify/dist/ReactToastify.css';
 import '@/styles/index.css';
@@ -17,10 +18,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Provider store={store}>
       <BrowserRouter>
-        <SocketProvider>
-          <App />
-          <ToastContainer position="top-right" autoClose={3000} />
-        </SocketProvider>
+        <TooltipProvider>
+          <SocketProvider>
+            <App />
+            <ToastContainer position="top-right" autoClose={3000} />
+          </SocketProvider>
+        </TooltipProvider>
       </BrowserRouter>
     </Provider>
   </React.StrictMode>,
