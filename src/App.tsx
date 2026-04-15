@@ -45,6 +45,7 @@ const ProfilePage = React.lazy(() => import('@/pages/user/ProfilePage'));
 const SearchPage = React.lazy(() => import('@/pages/user/SearchPage'));
 const AdminDashboard = React.lazy(() => import('@/pages/admin/AdminDashboard'));
 const AdminAnalytics = React.lazy(() => import('@/pages/admin/AdminAnalytics'));
+const ComponentsDemoPage = React.lazy(() => import('@/pages/user/ComponentsDemoPage'));
 
 const navItems = [
   { path: '/', icon: Home, label: 'Bảng tin' },
@@ -507,6 +508,7 @@ const App: React.FC = () => {
                     <Route path="/analytics" element={<AdminAnalytics />} />
                     <Route path="/ai-studio" element={<AIStudioPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/components-demo" element={<ComponentsDemoPage />} />
                     <Route path="/admin" element={<AdminDashboard />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
