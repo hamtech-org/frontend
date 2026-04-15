@@ -1,47 +1,26 @@
-import React, { Suspense, useState } from 'react';
-import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
-import {
-  BarChart3,
-  Compass,
-  Home,
-  MessageSquare,
-  Settings,
-  Sparkles,
-  User,
-  Video,
-} from 'lucide-react';
-import { cn } from '@/utils/cn';
-import { useAuth } from '@/hooks/useAuth';
+import IncomingCallModal from '@/components/call/IncomingCallModal';
 import AppHeader from '@/components/layout/AppHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
+import { ShellMain, ShellRoot } from '@/components/layout/ShellPrimitives';
+import GlobalSearchBox from '@/components/search/GlobalSearchBox';
 import { CallProvider } from '@/contexts/CallContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import IncomingCallModal from '@/components/call/IncomingCallModal';
+import { useAppShellState } from '@/hooks/app/useAppShellState';
 import { useLogoutFlow } from '@/hooks/app/useLogoutFlow';
 import { useProfileSync } from '@/hooks/app/useProfileSync';
+import { useAuth } from '@/hooks/useAuth';
 import { appRouteElements } from '@/routes/AppRoutes';
 import { guestRouteElements } from '@/routes/GuestRoutes';
+import { cn } from '@/utils/cn';
+import { AnimatePresence, motion } from 'motion/react';
+import React, { Suspense } from 'react';
+import { Route, Routes, useLocation } from 'react-router-dom';
 
 const CallPage = React.lazy(() => import('@/pages/user/CallPage'));
-
-const navItems = [
-  { path: '/', icon: Home, label: 'Bảng tin' },
-  { path: '/community', icon: Compass, label: 'Cộng đồng' },
-  { path: '/studio', icon: Video, label: 'Live Studio' },
-  { path: '/chat', icon: MessageSquare, label: 'Tin nhắn' },
-  { path: '/analytics', icon: BarChart3, label: 'Thống kê' },
-  { path: '/ai-studio', icon: Sparkles, label: 'AI Studio' },
-  { path: '/profile', icon: User, label: 'Hồ sơ' },
-  { path: '/admin', icon: Settings, label: 'Quản trị' },
-];
 
 const GUEST_ROUTES = ['/login', '/onboarding'];
 
 const App: React.FC = () => {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-
-  const navigate = useNavigate();
   const location = useLocation();
   const { user: currentUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -54,22 +33,37 @@ const App: React.FC = () => {
   const isCallRoute = location.pathname === '/call';
   const isChatRoute = location.pathname.startsWith('/chat');
   const routeTransitionKey = isChatRoute ? 'chat' : location.pathname;
+  const shouldRenderAppShell = !isGuestRoute && !isCallRoute && !isChatRoute;
+  const {
+    isMobileViewport,
+    isMobileSidebarOpen,
+    isMobileSearchOpen,
+    isDesktopSidebarExpanded,
+    setIsMobileSidebarOpen,
+    handleToggleSidebar,
+    handleNavigate,
+    toggleMobileSearch,
+  } = useAppShellState(location.pathname);
 
   if (isGuestRoute) {
     return (
-      <div className={cn('min-h-screen transition-colors duration-500', isDarkMode ? 'theme-midnight dark' : 'theme-ethereal')}>
-        <AnimatePresence mode="wait">
+      <div
+        className={cn(
+          'min-h-screen transition-colors duration-500',
+          isDarkMode ? 'theme-midnight dark' : 'theme-ethereal',
+        )}
+      >
+        <AnimatePresence initial={false} mode="sync">
           <motion.div
             key={location.pathname}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 1, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            exit={{ opacity: 1, y: -12 }}
+            transition={{ duration: 0.24, ease: 'easeOut' }}
+            className="min-h-screen bg-background"
           >
             <Suspense fallback={<PageLoader />}>
-              <Routes>
-                {guestRouteElements}
-              </Routes>
+              <Routes>{guestRouteElements}</Routes>
             </Suspense>
           </motion.div>
         </AnimatePresence>
@@ -90,53 +84,119 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className={cn('min-h-screen flex transition-colors duration-500', isDarkMode ? 'theme-midnight dark' : 'theme-ethereal')}>
-      {!isChatRoute && (
-        <AppSidebar
-          navItems={navItems}
-          isDarkMode={isDarkMode}
-          isOpen={isSidebarOpen}
-          pathname={location.pathname}
-          onNavigate={navigate}
-          onToggleTheme={toggleTheme}
-          onLogout={handleLogout}
-        />
+    <ShellRoot
+      className={cn(
+        'transition-colors duration-500',
+        isDarkMode ? 'theme-midnight dark' : 'theme-ethereal',
+      )}
+    >
+      {shouldRenderAppShell && (
+        <div className="hidden md:block shrink-0">
+          <AppSidebar
+            isDarkMode={isDarkMode}
+            isOpen={isDesktopSidebarExpanded}
+            pathname={location.pathname}
+            onNavigate={handleNavigate}
+            onToggleTheme={toggleTheme}
+            onLogout={handleLogout}
+          />
+        </div>
       )}
 
-      <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
+      {shouldRenderAppShell && (
+        <AnimatePresence initial={false}>
+          {isMobileSidebarOpen && (
+            <>
+              <motion.button
+                type="button"
+                aria-label="Đóng menu điều hướng"
+                className="fixed inset-0 z-40 bg-black/40 md:hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsMobileSidebarOpen(false)}
+              />
+              <AppSidebar
+                variant="mobile"
+                isDarkMode={isDarkMode}
+                isOpen
+                pathname={location.pathname}
+                onNavigate={handleNavigate}
+                onToggleTheme={toggleTheme}
+                onLogout={handleLogout}
+              />
+            </>
+          )}
+        </AnimatePresence>
+      )}
+
+      <ShellMain>
+        <AnimatePresence initial={false}>
+          {isMobileSearchOpen && (
+            <motion.div
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="fixed top-0 inset-x-0 z-50 p-3 sm:hidden"
+            >
+              <div
+                className={cn(
+                  'rounded-2xl border p-2 shadow-lg',
+                  isDarkMode ? 'bg-midnight-bg border-midnight-border' : 'bg-card border-border',
+                )}
+              >
+                <GlobalSearchBox
+                  isDarkMode={isDarkMode}
+                  currentUserId={currentUser?.userId}
+                  autoFocusInput
+                  disableOutsideBackdrop
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {!isChatRoute && (
           <AppHeader
             isDarkMode={isDarkMode}
-            isSidebarOpen={isSidebarOpen}
+            isSidebarOpen={isDesktopSidebarExpanded}
+            isMobile={isMobileViewport}
+            isMobileSidebarOpen={isMobileSidebarOpen}
             currentUser={currentUser}
-            onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
-            onOpenProfile={() => navigate('/profile')}
+            onToggleSidebar={handleToggleSidebar}
+            onNavigateHome={() => handleNavigate('/')}
+            onOpenProfile={() => handleNavigate('/profile')}
+            onOpenSearch={toggleMobileSearch}
           />
         )}
 
-        <div className={cn('flex-1 relative', isChatRoute ? 'overflow-hidden' : 'overflow-y-auto')}>
-          <AnimatePresence mode="wait">
+        <div
+          className={cn(
+            'flex-1 min-h-0 relative',
+            isChatRoute ? 'overflow-hidden' : 'overflow-y-auto',
+          )}
+        >
+          <AnimatePresence initial={false} mode="sync">
             <motion.div
               key={routeTransitionKey}
-              initial={{ opacity: 0, x: 10 }}
+              initial={{ opacity: 1, x: 0 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-              className={isChatRoute ? "absolute inset-0" : "h-full"}
+              exit={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="h-full bg-background will-change-transform"
             >
               <Suspense fallback={<PageLoader />}>
                 <CallProvider>
                   <IncomingCallModal />
-                  <Routes>
-                    {appRouteElements}
-                  </Routes>
+                  <Routes>{appRouteElements}</Routes>
                 </CallProvider>
               </Suspense>
             </motion.div>
           </AnimatePresence>
         </div>
-      </main>
-    </div>
+      </ShellMain>
+    </ShellRoot>
   );
 };
 

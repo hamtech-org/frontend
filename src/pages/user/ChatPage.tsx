@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   chatApi,
   useGetConversationsQuery,
@@ -63,6 +64,7 @@ import { EditGroupModal } from '@/components/chat/EditGroupModal';
 import { useCallContext } from '@/contexts/CallContext';
 import { apiClient } from '@/services/api';
 import type { ApiSuccessResponse } from '@/types/api.types';
+import { ShellSurface } from '@/components/layout/ShellPrimitives';
 
 type MessageConfirmState =
   | null
@@ -374,6 +376,17 @@ export default function ChatPage() {
   }, [activeConversationId]);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [unreadIncomingCount, setUnreadIncomingCount] = useState(0);
+  const scrollRafRef = useRef<number | null>(null);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
+    if (scrollRafRef.current !== null) {
+      cancelAnimationFrame(scrollRafRef.current);
+    }
+    scrollRafRef.current = requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
+      scrollRafRef.current = null;
+    });
+  }, []);
 
   const [showInfo, setShowInfo] = useState(true);
   const [showOtherPinnedPanel, setShowOtherPinnedPanel] = useState(false);
@@ -858,12 +871,7 @@ export default function ChatPage() {
     const previousMessageId = prevLastMessageIdRef.current;
     if (previousMessageId === null) {
       prevLastMessageIdRef.current = latestMessage.messageId;
-      const scrollToEnd = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
-      };
-      requestAnimationFrame(() => {
-        requestAnimationFrame(scrollToEnd);
-      });
+      scrollToBottom('auto');
       return;
     }
     if (latestMessage.messageId === previousMessageId) return;
@@ -878,34 +886,36 @@ export default function ChatPage() {
 
     if (isMyMessage) {
       setUnreadIncomingCount(0);
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      scrollToBottom('smooth');
     } else if (isNearBottom || !isOverflowing) {
       setUnreadIncomingCount(0);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        });
-      });
+      scrollToBottom('smooth');
     } else {
       setUnreadIncomingCount((count) => count + 1);
     }
 
     prevLastMessageIdRef.current = latestMessage.messageId;
-  }, [allMessages, activeConversationId, currentUserId]);
+  }, [allMessages, activeConversationId, currentUserId, scrollToBottom]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
+    let isTicking = false;
     const handleScroll = () => {
+      if (isTicking) return;
+      isTicking = true;
+      requestAnimationFrame(() => {
       const distanceToBottom =
         container.scrollHeight - container.scrollTop - container.clientHeight;
       if (distanceToBottom < CHAT_NEAR_BOTTOM_PX) {
         setUnreadIncomingCount(0);
       }
+        isTicking = false;
+      });
     };
 
-    container.addEventListener('scroll', handleScroll);
+    container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
   }, []);
 
@@ -917,10 +927,16 @@ export default function ChatPage() {
     const isNearBottom = distanceToBottom < CHAT_NEAR_BOTTOM_PX;
     if (!isNearBottom) return;
 
-    requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    });
-  }, [typingUsers.length]);
+    scrollToBottom('smooth');
+  }, [typingUsers.length, scrollToBottom]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+      }
+    };
+  }, []);
 
   const handleSelectConversation = useCallback(
     (conversationId: string) => {
@@ -1014,8 +1030,8 @@ export default function ChatPage() {
 
   const handleJumpToLatest = useCallback(() => {
     setUnreadIncomingCount(0);
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
+    scrollToBottom('smooth');
+  }, [scrollToBottom]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!editingMessage || !editDraft.trim()) return;
@@ -1856,7 +1872,7 @@ export default function ChatPage() {
   const currentUserRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
 
   return (
-    <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
+    <div className="w-full h-full min-h-0 flex overflow-hidden bg-background">
       <ChatNavRail
         navigate={navigate}
         onOpenProfile={() => setShowProfileModal(true)}
@@ -1884,7 +1900,7 @@ export default function ChatPage() {
         onOpenAddFriend={() => setShowAddFriendModal(true)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
+      <ShellSurface className="flex-1 flex flex-col min-w-0 min-h-0 relative border-0">
         {showContactsManagement ? (
           contactsTab === 'friendRequests' ? (
             <PendingFriendsPanel onFriendRequestAccepted={handleFriendRequestAccepted} />
@@ -1966,50 +1982,61 @@ export default function ChatPage() {
                 onOpenTask={() => setShowTaskModal(true)} pendingAttachments={pendingAttachments} onAddPendingFiles={addPendingFiles} onRemovePendingAttachment={removePendingAttachment}            />
           </>
         )}
-      </div>
+      </ShellSurface>
 
-      {showInfo && !showContactsManagement && (
-        <ConversationInfoPanel
-          numRequests={groupRequests.length}
-          activeConversation={activeConversation}
-          onOpenAISummaryFromPanel={openAISummaryFromPanel}
-          onEditGroup={openEditGroupModal}
-          onAddMembers={openAddMembersModal}
-          onRequestJoin={() => void handleRequestJoin()}
-          onVotePoll={(pollId, optionIndex) => void handleVotePoll(pollId, optionIndex)}
-          onOpenPollVote={(pollId) => openPollVoteModal(pollId)}
-          onAddPollOption={(pollId) => void handleAddPollOption(pollId)}
-          onClosePoll={(pollId) => void handleClosePoll(pollId)}
-          onToggleTask={(taskId) => void handleToggleTaskStatus(taskId)}
-          polls={groupPolls}
-          tasks={groupTasks}
-          isJoinRequested={groupJoinRequested}
-          loading={{
-            polls: groupLoading.polls || groupActionLoading.votePoll,
-            tasks: groupLoading.tasks || groupActionLoading.updateTask,
-            recap: groupLoading.recap || groupActionLoading.generateRecap,
-            requestJoin: groupActionLoading.requestJoin,
-            updateGroup: groupActionLoading.updateGroup,
-          }}
-          onLeaveGroup={() => void handleLeaveGroup()}
-          onDeleteGroup={() => void handleDeleteGroup()}
-          // Modal "Thành viên" đã render ngay trong panel, giữ callback cũ để tương thích nhưng không dùng nữa.
-          onOpenMemberModal={() => {}}
-          currentUserRole={currentUserRole}
-          currentUserId={currentUserId}
-          members={groupMembers}
-          requests={groupRequests}
-          onApproveMember={handleApproveRequest}
-          onRejectMember={handleRejectRequest}
-          onKickMember={handleKickMember}
-          busyMemberActions={{
-            approving: groupActionLoading.approveRequest,
-            rejecting: groupActionLoading.rejectRequest,
-            removing: groupActionLoading.removeMember,
-            changingRole: groupActionLoading.changeRole,
-          }}
-        />
-      )}
+      <AnimatePresence initial={false}>
+        {showInfo && !showContactsManagement && (
+          <motion.div
+            key="conversation-info-panel"
+            initial={{ width: 0, opacity: 0, x: 12 }}
+            animate={{ width: 'auto', opacity: 1, x: 0 }}
+            exit={{ width: 0, opacity: 0, x: 12 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="overflow-hidden shrink-0"
+          >
+            <ConversationInfoPanel
+              numRequests={groupRequests.length}
+              activeConversation={activeConversation}
+              onOpenAISummaryFromPanel={openAISummaryFromPanel}
+              onEditGroup={openEditGroupModal}
+              onAddMembers={openAddMembersModal}
+              onRequestJoin={() => void handleRequestJoin()}
+              onVotePoll={(pollId, optionIndex) => void handleVotePoll(pollId, optionIndex)}
+              onOpenPollVote={(pollId) => openPollVoteModal(pollId)}
+              onAddPollOption={(pollId) => void handleAddPollOption(pollId)}
+              onClosePoll={(pollId) => void handleClosePoll(pollId)}
+              onToggleTask={(taskId) => void handleToggleTaskStatus(taskId)}
+              polls={groupPolls}
+              tasks={groupTasks}
+              isJoinRequested={groupJoinRequested}
+              loading={{
+                polls: groupLoading.polls || groupActionLoading.votePoll,
+                tasks: groupLoading.tasks || groupActionLoading.updateTask,
+                recap: groupLoading.recap || groupActionLoading.generateRecap,
+                requestJoin: groupActionLoading.requestJoin,
+                updateGroup: groupActionLoading.updateGroup,
+              }}
+              onLeaveGroup={() => void handleLeaveGroup()}
+              onDeleteGroup={() => void handleDeleteGroup()}
+              // Modal "Thành viên" đã render ngay trong panel, giữ callback cũ để tương thích nhưng không dùng nữa.
+              onOpenMemberModal={() => {}}
+              currentUserRole={currentUserRole}
+              currentUserId={currentUserId}
+              members={groupMembers}
+              requests={groupRequests}
+              onApproveMember={handleApproveRequest}
+              onRejectMember={handleRejectRequest}
+              onKickMember={handleKickMember}
+              busyMemberActions={{
+                approving: groupActionLoading.approveRequest,
+                rejecting: groupActionLoading.rejectRequest,
+                removing: groupActionLoading.removeMember,
+                changingRole: groupActionLoading.changeRole,
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <PollVoteModal
         open={showPollVoteModal}
