@@ -42,7 +42,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
       <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0 md:max-w-xl">
         <button
           onClick={onToggleSidebar}
-          className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+          className="p-2 rounded-lg hover:bg-muted transition-colors"
         >
           {isSidebarExpanded ? (
             <PanelLeftClose className="size-5" />
@@ -53,7 +53,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         <button
           type="button"
           onClick={onNavigateHome}
-          className="md:hidden rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+          className="md:hidden rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           aria-label="Về trang chủ"
         >
           <img src={logoUrl} alt="HamTech Logo" className="w-8 h-8 min-w-8 min-h-8 shrink-0" />
@@ -67,14 +67,14 @@ const AppHeader: React.FC<AppHeaderProps> = ({
       <div className="flex items-center gap-1 sm:gap-2 md:gap-4 lg:gap-6">
         <button
           onClick={onOpenSearch}
-          className="sm:hidden relative p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+          className="sm:hidden relative p-2 rounded-full hover:bg-muted transition-colors"
           aria-label="Mở tìm kiếm"
         >
           <Search className="size-5" />
         </button>
-        <button className="relative p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all">
+        <button className="relative p-2 rounded-full hover:bg-muted transition-colors">
           <Bell className="size-5" />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-blue-600 rounded-full border-2 border-inherit" />
+          <span className="absolute top-2 right-2 size-2 bg-primary rounded-full border-2 border-inherit" />
         </button>
         <div
           className="flex items-center gap-2 md:gap-3 md:pl-6 md:border-l md:border-inherit cursor-pointer hover:opacity-75 transition-opacity"
@@ -86,7 +86,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
               {currentUser?.role === 'admin' ? 'Quản trị viên' : 'Thành viên'}
             </p>
           </div>
-          <div className="size-9 sm:size-10 rounded-full overflow-hidden shrink-0 bg-linear-to-tr from-blue-600 to-[#f4c25f] flex items-center justify-center text-white font-bold">
+          <div className="size-9 sm:size-10 rounded-full overflow-hidden shrink-0 bg-primary/90 flex items-center justify-center text-primary-foreground font-bold">
             {currentUser?.avatar ? (
               <img
                 src={currentUser.avatar}

@@ -1,4 +1,3 @@
-import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { Provider } from 'react-redux';
@@ -16,18 +15,16 @@ import { initializeAmplify } from '@/config/amplify';
 initializeAmplify();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <Provider store={store}>
-      <BrowserRouter>
-        <TooltipProvider>
-          <ThemeProvider>
-            <SocketProvider>
-              <App />
-              <ToastContainer position="top-right" autoClose={3000} />
-            </SocketProvider>
-          </ThemeProvider>
-        </TooltipProvider>
-      </BrowserRouter>
-    </Provider>
-  </React.StrictMode>,
+  <Provider store={store}>
+    <BrowserRouter>
+      <TooltipProvider>
+        <ThemeProvider>
+          <SocketProvider>
+            <App />
+            <ToastContainer position="top-right" autoClose={3000} />
+          </SocketProvider>
+        </ThemeProvider>
+      </TooltipProvider>
+    </BrowserRouter>
+  </Provider>,
 );

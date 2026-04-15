@@ -1,6 +1,7 @@
 import IncomingCallModal from '@/components/call/IncomingCallModal';
 import AppHeader from '@/components/layout/AppHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
+import { ShellMain, ShellRoot } from '@/components/layout/ShellPrimitives';
 import GlobalSearchBox from '@/components/search/GlobalSearchBox';
 import { CallProvider } from '@/contexts/CallContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -52,13 +53,14 @@ const App: React.FC = () => {
           isDarkMode ? 'theme-midnight dark' : 'theme-ethereal',
         )}
       >
-        <AnimatePresence mode="wait">
+        <AnimatePresence initial={false} mode="sync">
           <motion.div
             key={location.pathname}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 1, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            exit={{ opacity: 1, y: -12 }}
+            transition={{ duration: 0.24, ease: 'easeOut' }}
+            className="min-h-screen bg-background"
           >
             <Suspense fallback={<PageLoader />}>
               <Routes>{guestRouteElements}</Routes>
@@ -82,66 +84,66 @@ const App: React.FC = () => {
   }
 
   return (
-    <div
+    <ShellRoot
       className={cn(
-        'h-screen flex overflow-hidden transition-colors duration-500',
+        'transition-colors duration-500',
         isDarkMode ? 'theme-midnight dark' : 'theme-ethereal',
       )}
     >
       {shouldRenderAppShell && (
-        <>
-          <div className="hidden md:block">
-            <AppSidebar
-              isDarkMode={isDarkMode}
-              isOpen={isDesktopSidebarExpanded}
-              pathname={location.pathname}
-              onNavigate={handleNavigate}
-              onToggleTheme={toggleTheme}
-              onLogout={handleLogout}
-            />
-          </div>
-
-          <AnimatePresence>
-            {isMobileSidebarOpen && (
-              <>
-                <motion.button
-                  type="button"
-                  aria-label="Đóng menu điều hướng"
-                  className="fixed inset-0 z-40 bg-black/40 md:hidden"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  onClick={() => setIsMobileSidebarOpen(false)}
-                />
-                <AppSidebar
-                  variant="mobile"
-                  isDarkMode={isDarkMode}
-                  isOpen
-                  pathname={location.pathname}
-                  onNavigate={handleNavigate}
-                  onToggleTheme={toggleTheme}
-                  onLogout={handleLogout}
-                />
-              </>
-            )}
-          </AnimatePresence>
-        </>
+        <div className="hidden md:block shrink-0">
+          <AppSidebar
+            isDarkMode={isDarkMode}
+            isOpen={isDesktopSidebarExpanded}
+            pathname={location.pathname}
+            onNavigate={handleNavigate}
+            onToggleTheme={toggleTheme}
+            onLogout={handleLogout}
+          />
+        </div>
       )}
 
-      <main className="flex-1 min-h-0 flex flex-col overflow-x-hidden">
-        <AnimatePresence>
+      {shouldRenderAppShell && (
+        <AnimatePresence initial={false}>
+          {isMobileSidebarOpen && (
+            <>
+              <motion.button
+                type="button"
+                aria-label="Đóng menu điều hướng"
+                className="fixed inset-0 z-40 bg-black/40 md:hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsMobileSidebarOpen(false)}
+              />
+              <AppSidebar
+                variant="mobile"
+                isDarkMode={isDarkMode}
+                isOpen
+                pathname={location.pathname}
+                onNavigate={handleNavigate}
+                onToggleTheme={toggleTheme}
+                onLogout={handleLogout}
+              />
+            </>
+          )}
+        </AnimatePresence>
+      )}
+
+      <ShellMain>
+        <AnimatePresence initial={false}>
           {isMobileSearchOpen && (
             <motion.div
               initial={{ y: -20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -20, opacity: 0 }}
+              exit={{ y: 0, opacity: 0 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
               className="fixed top-0 inset-x-0 z-50 p-3 sm:hidden"
             >
               <div
                 className={cn(
                   'rounded-2xl border p-2 shadow-lg',
-                  isDarkMode ? 'bg-midnight-bg border-midnight-border' : 'bg-white border-gray-200',
+                  isDarkMode ? 'bg-midnight-bg border-midnight-border' : 'bg-card border-border',
                 )}
               >
                 <GlobalSearchBox
@@ -175,14 +177,14 @@ const App: React.FC = () => {
             isChatRoute ? 'overflow-hidden' : 'overflow-y-auto',
           )}
         >
-          <AnimatePresence mode="wait">
+          <AnimatePresence initial={false} mode="sync">
             <motion.div
               key={routeTransitionKey}
-              initial={{ opacity: 0, x: 10 }}
+              initial={{ opacity: 1, x: 0 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-              className={isChatRoute ? 'absolute inset-0' : 'h-full'}
+              exit={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="h-full bg-background will-change-transform"
             >
               <Suspense fallback={<PageLoader />}>
                 <CallProvider>
@@ -193,8 +195,8 @@ const App: React.FC = () => {
             </motion.div>
           </AnimatePresence>
         </div>
-      </main>
-    </div>
+      </ShellMain>
+    </ShellRoot>
   );
 };
 

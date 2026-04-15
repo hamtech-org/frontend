@@ -61,7 +61,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
         <button
           type="button"
           onClick={() => onNavigate('/')}
-          className="flex items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+          className="flex items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           aria-label="Về trang chủ"
         >
           <img src={logoUrl} alt="HamTech Logo" className="w-10 h-10 min-w-10 min-h-10 shrink-0" />
@@ -92,19 +92,19 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
               key={item.path}
               onClick={() => onNavigate(item.path)}
               className={cn(
-                'w-full flex items-center rounded-xl transition-all group relative',
+                'w-full flex items-center rounded-xl transition-colors group relative',
                 isMobileVariant ? 'p-2.5' : 'p-3',
                 isOpen ? 'gap-4' : 'justify-center',
                 isActive
                   ? isDarkMode
                     ? 'bg-white/10 text-blue-500'
-                    : 'bg-black/5 text-blue-600'
+                    : 'bg-muted text-primary'
                   : isDarkMode
-                    ? 'text-midnight-muted hover:text-blue-400'
-                    : 'text-ethereal-muted hover:text-blue-600',
+                    ? 'text-midnight-muted hover:text-foreground'
+                    : 'text-ethereal-muted hover:text-foreground',
               )}
             >
-              <item.icon className={cn('w-5 h-5 shrink-0', isActive && 'text-blue-600')} />
+              <item.icon className={cn('size-5 shrink-0', isActive && 'text-primary')} />
               {isOpen && (
                 <motion.span
                   initial={{ opacity: 0, x: -6 }}
@@ -118,7 +118,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
               {isActive && (
                 <motion.div
                   layoutId="active-nav"
-                  className="absolute left-0 w-1 h-6 bg-blue-600 rounded-r-full"
+                  className="absolute left-0 w-1 h-6 bg-primary rounded-r-full"
                 />
               )}
             </button>
@@ -135,7 +135,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
         <button
           onClick={onToggleTheme}
           className={cn(
-            'w-full flex items-center rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all',
+            'w-full flex items-center rounded-xl hover:bg-muted transition-colors',
             isMobileVariant ? 'p-2.5' : 'p-3',
             isOpen ? 'gap-4' : 'justify-center',
           )}
@@ -150,7 +150,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
         <button
           onClick={onLogout}
           className={cn(
-            'w-full flex items-center rounded-xl hover:bg-red-500/10 text-red-500 transition-all',
+            'w-full flex items-center rounded-xl hover:bg-destructive/10 text-destructive transition-colors',
             isMobileVariant ? 'p-2.5' : 'p-3',
             isOpen ? 'gap-4' : 'justify-center',
           )}
