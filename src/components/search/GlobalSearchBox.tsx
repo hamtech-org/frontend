@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import GlobalSearchDropdown from '@/components/search/GlobalSearchDropdown';
@@ -7,10 +7,18 @@ import { useGlobalSearch } from '@/hooks/app/useGlobalSearch';
 interface GlobalSearchBoxProps {
   isDarkMode: boolean;
   currentUserId?: string;
+  autoFocusInput?: boolean;
+  disableOutsideBackdrop?: boolean;
 }
 
-const GlobalSearchBox: React.FC<GlobalSearchBoxProps> = ({ isDarkMode, currentUserId }) => {
+const GlobalSearchBox: React.FC<GlobalSearchBoxProps> = ({
+  isDarkMode,
+  currentUserId,
+  autoFocusInput = false,
+  disableOutsideBackdrop = false,
+}) => {
   const navigate = useNavigate();
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const { isLoading, results } = useGlobalSearch({
@@ -32,10 +40,20 @@ const GlobalSearchBox: React.FC<GlobalSearchBoxProps> = ({ isDarkMode, currentUs
     clearAndCloseSearch();
   };
 
+  useEffect(() => {
+    if (!autoFocusInput) {
+      return;
+    }
+
+    inputRef.current?.focus();
+    setIsOpen(true);
+  }, [autoFocusInput]);
+
   return (
     <div className="relative w-full">
       <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
       <input
+        ref={inputRef}
         type="text"
         placeholder="Tìm kiếm người dùng, nội dung, cộng đồng..."
         value={query}
@@ -70,7 +88,7 @@ const GlobalSearchBox: React.FC<GlobalSearchBoxProps> = ({ isDarkMode, currentUs
         }}
       />
 
-      {isOpen && <div className="fixed inset-0 z-40" onClick={closeSearch} />}
+      {isOpen && !disableOutsideBackdrop && <div className="fixed inset-0 z-40" onClick={closeSearch} />}
     </div>
   );
 };
