@@ -4,6 +4,7 @@ import { toast } from 'react-toastify';
 import { apiClient } from '@/services/api';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
 import { useEffect, useMemo, useState } from 'react';
+import type { GroupMember, GroupRequest } from '@/types/chat.group.types';
 
 type MemberTab = 'list' | 'pending';
 type MemberUiVariant = 'modal' | 'inline';
@@ -13,13 +14,12 @@ type MemberManagementModalProps = {
   onClose: () => void;
   memberTab: MemberTab;
   onMemberTabChange: (tab: MemberTab) => void;
-  members: any[];
-  requests: any[];
+  members: GroupMember[];
+  requests: GroupRequest[];
   currentUserId?: string;
   onApprove?: (userId: string) => Promise<void>;
   onReject?: (userId: string) => Promise<void>;
   onKick?: (userId: string) => Promise<void>;
-  onChangeRole: (userId: string, role: 'admin' | 'member') => Promise<void>;
   busy?: {
     approving?: boolean;
     rejecting?: boolean;
@@ -43,14 +43,12 @@ export function MemberManagementModal({
   onApprove,
   onReject,
   onKick,
-  onChangeRole,
   busy,
   variant = 'modal',
   canModerate = false,
   onAddMembersClick,
   groupId,
 }: MemberManagementModalProps) {
-  void onChangeRole;
   const [brokenAvatars, setBrokenAvatars] = useState<Record<string, true>>({});
   const [kickConfirmUserId, setKickConfirmUserId] = useState<string | null>(null);
   const [kickSubmitting, setKickSubmitting] = useState(false);
@@ -128,8 +126,8 @@ export function MemberManagementModal({
     try {
       await apiClient.post('/contacts/friends/request', { userId });
       toast.success('Đã kết bạn');
-    } catch (e: any) {
-      const status = e?.response?.status;
+    } catch (e: unknown) {
+      const status = (e as { response?: { status?: number } })?.response?.status;
       toast.error(status === 409 ? 'Đã kết bạn' : 'Không thể kết bạn');
     }
   };
@@ -352,8 +350,8 @@ export function MemberManagementModal({
                 await kick(kickConfirmUserId);
                 toast.success('Đã mời thành viên ra khỏi nhóm');
                 setKickConfirmUserId(null);
-              } catch (e: any) {
-                const status = e?.response?.status;
+              } catch (e: unknown) {
+                const status = (e as { response?: { status?: number } })?.response?.status;
                 toast.error(status === 403 ? 'Bạn không có quyền' : 'Không thể mời ra khỏi nhóm');
               } finally {
                 setKickSubmitting(false);
@@ -559,8 +557,8 @@ export function MemberManagementModal({
                     await kick(kickConfirmUserId);
                     toast.success('Đã mời thành viên ra khỏi nhóm');
                     setKickConfirmUserId(null);
-                  } catch (e: any) {
-                    const status = e?.response?.status;
+                  } catch (e: unknown) {
+                    const status = (e as { response?: { status?: number } })?.response?.status;
                     toast.error(status === 403 ? 'Bạn không có quyền' : 'Không thể mời ra khỏi nhóm');
                   } finally {
                     setKickSubmitting(false);

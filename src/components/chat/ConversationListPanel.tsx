@@ -4,14 +4,13 @@ import { ChevronDown, MessageCircle, MoreHorizontal, Search, User, UserPlus, Use
 import type { IConversation, IMessage } from '@/types/chat.types';
 import { formatConversationListLastPreview } from '@/utils/chatUtils';
 import { ContactsManagementPanel, type ContactsTabId } from '@/components/chat/ContactsManagementPanel';
+import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 
 export type { ContactsTabId };
 
 type ConversationListPanelProps = {
   conversations: IConversation[];
   convsLoading: boolean;
-  activeConversationId: string | null;
-  currentUserId: string;
   /** Tin trong hội thoại đang mở — dùng cho mục “Tin nhắn” trong tìm kiếm sidebar. */
   activeMessages?: IMessage[];
   showContactsManagement: boolean;
@@ -37,8 +36,6 @@ function sortConversationsByLastMessage(convs: IConversation[]) {
 export function ConversationListPanel({
   conversations,
   convsLoading,
-  activeConversationId,
-  currentUserId,
   activeMessages = [],
   showContactsManagement,
   contactsTab,
@@ -50,6 +47,7 @@ export function ConversationListPanel({
   onOpenMarkRead,
   onOpenAddFriend,
 }: ConversationListPanelProps) {
+  const { core: { currentUserId, activeConversationId } } = useChatPageContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
   const blurCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

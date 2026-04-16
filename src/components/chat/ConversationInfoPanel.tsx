@@ -11,100 +11,32 @@ import {
   Users,
   User,
 } from 'lucide-react';
-import type { IConversation } from '@/types/chat.types';
 import { useCallback, useState } from 'react';
 import { MemberManagementModal } from '@/components/chat/MemberManagementModal';
+import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 
-type GroupPoll = {
-  pollId: string;
-  question: string;
-  options: Array<{ text: string; voters?: string[] }>;
-  isClosed?: boolean;
-};
+export function ConversationInfoPanel() {
+  const { core, group, groupActions } = useChatPageContext();
+  const { activeConversation } = core;
 
-type GroupTask = {
-  taskId: string;
-  title: string;
-  status: 'todo' | 'in_progress' | 'done';
-};
+  const isOwner = core.currentUserRole === 'owner';
+  const canModerateMembers = core.currentUserRole === 'owner' || core.currentUserRole === 'admin';
 
-type ConversationInfoPanelProps = {
-  activeConversation: IConversation | undefined;
-  onOpenAISummaryFromPanel: () => void;
-  // Legacy external modal trigger (giữ để tương thích)
-  onOpenMemberModal?: (tab: 'list' | 'pending') => void;
-  onLeaveGroup?: () => void;
-  onDeleteGroup?: () => void;
-  onEditGroup?: () => void;
-  onAddMembers?: () => void;
-  onRequestJoin?: () => void;
-  onVotePoll?: (pollId: string, optionIndex: number) => void;
-  onOpenPollVote?: (pollId: string) => void;
-  onAddPollOption?: (pollId: string) => void;
-  onClosePoll?: (pollId: string) => void;
-  onToggleTask?: (taskId: string) => void;
-  polls?: GroupPoll[];
-  tasks?: GroupTask[];
-  isJoinRequested?: boolean;
-  loading?: {
-    polls?: boolean;
-    tasks?: boolean;
-    recap?: boolean;
-    requestJoin?: boolean;
-    updateGroup?: boolean;
+  const numRequests = group.requests.length;
+  const isJoinRequested = group.joinRequested;
+  const loading = {
+    polls: group.loading.polls || group.actionLoading.votePoll,
+    tasks: group.loading.tasks || group.actionLoading.updateTask,
+    recap: group.loading.recap || group.actionLoading.generateRecap,
+    requestJoin: group.actionLoading.requestJoin,
+    updateGroup: group.actionLoading.updateGroup,
   };
-  numRequests: number;
-  currentUserRole?: 'owner' | 'admin' | 'member';
-  currentUserId?: string;
-
-  // Data + handlers để render modal "Thành viên" ngay trong tab này
-  members?: any[];
-  requests?: any[];
-  onApproveMember?: (userId: string) => Promise<void>;
-  onRejectMember?: (userId: string) => Promise<void>;
-  onKickMember?: (userId: string) => Promise<void>;
-  busyMemberActions?: {
-    approving?: boolean;
-    rejecting?: boolean;
-    removing?: boolean;
-    changingRole?: boolean;
+  const busyMemberActions = {
+    approving: group.actionLoading.approveRequest,
+    rejecting: group.actionLoading.rejectRequest,
+    removing: group.actionLoading.removeMember,
+    changingRole: group.actionLoading.changeRole,
   };
-};
-
-export function ConversationInfoPanel({
-  activeConversation,
-  onOpenAISummaryFromPanel,
-  onOpenMemberModal,
-  onLeaveGroup,
-  onDeleteGroup,
-  onEditGroup,
-  onAddMembers,
-  onRequestJoin,
-  onVotePoll,
-  onOpenPollVote,
-  onAddPollOption,
-  onClosePoll,
-  onToggleTask,
-  polls = [],
-  tasks = [],
-  isJoinRequested = false,
-  loading,
-  numRequests,
-  currentUserRole,
-  currentUserId,
-  members = [],
-  requests = [],
-  onApproveMember,
-  onRejectMember,
-  onKickMember,
-  busyMemberActions,
-}: ConversationInfoPanelProps) {
-  void onApproveMember;
-  void onRejectMember;
-  void onKickMember;
-  void currentUserId;
-  const isOwner = currentUserRole === 'owner';
-  const canModerateMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
 
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
   const [showInlineMembers, setShowInlineMembers] = useState(false);
@@ -113,9 +45,8 @@ export function ConversationInfoPanel({
     (tab: 'list' | 'pending') => {
       setMemberTab(tab);
       setShowInlineMembers(true);
-      onOpenMemberModal?.(tab);
     },
-    [onOpenMemberModal],
+    [],
   );
 
   return (
@@ -131,19 +62,16 @@ export function ConversationInfoPanel({
             onClose={() => setShowInlineMembers(false)}
             memberTab={memberTab}
             onMemberTabChange={setMemberTab}
-            members={members}
-            requests={requests}
-            currentUserId={currentUserId}
-            // Không truyền handler từ ChatPage để tránh window.confirm (hộp browser "localhost").
-            // Modal sẽ tự gọi API + dùng ConfirmModal UI.
+            members={group.members}
+            requests={group.requests}
+            currentUserId={core.currentUserId}
             onApprove={undefined}
             onReject={undefined}
             onKick={undefined}
-            onChangeRole={async () => {}}
             busy={busyMemberActions}
             variant="inline"
             canModerate={canModerateMembers}
-            onAddMembersClick={onAddMembers}
+            onAddMembersClick={groupActions.openAddMembersModal}
             groupId={activeConversation?.conversationId}
           />
         </div>
@@ -167,8 +95,8 @@ export function ConversationInfoPanel({
             {activeConversation?.name ?? 'Hội thoại'}
             <button
               type="button"
-              onClick={onEditGroup}
-              disabled={loading?.updateGroup}
+              onClick={groupActions.openEditGroupModal}
+              disabled={loading.updateGroup}
               className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
               title="Chỉnh sửa nhóm"
             >
@@ -182,7 +110,7 @@ export function ConversationInfoPanel({
           )}
 
           <div className="flex items-start justify-center gap-2 lg:gap-6 mt-6 w-full px-2">
-            <button type="button" onClick={onAddMembers} className="flex flex-col items-center gap-2 group w-16">
+            <button type="button" onClick={groupActions.openAddMembersModal} className="flex flex-col items-center gap-2 group w-16">
               <div className="w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
                 <BellOff className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
               </div>
@@ -246,7 +174,7 @@ export function ConversationInfoPanel({
               </div>
               <button
                 type="button"
-                onClick={onOpenAISummaryFromPanel}
+                onClick={groupActions.openAISummaryFromPanel}
                 className="w-full relative flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-[#0068ff] to-[#8c52ff] hover:from-blue-700 hover:to-purple-700 text-white font-bold text-[14px] shadow-lg shadow-purple-600/20 transition-all hover:shadow-purple-600/40 hover:-translate-y-0.5"
               >
                 <Sparkles className="w-[18px] h-[18px]" />
@@ -260,11 +188,11 @@ export function ConversationInfoPanel({
             <div className="px-4 py-3 border-b border-black/5 dark:border-white/5 bg-white dark:bg-transparent">
               <button
                 type="button"
-                onClick={onRequestJoin}
-                disabled={isJoinRequested || loading?.requestJoin}
+                onClick={() => void groupActions.handleRequestJoin()}
+                disabled={isJoinRequested || loading.requestJoin}
                 className="w-full rounded-xl py-2.5 text-sm font-bold bg-blue-600 text-white disabled:bg-blue-200 disabled:cursor-not-allowed"
               >
-                {isJoinRequested ? 'Đã gửi yêu cầu' : loading?.requestJoin ? 'Đang gửi...' : 'Yêu cầu tham gia'}
+                {isJoinRequested ? 'Đã gửi yêu cầu' : loading.requestJoin ? 'Đang gửi...' : 'Yêu cầu tham gia'}
               </button>
             </div>
 
@@ -332,13 +260,13 @@ export function ConversationInfoPanel({
 
           <div className="px-4 pb-4">
             <div className="font-bold text-xs text-muted-foreground uppercase tracking-wider mb-2">Bình chọn</div>
-            {loading?.polls ? (
+            {loading.polls ? (
               <p className="text-xs text-muted-foreground">Đang tải bình chọn...</p>
-            ) : polls.length === 0 ? (
+            ) : group.polls.length === 0 ? (
               <p className="text-xs text-muted-foreground">Chưa có bình chọn.</p>
             ) : (
               <div className="space-y-2">
-                {polls.slice(0, 2).map((poll) => {
+                {group.polls.slice(0, 2).map((poll) => {
                   const total = poll.options.reduce((sum, option) => sum + (option.voters?.length ?? 0), 0);
                   return (
                     <div key={poll.pollId} className="rounded-xl border border-black/5 dark:border-white/10 p-2.5">
@@ -352,9 +280,7 @@ export function ConversationInfoPanel({
                               key={`${poll.pollId}-${idx}`}
                               type="button"
                               disabled={poll.isClosed}
-                              onClick={() =>
-                                onOpenPollVote ? onOpenPollVote(poll.pollId) : onVotePoll?.(poll.pollId, idx)
-                              }
+                              onClick={() => groupActions.openPollVoteModal(poll.pollId)}
                               className="w-full text-left"
                             >
                               <div className="flex items-center justify-between text-[11px]">
@@ -369,8 +295,8 @@ export function ConversationInfoPanel({
                         })}
                       </div>
                       <div className="mt-2 flex gap-1.5">
-                        <button type="button" onClick={() => onAddPollOption?.(poll.pollId)} className="text-[10px] px-2 py-1 rounded bg-black/5 dark:bg-white/10">+ Option</button>
-                        <button type="button" onClick={() => onClosePoll?.(poll.pollId)} className="text-[10px] px-2 py-1 rounded bg-black/5 dark:bg-white/10">Đóng</button>
+                        <button type="button" onClick={() => void groupActions.handleAddPollOption(poll.pollId)} className="text-[10px] px-2 py-1 rounded bg-black/5 dark:bg-white/10">+ Option</button>
+                        <button type="button" onClick={() => void groupActions.handleClosePoll(poll.pollId)} className="text-[10px] px-2 py-1 rounded bg-black/5 dark:bg-white/10">Đóng</button>
                       </div>
                     </div>
                   );
@@ -381,18 +307,18 @@ export function ConversationInfoPanel({
 
           <div className="px-4 pb-4">
             <div className="font-bold text-xs text-muted-foreground uppercase tracking-wider mb-2">Công việc</div>
-            {loading?.tasks ? (
+            {loading.tasks ? (
               <p className="text-xs text-muted-foreground">Đang tải công việc...</p>
-            ) : tasks.length === 0 ? (
+            ) : group.tasks.length === 0 ? (
               <p className="text-xs text-muted-foreground">Chưa có công việc.</p>
             ) : (
               <div className="space-y-1.5">
-                {tasks.slice(0, 3).map((task) => (
+                {group.tasks.slice(0, 3).map((task) => (
                   <label key={task.taskId} className="flex items-center gap-2 text-xs cursor-pointer">
                     <input
                       type="checkbox"
                       checked={task.status === 'done'}
-                      onChange={() => onToggleTask?.(task.taskId)}
+                      onChange={() => void groupActions.handleToggleTaskStatus(task.taskId)}
                     />
                     <span className={task.status === 'done' ? 'line-through text-muted-foreground' : ''}>
                       {task.title}
@@ -427,7 +353,7 @@ export function ConversationInfoPanel({
           <div className="p-4 bg-white dark:bg-transparent mt-2 flex flex-col gap-2 justify-center">
             <button
               type="button"
-              onClick={onLeaveGroup}
+              onClick={() => void groupActions.handleLeaveGroup()}
               disabled={isOwner}
               className="flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-2 rounded-xl transition-colors border border-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
               title={isOwner ? "Chủ nhóm không thể rời. Hãy chuyển quyền hoặc giải tán nhóm." : "Rời khỏi nhóm này"}
@@ -437,7 +363,7 @@ export function ConversationInfoPanel({
             {isOwner && (
               <button
                 type="button"
-                onClick={onDeleteGroup}
+                onClick={() => void groupActions.handleDeleteGroup()}
                 className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl transition-colors"
               >
                 Giải tán nhóm

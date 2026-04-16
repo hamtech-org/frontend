@@ -1,4 +1,4 @@
-import { useState, useRef, type KeyboardEvent, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import EmojiPicker from 'emoji-picker-react';
 import {
   BarChart2,
@@ -13,7 +13,8 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import type { IConversation, IMessage } from '@/types/chat.types';
+import type { IConversation } from '@/types/chat.types';
+import { useChatComposerController } from '@/pages/user/chat-page/hooks/useChatComposerController';
 
 export type PendingAttachment = {
   localId: string;
@@ -30,45 +31,36 @@ function formatFileSize(bytes: number): string {
 type ChatComposerProps = {
   activeConversation: IConversation | undefined;
   activeConversationId: string | null;
-  inputText: string;
-  onInputTextChange: (value: string) => void;
-  onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
-  onTyping: () => void;
-  onSend: (text?: string) => void;
-  isSending: boolean;
-  isUploadingMedia?: boolean;
-  replyingTo: IMessage | null;
-  onClearReply: () => void;
   onOpenPoll: () => void;
   onOpenTask: () => void;
-  pendingAttachments: PendingAttachment[];
-  onAddPendingFiles: (files: File[]) => void;
-  onRemovePendingAttachment: (localId: string) => void;
 };
 
 export function ChatComposer({
   activeConversation,
   activeConversationId,
-  inputText,
-  onInputTextChange,
-  onKeyDown,
-  onTyping,
-  onSend,
-  isSending,
-  isUploadingMedia = false,
-  replyingTo,
-  onClearReply,
   onOpenPoll,
   onOpenTask,
-  pendingAttachments,
-  onAddPendingFiles,
-  onRemovePendingAttachment,
 }: ChatComposerProps) {
+  const {
+    inputText,
+    isSending,
+    pendingAttachments,
+    replyingTo,
+    setInputText,
+    addPendingFiles,
+    removePendingAttachment,
+    handleSendMessage,
+    handleKeyDown,
+    handleTyping,
+    clearReply,
+    mediaUploading,
+  } = useChatComposerController(activeConversationId);
+
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const busy = isSending || isUploadingMedia;
+  const busy = isSending || mediaUploading;
   const hasSendable = inputText.trim().length > 0 || pendingAttachments.length > 0;
 
   useEffect(() => {
@@ -86,17 +78,17 @@ export function ChatComposer({
   }, [showEmojiPicker]);
 
   const onEmojiClick = (emojiObject: { emoji: string }) => {
-    onInputTextChange(inputText + emojiObject.emoji);
+    setInputText(inputText + emojiObject.emoji);
   };
 
   const handleLikeClick = () => {
     if (busy || !activeConversationId) return;
-    onSend('👍');
+    void handleSendMessage('👍');
   };
 
   const appendFromFileList = (list: FileList | null) => {
     if (!list?.length) return;
-    onAddPendingFiles(Array.from(list));
+    addPendingFiles(Array.from(list));
   };
 
   const handleGalleryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,7 +115,7 @@ export function ChatComposer({
           </div>
           <button
             type="button"
-            onClick={onClearReply}
+            onClick={clearReply}
             className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-muted-foreground"
           >
             <Smile className="w-4 h-4 rotate-45" />
@@ -163,7 +155,7 @@ export function ChatComposer({
               <button
                 type="button"
                 title="Bỏ file"
-                onClick={() => onRemovePendingAttachment(p.localId)}
+                onClick={() => removePendingAttachment(p.localId)}
                 disabled={busy}
                 className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white opacity-90 hover:opacity-100 disabled:opacity-40"
               >
@@ -299,14 +291,14 @@ export function ChatComposer({
             rows={1}
             value={inputText}
             onChange={(e) => {
-              onInputTextChange(e.target.value);
-              onTyping();
+              setInputText(e.target.value);
+              handleTyping();
             }}
             onKeyDown={(e) => {
-              onKeyDown(e);
+              handleKeyDown(e);
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 // Clear input after sending
-                setTimeout(() => onInputTextChange(''), 0);
+                setTimeout(() => setInputText(''), 0);
               }
             }}
             disabled={!activeConversationId}
@@ -325,7 +317,7 @@ export function ChatComposer({
           {hasSendable ? (
             <button
               type="button"
-              onClick={() => void onSend()}
+              onClick={() => void handleSendMessage()}
               disabled={!activeConversationId || busy}
               className="p-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 transition-all group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600 animate-in fade-in zoom-in"
             >
