@@ -14,6 +14,7 @@ import {
 import type { IConversation } from '@/types/chat.types';
 import { useCallback, useState } from 'react';
 import { MemberManagementModal } from '@/components/chat/MemberManagementModal';
+import { GroupManagementModal } from '@/components/chat/GroupManagementModal';
 
 type GroupPoll = {
   pollId: string;
@@ -108,11 +109,13 @@ export function ConversationInfoPanel({
 
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
   const [showInlineMembers, setShowInlineMembers] = useState(false);
+  const [showGroupManagement, setShowGroupManagement] = useState(false);
 
   const openMemberModalHere = useCallback(
     (tab: 'list' | 'pending') => {
       setMemberTab(tab);
       setShowInlineMembers(true);
+      setShowGroupManagement(false);
       onOpenMemberModal?.(tab);
     },
     [onOpenMemberModal],
@@ -145,6 +148,16 @@ export function ConversationInfoPanel({
             canModerate={canModerateMembers}
             onAddMembersClick={onAddMembers}
             groupId={activeConversation?.conversationId}
+          />
+        </div>
+      ) : showGroupManagement && activeConversation?.type === 'group' ? (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <GroupManagementModal
+            variant="inline"
+            open
+            onClose={() => setShowGroupManagement(false)}
+            conversationId={activeConversation.conversationId}
+            canEdit={canModerateMembers}
           />
         </div>
       ) : (
@@ -225,16 +238,26 @@ export function ConversationInfoPanel({
                 viên
               </span>
             </button>
-            <button type="button" className="flex flex-col items-center gap-2 group w-16 hidden lg:flex">
-              <div className="w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
-                <Settings className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
-              </div>
-              <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
-                Quản lý
-                <br />
-                nhóm
-              </span>
-            </button>
+            {activeConversation?.type === 'group' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowInlineMembers(false);
+                  setShowGroupManagement(true);
+                }}
+                className="flex flex-col items-center gap-2 group w-16 hidden lg:flex"
+                title="Quản lý nhóm"
+              >
+                <div className="w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                  <Settings className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                </div>
+                <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
+                  Quản lý
+                  <br />
+                  nhóm
+                </span>
+              </button>
+            )}
           </div>
         </div>
         {activeConversation?.type === 'group' && (
