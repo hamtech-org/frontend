@@ -444,6 +444,18 @@ export const chatApi = createApi({
         method: 'POST',
       }),
     }),
+
+    updateGroupSettings: builder.mutation<ApiSuccessResponse<IGroupSettings>, UpdateGroupSettingsRequest>({
+      query: ({ groupId, ...body }) => ({
+        url: `/chat/groups/${groupId}/settings`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: (_result, _error, { groupId }) => [
+        { type: 'GroupSettings', id: groupId },
+        'Conversations',
+      ],
+    }),
   }),
 });
 
@@ -479,4 +491,6 @@ export const {
   useGetTasksQuery,
   useGetGroupRequestsQuery,
   useGetLatestAIRecapQuery,
+  useGetGroupSettingsQuery,
+  useUpdateGroupSettingsMutation,
 } = chatApi;

@@ -12,6 +12,27 @@ export type MessageType =
 export type MessageStatus = 'sent' | 'delivered' | 'read';
 export type ConversationType = 'direct' | 'group';
 
+export interface IGroupMemberPermissions {
+  changeNameAvatar: boolean;
+  pinMessages: boolean;
+  createNotesReminders: boolean;
+  createPolls: boolean;
+  sendMessages: boolean;
+}
+
+export interface IGroupAdminSettings {
+  approvalRequired: boolean;
+  highlightLeaderMessages: boolean;
+  newMembersReadRecent: boolean;
+  allowJoinLink: boolean;
+}
+
+export interface IGroupSettings {
+  memberPermissions: IGroupMemberPermissions;
+  adminSettings: IGroupAdminSettings;
+  joinLinkSuffix?: string;
+}
+
 export interface IConversation {
   conversationId: string;
   type: ConversationType;
@@ -21,6 +42,8 @@ export interface IConversation {
   memberCount: number;
   unreadCount: number;
   otherUserId?: string;
+  /** Nhóm: đồng bộ từ API + socket `group:settings_updated`. */
+  groupSettings?: IGroupSettings;
 }
 
 export interface ILastMessage {
