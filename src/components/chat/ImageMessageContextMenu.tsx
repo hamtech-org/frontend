@@ -1,12 +1,10 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ChevronRight,
   Download,
   Image as ImageIcon,
   Info,
   List,
-  MoreHorizontal,
   Pin,
   Reply,
   RotateCcw,
@@ -23,6 +21,8 @@ type ImageMessageContextMenuProps = {
   mediaKind: 'image' | 'video';
   onClose: () => void;
   isMe: boolean;
+  /** Giống Zalo: nhãn Ghim / Bỏ ghim. */
+  isPinned?: boolean;
   onReply: () => void;
   onShare: () => void;
   onCopyImage: () => void;
@@ -31,7 +31,6 @@ type ImageMessageContextMenuProps = {
   onMarkStar: () => void;
   onSelectMultiple: () => void;
   onViewDetails: () => void;
-  onOtherOptions: () => void;
   onRecall: () => void;
   onDeleteForMe: () => void;
 };
@@ -78,6 +77,7 @@ export function ImageMessageContextMenu({
   mediaKind,
   onClose,
   isMe,
+  isPinned = false,
   onReply,
   onShare,
   onCopyImage,
@@ -86,14 +86,13 @@ export function ImageMessageContextMenu({
   onMarkStar,
   onSelectMultiple,
   onViewDetails,
-  onOtherOptions,
   onRecall,
   onDeleteForMe,
 }: ImageMessageContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const pad = 8;
   const estW = 268;
-  const estH = mediaKind === 'video' ? 400 : 440;
+  const estH = mediaKind === 'video' ? 360 : 400;
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
   const left = Math.min(Math.max(pad, anchorX), vw - estW - pad);
@@ -145,19 +144,17 @@ export function ImageMessageContextMenu({
         )}
         <MenuRow icon={Download} label="Lưu về máy" onClick={() => { onSaveToDevice(); onClose(); }} />
         <Divider />
-        <MenuRow icon={Pin} label="Ghim tin nhắn" onClick={() => { onTogglePin(); onClose(); }} />
+        <MenuRow
+          icon={Pin}
+          label={isPinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'}
+          onClick={() => {
+            onTogglePin();
+            onClose();
+          }}
+        />
         <MenuRow icon={Star} label="Đánh dấu tin nhắn" onClick={() => { onMarkStar(); onClose(); }} />
         <MenuRow icon={List} label="Chọn nhiều tin nhắn" onClick={() => { onSelectMultiple(); onClose(); }} />
         <MenuRow icon={Info} label="Xem chi tiết" onClick={() => { onViewDetails(); onClose(); }} />
-        <MenuRow
-          icon={MoreHorizontal}
-          label="Tuỳ chọn khác"
-          onClick={() => {
-            onOtherOptions();
-            onClose();
-          }}
-          trailing={<ChevronRight className="w-4 h-4 opacity-50" />}
-        />
         <Divider />
         {isMe && (
           <MenuRow
