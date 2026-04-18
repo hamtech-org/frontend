@@ -20,7 +20,7 @@ import {
   typingStopped,
 } from '@/store/slices/chatSlice';
 import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
-import type { IMessage } from '@/types/chat.types';
+import type { IConversation, IGroupSettings, IMessage } from '@/types/chat.types';
 
 type PatchMessageInCache = (
   conversationId: string,
@@ -134,6 +134,25 @@ export function useChatSocketListeners(
       }, 1000);
     };
 
+    const handleGroupSettingsUpdated = (data: unknown) => {
+      const p = data as { conversationId?: string; groupSettings?: IGroupSettings };
+      const conversationId = p?.conversationId;
+      const groupSettings = p?.groupSettings;
+      if (!conversationId || !groupSettings) return;
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          if (!draft?.data) return;
+          const c = draft.data.find((x) => x.conversationId === conversationId);
+          if (c) (c as IConversation).groupSettings = groupSettings;
+        }),
+      );
+      dispatch(
+        chatApi.util.updateQueryData('getGroupSettings', conversationId, (draft) => {
+          if (draft?.data !== undefined) draft.data = groupSettings;
+        }),
+      );
+    };
+
     const handleGroupUpdate = (data: any) => {
       // Khi có thay đổi về nhóm (member, role, poll, task, etc.)
       // Server có thể emit `groupId` hoặc `conversationId` tùy nơi gọi.
@@ -165,6 +184,7 @@ export function useChatSocketListeners(
 
     // Lắng nghe các sự kiện nhóm
     socketService.on('group:updated', handleGroupUpdate);
+    socketService.on('group:settings_updated', handleGroupSettingsUpdated);
     socketService.on('group:member_joined', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
     socketService.on('group:member_left', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
     socketService.on('group:members_added', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
@@ -191,6 +211,7 @@ export function useChatSocketListeners(
       socketService.off('message:typing_indicator', handleTyping);
       
       socketService.off('group:updated');
+      socketService.off('group:settings_updated', handleGroupSettingsUpdated);
       socketService.off('group:member_joined');
       socketService.off('group:member_left');
       socketService.off('group:members_added');
