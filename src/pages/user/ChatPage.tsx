@@ -24,7 +24,6 @@ import {
   messageReceived,
   messageEdited,
   messageRecalled,
-  messageDeleted,
   messagePinUpdated,
   messageReacted,
   typingStarted,
@@ -33,6 +32,7 @@ import {
   setReplyingTo,
   clearReplyingTo,
 } from '@/store/slices/chatSlice';
+import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
 import { socketService } from '@/services/socket';
 import type { AppDispatch, RootState } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
@@ -50,6 +50,7 @@ import { ChatComposer } from '@/components/chat/ChatComposer';
 import { EditMessageDialog } from '@/components/chat/EditMessageDialog';
 import { MarkReadModal } from '@/components/chat/MarkReadModal';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
+import { PinLimitModal, MAX_PINNED_PER_CONVERSATION } from '@/components/chat/PinLimitModal';
 import { ProfileModal } from '@/components/chat/ProfileModal';
 import { CreateGroupModal } from '@/components/chat/CreateGroupModal';
 import { PollModal } from '@/components/chat/PollModal';
@@ -203,12 +204,44 @@ export default function ChatPage() {
     return merged;
   }, [messagesData, socketMessages]);
 
+  /** Thứ tự ghim MRU (tin ghim gần nhất lên đầu thanh) — giống Zalo. */
+  const [pinnedMessageOrderByConv, setPinnedMessageOrderByConv] = useState<Record<string, string[]>>({});
+
   const { primaryPinnedMessage, otherPinnedMessages } = useMemo(() => {
-    const pinnedSorted = allMessages.filter((m) => m.isPinned);
-    const primary = pinnedSorted.length > 0 ? pinnedSorted[pinnedSorted.length - 1] : null;
-    const other = pinnedSorted.length > 1 ? pinnedSorted.slice(0, -1) : [];
+    if (!activeConversationId) {
+      return { primaryPinnedMessage: null as IMessage | null, otherPinnedMessages: [] as IMessage[] };
+    }
+    const pinned = allMessages.filter(
+      (m) => m.isPinned && !m.isRecalled && !m.isDeleted,
+    );
+    if (pinned.length === 0) {
+      return { primaryPinnedMessage: null, otherPinnedMessages: [] };
+    }
+
+    const order = pinnedMessageOrderByConv[activeConversationId] ?? [];
+    const byId = new Map(pinned.map((m) => [m.messageId, m]));
+    const pinnedIds = new Set(pinned.map((m) => m.messageId));
+
+    const fromOrder = order.filter((id) => pinnedIds.has(id));
+    const notInOrder = pinned
+      .filter((m) => !fromOrder.includes(m.messageId))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map((m) => m.messageId);
+    const mergedIds = [...fromOrder, ...notInOrder];
+
+    const primaryId = mergedIds[0];
+    const primary = (primaryId ? byId.get(primaryId) : null) ?? pinned[pinned.length - 1]!;
+    const other = mergedIds
+      .slice(1)
+      .map((id) => byId.get(id))
+      .filter((m): m is IMessage => m != null);
     return { primaryPinnedMessage: primary, otherPinnedMessages: other };
-  }, [allMessages]);
+  }, [allMessages, activeConversationId, pinnedMessageOrderByConv]);
+
+  const pinnedMessagesOrdered = useMemo(() => {
+    if (!primaryPinnedMessage) return [];
+    return [primaryPinnedMessage, ...otherPinnedMessages];
+  }, [primaryPinnedMessage, otherPinnedMessages]);
 
   const latestMessageIdForRead =
     allMessages.length > 0 ? allMessages[allMessages.length - 1].messageId : undefined;
@@ -280,6 +313,9 @@ export default function ChatPage() {
   const [actionMenuMsgId, setActionMenuMsgId] = useState<string | null>(null);
   const [messageConfirm, setMessageConfirm] = useState<MessageConfirmState>(null);
   const [messageConfirmSubmitting, setMessageConfirmSubmitting] = useState(false);
+  const [pinLimitModalMsg, setPinLimitModalMsg] = useState<IMessage | null>(null);
+  const [pinReplaceIndex, setPinReplaceIndex] = useState<number | null>(null);
+  const [pinLimitSubmitting, setPinLimitSubmitting] = useState(false);
   const lastMarkReadKeyRef = useRef<string>('');
 
   const patchMessageInCache = useCallback(
@@ -363,7 +399,6 @@ export default function ChatPage() {
   const [unreadIncomingCount, setUnreadIncomingCount] = useState(0);
 
   const [showInfo, setShowInfo] = useState(true);
-  const [showOtherPinnedPanel, setShowOtherPinnedPanel] = useState(false);
   const [showMarkReadModal, setShowMarkReadModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
@@ -678,15 +713,15 @@ export default function ChatPage() {
         content: 'Tin nhắn đã được thu hồi',
         isPinned: false,
       });
+      setPinnedMessageOrderByConv((prev) => {
+        const cid = payload.conversationId;
+        const cur = prev[cid] ?? [];
+        return { ...prev, [cid]: cur.filter((id) => id !== payload.messageId) };
+      });
     };
 
-    const handleDeletedMessage = (payload: { messageId: string; conversationId: string }) => {
-      dispatch(messageDeleted(payload));
-      patchMessageInCache(payload.conversationId, payload.messageId, {
-        isDeleted: true,
-        content: '',
-        isPinned: false,
-      });
+    const handleHiddenForMe = (payload: { messageId: string; conversationId: string }) => {
+      applyMessageHiddenForMe(dispatch, payload.conversationId, payload.messageId);
     };
 
     const handlePinUpdated = (payload: {
@@ -696,6 +731,17 @@ export default function ChatPage() {
     }) => {
       dispatch(messagePinUpdated(payload));
       patchMessageInCache(payload.conversationId, payload.messageId, { isPinned: payload.isPinned });
+      setPinnedMessageOrderByConv((prev) => {
+        const cid = payload.conversationId;
+        const cur = prev[cid] ?? [];
+        if (payload.isPinned) {
+          return {
+            ...prev,
+            [cid]: [payload.messageId, ...cur.filter((id) => id !== payload.messageId)],
+          };
+        }
+        return { ...prev, [cid]: cur.filter((id) => id !== payload.messageId) };
+      });
     };
 
     const handleReactionEvent = (payload: {
@@ -758,7 +804,7 @@ export default function ChatPage() {
     socketService.on('group:updated', handleGroupUpdated);
     socketService.on('message:edited', handleEditedMessage);
     socketService.on('message:recalled', handleRecalledMessage);
-    socketService.on('message:deleted', handleDeletedMessage);
+    socketService.on('message:hidden_for_me', handleHiddenForMe);
     socketService.on('message:pin_updated', handlePinUpdated);
     socketService.on('message:reaction', handleReactionEvent);
     socketService.on('message:typing', handleTypingEvent);
@@ -768,7 +814,7 @@ export default function ChatPage() {
       socketService.off('group:updated', handleGroupUpdated);
       socketService.off('message:edited', handleEditedMessage);
       socketService.off('message:recalled', handleRecalledMessage);
-      socketService.off('message:deleted', handleDeletedMessage);
+      socketService.off('message:hidden_for_me', handleHiddenForMe);
       socketService.off('message:pin_updated', handlePinUpdated);
       socketService.off('message:reaction', handleReactionEvent);
       socketService.off('message:typing', handleTypingEvent);
@@ -789,8 +835,12 @@ export default function ChatPage() {
   }, [routeConversationId, convsLoading, convsFetching, conversations, navigate]);
 
   useEffect(() => {
-    setShowOtherPinnedPanel(false);
     setMessageConfirm(null);
+    setJumpHighlightMessageId(null);
+    if (jumpHighlightClearRef.current) {
+      clearTimeout(jumpHighlightClearRef.current);
+      jumpHighlightClearRef.current = null;
+    }
   }, [activeConversationId]);
 
   useEffect(() => {
@@ -1005,6 +1055,7 @@ export default function ChatPage() {
 
   const handleSaveEdit = useCallback(async () => {
     if (!editingMessage || !editDraft.trim()) return;
+    if (editingMessage.type !== 'text') return;
     try {
       await editMessage({
         messageId: editingMessage.messageId,
@@ -1062,12 +1113,7 @@ export default function ChatPage() {
           conversationId: msg.conversationId,
           createdAt: msg.createdAt,
         }).unwrap();
-        dispatch(messageDeleted({ messageId: msg.messageId, conversationId: msg.conversationId }));
-        patchMessageInCache(msg.conversationId, msg.messageId, {
-          isDeleted: true,
-          content: '',
-          isPinned: false,
-        });
+        applyMessageHiddenForMe(dispatch, msg.conversationId, msg.messageId);
       }
       setMessageConfirm(null);
       setActionMenuMsgId(null);
@@ -1081,49 +1127,164 @@ export default function ChatPage() {
   const handleTogglePinMsg = useCallback(
     async (msg: IMessage) => {
       try {
+        const cid = msg.conversationId;
         if (msg.isPinned) {
           await unpinMessage({
             messageId: msg.messageId,
-            conversationId: msg.conversationId,
+            conversationId: cid,
             createdAt: msg.createdAt,
           }).unwrap();
           dispatch(
             messagePinUpdated({
               messageId: msg.messageId,
-              conversationId: msg.conversationId,
+              conversationId: cid,
               isPinned: false,
             }),
           );
-          patchMessageInCache(msg.conversationId, msg.messageId, { isPinned: false });
+          patchMessageInCache(cid, msg.messageId, { isPinned: false });
+          setPinnedMessageOrderByConv((prev) => ({
+            ...prev,
+            [cid]: (prev[cid] ?? []).filter((id) => id !== msg.messageId),
+          }));
         } else {
+          const sameConv = activeConversationId && cid === activeConversationId;
+          const pinCount = sameConv
+            ? pinnedMessagesOrdered.length
+            : allMessages.filter(
+                (m) =>
+                  m.conversationId === cid && m.isPinned && !m.isRecalled && !m.isDeleted,
+              ).length;
+          if (pinCount >= MAX_PINNED_PER_CONVERSATION) {
+            if (sameConv && pinnedMessagesOrdered.length >= MAX_PINNED_PER_CONVERSATION) {
+              setPinReplaceIndex(null);
+              setPinLimitModalMsg(msg);
+              setActionMenuMsgId(null);
+              return;
+            }
+            toast.error('Đã đủ 3 tin ghim trong cuộc trò chuyện này.');
+            setActionMenuMsgId(null);
+            return;
+          }
           await pinMessage({
             messageId: msg.messageId,
-            conversationId: msg.conversationId,
+            conversationId: cid,
             createdAt: msg.createdAt,
           }).unwrap();
           dispatch(
             messagePinUpdated({
               messageId: msg.messageId,
-              conversationId: msg.conversationId,
+              conversationId: cid,
               isPinned: true,
             }),
           );
-          patchMessageInCache(msg.conversationId, msg.messageId, { isPinned: true });
+          patchMessageInCache(cid, msg.messageId, { isPinned: true });
+          setPinnedMessageOrderByConv((prev) => ({
+            ...prev,
+            [cid]: [msg.messageId, ...(prev[cid] ?? []).filter((id) => id !== msg.messageId)],
+          }));
         }
         setActionMenuMsgId(null);
       } catch {
         /* ignore */
       }
     },
-    [pinMessage, unpinMessage, dispatch, patchMessageInCache],
+    [
+      pinMessage,
+      unpinMessage,
+      dispatch,
+      patchMessageInCache,
+      activeConversationId,
+      pinnedMessagesOrdered,
+      allMessages,
+    ],
   );
 
+  const handleConfirmPinReplace = useCallback(async () => {
+    if (
+      pinReplaceIndex === null ||
+      !pinLimitModalMsg ||
+      pinnedMessagesOrdered.length < MAX_PINNED_PER_CONVERSATION
+    )
+      return;
+    const victim = pinnedMessagesOrdered[pinReplaceIndex];
+    if (!victim) return;
+    const toPin = pinLimitModalMsg;
+    const cid = toPin.conversationId;
+    setPinLimitSubmitting(true);
+    try {
+      await unpinMessage({
+        messageId: victim.messageId,
+        conversationId: cid,
+        createdAt: victim.createdAt,
+      }).unwrap();
+      dispatch(
+        messagePinUpdated({
+          messageId: victim.messageId,
+          conversationId: cid,
+          isPinned: false,
+        }),
+      );
+      patchMessageInCache(cid, victim.messageId, { isPinned: false });
+      setPinnedMessageOrderByConv((prev) => ({
+        ...prev,
+        [cid]: (prev[cid] ?? []).filter((id) => id !== victim.messageId),
+      }));
+
+      await pinMessage({
+        messageId: toPin.messageId,
+        conversationId: cid,
+        createdAt: toPin.createdAt,
+      }).unwrap();
+      dispatch(
+        messagePinUpdated({
+          messageId: toPin.messageId,
+          conversationId: cid,
+          isPinned: true,
+        }),
+      );
+      patchMessageInCache(cid, toPin.messageId, { isPinned: true });
+      setPinnedMessageOrderByConv((prev) => ({
+        ...prev,
+        [cid]: [toPin.messageId, ...(prev[cid] ?? []).filter((id) => id !== toPin.messageId)],
+      }));
+      setPinLimitModalMsg(null);
+      setActionMenuMsgId(null);
+    } catch {
+      toast.error('Không cập nhật ghim được. Thử lại.');
+    } finally {
+      setPinLimitSubmitting(false);
+    }
+  }, [
+    pinLimitModalMsg,
+    pinnedMessagesOrdered,
+    pinReplaceIndex,
+    unpinMessage,
+    pinMessage,
+    dispatch,
+    patchMessageInCache,
+  ]);
+
+  const jumpHighlightClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [jumpHighlightMessageId, setJumpHighlightMessageId] = useState<string | null>(null);
+  const [jumpFlashNonce, setJumpFlashNonce] = useState(0);
+
   const scrollToMessageBubble = useCallback((messageId: string) => {
-    document.getElementById(`chat-msg-${messageId}`)?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center',
+    if (jumpHighlightClearRef.current) {
+      clearTimeout(jumpHighlightClearRef.current);
+      jumpHighlightClearRef.current = null;
+    }
+    setJumpFlashNonce((n) => n + 1);
+    setJumpHighlightMessageId(messageId);
+    requestAnimationFrame(() => {
+      document.getElementById(`chat-msg-${messageId}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
     });
-    setShowOtherPinnedPanel(false);
+    jumpHighlightClearRef.current = setTimeout(() => {
+      setJumpHighlightMessageId(null);
+      jumpHighlightClearRef.current = null;
+    }, 2300);
   }, []);
 
   const formatMessageTime = (createdAt: string) => formatTime(createdAt);
@@ -1871,15 +2032,12 @@ export default function ChatPage() {
               currentUserRole={currentUserRole}
             />
 
-            {activeConversationId && primaryPinnedMessage && (
+            {activeConversationId && pinnedMessagesOrdered.length > 0 && (
               <PinnedMessagesBar
-                primaryPinnedMessage={primaryPinnedMessage}
-                otherPinnedMessages={otherPinnedMessages}
-                showOtherPinnedPanel={showOtherPinnedPanel}
-                onToggleOtherPinnedPanel={() => setShowOtherPinnedPanel((v) => !v)}
+                key={activeConversationId}
+                pinnedMessages={pinnedMessagesOrdered}
                 onScrollToMessage={scrollToMessageBubble}
                 onTogglePin={handleTogglePinMsg}
-                formatMessageTime={formatMessageTime}
               />
             )}
 
@@ -1892,9 +2050,13 @@ export default function ChatPage() {
               currentUserId={currentUserId}
               typingUsers={typingUsers}
               unreadIncomingCount={unreadIncomingCount}
+              jumpHighlightMessageId={jumpHighlightMessageId}
+              jumpFlashNonce={jumpFlashNonce}
+              onJumpToMessage={scrollToMessageBubble}
               actionMenuMsgId={actionMenuMsgId}
               onActionMenuMsgIdChange={setActionMenuMsgId}
               onStartEdit={(msg) => {
+                if (msg.type !== 'text') return;
                 setEditingMessage(msg);
                 setEditDraft(msg.content);
               }}
@@ -2001,6 +2163,18 @@ export default function ChatPage() {
         }}
         onSubmit={handleAddFriendSubmit}
       />
+      <PinLimitModal
+        open={pinLimitModalMsg !== null}
+        currentPinned={pinnedMessagesOrdered}
+        pendingPin={pinLimitModalMsg}
+        replaceIndex={pinReplaceIndex}
+        onReplaceIndexChange={setPinReplaceIndex}
+        isSubmitting={pinLimitSubmitting}
+        onClose={() => {
+          if (!pinLimitSubmitting) setPinLimitModalMsg(null);
+        }}
+        onConfirm={handleConfirmPinReplace}
+      />
       <ConfirmModal
         open={messageConfirm !== null}
         title={
@@ -2012,9 +2186,9 @@ export default function ChatPage() {
         }
         description={
           messageConfirm?.kind === 'delete'
-            ? 'Xóa tin nhắn này?'
+            ? 'Chỉ xóa trên thiết bị của bạn; người khác trong cuộc trò chuyện vẫn thấy tin nhắn.'
             : messageConfirm?.kind === 'recall'
-              ? 'Thu hồi tin nhắn này cho mọi người?'
+              ? 'Thu hồi cho mọi người — không ai còn xem được nội dung tin này.'
               : undefined
         }
         confirmLabel={messageConfirm?.kind === 'delete' ? 'Xóa' : 'Thu hồi'}
