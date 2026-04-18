@@ -50,7 +50,7 @@ export function ConversationInfoPanel() {
   );
 
   return (
-    <div className="w-[280px] lg:w-[340px] border-l border-black/5 dark:border-white/5 flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all hidden md:flex">
+    <div className="w-[280px] lg:w-[340px] h-full min-h-0 border-l border-black/5 dark:border-white/5 flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all hidden md:flex">
       <div className="h-20 px-6 flex items-center justify-center border-b border-black/5 dark:border-white/5 font-bold text-lg sticky top-0 bg-inherit z-10 shrink-0">
         Thông tin {activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}
       </div>
