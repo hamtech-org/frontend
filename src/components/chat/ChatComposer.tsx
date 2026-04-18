@@ -144,10 +144,14 @@ export function ChatComposer({
                     src={p.previewUrl}
                     muted
                     playsInline
-                    className="h-16 w-full object-cover"
+                    className="h-16 w-full object-cover bg-zinc-200/40 dark:bg-zinc-700/40"
                   />
                 ) : (
-                  <img src={p.previewUrl} alt="" className="h-16 w-full object-cover" />
+                  <img
+                    src={p.previewUrl}
+                    alt=""
+                    className="h-16 w-full object-contain bg-zinc-100/90 dark:bg-zinc-800/80"
+                  />
                 )
               ) : (
                 <div className="h-16 w-full flex flex-col items-center justify-center gap-0.5 px-1 bg-black/5 dark:bg-white/5">
