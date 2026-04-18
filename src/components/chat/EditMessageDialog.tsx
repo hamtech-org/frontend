@@ -18,6 +18,7 @@ export function EditMessageDialog({
   isEditing,
 }: EditMessageDialogProps) {
   if (!editingMessage) return null;
+  if (editingMessage.type !== 'text') return null;
 
   return (
     <div
