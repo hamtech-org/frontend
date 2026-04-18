@@ -14,12 +14,12 @@ import {
   messageReceived,
   messageRecalled,
   messageEdited,
-  messageDeleted,
   messagePinUpdated,
   messageReacted,
   typingStarted,
   typingStopped,
 } from '@/store/slices/chatSlice';
+import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
 import type { IMessage } from '@/types/chat.types';
 
 type PatchMessageInCache = (
@@ -93,11 +93,9 @@ export function useChatSocketListeners(
       dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
 
-    const handleDeleted = (data: unknown) => {
+    const handleHiddenForMe = (data: unknown) => {
       const { messageId, conversationId } = data as { messageId: string; conversationId: string };
-      dispatch(messageDeleted({ messageId, conversationId }));
-      patchMessageInCache(conversationId, messageId, { isDeleted: true, content: '' });
-      dispatch(chatApi.util.invalidateTags(['Conversations']));
+      applyMessageHiddenForMe(dispatch, conversationId, messageId);
     };
 
     const handlePinUpdated = (data: unknown) => {
@@ -160,7 +158,7 @@ export function useChatSocketListeners(
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:recall', handleRecall);
     socketService.on('message:edited', handleEdited);
-    socketService.on('message:deleted', handleDeleted);
+    socketService.on('message:hidden_for_me', handleHiddenForMe);
     socketService.on('message:pin_updated', handlePinUpdated);
     socketService.on('message:reacted', handleReacted);
     socketService.on('message:typing_indicator', handleTyping);
@@ -187,7 +185,7 @@ export function useChatSocketListeners(
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:recall', handleRecall);
       socketService.off('message:edited', handleEdited);
-      socketService.off('message:deleted', handleDeleted);
+      socketService.off('message:hidden_for_me', handleHiddenForMe);
       socketService.off('message:pin_updated', handlePinUpdated);
       socketService.off('message:reacted', handleReacted);
       socketService.off('message:typing_indicator', handleTyping);
