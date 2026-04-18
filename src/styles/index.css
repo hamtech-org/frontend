@@ -32,6 +32,39 @@
   }
 }
 
+@layer utilities {
+  /** Nhảy từ danh sách ghim / tìm tin — một lần, không lặp */
+  .chat-msg-jump-highlight {
+    animation: chat-msg-jump-flash 2.1s ease-out forwards;
+    border-radius: 1rem;
+  }
+}
+
+@keyframes chat-msg-jump-flash {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(0, 104, 255, 0.45),
+      0 0 0 0 rgba(0, 104, 255, 0.08) inset;
+  }
+  20% {
+    box-shadow:
+      0 0 0 4px rgba(0, 104, 255, 0.35),
+      0 0 28px rgba(0, 104, 255, 0.22),
+      0 0 0 1px rgba(0, 104, 255, 0.15) inset;
+  }
+  55% {
+    box-shadow:
+      0 0 0 2px rgba(0, 104, 255, 0.2),
+      0 0 14px rgba(0, 104, 255, 0.1),
+      0 0 0 0 rgba(0, 104, 255, 0.06) inset;
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(0, 104, 255, 0),
+      0 0 0 0 rgba(0, 104, 255, 0);
+  }
+}
+
 @layer components {
   .glass-card {
     @apply backdrop-blur-xl bg-white/70 border border-white/20 shadow-sm;
