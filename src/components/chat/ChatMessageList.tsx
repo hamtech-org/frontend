@@ -18,12 +18,15 @@ import {
   Trash2,
   Users,
   Video,
+  Maximize2,
+  Image as ImageIcon,
 } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/store/slices/chatSlice';
 import { formatTime, formatDate } from '@/utils/formatDate';
 import { typingInitial, typingLabel } from '@/utils/chatUtils';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
+import { MediaLightbox } from '@/components/chat/MediaLightbox';
 import { formatFileSize } from '@/utils/fileHelper';
 import { apiClient } from '@/services/api';
 import { toast } from 'react-toastify';
@@ -49,6 +52,17 @@ function isRichMediaMessage(msg: IMessage): boolean {
 
 function messageHasCaption(msg: IMessage): boolean {
   return (msg.content ?? '').trim().length > 0;
+}
+
+/** Ưu tiên ảnh gốc (mediaUrl); HEIC/HEIF dùng thumbnail JPEG vì thẻ img không hiển thị gốc. */
+function imageDisplaySrc(msg: IMessage): string {
+  const full = msg.mediaUrl ?? '';
+  const thumb = msg.thumbnailUrl ?? '';
+  const mime = (msg.mediaType ?? '').toLowerCase();
+  if (mime.includes('heic') || mime.includes('heif')) {
+    return thumb || full;
+  }
+  return full || thumb;
 }
 
 type CallLogContent =
@@ -108,6 +122,10 @@ export function ChatMessageList({
   };
 
   const [hiddenReactPopupId, setHiddenReactPopupId] = useState<string | null>(null);
+  const [mediaLightbox, setMediaLightbox] = useState<{
+    src: string;
+    kind: 'image' | 'video';
+  } | null>(null);
 
   return (
     <div
@@ -454,6 +472,7 @@ export function ChatMessageList({
             const showAvatar = !isMe && !isSameSenderAsNext;
             const showMeta = !isSameSenderAsNext;
             const isMediaMsg = isRichMediaMessage(msg);
+            const isWideMediaBubble = msg.type === 'image' || msg.type === 'video';
             const showCaption = messageHasCaption(msg);
             return (
               <motion.div
@@ -473,7 +492,11 @@ export function ChatMessageList({
                 )}
 
                 <div
-                  className={`flex flex-col max-w-[55%] sm:max-w-[45%] ${isMe ? 'items-end' : 'items-start'}`}
+                  className={`flex flex-col ${
+                    isWideMediaBubble
+                      ? 'w-full max-w-[min(96vw,44rem)] sm:max-w-[min(92%,42rem)]'
+                      : 'max-w-[55%] sm:max-w-[45%]'
+                  } ${isMe ? 'items-end' : 'items-start'}`}
                 >
                   {!isMe && activeConversation?.type === 'group' && !isSameSenderAsPrev && (
                     <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
@@ -510,7 +533,7 @@ export function ChatMessageList({
                           <div
                             onClick={() => scrollToMessage(msg.replyToDetails!.messageId)}
                             className={`mb-1.5 px-2.5 py-1.5 rounded-lg border-l-4 cursor-pointer transition-colors ${
-                              isMediaMsg ? 'w-full max-w-[min(100%,20rem)]' : ''
+                              isMediaMsg ? `w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'}` : ''
                             } ${
                               isMe && !isMediaMsg
                                 ? 'bg-white/10 border-white/30 hover:bg-white/20'
@@ -533,27 +556,128 @@ export function ChatMessageList({
                             </p>
                           </div>
                         )}
-                        {msg.type === 'image' && msg.mediaUrl && (
+                        {msg.type === 'image' && (msg.mediaUrl || msg.thumbnailUrl) && (
                           <div
-                            className={`w-fit max-w-full overflow-hidden rounded-lg ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
+                            className={`w-full ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
                           >
-                            <AuthenticatedMedia
-                              src={(msg.thumbnailUrl ?? msg.mediaUrl) as string}
-                              kind="image"
-                              className="max-h-56 max-w-full object-cover rounded-lg"
-                              alt="Ảnh đính kèm"
-                            />
+                            <div
+                              className={`w-full overflow-hidden rounded-2xl border shadow-md ${
+                                isMe
+                                  ? 'border-blue-200/50 bg-blue-50/90 dark:border-blue-800/50 dark:bg-blue-950/35'
+                                  : 'border-black/10 bg-slate-50/95 dark:border-white/10 dark:bg-zinc-900/50'
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                aria-label="Xem ảnh lớn"
+                                className="relative block w-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMediaLightbox({ src: imageDisplaySrc(msg), kind: 'image' });
+                                }}
+                              >
+                                <AuthenticatedMedia
+                                  src={imageDisplaySrc(msg)}
+                                  kind="image"
+                                  className="block w-full h-auto max-h-[min(78vh,640px)] object-contain bg-black/[0.04] dark:bg-black/40"
+                                  alt="Ảnh đính kèm"
+                                />
+                              </button>
+                              <div className="flex items-center gap-2.5 px-3 py-2.5 border-t border-black/5 dark:border-white/10 bg-white/90 dark:bg-zinc-950/80">
+                                <div className="shrink-0 rounded-lg bg-blue-100 dark:bg-blue-900/50 p-2">
+                                  <ImageIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden />
+                                </div>
+                                <div className="min-w-0 flex-1 text-left">
+                                  <p className="text-[13px] font-semibold text-foreground truncate">
+                                    {msg.mediaOriginalName?.trim() || 'Hình ảnh'}
+                                  </p>
+                                  {msg.mediaSize != null && msg.mediaSize > 0 ? (
+                                    <p className="text-[11px] text-muted-foreground">
+                                      {formatFileSize(msg.mediaSize)}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <button
+                                  type="button"
+                                  aria-label="Tải ảnh xuống"
+                                  title="Tải xuống"
+                                  className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void downloadAuthedFile(
+                                      imageDisplaySrc(msg),
+                                      msg.mediaOriginalName?.trim() || 'image.jpg',
+                                    );
+                                  }}
+                                >
+                                  <Download className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         )}
                         {msg.type === 'video' && msg.mediaUrl && (
                           <div
-                            className={`w-fit max-w-[min(100%,20rem)] min-w-0 overflow-hidden rounded-lg ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
+                            className={`w-full min-w-0 ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
                           >
-                            <AuthenticatedMedia
-                              src={msg.mediaUrl}
-                              kind="video"
-                              className="block max-h-64 w-auto max-w-full rounded-lg bg-black/80"
-                            />
+                            <div
+                              className={`w-full overflow-hidden rounded-2xl border shadow-md ${
+                                isMe
+                                  ? 'border-blue-200/50 bg-blue-50/90 dark:border-blue-800/50 dark:bg-blue-950/35'
+                                  : 'border-black/10 bg-slate-50/95 dark:border-white/10 dark:bg-zinc-900/50'
+                              }`}
+                            >
+                              <div className="relative w-full aspect-video max-h-[min(78vh,640px)] bg-zinc-950">
+                                <AuthenticatedMedia
+                                  src={msg.mediaUrl}
+                                  kind="video"
+                                  className="absolute inset-0 h-full w-full object-contain bg-black"
+                                />
+                                <button
+                                  type="button"
+                                  aria-label="Xem video toàn màn hình"
+                                  title="Xem toàn màn hình"
+                                  className="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-lg bg-black/65 hover:bg-black/80 text-white text-[11px] font-semibold px-2.5 py-1.5 backdrop-blur-sm shadow-lg border border-white/15"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMediaLightbox({ src: msg.mediaUrl as string, kind: 'video' });
+                                  }}
+                                >
+                                  <Maximize2 className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="hidden sm:inline pr-0.5">Toàn màn hình</span>
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-2.5 px-3 py-2.5 border-t border-black/5 dark:border-white/10 bg-white/90 dark:bg-zinc-950/80">
+                                <div className="shrink-0 rounded-lg bg-violet-100 dark:bg-violet-900/40 p-2">
+                                  <Video className="w-5 h-5 text-violet-600 dark:text-violet-400" aria-hidden />
+                                </div>
+                                <div className="min-w-0 flex-1 text-left">
+                                  <p className="text-[13px] font-semibold text-foreground truncate">
+                                    {msg.mediaOriginalName?.trim() || 'Video'}
+                                  </p>
+                                  {msg.mediaSize != null && msg.mediaSize > 0 ? (
+                                    <p className="text-[11px] text-muted-foreground">
+                                      {formatFileSize(msg.mediaSize)}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <button
+                                  type="button"
+                                  aria-label="Tải video xuống"
+                                  title="Tải xuống"
+                                  className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void downloadAuthedFile(
+                                      msg.mediaUrl as string,
+                                      msg.mediaOriginalName?.trim() || 'video.mp4',
+                                    );
+                                  }}
+                                >
+                                  <Download className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         )}
                         {msg.type === 'file' && msg.mediaUrl && (
@@ -596,7 +720,7 @@ export function ChatMessageList({
                         )}
                         {isMediaMsg && showCaption && (
                           <div
-                            className={`mt-0.5 max-w-[min(100%,20rem)] px-2.5 py-1.5 rounded-lg text-[13px] whitespace-pre-wrap wrap-break-word ${
+                            className={`mt-0.5 w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'} px-2.5 py-1.5 rounded-lg text-[13px] whitespace-pre-wrap wrap-break-word ${
                               isMe
                                 ? 'bg-black/6 dark:bg-white/10 text-foreground'
                                 : 'bg-black/5 dark:bg-white/10 text-foreground'
@@ -830,6 +954,12 @@ export function ChatMessageList({
             </div>
           )}
           <div ref={messagesEndRef} />
+          <MediaLightbox
+            open={mediaLightbox !== null}
+            onClose={() => setMediaLightbox(null)}
+            src={mediaLightbox?.src ?? ''}
+            kind={mediaLightbox?.kind ?? 'image'}
+          />
         </>
       )}
     </div>
