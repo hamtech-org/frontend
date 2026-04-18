@@ -1,5 +1,5 @@
 import type { TypingUserEntry } from '@/store/slices/chatSlice';
-import type { IConversation, MessageType } from '@/types/chat.types';
+import type { IConversation, IMessage, MessageType } from '@/types/chat.types';
 
 export function decodeJwtUserId(token: string | null): string | null {
   if (!token) return null;
@@ -38,6 +38,54 @@ function normalizeLastMessagePreview(type: MessageType, content: string): string
     return t;
   }
   return content ?? '';
+}
+
+/**
+ * Một dòng preview cho thanh "Tin nhắn được ghim" (Zalo): ảnh/video/file/cuộc gọi, không dùng [].
+ */
+/** URL ảnh/video nhỏ cho hàng trong danh sách ghim (Zalo). */
+export function mediaThumbSrcForPinnedRow(msg: IMessage): string | null {
+  if (msg.type === 'image') {
+    const full = msg.mediaUrl ?? '';
+    const thumb = msg.thumbnailUrl ?? '';
+    const mime = (msg.mediaType ?? '').toLowerCase();
+    if (!full && !thumb) return null;
+    if (mime.includes('heic') || mime.includes('heif')) return thumb || full || null;
+    return thumb || full || null;
+  }
+  if (msg.type === 'video') {
+    return msg.thumbnailUrl ?? msg.mediaUrl ?? null;
+  }
+  return null;
+}
+
+export function extractFirstHttpUrl(content: string): string | null {
+  const m = (content ?? '').trim().match(/https?:\/\/[^\s<]+/);
+  return m ? m[0] : null;
+}
+
+export function formatPinnedMessagePreviewLine(msg: IMessage): string {
+  if (msg.isRecalled) return 'Tin nhắn đã được thu hồi';
+  if (msg.isDeleted) return 'Tin nhắn đã xóa';
+  if (msg.type === 'call') {
+    const content = msg.content ?? '';
+    try {
+      const payload = JSON.parse(content) as { kind?: string; callType?: string };
+      if (payload.kind === 'missed') return 'Cuộc gọi nhỡ';
+      if (payload.kind === 'rejected') return 'Cuộc gọi bị từ chối';
+      return payload.callType === 'video' ? 'Cuộc gọi video' : 'Cuộc gọi thoại';
+    } catch {
+      return 'Cuộc gọi';
+    }
+  }
+  if ((msg as { type?: string }).type === 'system') {
+    return 'Thông báo';
+  }
+  if (msg.type === 'poll') return 'Bình chọn';
+  if (msg.type === 'sticker' || msg.type === 'emoji') return 'Nhãn dán';
+  if (msg.type === 'location') return 'Vị trí';
+  if (msg.type === 'schedule') return 'Lịch hẹn';
+  return normalizeLastMessagePreview(msg.type, msg.content ?? '');
 }
 
 /** Dòng preview tin cuối trên danh sách hội thoại (direct / group, Bạn vs tên). */
