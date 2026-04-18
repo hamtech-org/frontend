@@ -1,5 +1,5 @@
 import type { TypingUserEntry } from '@/store/slices/chatSlice';
-import type { IConversation } from '@/types/chat.types';
+import type { IConversation, MessageType } from '@/types/chat.types';
 
 export function decodeJwtUserId(token: string | null): string | null {
   if (!token) return null;
@@ -20,6 +20,24 @@ export function typingLabel(entry: TypingUserEntry): string {
 export function typingInitial(entry: TypingUserEntry): string {
   const ch = typingLabel(entry).trim().slice(0, 1).toUpperCase();
   return ch || '?';
+}
+
+/** Bỏ dạng [Ảnh]/[Video]/[File] từ backend — hiển thị text thuần cho sidebar. */
+function normalizeLastMessagePreview(type: MessageType, content: string): string {
+  const t = (content ?? '').trim();
+  if (type === 'image') {
+    if (t === '' || t === '[Ảnh]' || t === '[ ]') return 'Hình ảnh';
+    return t;
+  }
+  if (type === 'video') {
+    if (t === '' || t === '[Video]') return 'Video';
+    return t;
+  }
+  if (type === 'file') {
+    if (t === '' || t === '[File]') return 'Tệp tin';
+    return t;
+  }
+  return content ?? '';
 }
 
 /** Dòng preview tin cuối trên danh sách hội thoại (direct / group, Bạn vs tên). */
@@ -95,7 +113,10 @@ export function formatConversationListLastPreview(conv: IConversation, currentUs
   // Với system message dạng sự kiện (giống Zalo), trả về câu hoàn chỉnh, không prefix "Tên:"
   if (systemPreview) return systemPreview;
 
-  const previewText = lm.type === 'call' ? formatCallPreview() : content;
+  const previewText = normalizeLastMessagePreview(
+    lm.type,
+    lm.type === 'call' ? formatCallPreview() : content,
+  );
   if (currentUserId && lm.senderId === currentUserId) {
     return `Bạn: ${previewText}`;
   }
@@ -104,4 +125,59 @@ export function formatConversationListLastPreview(conv: IConversation, currentUs
   }
   const name = lm.senderDisplayName?.trim() || 'Thành viên';
   return `${name}: ${previewText}`;
+}
+
+const IMAGE_PLACEHOLDER_LABEL = 'Hình ảnh';
+
+function isImagePlaceholderText(s: string): boolean {
+  const t = s.trim();
+  return t === 'Ảnh' || t === IMAGE_PLACEHOLDER_LABEL;
+}
+
+/**
+ * Tách prefix ("Bạn:", "Tên:") và phần sau icon.
+ * Tin chỉ media (không chú thích): suffix là nhãn hiển thị — ví dụ "Hình ảnh" sau icon.
+ */
+export function parseConversationListMediaPreview(
+  full: string,
+  type: MessageType | undefined,
+): { prefix: string; suffix: string } {
+  const isMedia = type === 'image' || type === 'video' || type === 'file';
+  if (!isMedia) return { prefix: '', suffix: full };
+
+  const videoLabel = 'Video';
+  const fileLabel = 'Tệp tin';
+
+  const mBan = /^Bạn:\s*(.*)$/s.exec(full);
+  if (mBan) {
+    const rest = mBan[1].trim();
+    if (type === 'image' && isImagePlaceholderText(rest)) {
+      return { prefix: 'Bạn:', suffix: IMAGE_PLACEHOLDER_LABEL };
+    }
+    if (type === 'video' && rest === videoLabel) return { prefix: 'Bạn:', suffix: videoLabel };
+    if (type === 'file' && rest === fileLabel) return { prefix: 'Bạn:', suffix: fileLabel };
+    return { prefix: 'Bạn:', suffix: rest };
+  }
+
+  const mNamed = /^(.+):\s*(.*)$/s.exec(full);
+  if (mNamed) {
+    const rest = mNamed[2].trim();
+    if (type === 'image' && isImagePlaceholderText(rest)) {
+      return { prefix: `${mNamed[1]}:`, suffix: IMAGE_PLACEHOLDER_LABEL };
+    }
+    if (type === 'video' && rest === videoLabel) {
+      return { prefix: `${mNamed[1]}:`, suffix: videoLabel };
+    }
+    if (type === 'file' && rest === fileLabel) {
+      return { prefix: `${mNamed[1]}:`, suffix: fileLabel };
+    }
+    return { prefix: `${mNamed[1]}:`, suffix: rest };
+  }
+
+  if (type === 'image' && isImagePlaceholderText(full)) {
+    return { prefix: '', suffix: IMAGE_PLACEHOLDER_LABEL };
+  }
+  if (type === 'video' && full.trim() === videoLabel) return { prefix: '', suffix: videoLabel };
+  if (type === 'file' && full.trim() === fileLabel) return { prefix: '', suffix: fileLabel };
+  return { prefix: '', suffix: full };
 }
