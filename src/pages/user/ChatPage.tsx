@@ -2085,11 +2085,12 @@ export default function ChatPage() {
           setTaskAssignToAll(v);
           if (v) setTaskAssignees([]);
         }}
-        members={groupMembers.map(m => ({
+        members={groupMembers.map((m) => ({
           id: m.userId,
           name: m.name ?? m.userId,
-          avatar: m.avatar ?? 'https://via.placeholder.com/40',
-          role: m.role
+          avatar:
+            m.userId === currentUserId ? m.avatar ?? currentUser?.avatar ?? undefined : m.avatar ?? undefined,
+          role: m.role,
         }))}
         taskTitle={taskTitle}
         onTaskTitleChange={setTaskTitle}
