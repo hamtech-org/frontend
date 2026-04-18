@@ -59,6 +59,18 @@ function isRichMediaMessage(msg: IMessage): boolean {
   return msg.type === 'image' || msg.type === 'video' || msg.type === 'file';
 }
 
+/** Zalo: không ghim tin đã thu hồi / xóa / system. */
+function canPinMessage(msg: IMessage): boolean {
+  if (msg.isDeleted || msg.isRecalled) return false;
+  if ((msg as { type?: string }).type === 'system') return false;
+  return true;
+}
+
+/** Menu ⋯: không hiện «Sửa» với ảnh / video / file (chỉ tin thuần chữ). */
+function canShowEditInMessageOverflowMenu(msg: IMessage): boolean {
+  return !isRichMediaMessage(msg) && msg.type === 'text';
+}
+
 function messageHasCaption(msg: IMessage): boolean {
   return (msg.content ?? '').trim().length > 0;
 }
@@ -276,6 +288,12 @@ export type ChatMessageListProps = {
   groupTasks?: any[];
   onTaskJoined?: (taskId: string) => void;
   onOpenPollVote?: (pollId: string) => void;
+  /** Đánh dấu + hiệu ứng khi nhảy tới tin (ghim, tìm tin, …). */
+  jumpHighlightMessageId?: string | null;
+  /** Tăng mỗi lần nhảy tới tin để animation highlight chạy lại. */
+  jumpFlashNonce?: number;
+  /** Cuộn tới tin + bật highlight (ưu tiên hơn scroll nội bộ — dùng cho trích dẫn trả lời). */
+  onJumpToMessage?: (messageId: string) => void;
 };
 
 export function ChatMessageList({
@@ -299,8 +317,15 @@ export function ChatMessageList({
   groupTasks,
   onTaskJoined,
   onOpenPollVote,
+  jumpHighlightMessageId = null,
+  jumpFlashNonce = 0,
+  onJumpToMessage,
 }: ChatMessageListProps) {
   const scrollToMessage = (messageId: string) => {
+    if (onJumpToMessage) {
+      onJumpToMessage(messageId);
+      return;
+    }
     document.getElementById(`chat-msg-${messageId}`)?.scrollIntoView({
       behavior: 'smooth',
       block: 'center',
@@ -732,6 +757,7 @@ export function ChatMessageList({
             const isWideMediaBubble = msg.type === 'image' || msg.type === 'video';
             const showCaption = messageHasCaption(msg);
             const mediaSavedOnDevice = downloadedMediaIds.has(msg.messageId);
+            const isJumpHighlight = jumpHighlightMessageId === msg.messageId;
             return (
               <motion.div
                 id={`chat-msg-${msg.messageId}`}
@@ -739,18 +765,25 @@ export function ChatMessageList({
                 initial={{ opacity: 0, y: 8, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.18, ease: 'easeOut' }}
-                className={`flex items-end gap-2 group/msg ${isMe ? 'flex-row-reverse' : 'flex-row'} ${isSameSenderAsPrev ? 'mt-0' : 'mt-1'}`}
+                className={`flex items-end gap-2 group/msg relative ${isMe ? 'flex-row-reverse' : 'flex-row'} ${isSameSenderAsPrev ? 'mt-0' : 'mt-1'}`}
               >
+                {isJumpHighlight && (
+                  <div
+                    key={jumpFlashNonce}
+                    className="absolute -inset-x-1 -inset-y-0.5 z-[1] rounded-2xl pointer-events-none chat-msg-jump-highlight"
+                    aria-hidden
+                  />
+                )}
                 {showAvatar ? (
-                  <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-indigo-500 flex items-center justify-center shrink-0 text-white text-xs font-bold shadow-sm mb-0.5">
+                  <div className="relative z-[2] w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-indigo-500 flex items-center justify-center shrink-0 text-white text-xs font-bold shadow-sm mb-0.5">
                     {(msg.senderDisplayName ?? msg.senderId).trim().slice(0, 1).toUpperCase()}
                   </div>
                 ) : isMe ? null : (
-                  <div className="w-8 shrink-0" aria-hidden />
+                  <div className="relative z-[2] w-8 shrink-0" aria-hidden />
                 )}
 
                 <div
-                  className={`flex flex-col ${
+                  className={`relative z-[2] flex flex-col ${
                     isWideMediaBubble
                       ? 'w-full max-w-[min(96vw,44rem)] sm:max-w-[min(92%,42rem)]'
                       : 'max-w-[55%] sm:max-w-[45%]'
@@ -1096,19 +1129,26 @@ export function ChatMessageList({
                         >
                           <Reply className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
                         </button>
-                        <button
-                          type="button"
-                          title={msg.isPinned ? 'Bỏ ghim' : 'Ghim'}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void onTogglePin(msg);
-                          }}
-                          className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
-                        >
-                          <Pin
-                            className={`w-3.5 h-3.5 ${msg.isPinned ? 'text-blue-600' : 'text-muted-foreground hover:text-blue-600'}`}
-                          />
-                        </button>
+                        {canPinMessage(msg) && (
+                          <button
+                            type="button"
+                            title={msg.isPinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void onTogglePin(msg);
+                            }}
+                            className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
+                          >
+                            <Pin
+                              className={`w-3.5 h-3.5 ${
+                                msg.isPinned
+                                  ? 'text-[#0068ff] dark:text-blue-400 fill-blue-500/25'
+                                  : 'text-muted-foreground hover:text-[#0068ff] dark:hover:text-blue-400'
+                              }`}
+                              strokeWidth={msg.isPinned ? 2.25 : 2}
+                            />
+                          </button>
+                        )}
                         {isMe && (
                           <div className="relative">
                             <button
@@ -1129,16 +1169,18 @@ export function ChatMessageList({
                                 className={`absolute z-50 min-w-[156px] rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl py-1 ${isMe ? 'right-0 bottom-full mb-1' : 'left-0 bottom-full mb-1'}`}
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <button
-                                  type="button"
-                                  className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2"
-                                  onClick={() => {
-                                    onStartEdit(msg);
-                                    onActionMenuMsgIdChange(null);
-                                  }}
-                                >
-                                  <Pencil className="w-3.5 h-3.5 shrink-0" /> Sửa
-                                </button>
+                                {canShowEditInMessageOverflowMenu(msg) && (
+                                  <button
+                                    type="button"
+                                    className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2"
+                                    onClick={() => {
+                                      onStartEdit(msg);
+                                      onActionMenuMsgIdChange(null);
+                                    }}
+                                  >
+                                    <Pencil className="w-3.5 h-3.5 shrink-0" /> Sửa
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2"
@@ -1247,6 +1289,7 @@ export function ChatMessageList({
               anchorY={mediaContextMenu.y}
               onClose={() => setMediaContextMenu(null)}
               isMe={mediaContextMenu.msg.senderId === currentUserId}
+              isPinned={!!mediaContextMenu.msg.isPinned}
               onReply={() => {
                 onReply(mediaContextMenu.msg);
               }}
@@ -1271,7 +1314,6 @@ export function ChatMessageList({
                   { autoClose: 4000 },
                 )
               }
-              onOtherOptions={() => toast.info('Tuỳ chọn khác — đang phát triển')}
               onRecall={() => void onRecall(mediaContextMenu.msg)}
               onDeleteForMe={() => void onDelete(mediaContextMenu.msg)}
             />
