@@ -10,70 +10,15 @@ import {
   HelpCircle,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useId } from 'react';
+import { toast } from 'react-toastify';
 import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/PinLimitModal';
+import { useGetGroupSettingsQuery, useUpdateGroupSettingsMutation } from '@/store/api/chatApi';
+import type { IGroupAdminSettings, IGroupMemberPermissions } from '@/types/chat.types';
 
-const STORAGE_PREFIX = 'zalogram_group_mgmt_';
-
-export type GroupMemberPermissions = {
-  changeNameAvatar: boolean;
-  pinMessages: boolean;
-  createNotesReminders: boolean;
-  createPolls: boolean;
-  sendMessages: boolean;
-};
-
-export type GroupAdminSettings = {
-  approvalRequired: boolean;
-  highlightLeaderMessages: boolean;
-  newMembersReadRecent: boolean;
-  allowJoinLink: boolean;
-};
-
-const defaultMemberPerms: GroupMemberPermissions = {
-  changeNameAvatar: true,
-  pinMessages: true,
-  createNotesReminders: true,
-  createPolls: true,
-  sendMessages: true,
-};
-
-const defaultAdmin: GroupAdminSettings = {
-  approvalRequired: false,
-  highlightLeaderMessages: true,
-  newMembersReadRecent: true,
-  allowJoinLink: true,
-};
-
-function loadPrefs(conversationId: string | undefined) {
-  if (!conversationId || typeof window === 'undefined') {
-    return { member: { ...defaultMemberPerms }, admin: { ...defaultAdmin } };
-  }
-  try {
-    const raw = sessionStorage.getItem(`${STORAGE_PREFIX}${conversationId}`);
-    if (!raw) return { member: { ...defaultMemberPerms }, admin: { ...defaultAdmin } };
-    const parsed = JSON.parse(raw) as { member?: GroupMemberPermissions; admin?: GroupAdminSettings };
-    return {
-      member: { ...defaultMemberPerms, ...parsed.member },
-      admin: { ...defaultAdmin, ...parsed.admin },
-    };
-  } catch {
-    return { member: { ...defaultMemberPerms }, admin: { ...defaultAdmin } };
-  }
-}
-
-function savePrefs(
-  conversationId: string | undefined,
-  member: GroupMemberPermissions,
-  admin: GroupAdminSettings,
-) {
-  if (!conversationId || typeof window === 'undefined') return;
-  try {
-    sessionStorage.setItem(`${STORAGE_PREFIX}${conversationId}`, JSON.stringify({ member, admin }));
-  } catch {
-    /* ignore */
-  }
-}
+/** Alias tương thích import cũ. */
+export type GroupMemberPermissions = IGroupMemberPermissions;
+export type GroupAdminSettings = IGroupAdminSettings;
 
 type GroupManagementUiVariant = 'modal' | 'inline';
 
@@ -81,9 +26,7 @@ type GroupManagementModalProps = {
   open: boolean;
   onClose: () => void;
   conversationId: string | undefined;
-  /** Chỉ chủ/phó/admin mới chỉnh được; thành viên thường chỉ xem. */
   canEdit: boolean;
-  /** `inline`: nội dung nằm trong panel Thông tin (cột thứ 3), không phủ full viewport. */
   variant?: GroupManagementUiVariant;
 };
 
@@ -135,6 +78,11 @@ function ToggleRow({
   );
 }
 
+function errToast(e: unknown): string {
+  const x = e as { data?: { error?: { message?: string } } };
+  return x?.data?.error?.message ?? 'Không lưu được cài đặt';
+}
+
 export function GroupManagementModal({
   open,
   onClose,
@@ -143,26 +91,60 @@ export function GroupManagementModal({
   variant = 'modal',
 }: GroupManagementModalProps) {
   const baseId = useId();
-  const [member, setMember] = useState<GroupMemberPermissions>(defaultMemberPerms);
-  const [admin, setAdmin] = useState<GroupAdminSettings>(defaultAdmin);
+  const { data: settingsRes, isFetching } = useGetGroupSettingsQuery(conversationId!, {
+    skip: !open || !conversationId,
+  });
+  const [updateSettings, { isLoading: saving }] = useUpdateGroupSettingsMutation();
 
-  useEffect(() => {
-    if (!open) return;
-    const { member: m, admin: a } = loadPrefs(conversationId);
-    setMember(m);
-    setAdmin(a);
-  }, [open, conversationId]);
+  const gs = settingsRes?.data;
+  const member = gs?.memberPermissions;
+  const admin = gs?.adminSettings;
+  const joinSuffix = gs?.joinLinkSuffix;
 
-  const persist = useCallback(
-    (nextMember: GroupMemberPermissions, nextAdmin: GroupAdminSettings) => {
-      savePrefs(conversationId, nextMember, nextAdmin);
-    },
-    [conversationId],
-  );
+  const joinUrl =
+    typeof window !== 'undefined' && joinSuffix
+      ? `${window.location.origin}/join/${joinSuffix}`
+      : joinSuffix
+        ? `/join/${joinSuffix}`
+        : '—';
 
-  const joinLinkDemo = conversationId
-    ? `zalogram.local/g/${conversationId.slice(0, 8)}`
-    : '—';
+  const patchMember = async (key: keyof IGroupMemberPermissions, value: boolean) => {
+    if (!canEdit || !conversationId) return;
+    try {
+      await updateSettings({
+        groupId: conversationId,
+        memberPermissions: { [key]: value },
+      }).unwrap();
+    } catch (e) {
+      toast.error(errToast(e));
+    }
+  };
+
+  const patchAdmin = async (key: keyof IGroupAdminSettings, value: boolean) => {
+    if (!canEdit || !conversationId) return;
+    try {
+      const needLink = key === 'allowJoinLink' && value === true && !joinSuffix;
+      await updateSettings({
+        groupId: conversationId,
+        adminSettings: { [key]: value },
+        regenerateJoinLink: needLink ? true : undefined,
+      }).unwrap();
+    } catch (e) {
+      toast.error(errToast(e));
+    }
+  };
+
+  const regenerateLink = async () => {
+    if (!canEdit || !conversationId) return;
+    try {
+      await updateSettings({ groupId: conversationId, regenerateJoinLink: true }).unwrap();
+      toast.success('Đã tạo link mới');
+    } catch (e) {
+      toast.error(errToast(e));
+    }
+  };
+
+  const busy = saving || isFetching;
 
   const scrollBody = (
     <>
@@ -173,159 +155,160 @@ export function GroupManagementModal({
         </div>
       )}
 
-      <div className="px-4 pt-2 pb-1">
-                <p className="text-[13px] font-semibold text-slate-600 dark:text-slate-400 mb-3">
-                  Cho phép các thành viên trong nhóm:
-                </p>
-                <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-zinc-900/40">
-                  {(
-                    [
-                      {
-                        key: 'changeNameAvatar' as const,
-                        label: 'Thay đổi tên & ảnh đại diện của nhóm',
-                      },
-                      {
-                        key: 'pinMessages' as const,
-                        label: 'Ghim tin nhắn, ghi chú, bình chọn lên đầu hội thoại',
-                        hint: `Tối đa ${MAX_PINNED_PER_CONVERSATION} tin ghim mỗi cuộc trò chuyện.`,
-                      },
-                      {
-                        key: 'createNotesReminders' as const,
-                        label: 'Tạo mới ghi chú, nhắc hẹn',
-                      },
-                      {
-                        key: 'createPolls' as const,
-                        label: 'Tạo mới bình chọn',
-                      },
-                      {
-                        key: 'sendMessages' as const,
-                        label: 'Gửi tin nhắn',
-                      },
-                    ] as const
-                  ).map((row) => (
-                    <label
-                      key={row.key}
-                      className={`flex items-start justify-between gap-3 px-3 py-3 ${
-                        canEdit ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-800/60' : 'opacity-80'
-                      }`}
-                    >
-                      <div className="min-w-0 pt-0.5">
-                        <span className="text-[14px] text-slate-900 dark:text-slate-100 leading-snug block">
-                          {row.label}
-                        </span>
-                        {'hint' in row && row.hint ? (
-                          <span className="text-[12px] text-slate-500 dark:text-slate-400 mt-1 block">
-                            {row.hint}
-                          </span>
-                        ) : null}
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={member[row.key]}
-                        disabled={!canEdit}
-                        onChange={(e) => {
-                          const next = { ...member, [row.key]: e.target.checked };
-                          setMember(next);
-                          persist(next, admin);
-                        }}
-                        className="mt-1 w-[18px] h-[18px] rounded border-slate-300 accent-[#0068ff] shrink-0 cursor-pointer disabled:cursor-not-allowed"
-                      />
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="px-4 py-3 space-y-0">
-                <ToggleRow
-                  label="Chế độ phê duyệt thành viên mới"
-                  help="Khi bật, người mới xin vào phải được duyệt."
-                  checked={admin.approvalRequired}
-                  disabled={!canEdit}
-                  onChange={(v) => {
-                    const next = { ...admin, approvalRequired: v };
-                    setAdmin(next);
-                    persist(member, next);
-                  }}
-                />
-                <ToggleRow
-                  label="Đánh dấu tin nhắn từ trưởng/phó nhóm"
-                  checked={admin.highlightLeaderMessages}
-                  disabled={!canEdit}
-                  onChange={(v) => {
-                    const next = { ...admin, highlightLeaderMessages: v };
-                    setAdmin(next);
-                    persist(member, next);
-                  }}
-                />
-                <ToggleRow
-                  label="Cho phép thành viên mới đọc tin nhắn gần nhất"
-                  checked={admin.newMembersReadRecent}
-                  disabled={!canEdit}
-                  onChange={(v) => {
-                    const next = { ...admin, newMembersReadRecent: v };
-                    setAdmin(next);
-                    persist(member, next);
-                  }}
-                />
-                <ToggleRow
-                  label="Cho phép dùng link tham gia nhóm"
-                  checked={admin.allowJoinLink}
-                  disabled={!canEdit}
-                  onChange={(v) => {
-                    const next = { ...admin, allowJoinLink: v };
-                    setAdmin(next);
-                    persist(member, next);
-                  }}
-                />
-              </div>
-
-              {admin.allowJoinLink && (
-                <div className="px-4 pb-3">
-                  <div className="rounded-xl bg-sky-50/90 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 px-3 py-2.5 flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-mono text-slate-800 dark:text-slate-200 truncate">
-                      {joinLinkDemo}
+      {isFetching && !gs ? (
+        <div className="px-4 py-8 text-center text-sm text-muted-foreground">Đang tải cài đặt…</div>
+      ) : !member || !admin ? (
+        <div className="px-4 py-8 text-center text-sm text-red-500">Không tải được cài đặt nhóm.</div>
+      ) : (
+        <>
+          <div className="px-4 pt-2 pb-1">
+            <p className="text-[13px] font-semibold text-slate-600 dark:text-slate-400 mb-3">
+              Cho phép các thành viên trong nhóm:
+            </p>
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-zinc-900/40">
+              {(
+                [
+                  { key: 'changeNameAvatar' as const, label: 'Thay đổi tên & ảnh đại diện của nhóm' },
+                  {
+                    key: 'pinMessages' as const,
+                    label: 'Ghim tin nhắn, ghi chú, bình chọn lên đầu hội thoại',
+                    hint: `Tối đa ${MAX_PINNED_PER_CONVERSATION} tin ghim mỗi cuộc trò chuyện.`,
+                  },
+                  { key: 'createNotesReminders' as const, label: 'Tạo mới ghi chú, nhắc hẹn' },
+                  { key: 'createPolls' as const, label: 'Tạo mới bình chọn' },
+                  { key: 'sendMessages' as const, label: 'Gửi tin nhắn' },
+                ] as const
+              ).map((row) => (
+                <label
+                  key={row.key}
+                  className={`flex items-start justify-between gap-3 px-3 py-3 ${
+                    canEdit ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-800/60' : 'opacity-80'
+                  }`}
+                >
+                  <div className="min-w-0 pt-0.5">
+                    <span className="text-[14px] text-slate-900 dark:text-slate-100 leading-snug block">
+                      {row.label}
                     </span>
-                    <div className="flex items-center gap-1 shrink-0 text-[#0068ff]">
-                      <button
-                        type="button"
-                        title="Sao chép"
-                        className="p-1.5 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-900/50"
-                        onClick={() => void navigator.clipboard?.writeText(joinLinkDemo)}
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                      <button type="button" title="Chia sẻ" className="p-1.5 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-900/50">
-                        <Share2 className="w-4 h-4" />
-                      </button>
-                      <button type="button" title="Làm mới link" className="p-1.5 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-900/50">
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
-                    </div>
+                    {'hint' in row && row.hint ? (
+                      <span className="text-[12px] text-slate-500 dark:text-slate-400 mt-1 block">
+                        {row.hint}
+                      </span>
+                    ) : null}
                   </div>
+                  <input
+                    type="checkbox"
+                    checked={member[row.key]}
+                    disabled={!canEdit || busy}
+                    onChange={(e) => void patchMember(row.key, e.target.checked)}
+                    className="mt-1 w-[18px] h-[18px] rounded border-slate-300 accent-[#0068ff] shrink-0 cursor-pointer disabled:cursor-not-allowed"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="px-4 py-3 space-y-0">
+            <ToggleRow
+              label="Chế độ phê duyệt thành viên mới"
+              help="Khi bật, người mới xin vào phải được duyệt."
+              checked={admin.approvalRequired}
+              disabled={!canEdit || busy}
+              onChange={(v) => void patchAdmin('approvalRequired', v)}
+            />
+            <ToggleRow
+              label="Đánh dấu tin nhắn từ trưởng/phó nhóm"
+              checked={admin.highlightLeaderMessages}
+              disabled={!canEdit || busy}
+              onChange={(v) => void patchAdmin('highlightLeaderMessages', v)}
+            />
+            <ToggleRow
+              label="Cho phép thành viên mới đọc tin nhắn gần nhất"
+              checked={admin.newMembersReadRecent}
+              disabled={!canEdit || busy}
+              onChange={(v) => void patchAdmin('newMembersReadRecent', v)}
+            />
+            <ToggleRow
+              label="Cho phép dùng link tham gia nhóm"
+              checked={admin.allowJoinLink}
+              disabled={!canEdit || busy}
+              onChange={(v) => void patchAdmin('allowJoinLink', v)}
+            />
+          </div>
+
+          {admin.allowJoinLink && (
+            <div className="px-4 pb-3">
+              <div className="rounded-xl bg-sky-50/90 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 px-3 py-2.5 flex items-center justify-between gap-2">
+                <span className="text-[13px] font-mono text-slate-800 dark:text-slate-200 truncate">
+                  {joinUrl}
+                </span>
+                <div className="flex items-center gap-1 shrink-0 text-[#0068ff]">
+                  <button
+                    type="button"
+                    title="Sao chép"
+                    disabled={!joinSuffix}
+                    className="p-1.5 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-900/50 disabled:opacity-40"
+                    onClick={() => {
+                      if (!joinSuffix) return;
+                      void navigator.clipboard?.writeText(joinUrl);
+                      toast.success('Đã sao chép link');
+                    }}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Chia sẻ"
+                    disabled={!joinSuffix}
+                    className="p-1.5 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-900/50 disabled:opacity-40"
+                    onClick={() => {
+                      if (!joinSuffix || !navigator.share) {
+                        toast.info('Dùng Sao chép để gửi link');
+                        return;
+                      }
+                      void navigator.share({ title: 'Tham gia nhóm', url: joinUrl });
+                    }}
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Làm mới link"
+                    disabled={!canEdit || busy}
+                    className="p-1.5 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-900/50"
+                    onClick={() => void regenerateLink()}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
                 </div>
-              )}
-
-              <div className="px-4 pb-4 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2">
-                <button
-                  type="button"
-                  className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2"
-                >
-                  <Ban className="w-5 h-5 text-slate-500 shrink-0" />
-                  Chặn khỏi nhóm
-                </button>
-                <button
-                  type="button"
-                  className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2"
-                >
-                  <KeyRound className="w-5 h-5 text-slate-500 shrink-0" />
-                  Trưởng &amp; phó nhóm
-                </button>
               </div>
+            </div>
+          )}
 
-      {!canEdit && (
-        <p className="px-4 pb-4 text-[12px] text-center text-slate-500">
-          Bạn chỉ xem được cài đặt. Chỉ trưởng/phó nhóm mới chỉnh sửa.
-        </p>
+          <div className="px-4 pb-4 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2">
+            <button
+              type="button"
+              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 opacity-60"
+              onClick={() => toast.info('Tính năng đang phát triển')}
+            >
+              <Ban className="w-5 h-5 text-slate-500 shrink-0" />
+              Chặn khỏi nhóm
+            </button>
+            <button
+              type="button"
+              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 opacity-60"
+              onClick={() => toast.info('Dùng mục Quản lý thành viên để xem vai trò')}
+            >
+              <KeyRound className="w-5 h-5 text-slate-500 shrink-0" />
+              Trưởng &amp; phó nhóm
+            </button>
+          </div>
+
+          {!canEdit && (
+            <p className="px-4 pb-4 text-[12px] text-center text-slate-500">
+              Bạn chỉ xem được cài đặt. Chỉ trưởng/phó nhóm mới chỉnh sửa.
+            </p>
+          )}
+        </>
       )}
     </>
   );
