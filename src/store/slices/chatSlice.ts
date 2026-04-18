@@ -154,7 +154,7 @@ const chatSlice = createSlice({
       if (conv) conv.unreadCount = 0;
     },
 
-    // ─── Soft delete (đồng bộ với DynamoDB isDeleted) ─────────────────────
+    /** Legacy / hiếm: xóa mềm toàn cục trên bản ghi tin (khác với ẩn chỉ phía mình). */
     messageDeleted: (
       state,
       action: PayloadAction<{ messageId: string; conversationId: string }>,
@@ -168,6 +168,17 @@ const chatSlice = createSlice({
         msg.content = '';
         msg.isPinned = false;
       }
+    },
+
+    /** Bỏ tin khỏi buffer socket — dùng khi user chọn "Xóa" (chỉ ẩn phía mình). */
+    messageHiddenForViewer: (
+      state,
+      action: PayloadAction<{ messageId: string; conversationId: string }>,
+    ) => {
+      const { messageId, conversationId } = action.payload;
+      const messages = state.messages[conversationId];
+      if (!messages) return;
+      state.messages[conversationId] = messages.filter((m) => m.messageId !== messageId);
     },
 
     messagePinUpdated: (
@@ -252,6 +263,7 @@ export const {
   typingStopped,
   resetUnread,
   messageDeleted,
+  messageHiddenForViewer,
   messagePinUpdated,
   messageReacted,
   setReplyingTo,
