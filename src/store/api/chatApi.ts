@@ -274,11 +274,13 @@ export const chatApi = createApi({
     }),
 
     unpinMessage: builder.mutation<ApiSuccessResponse<null>, PinMessageRequest>({
-      query: ({ messageId, ...body }) => ({
-        url: `/chat/messages/${messageId}/pin`,
-        method: 'DELETE',
-        body,
-      }),
+      query: ({ messageId, conversationId, createdAt }) => {
+        const q = new URLSearchParams({ conversationId, createdAt });
+        return {
+          url: `/chat/messages/${messageId}/pin?${q.toString()}`,
+          method: 'DELETE',
+        };
+      },
       invalidatesTags: (_result, _error, { conversationId }) => [
         { type: 'Messages', id: conversationId },
       ],
