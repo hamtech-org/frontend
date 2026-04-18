@@ -38,6 +38,9 @@ export interface IReplyToDetails {
   senderDisplayName: string | null;
   content: string;
   type: MessageType;
+  mediaUrl?: string | null;
+  thumbnailUrl?: string | null;
+  mediaType?: string | null;
 }
 
 export interface IMessage {
