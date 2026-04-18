@@ -1129,6 +1129,17 @@ export default function ChatPage() {
       try {
         const cid = msg.conversationId;
         if (msg.isPinned) {
+          const myRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
+          if (
+            activeConversation?.type === 'group' &&
+            myRole === 'member' &&
+            activeConversation.groupSettings &&
+            !activeConversation.groupSettings.memberPermissions.pinMessages
+          ) {
+            toast.error('Nhóm không cho phép thành viên bỏ/ghim tin nhắn.');
+            setActionMenuMsgId(null);
+            return;
+          }
           await unpinMessage({
             messageId: msg.messageId,
             conversationId: cid,
@@ -1165,6 +1176,17 @@ export default function ChatPage() {
             setActionMenuMsgId(null);
             return;
           }
+          const myRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
+          if (
+            activeConversation?.type === 'group' &&
+            myRole === 'member' &&
+            activeConversation.groupSettings &&
+            !activeConversation.groupSettings.memberPermissions.pinMessages
+          ) {
+            toast.error('Nhóm không cho phép thành viên ghim tin nhắn.');
+            setActionMenuMsgId(null);
+            return;
+          }
           await pinMessage({
             messageId: msg.messageId,
             conversationId: cid,
@@ -1184,8 +1206,9 @@ export default function ChatPage() {
           }));
         }
         setActionMenuMsgId(null);
-      } catch {
-        /* ignore */
+      } catch (e: unknown) {
+        const msg = (e as { data?: { error?: { message?: string } } })?.data?.error?.message;
+        if (msg) toast.error(msg);
       }
     },
     [
@@ -1196,6 +1219,9 @@ export default function ChatPage() {
       activeConversationId,
       pinnedMessagesOrdered,
       allMessages,
+      activeConversation,
+      groupMembers,
+      currentUserId,
     ],
   );
 
