@@ -126,13 +126,6 @@ export function ChatHeader({
           <>
             <button
               type="button"
-              title="Tạo nhóm trò chuyện mới"
-              className="hidden sm:block p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600"
-            >
-              <UserPlus className="w-5 h-5" />
-            </button>
-            <button
-              type="button"
               title="Gọi thoại"
               onClick={onAudioCall}
               className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600"
@@ -146,6 +139,13 @@ export function ChatHeader({
               className="p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600"
             >
               <Video className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              title="Tìm kiếm tin nhắn"
+              className="hidden sm:block p-2 sm:p-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600"
+            >
+              <Search className="w-5 h-5" />
             </button>
           </>
         )}
