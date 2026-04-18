@@ -1918,22 +1918,23 @@ export default function ChatPage() {
             />
 
             <ChatComposer
-                activeConversation={activeConversation}
-                activeConversationId={activeConversationId}
-                inputText={inputText}
-                onInputTextChange={setInputText}
-                onKeyDown={handleKeyDown}
-                onTyping={handleTyping}
-                onSend={handleSendMessage}
-                isSending={isSending}
-                replyingTo={replyingTo}
-                onClearReply={() => dispatch(clearReplyingTo())}
-                onOpenPoll={() => setShowPollModal(true)}
-                onOpenTask={() => setShowTaskModal(true)} pendingAttachments={[]} onAddPendingFiles={function (files: File[]): void {
-                  throw new Error('Function not implemented.');
-                } } onRemovePendingAttachment={function (localId: string): void {
-                  throw new Error('Function not implemented.');
-                } }            />
+              activeConversation={activeConversation}
+              activeConversationId={activeConversationId}
+              inputText={inputText}
+              onInputTextChange={setInputText}
+              onKeyDown={handleKeyDown}
+              onTyping={handleTyping}
+              onSend={handleSendMessage}
+              isSending={isSending}
+              isUploadingMedia={mediaUploading}
+              replyingTo={replyingTo}
+              onClearReply={() => dispatch(clearReplyingTo())}
+              onOpenPoll={() => setShowPollModal(true)}
+              onOpenTask={() => setShowTaskModal(true)}
+              pendingAttachments={pendingAttachments}
+              onAddPendingFiles={addPendingFiles}
+              onRemovePendingAttachment={removePendingAttachment}
+            />
           </>
         )}
       </div>
