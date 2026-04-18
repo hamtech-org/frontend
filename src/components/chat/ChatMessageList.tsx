@@ -19,16 +19,18 @@ import {
   Users,
   Video,
   Maximize2,
-  Image as ImageIcon,
   FolderOpen,
   CircleCheck,
+  Image as LucideImage,
 } from 'lucide-react';
-import type { IConversation, IMessage } from '@/types/chat.types';
+import type { IConversation, IMessage, IReplyToDetails } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/store/slices/chatSlice';
 import { formatTime, formatDate } from '@/utils/formatDate';
 import { typingInitial, typingLabel } from '@/utils/chatUtils';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
+import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { MediaLightbox } from '@/components/chat/MediaLightbox';
+import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMenu';
 import { formatFileSize } from '@/utils/fileHelper';
 import { apiClient } from '@/services/api';
 import { toast } from 'react-toastify';
@@ -59,6 +61,183 @@ function isRichMediaMessage(msg: IMessage): boolean {
 
 function messageHasCaption(msg: IMessage): boolean {
   return (msg.content ?? '').trim().length > 0;
+}
+
+/** Dòng preview tin đang trả lời — không dùng [Media], hạn chế [] / JSON. */
+function replyQuotePreview(details: IReplyToDetails): string {
+  const c0 = (details.content ?? '').trim();
+  if (c0.includes('không khả dụng')) return 'Tin nhắn không khả dụng';
+  if (c0.includes('Tin nhắn đã được thu hồi') || (c0.includes('thu hồi') && c0.length < 48)) {
+    return 'Tin nhắn đã được thu hồi';
+  }
+
+  const ty = details.type;
+  if (ty === 'image') return 'Hình ảnh';
+  if (ty === 'video') return 'Video';
+  if (ty === 'file') return 'Tệp tin';
+
+  let s = (details.content ?? '').trim();
+  if (!s) return 'Tin nhắn';
+  if (/^\[(media|ảnh|video|file|hình ảnh|Ảnh)\]$/i.test(s)) {
+    return 'Tin nhắn';
+  }
+  if (s.startsWith('{') && s.endsWith('}')) {
+    try {
+      JSON.parse(s);
+      return 'Tin nhắn';
+    } catch {
+      /* không phải JSON hợp lệ — hiển thị đã làm sạch bên dưới */
+    }
+  }
+  s = s.replace(/[[\]{}]/g, '').replace(/\s+/g, ' ').trim();
+  return s || 'Tin nhắn';
+}
+
+/** URL ảnh nhỏ trong dải trích dẫn (từ replyToDetails). */
+function replyPreviewThumbSrc(details: IReplyToDetails): string | null {
+  const full = details.mediaUrl ?? '';
+  const thumb = details.thumbnailUrl ?? '';
+  const mime = (details.mediaType ?? '').toLowerCase();
+  if (details.type === 'image') {
+    if (!full && !thumb) return null;
+    if (mime.includes('heic') || mime.includes('heif')) return thumb || full || null;
+    return full || thumb || null;
+  }
+  if (details.type === 'video') {
+    return thumb || full || null;
+  }
+  return null;
+}
+
+/** Dòng phụ: chú thích media hoặc toàn bộ tin text; ẩn khi chỉ placeholder []. */
+function replyQuoteSecondaryLine(details: IReplyToDetails): string | null {
+  const c0 = (details.content ?? '').trim();
+  if (c0.includes('không khả dụng')) return replyQuotePreview(details);
+  if (c0.includes('Tin nhắn đã được thu hồi') || (c0.includes('thu hồi') && c0.length < 48)) {
+    return replyQuotePreview(details);
+  }
+
+  const ty = details.type;
+  if (ty === 'text' || ty === 'emoji' || ty === 'sticker' || ty === 'poll' || ty === 'call') {
+    return replyQuotePreview(details);
+  }
+
+  const c = (details.content ?? '').trim();
+  if (!c || c === ' ') return null;
+  if (/^\[(media|ảnh|video|file|hình ảnh|Ảnh)\]$/i.test(c)) return null;
+  if (c.startsWith('{') && c.endsWith('}')) {
+    try {
+      JSON.parse(c);
+      return null;
+    } catch {
+      /* */
+    }
+  }
+  const cleaned = c.replace(/[[\]{}]/g, '').replace(/\s+/g, ' ').trim();
+  return cleaned || null;
+}
+
+type ReplyQuoteStripProps = {
+  details: IReplyToDetails;
+  isMe: boolean;
+  isMediaMsg: boolean;
+  isWideMediaBubble: boolean;
+  onNavigate: () => void;
+};
+
+function ReplyQuoteStrip({
+  details,
+  isMe,
+  isMediaMsg,
+  isWideMediaBubble,
+  onNavigate,
+}: ReplyQuoteStripProps) {
+  const thumbSrc = replyPreviewThumbSrc(details);
+  const secondary = replyQuoteSecondaryLine(details);
+  const name = details.senderDisplayName ?? details.senderId;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onNavigate}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onNavigate();
+        }
+      }}
+      className={`mb-1.5 flex flex-row gap-2.5 items-center px-2.5 py-2 rounded-lg border-l-4 cursor-pointer transition-colors ${
+        isMediaMsg ? `w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'}` : ''
+      } ${
+        isMe && !isMediaMsg
+          ? 'bg-white/10 border-white/30 hover:bg-white/20'
+          : 'bg-black/5 border-blue-500/50 hover:bg-black/10 dark:hover:bg-white/5'
+      }`}
+    >
+      <div className="shrink-0">
+        {details.type === 'image' && thumbSrc ? (
+          <div className="w-11 h-11 rounded-lg overflow-hidden bg-black/10 ring-1 ring-black/10 dark:ring-white/10">
+            <AuthenticatedMedia
+              src={thumbSrc}
+              kind="image"
+              className="h-full w-full object-cover"
+              alt=""
+            />
+          </div>
+        ) : details.type === 'image' ? (
+          <div className="w-11 h-11 rounded-lg bg-slate-200/90 dark:bg-slate-700/90 flex items-center justify-center ring-1 ring-black/10">
+            <LucideImage className="w-5 h-5 text-slate-500 dark:text-slate-400" aria-hidden />
+          </div>
+        ) : details.type === 'video' && thumbSrc ? (
+          <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-zinc-900 ring-1 ring-black/10">
+            <AuthenticatedMedia
+              src={thumbSrc}
+              kind="image"
+              className="h-full w-full object-cover"
+              alt=""
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/25 pointer-events-none">
+              <Video className="w-5 h-5 text-white drop-shadow-md" aria-hidden />
+            </div>
+          </div>
+        ) : details.type === 'video' ? (
+          <div className="w-11 h-11 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center ring-1 ring-black/5">
+            <Video className="w-5 h-5 text-violet-600 dark:text-violet-400" aria-hidden />
+          </div>
+        ) : details.type === 'file' ? (
+          <div className="w-11 h-11 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center ring-1 ring-black/5">
+            <FileText className="w-5 h-5 text-amber-700 dark:text-amber-400" aria-hidden />
+          </div>
+        ) : (
+          <ZaloStyleAvatar
+            userId={details.senderId}
+            displayName={name}
+            avatarUrl={null}
+            className="w-11 h-11"
+          />
+        )}
+      </div>
+      <div className="min-w-0 flex-1 text-left">
+        <p
+          className={`text-[10px] font-bold truncate ${
+            isMe && !isMediaMsg ? 'text-blue-100' : 'text-blue-600 dark:text-blue-400'
+          }`}
+        >
+          {name}
+        </p>
+        {secondary ? (
+          <p
+            className={`text-[11px] mt-0.5 line-clamp-2 opacity-85 ${
+              isMe && !isMediaMsg ? 'text-white' : 'text-foreground'
+            }`}
+          >
+            {secondary}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 /** Ưu tiên ảnh gốc (mediaUrl); HEIC/HEIF dùng thumbnail JPEG vì thẻ img không hiển thị gốc. */
@@ -162,6 +341,47 @@ export function ChatMessageList({
       'Trình duyệt thường lưu vào thư mục Tải xuống (Downloads). Mở Explorer / Finder và vào Downloads để xem file.',
       { autoClose: 5000 },
     );
+  }, []);
+
+  const [mediaContextMenu, setMediaContextMenu] = useState<{
+    x: number;
+    y: number;
+    msg: IMessage;
+    kind: 'image' | 'video';
+  } | null>(null);
+
+  const copyImageToClipboard = useCallback(async (url: string) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('fetch');
+      const blob = await res.blob();
+      const type = blob.type || 'image/png';
+      if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+        toast.error('Trình duyệt không hỗ trợ copy ảnh (cần HTTPS).');
+        return;
+      }
+      await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
+      toast.success('Đã copy hình ảnh');
+    } catch {
+      toast.error('Không copy được hình ảnh');
+    }
+  }, []);
+
+  const shareConversationFromMenu = useCallback(async () => {
+    const url = window.location.href;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ title: document.title, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success('Đã copy link hội thoại');
+      }
+    } catch {
+      /* người dùng hủy chia sẻ */
+    }
   }, []);
 
   return (
@@ -568,31 +788,13 @@ export function ChatMessageList({
                         }
                       >
                         {msg.replyToDetails && (
-                          <div
-                            onClick={() => scrollToMessage(msg.replyToDetails!.messageId)}
-                            className={`mb-1.5 px-2.5 py-1.5 rounded-lg border-l-4 cursor-pointer transition-colors ${
-                              isMediaMsg ? `w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'}` : ''
-                            } ${
-                              isMe && !isMediaMsg
-                                ? 'bg-white/10 border-white/30 hover:bg-white/20'
-                                : 'bg-black/5 border-blue-500/50 hover:bg-black/10 dark:hover:bg-white/5'
-                            }`}
-                          >
-                            <p
-                              className={`text-[10px] font-bold mb-0.5 ${
-                                isMe && !isMediaMsg ? 'text-blue-100' : 'text-blue-600 dark:text-blue-400'
-                              }`}
-                            >
-                              {msg.replyToDetails.senderDisplayName ?? msg.replyToDetails.senderId}
-                            </p>
-                            <p
-                              className={`text-[11px] truncate opacity-80 ${
-                                isMe && !isMediaMsg ? 'text-white' : 'text-foreground'
-                              }`}
-                            >
-                              {msg.replyToDetails.content?.trim() || '[Media]'}
-                            </p>
-                          </div>
+                          <ReplyQuoteStrip
+                            details={msg.replyToDetails}
+                            isMe={isMe}
+                            isMediaMsg={isMediaMsg}
+                            isWideMediaBubble={isWideMediaBubble}
+                            onNavigate={() => scrollToMessage(msg.replyToDetails!.messageId)}
+                          />
                         )}
                         {msg.type === 'image' && (msg.mediaUrl || msg.thumbnailUrl) && (
                           <div
@@ -613,6 +815,17 @@ export function ChatMessageList({
                                   e.stopPropagation();
                                   setMediaLightbox({ src: imageDisplaySrc(msg), kind: 'image' });
                                 }}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMediaContextMenu({
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                    msg,
+                                    kind: 'image',
+                                  });
+                                  onActionMenuMsgIdChange(null);
+                                }}
                               >
                                 <AuthenticatedMedia
                                   src={imageDisplaySrc(msg)}
@@ -621,59 +834,6 @@ export function ChatMessageList({
                                   alt="Ảnh đính kèm"
                                 />
                               </button>
-                              <div className="flex items-center gap-2.5 px-3 py-2.5 border-t border-black/5 dark:border-white/10 bg-white/90 dark:bg-zinc-950/80">
-                                <div className="shrink-0 rounded-lg bg-blue-100 dark:bg-blue-900/50 p-2">
-                                  <ImageIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden />
-                                </div>
-                                <div className="min-w-0 flex-1 text-left">
-                                  <p className="text-[13px] font-semibold text-foreground truncate">
-                                    {msg.mediaOriginalName?.trim() || 'Hình ảnh'}
-                                  </p>
-                                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                    {msg.mediaSize != null && msg.mediaSize > 0 ? (
-                                      <span className="text-[11px] text-muted-foreground">
-                                        {formatFileSize(msg.mediaSize)}
-                                      </span>
-                                    ) : null}
-                                    {mediaSavedOnDevice && (
-                                      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                                        <CircleCheck className="w-3.5 h-3.5 shrink-0" aria-hidden />
-                                        Đã có trên máy
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    type="button"
-                                    aria-label="Gợi ý thư mục tải xuống"
-                                    title="Thư mục Tải xuống"
-                                    className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openDownloadsFolderHint();
-                                    }}
-                                  >
-                                    <FolderOpen className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    aria-label="Tải ảnh xuống"
-                                    title="Tải xuống"
-                                    className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void handleMediaDownload(
-                                        msg.messageId,
-                                        imageDisplaySrc(msg),
-                                        msg.mediaOriginalName?.trim() || 'image.jpg',
-                                      );
-                                    }}
-                                  >
-                                    <Download className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
                             </div>
                           </div>
                         )}
@@ -688,7 +848,20 @@ export function ChatMessageList({
                                   : 'border-black/10 bg-slate-50/95 dark:border-white/10 dark:bg-zinc-900/50'
                               }`}
                             >
-                              <div className="relative w-full aspect-video max-h-[min(78vh,640px)] bg-zinc-950">
+                              <div
+                                className="relative w-full aspect-video max-h-[min(78vh,640px)] bg-zinc-950"
+                                onContextMenuCapture={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMediaContextMenu({
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                    msg,
+                                    kind: 'video',
+                                  });
+                                  onActionMenuMsgIdChange(null);
+                                }}
+                              >
                                 <AuthenticatedMedia
                                   src={msg.mediaUrl}
                                   kind="video"
@@ -1066,6 +1239,43 @@ export function ChatMessageList({
             src={mediaLightbox?.src ?? ''}
             kind={mediaLightbox?.kind ?? 'image'}
           />
+          {mediaContextMenu && (
+            <ImageMessageContextMenu
+              open
+              mediaKind={mediaContextMenu.kind}
+              anchorX={mediaContextMenu.x}
+              anchorY={mediaContextMenu.y}
+              onClose={() => setMediaContextMenu(null)}
+              isMe={mediaContextMenu.msg.senderId === currentUserId}
+              onReply={() => {
+                onReply(mediaContextMenu.msg);
+              }}
+              onShare={() => void shareConversationFromMenu()}
+              onCopyImage={() => void copyImageToClipboard(imageDisplaySrc(mediaContextMenu.msg))}
+              onSaveToDevice={() =>
+                void handleMediaDownload(
+                  mediaContextMenu.msg.messageId,
+                  mediaContextMenu.kind === 'video'
+                    ? (mediaContextMenu.msg.mediaUrl as string)
+                    : imageDisplaySrc(mediaContextMenu.msg),
+                  mediaContextMenu.msg.mediaOriginalName?.trim() ||
+                    (mediaContextMenu.kind === 'video' ? 'video.mp4' : 'image.jpg'),
+                )
+              }
+              onTogglePin={() => void onTogglePin(mediaContextMenu.msg)}
+              onMarkStar={() => toast.info('Đánh dấu tin nhắn — đang phát triển')}
+              onSelectMultiple={() => toast.info('Chọn nhiều tin nhắn — đang phát triển')}
+              onViewDetails={() =>
+                toast.info(
+                  `Tin nhắn: ${mediaContextMenu.msg.messageId.slice(0, 8)}… · ${formatTime(mediaContextMenu.msg.createdAt)}`,
+                  { autoClose: 4000 },
+                )
+              }
+              onOtherOptions={() => toast.info('Tuỳ chọn khác — đang phát triển')}
+              onRecall={() => void onRecall(mediaContextMenu.msg)}
+              onDeleteForMe={() => void onDelete(mediaContextMenu.msg)}
+            />
+          )}
         </>
       )}
     </div>
