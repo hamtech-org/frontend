@@ -1,4 +1,4 @@
-import { useState, type Ref } from 'react';
+import { useState, useCallback, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CheckCheck,
@@ -20,6 +20,8 @@ import {
   Video,
   Maximize2,
   Image as ImageIcon,
+  FolderOpen,
+  CircleCheck,
 } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/store/slices/chatSlice';
@@ -31,19 +33,24 @@ import { formatFileSize } from '@/utils/fileHelper';
 import { apiClient } from '@/services/api';
 import { toast } from 'react-toastify';
 
-async function downloadAuthedFile(url: string, filename: string): Promise<void> {
-  const token = localStorage.getItem('accessToken');
-  const res = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) return;
-  const blob = await res.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = objectUrl;
-  a.download = filename || 'file';
-  a.click();
-  URL.revokeObjectURL(objectUrl);
+async function downloadAuthedFile(url: string, filename: string): Promise<boolean> {
+  try {
+    const token = localStorage.getItem('accessToken');
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return false;
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename || 'file';
+    a.click();
+    URL.revokeObjectURL(objectUrl);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isRichMediaMessage(msg: IMessage): boolean {
@@ -126,6 +133,36 @@ export function ChatMessageList({
     src: string;
     kind: 'image' | 'video';
   } | null>(null);
+  /** Tin nhắn đã bấm tải file về máy trong phiên (hiện “Đã có trên máy”). */
+  const [downloadedMediaIds, setDownloadedMediaIds] = useState<Set<string>>(() => new Set());
+
+  const markMediaDownloaded = useCallback((messageId: string) => {
+    setDownloadedMediaIds((prev) => {
+      if (prev.has(messageId)) return prev;
+      const next = new Set(prev);
+      next.add(messageId);
+      return next;
+    });
+  }, []);
+
+  const handleMediaDownload = useCallback(
+    async (messageId: string, url: string, filename: string) => {
+      const ok = await downloadAuthedFile(url, filename);
+      if (ok) {
+        markMediaDownloaded(messageId);
+      } else {
+        toast.error('Không tải được file. Thử lại sau.');
+      }
+    },
+    [markMediaDownloaded],
+  );
+
+  const openDownloadsFolderHint = useCallback(() => {
+    toast.info(
+      'Trình duyệt thường lưu vào thư mục Tải xuống (Downloads). Mở Explorer / Finder và vào Downloads để xem file.',
+      { autoClose: 5000 },
+    );
+  }, []);
 
   return (
     <div
@@ -474,6 +511,7 @@ export function ChatMessageList({
             const isMediaMsg = isRichMediaMessage(msg);
             const isWideMediaBubble = msg.type === 'image' || msg.type === 'video';
             const showCaption = messageHasCaption(msg);
+            const mediaSavedOnDevice = downloadedMediaIds.has(msg.messageId);
             return (
               <motion.div
                 id={`chat-msg-${msg.messageId}`}
@@ -591,27 +629,50 @@ export function ChatMessageList({
                                   <p className="text-[13px] font-semibold text-foreground truncate">
                                     {msg.mediaOriginalName?.trim() || 'Hình ảnh'}
                                   </p>
-                                  {msg.mediaSize != null && msg.mediaSize > 0 ? (
-                                    <p className="text-[11px] text-muted-foreground">
-                                      {formatFileSize(msg.mediaSize)}
-                                    </p>
-                                  ) : null}
+                                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                    {msg.mediaSize != null && msg.mediaSize > 0 ? (
+                                      <span className="text-[11px] text-muted-foreground">
+                                        {formatFileSize(msg.mediaSize)}
+                                      </span>
+                                    ) : null}
+                                    {mediaSavedOnDevice && (
+                                      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                                        <CircleCheck className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                                        Đã có trên máy
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                                <button
-                                  type="button"
-                                  aria-label="Tải ảnh xuống"
-                                  title="Tải xuống"
-                                  className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void downloadAuthedFile(
-                                      imageDisplaySrc(msg),
-                                      msg.mediaOriginalName?.trim() || 'image.jpg',
-                                    );
-                                  }}
-                                >
-                                  <Download className="w-4 h-4" />
-                                </button>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    aria-label="Gợi ý thư mục tải xuống"
+                                    title="Thư mục Tải xuống"
+                                    className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openDownloadsFolderHint();
+                                    }}
+                                  >
+                                    <FolderOpen className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label="Tải ảnh xuống"
+                                    title="Tải xuống"
+                                    className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleMediaDownload(
+                                        msg.messageId,
+                                        imageDisplaySrc(msg),
+                                        msg.mediaOriginalName?.trim() || 'image.jpg',
+                                      );
+                                    }}
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -655,27 +716,50 @@ export function ChatMessageList({
                                   <p className="text-[13px] font-semibold text-foreground truncate">
                                     {msg.mediaOriginalName?.trim() || 'Video'}
                                   </p>
-                                  {msg.mediaSize != null && msg.mediaSize > 0 ? (
-                                    <p className="text-[11px] text-muted-foreground">
-                                      {formatFileSize(msg.mediaSize)}
-                                    </p>
-                                  ) : null}
+                                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                    {msg.mediaSize != null && msg.mediaSize > 0 ? (
+                                      <span className="text-[11px] text-muted-foreground">
+                                        {formatFileSize(msg.mediaSize)}
+                                      </span>
+                                    ) : null}
+                                    {mediaSavedOnDevice && (
+                                      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                                        <CircleCheck className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                                        Đã có trên máy
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                                <button
-                                  type="button"
-                                  aria-label="Tải video xuống"
-                                  title="Tải xuống"
-                                  className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void downloadAuthedFile(
-                                      msg.mediaUrl as string,
-                                      msg.mediaOriginalName?.trim() || 'video.mp4',
-                                    );
-                                  }}
-                                >
-                                  <Download className="w-4 h-4" />
-                                </button>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    aria-label="Gợi ý thư mục tải xuống"
+                                    title="Thư mục Tải xuống"
+                                    className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openDownloadsFolderHint();
+                                    }}
+                                  >
+                                    <FolderOpen className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label="Tải video xuống"
+                                    title="Tải xuống"
+                                    className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleMediaDownload(
+                                        msg.messageId,
+                                        msg.mediaUrl as string,
+                                        msg.mediaOriginalName?.trim() || 'video.mp4',
+                                      );
+                                    }}
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -698,24 +782,46 @@ export function ChatMessageList({
                               >
                                 {msg.mediaOriginalName?.trim() || 'Tệp đính kèm'}
                               </p>
-                              {msg.mediaSize != null && msg.mediaSize > 0 ? (
-                                <p className="text-[10px] text-muted-foreground">{formatFileSize(msg.mediaSize)}</p>
-                              ) : null}
+                              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                {msg.mediaSize != null && msg.mediaSize > 0 ? (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {formatFileSize(msg.mediaSize)}
+                                  </span>
+                                ) : null}
+                                {mediaSavedOnDevice && (
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                                    <CircleCheck className="w-3 h-3 shrink-0" aria-hidden />
+                                    Đã có trên máy
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <button
-                              type="button"
-                              aria-label="Tải xuống"
-                              title="Tải xuống"
-                              onClick={() =>
-                                void downloadAuthedFile(
-                                  msg.mediaUrl as string,
-                                  msg.mediaOriginalName?.trim() || 'file',
-                                )
-                              }
-                              className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-                            >
-                              <Download className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              <button
+                                type="button"
+                                aria-label="Gợi ý thư mục tải xuống"
+                                title="Thư mục Tải xuống"
+                                onClick={() => openDownloadsFolderHint()}
+                                className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
+                              >
+                                <FolderOpen className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                aria-label="Tải xuống"
+                                title="Tải xuống"
+                                onClick={() =>
+                                  void handleMediaDownload(
+                                    msg.messageId,
+                                    msg.mediaUrl as string,
+                                    msg.mediaOriginalName?.trim() || 'file',
+                                  )
+                                }
+                                className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
+                              >
+                                <Download className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
                         )}
                         {isMediaMsg && showCaption && (
