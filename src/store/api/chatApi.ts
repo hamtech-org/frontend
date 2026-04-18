@@ -1,5 +1,11 @@
 import { createApi } from '@reduxjs/toolkit/query/react';
-import type { IConversation, IMessage } from '@/types/chat.types';
+import type {
+  IConversation,
+  IGroupAdminSettings,
+  IGroupMemberPermissions,
+  IGroupSettings,
+  IMessage,
+} from '@/types/chat.types';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import type { AppDispatch } from '@/store/store';
 import { baseQueryWithReauth } from './baseQuery';
@@ -19,6 +25,13 @@ export interface SendMessageRequest {
   mediaUrl?: string;
   mediaId?: string;
   replyTo?: string;
+}
+
+export interface UpdateGroupSettingsRequest {
+  groupId: string;
+  memberPermissions?: Partial<IGroupMemberPermissions>;
+  adminSettings?: Partial<IGroupAdminSettings>;
+  regenerateJoinLink?: boolean;
 }
 
 export interface EditMessageRequest {
@@ -142,7 +155,7 @@ export function patchConversationsFromNewMessage(
 export const chatApi = createApi({
   reducerPath: 'chatApi',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['Conversations', 'Messages', 'Polls', 'Tasks', 'GroupRequests'],
+  tagTypes: ['Conversations', 'Messages', 'Polls', 'Tasks', 'GroupRequests', 'GroupSettings'],
   endpoints: (builder) => ({
     // ─── Queries ──────────────────────────────────────────────────────────
     getConversations: builder.query<ApiSuccessResponse<IConversation[]>, void>({
@@ -179,6 +192,11 @@ export const chatApi = createApi({
     getGroupRequests: builder.query<ApiSuccessResponse<any[]>, string>({
       query: (groupId) => `/chat/groups/${groupId}/requests`,
       providesTags: (_result, _error, groupId) => [{ type: 'GroupRequests', id: groupId }],
+    }),
+
+    getGroupSettings: builder.query<ApiSuccessResponse<IGroupSettings>, string>({
+      query: (groupId) => `/chat/groups/${groupId}/settings`,
+      providesTags: (_result, _error, groupId) => [{ type: 'GroupSettings', id: groupId }],
     }),
 
     getLatestAIRecap: builder.query<ApiSuccessResponse<any>, string>({
