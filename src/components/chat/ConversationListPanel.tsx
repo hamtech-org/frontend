@@ -1,8 +1,19 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, MessageCircle, MoreHorizontal, Search, User, UserPlus, Users } from 'lucide-react';
+import {
+  ChevronDown,
+  FileText,
+  Image,
+  MessageCircle,
+  MoreHorizontal,
+  Search,
+  User,
+  UserPlus,
+  Users,
+  Video,
+} from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
-import { formatConversationListLastPreview } from '@/utils/chatUtils';
+import { formatConversationListLastPreview, parseConversationListMediaPreview } from '@/utils/chatUtils';
 import { ContactsManagementPanel, type ContactsTabId } from '@/components/chat/ContactsManagementPanel';
 
 export type { ContactsTabId };
@@ -300,6 +311,11 @@ export function ConversationListPanel({
               const isGroup = conv.type === 'group';
               const displayName = conv.name ?? 'Hội thoại';
               const lastMsgText = formatConversationListLastPreview(conv, currentUserId);
+              const lastMsgType = conv.lastMessage?.type;
+              const lastPreviewParts =
+                lastMsgType === 'image' || lastMsgType === 'video' || lastMsgType === 'file'
+                  ? parseConversationListMediaPreview(lastMsgText, lastMsgType)
+                  : { prefix: '', suffix: '' };
               const lastMsgTime = conv.lastMessage?.createdAt
                 ? formatMessageTime(conv.lastMessage.createdAt)
                 : '';
@@ -349,7 +365,7 @@ export function ConversationListPanel({
                       </p>
                     </div>
                     <p
-                      className={`text-[13px] truncate mt-0.5 ${
+                      className={`text-[13px] mt-0.5 flex items-center gap-1 min-w-0 ${
                         isActive
                           ? 'text-white/80'
                           : hasUnread
@@ -357,7 +373,38 @@ export function ConversationListPanel({
                             : 'text-black/50 dark:text-white/50'
                       }`}
                     >
-                      {lastMsgText}
+                      {lastMsgType === 'image' ||
+                      lastMsgType === 'video' ||
+                      lastMsgType === 'file' ? (
+                        <>
+                          {lastPreviewParts.prefix ? (
+                            <span className="shrink-0">{lastPreviewParts.prefix}</span>
+                          ) : null}
+                          {lastMsgType === 'image' && (
+                            <Image
+                              className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white/90' : 'text-blue-500'}`}
+                              aria-hidden
+                            />
+                          )}
+                          {lastMsgType === 'video' && (
+                            <Video
+                              className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white/90' : 'text-violet-500'}`}
+                              aria-hidden
+                            />
+                          )}
+                          {lastMsgType === 'file' && (
+                            <FileText
+                              className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white/90' : 'text-amber-600 dark:text-amber-400'}`}
+                              aria-hidden
+                            />
+                          )}
+                          {lastPreviewParts.suffix ? (
+                            <span className="truncate min-w-0">{lastPreviewParts.suffix}</span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="truncate min-w-0">{lastMsgText}</span>
+                      )}
                     </p>
                   </div>
                   {(conv.unreadCount ?? 0) > 0 && !isActive && (
