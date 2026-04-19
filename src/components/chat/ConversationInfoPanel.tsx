@@ -28,6 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MemberManagementModal } from '@/components/chat/MemberManagementModal';
 import { GroupManagementModal } from '@/components/chat/GroupManagementModal';
 import { ConversationSearchPanel } from '@/components/chat/ConversationSearchPanel';
+import type { ConversationSearchMemberRow } from '@/components/chat/ConversationSearchPanel';
 import {
   MuteNotificationsModal,
   type MuteNotificationsApplyPayload,
@@ -324,6 +325,8 @@ type ConversationInfoPanelProps = {
   /** Mỗi lần tăng (từ ChatHeader) → mở panel tìm kiếm inline. */
   conversationSearchRequestTick?: number;
   onJumpToMessage?: (messageId: string) => void;
+  conversations?: IConversation[];
+  onSelectConversation?: (conversationId: string) => void;
 };
 
 export function ConversationInfoPanel({
@@ -362,6 +365,8 @@ export function ConversationInfoPanel({
   conversationMessages = [],
   conversationSearchRequestTick = 0,
   onJumpToMessage,
+  conversations = [],
+  onSelectConversation,
 }: ConversationInfoPanelProps) {
   void onApproveMember;
   void onRejectMember;
@@ -382,6 +387,7 @@ export function ConversationInfoPanel({
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
   const [showInlineMembers, setShowInlineMembers] = useState(false);
   const [showGroupManagement, setShowGroupManagement] = useState(false);
+  const [showConversationSearch, setShowConversationSearch] = useState(false);
   const [showMuteDurationModal, setShowMuteDurationModal] = useState(false);
   const [muteModalSubmitting, setMuteModalSubmitting] = useState(false);
   const [leaveMemberModalOpen, setLeaveMemberModalOpen] = useState(false);
@@ -470,6 +476,21 @@ export function ConversationInfoPanel({
     }
     return m;
   }, [members]);
+
+  /** ChatPage chỉ tải `members` cho nhóm; chat 1-1 cần 2 người để lọc “Người gửi” trong tìm kiếm. */
+  const conversationSearchMembers = useMemo((): ConversationSearchMemberRow[] => {
+    const fromGroup = members as ConversationSearchMemberRow[];
+    if (fromGroup.length > 0) return fromGroup;
+    if (!activeConversation || activeConversation.type === 'group') return [];
+    const otherId = activeConversation.otherUserId?.trim();
+    if (!otherId) return [];
+    const rows: ConversationSearchMemberRow[] = [];
+    const selfId = currentUserId?.trim();
+    if (selfId) rows.push({ userId: selfId, displayName: 'Bạn' });
+    const peerName = (activeConversation.name ?? '').trim();
+    rows.push({ userId: otherId, displayName: peerName || null });
+    return rows;
+  }, [members, activeConversation, currentUserId]);
 
   const bulletinFeedItems = useMemo(() => {
     const items: BulletinFeedRow[] = [];
@@ -898,6 +919,10 @@ export function ConversationInfoPanel({
             onClose={() => setShowConversationSearch(false)}
             onSelectMessage={(id) => onJumpToMessage?.(id)}
             conversationTitle={activeConversation?.name ?? undefined}
+            conversationMembers={conversationSearchMembers}
+            conversationId={activeConversation?.conversationId}
+            conversations={conversations}
+            onSelectConversation={onSelectConversation}
           />
         </div>
       ) : showGroupManagement && activeConversation?.type === 'group' ? (
@@ -1069,23 +1094,6 @@ export function ConversationInfoPanel({
                 </span>
               </button>
             )}
-            {onJumpToMessage && activeConversation?.conversationId ? (
-              <button
-                type="button"
-                onClick={openConversationSearchHere}
-                className="hidden min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group lg:flex"
-                title="Tìm kiếm trong trò chuyện"
-              >
-                <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
-                  <Search className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
-                </div>
-                <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
-                  Tìm
-                  <br />
-                  kiếm
-                </span>
-              </button>
-            ) : null}
             </div>
           </div>
 
