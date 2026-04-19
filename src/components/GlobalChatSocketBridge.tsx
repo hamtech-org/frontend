@@ -20,10 +20,12 @@ export function GlobalChatSocketBridge(): null {
     () => currentUser?.userId ?? decodeJwtUserId(accessToken) ?? '',
     [currentUser?.userId, accessToken],
   );
-  const { data: convData } = useGetConversationsQuery();
+  const isAuthenticated = !!accessToken;
+  const { data: convData } = useGetConversationsQuery(undefined, { skip: !isAuthenticated });
   const conversations = convData?.data ?? [];
   const getConversationType = useCallback(
-    (conversationId: string) => conversations.find((c) => c.conversationId === conversationId)?.type,
+    (conversationId: string) =>
+      conversations.find((c) => c.conversationId === conversationId)?.type,
     [conversations],
   );
 

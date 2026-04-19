@@ -19,15 +19,19 @@ const baseQuery = fetchBaseQuery({
  * Enhanced base query with token refresh capability
  * Automatically refreshes access token when it expires (401 error)
  */
-export const baseQueryWithReauth: BaseQueryFn<FetchArgs | string, unknown, FetchBaseQueryError> = async (
-  args,
-  api,
-  extraOptions,
-) => {
+export const baseQueryWithReauth: BaseQueryFn<
+  FetchArgs | string,
+  unknown,
+  FetchBaseQueryError
+> = async (args, api, extraOptions) => {
   let result = await baseQuery(args, api, extraOptions);
 
-  // If 401 Unauthorized, try to refresh token
-  if (result.error?.status === 401) {
+  // Determine if this is an auth endpoint (e.g. login, register)
+  const isAuthEndpoint =
+    typeof args === 'string' ? args.includes('/auth/') : args.url.includes('/auth/');
+
+  // If 401 Unauthorized and NOT an auth endpoint, try to refresh token
+  if (result.error?.status === 401 && !isAuthEndpoint) {
     const refreshToken = localStorage.getItem('refreshToken');
     if (refreshToken) {
       try {
@@ -63,7 +67,9 @@ export const baseQueryWithReauth: BaseQueryFn<FetchArgs | string, unknown, Fetch
     if (result.error?.status === 401) {
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
-      window.location.href = '/login';
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
   }
 
