@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CHAT_NEAR_BOTTOM_PX } from '@/constants/chat-page.constants';
-import type { TypingUserEntry } from '@/store/slices/chatSlice';
-import type { IMessage } from '@/types/chat.types';
+import type { IMessage, TypingUserEntry } from '@/types/chat.types';
 
 interface UseChatScrollBehaviorParams {
   allMessages: IMessage[];

@@ -79,6 +79,10 @@ export function ConversationListPanel({
   onToggleConversationMute,
   formatMessageTime: formatMessageTimeProp,
 }: ConversationListPanelProps) {
+  const {
+    core: { currentUserId, activeConversationId },
+  } = useChatPageContext();
+
   const [listTimeNow, setListTimeNow] = useState(() => new Date());
   useEffect(() => {
     const tick = () => setListTimeNow(new Date());

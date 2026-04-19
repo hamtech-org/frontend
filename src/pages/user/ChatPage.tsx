@@ -1,21 +1,25 @@
-import { ChatMainContent } from '@/components/chat/ChatMainContent';
-import { ChatModalsHost } from '@/components/chat/ChatModalsHost';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { toast } from 'react-toastify';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
-import { ChatSideInfoRail } from '@/components/chat/ChatSideInfoRail';
 import { ConversationListPanel } from '@/components/chat/ConversationListPanel';
 import { useCallContext } from '@/contexts/CallContext';
 import { useSocketContext } from '@/contexts/SocketContext';
 import { ChatPageProvider, useChatPageContextValue } from '@/pages/user/chat-page/ChatPageContext';
-import { useChatMessageData } from '@/pages/user/chat-page/hooks/useChatMessageData';
 import { useChatModalController } from '@/pages/user/chat-page/hooks/useChatModalController';
-import { useChatRealtimeEvents } from '@/pages/user/chat-page/hooks/useChatRealtimeEvents';
 import { useChatScrollBehavior } from '@/pages/user/chat-page/hooks/useChatScrollBehavior';
 import { useConversationRealtimeLifecycle } from '@/pages/user/chat-page/hooks/useConversationRealtimeLifecycle';
 import { useConversationRoutingSync } from '@/pages/user/chat-page/hooks/useConversationRoutingSync';
 import { useDirectConversationActions } from '@/pages/user/chat-page/hooks/useDirectConversationActions';
 import { useGroupConversationController } from '@/pages/user/chat-page/hooks/useGroupConversationController';
 import { useGroupData } from '@/pages/user/chat-page/hooks/useGroupData';
-import { useMessageModerationActions } from '@/pages/user/chat-page/hooks/useMessageModerationActions';
 import {
   chatApi,
   patchMessageInGetMessagesCache,
@@ -34,9 +38,7 @@ import {
   useLeaveGroupMutation,
   useDeleteGroupMutation,
 } from '@/store/api/chatApi';
-import { useUploadMediaMutation, useUploadMediaMultiMutation, type MediaUploadResult } from '@/store/api/mediaApi';
-import { useSocketContext } from '@/contexts/SocketContext';
-import type { PendingAttachment } from '@/components/chat/ChatComposer';
+import { useUploadMediaMutation } from '@/store/api/mediaApi';
 import {
   setActiveConversation,
   messageReceived,
@@ -46,17 +48,14 @@ import {
   messageReacted,
   typingStarted,
   typingStopped,
-  resetUnread,
   setReplyingTo,
-  clearReplyingTo,
 } from '@/store/slices/chatSlice';
 import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
 import { socketService } from '@/services/socket';
 import type { AppDispatch, RootState } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
 import { decodeJwtUserId, lastMessagePreviewContentFromMessage } from '@/utils/chatUtils';
-import { ChatNavRail } from '@/components/chat/ChatNavRail';
-import { ConversationListPanel, type ContactsTabId } from '@/components/chat/ConversationListPanel';
+import type { TypingUserEntry } from '@/types/chat.types';
 import { FriendsListView } from '@/components/chat/FriendsListView';
 import { AddFriendModal } from '@/components/chat/AddFriendModal';
 import { ChatHeader } from '@/components/chat/ChatHeader';
@@ -79,31 +78,8 @@ import { AISummaryModal } from '@/components/chat/AISummaryModal';
 import { TaskModal } from '@/components/chat/TaskModal';
 import { AddMembersModal } from '@/components/chat/AddMembersModal';
 import { EditGroupModal } from '@/components/chat/EditGroupModal';
-import { useCallContext } from '@/contexts/CallContext';
 import { apiClient } from '@/services/api';
 import type { ApiSuccessResponse } from '@/types/api.types';
-
-type MessageConfirmState =
-  | null
-  | { kind: 'recall'; msg: IMessage }
-  | { kind: 'delete'; msg: IMessage };
-
-type GroupMemberRole = 'owner' | 'admin' | 'member';
-
-type GroupMember = {
-  userId: string;
-  name?: string;
-  avatar?: string;
-  role: GroupMemberRole;
-  joinedAt?: string;
-};
-
-type GroupRequest = {
-  userId: string;
-  avatar?: string;
-  name?: string;
-  requestedAt?: string;
-};
 
 type GroupPollOption = {
   text: string;
@@ -140,49 +116,14 @@ type AIRecap = {
   createdAt: string;
 };
 
-type GroupActionLoading = {
-  updateGroup: boolean;
-  deleteGroup: boolean;
-  leaveGroup: boolean;
-  addMembers: boolean;
-  removeMember: boolean;
-  changeRole: boolean;
-  requestJoin: boolean;
-  approveRequest: boolean;
-  rejectRequest: boolean;
-  createPoll: boolean;
-  votePoll: boolean;
-  addPollOption: boolean;
-  closePoll: boolean;
-  createTask: boolean;
-  updateTask: boolean;
-  generateRecap: boolean;
-};
-
-const CHAT_NEAR_BOTTOM_PX = 80;
-const MAX_PENDING_FILES = 10;
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
-const MAX_FILE_BYTES = 50 * 1024 * 1024;
-
-function roughMaxBytesForFile(file: File): number {
-  if (file.type.startsWith('image/')) return MAX_IMAGE_BYTES;
-  if (file.type.startsWith('video/')) return MAX_VIDEO_BYTES;
-  return MAX_FILE_BYTES;
-}
-
-function messageTypeFromUploadResult(r: MediaUploadResult): IMessage['type'] {
-  if (r.type === 'image') return 'image';
-  if (r.type === 'video') return 'video';
-  return 'file';
-}
-
 const EMPTY_ARRAY: any[] = [];
+const EMPTY_TYPING_USERS: readonly TypingUserEntry[] = [];
 
 export default function ChatPage() {
   const navigate = useNavigate();
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
   const dispatch = useDispatch<AppDispatch>();
+  const activeConversationIdRef = useRef<string | null>(null);
 
   // ── Auth ──────────────────────────────────────────────────────────────
   const currentUser = useSelector((state: RootState) => state.auth.user);
@@ -213,6 +154,21 @@ export default function ChatPage() {
     return state.chat.typingUsers[activeConversationId] ?? EMPTY_TYPING_USERS;
   });
 
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  const EMPTY_MESSAGE_ARRAY: ReadonlyArray<IMessage> = EMPTY_ARRAY;
+
+  const { data: messagesData } = useGetMessagesQuery(
+    { conversationId: activeConversationId! },
+    { skip: !activeConversationId },
+  );
+
+  const socketMessages = useSelector((state: RootState) => {
+    if (!activeConversationId) return EMPTY_MESSAGE_ARRAY;
+    return state.chat.messages[activeConversationId] ?? EMPTY_MESSAGE_ARRAY;
+  });
 
   const allMessages = useMemo(() => {
     const apiMessages = messagesData?.data ?? [];
@@ -292,7 +248,7 @@ export default function ChatPage() {
   const latestMessageIdForRead =
     allMessages.length > 0 ? allMessages[allMessages.length - 1].messageId : undefined;
 
-  const [sendMessage, { isLoading: isSending }] = useSendMessageMutation();
+  const [sendMessage] = useSendMessageMutation();
   const [uploadMedia] = useUploadMediaMutation();
   const [createConversation] = useCreateConversationMutation();
   const [editMessage, { isLoading: isEditing }] = useEditMessageMutation();
@@ -341,43 +297,47 @@ export default function ChatPage() {
   // ── Modal state ──────────────────────────────────────────────────────
   const { state: modalState, actions: modalActions } = useChatModalController();
 
+  const handleAudioCall = useCallback(() => {
+    if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
+    initiateCall(activeConversation.otherUserId, 'audio');
+  }, [activeConversation, initiateCall]);
+
   const handleVideoCall = useCallback(() => {
     if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
     // CallContext sẽ lưu returnTo = location.pathname (đang là /chat/:conversationId)
     initiateCall(activeConversation.otherUserId, 'video');
   }, [activeConversation, initiateCall]);
 
-  const [editingMessage, setEditingMessage] = useState<IMessage | null>(null);
-  const [editDraft, setEditDraft] = useState('');
-  const [actionMenuMsgId, setActionMenuMsgId] = useState<string | null>(null);
-  const [messageConfirm, setMessageConfirm] = useState<MessageConfirmState>(null);
-  const [messageConfirmSubmitting, setMessageConfirmSubmitting] = useState(false);
   const [pinLimitModalMsg, setPinLimitModalMsg] = useState<IMessage | null>(null);
   const [pinReplaceIndex, setPinReplaceIndex] = useState<number | null>(null);
   const [pinLimitSubmitting, setPinLimitSubmitting] = useState(false);
   const [convPinLimitPendingId, setConvPinLimitPendingId] = useState<string | null>(null);
   const [convPinLimitConfirmBusy, setConvPinLimitConfirmBusy] = useState(false);
   const [convPinLimitUnpinningId, setConvPinLimitUnpinningId] = useState<string | null>(null);
-  const lastMarkReadKeyRef = useRef<string>('');
+  const [conversationSearchRequestTick, setConversationSearchRequestTick] = useState(0);
 
   const patchMessageInCache = useCallback(
     (conversationId: string, messageId: string, patch: Partial<IMessage>) => {
       patchMessageInGetMessagesCache(dispatch, conversationId, messageId, patch);
     },
-    groupSetters: {
-      setGroupMembers,
-      setGroupRequests,
-      setGroupPolls,
-      setGroupTasks,
-      setGroupJoinRequested,
-      setLatestRecap,
+    [dispatch],
+  );
+
+  const handleReactMessage = useCallback(
+    async (msg: IMessage, emoji: string) => {
+      try {
+        await reactMessage({
+          messageId: msg.messageId,
+          conversationId: msg.conversationId,
+          createdAt: msg.createdAt,
+          emoji,
+        }).unwrap();
+      } catch {
+        /* ignore */
+      }
     },
-    groupFetchers: { fetchGroupMembers, fetchGroupRequests, fetchGroupPolls, fetchGroupTasks },
-    modalState,
-    modalActions,
-    setActionBusy,
-    navigate,
-  });
+    [reactMessage],
+  );
 
   // ── Direct conversation actions ──────────────────────────────────────
   const directActions = useDirectConversationActions({
@@ -396,87 +356,82 @@ export default function ChatPage() {
     setShowContactsManagement: modalActions.setShowContactsManagement,
   });
 
-  // ── Message moderation ───────────────────────────────────────────────
-  const {
-    handleSaveEdit,
-    handleRecallMsg,
-    handleDeleteMsg,
-    handleMessageConfirm,
-    handleTogglePinMsg,
-  } = useMessageModerationActions({
-    dispatch,
-    editingMessage: modalState.editingMessage,
-    editDraft: modalState.editDraft,
-    setEditingMessage: modalActions.setEditingMessage,
-    setActionMenuMsgId: modalActions.setActionMenuMsgId,
-    messageConfirm: modalState.messageConfirm,
-    setMessageConfirm: modalActions.setMessageConfirm,
-    setMessageConfirmSubmitting: modalActions.setMessageConfirmSubmitting,
-    patchMessageInCache,
-    removeMessageFromCache,
-    editMessage,
-    recallMessage,
-    deleteMessage,
-    pinMessage,
-    unpinMessage,
-  });
-
-  // ── Memoized message actions for context ─────────────────────────────
-  const messageActions = useMemo(
-    () => ({
-      handleSaveEdit,
-      handleRecallMsg,
-      handleDeleteMsg,
-      handleMessageConfirm,
-      handleTogglePinMsg,
-      handleReactMessage,
-    }),
-    [handleSaveEdit, handleRecallMsg, handleDeleteMsg, handleMessageConfirm, handleTogglePinMsg, handleReactMessage],
+  const uploadMediaForGroup = useCallback(
+    (payload: { file: File; mediaType: 'image' }) => uploadMedia(payload),
+    [uploadMedia],
   );
 
-  // ── Build context value ──────────────────────────────────────────────
-  const contextValue = useChatPageContextValue({
-    currentUserId,
-    currentUserRole,
+  const groupController = useGroupConversationController({
     activeConversationId,
     activeConversation,
-    groupMembers,
-    groupRequests,
-    groupPolls,
-    groupTasks,
-    groupJoinRequested,
-    groupLoading,
-    groupActionLoading,
-    setGroupTasks,
-    groupActions: groupController,
-    directActions,
-    messageActions,
-  });
-
-  // ── Scroll behavior ──────────────────────────────────────────────────
-  const { messagesContainerRef, messagesEndRef, unreadIncomingCount, handleJumpToLatest } =
-    useChatScrollBehavior({
-      allMessages,
-      activeConversationId,
-      currentUserId,
-      typingUsers,
-      actionMenuMsgId: modalState.actionMenuMsgId,
-      setActionMenuMsgId: modalActions.setActionMenuMsgId,
-    });
-
-
-
-  // ── Realtime events & lifecycle ──────────────────────────────────────
-  useChatRealtimeEvents({
+    currentUserId,
+    currentUserDisplayName: currentUser?.displayName,
+    currentUserRole,
     dispatch,
-    isConnected,
-    activeConversationId,
-    setActivePollId: modalActions.setActivePollId,
-    setShowPollVoteModal: modalActions.setShowPollVoteModal,
-    fetchGroupMembers,
-    patchMessageInCache,
-    removeMessageFromCache,
+    uploadMedia: uploadMediaForGroup,
+    groupState: {
+      groupMembers,
+      groupRequests,
+      groupPolls,
+      groupTasks,
+      groupJoinRequested,
+      latestRecap,
+    },
+    groupSetters: {
+      setGroupMembers,
+      setGroupRequests,
+      setGroupPolls,
+      setGroupTasks,
+      setGroupJoinRequested,
+      setLatestRecap,
+    },
+    groupFetchers: {
+      fetchGroupMembers,
+      fetchGroupRequests,
+      fetchGroupPolls,
+      fetchGroupTasks,
+    },
+    modalState: {
+      editGroupAvatarPreview: modalState.editGroupAvatarPreview,
+      editGroupName: modalState.editGroupName,
+      editGroupAvatarFile: modalState.editGroupAvatarFile,
+      taskTitle: modalState.taskTitle,
+      taskNote: modalState.taskNote,
+      taskAssignees: modalState.taskAssignees,
+      taskAssignToAll: modalState.taskAssignToAll,
+      taskDeadline: modalState.taskDeadline,
+      pollQuestion: modalState.pollQuestion,
+      pollOptions: modalState.pollOptions,
+      pollMultipleChoice: modalState.pollMultipleChoice,
+      selectedAddMembers: modalState.selectedAddMembers,
+    },
+    modalActions: {
+      setEditGroupName: modalActions.setEditGroupName,
+      setEditGroupAvatarFile: modalActions.setEditGroupAvatarFile,
+      setEditGroupAvatarPreview: modalActions.setEditGroupAvatarPreview,
+      setShowEditGroupModal: modalActions.setShowEditGroupModal,
+      setSelectedAddMembers: modalActions.setSelectedAddMembers,
+      setShowAddMembersModal: modalActions.setShowAddMembersModal,
+      closeTaskModal: modalActions.closeTaskModal,
+      setShowAISummaryModal: modalActions.setShowAISummaryModal,
+      setAiSummaryResult: modalActions.setAiSummaryResult,
+      setAiSummaryLoading: modalActions.setAiSummaryLoading,
+      setShowPollModal: modalActions.setShowPollModal,
+      setPollQuestion: modalActions.setPollQuestion,
+      setPollOptions: modalActions.setPollOptions,
+      setPollMultipleChoice: modalActions.setPollMultipleChoice,
+      setTaskAssignToAll: modalActions.setTaskAssignToAll,
+      setTaskAssignees: modalActions.setTaskAssignees,
+      setActivePollId: modalActions.setActivePollId,
+      setShowPollVoteModal: modalActions.setShowPollVoteModal,
+    },
+    setActionBusy,
+    navigate,
   });
+
+  useEffect(() => {
+    void refetchConversations();
+  }, [activeConversationId, refetchConversations]);
 
   useConversationRoutingSync({
     dispatch,
@@ -494,263 +449,11 @@ export default function ChatPage() {
     markAsRead,
   });
 
-  // ── Side effects ─────────────────────────────────────────────────────
-  useEffect(() => {
-    void refetchConversations();
-  }, [activeConversationId, refetchConversations]);
-
-  useEffect(() => {
-    activeConversationIdRef.current = activeConversationId;
-  }, [activeConversationId]);
-  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [unreadIncomingCount, setUnreadIncomingCount] = useState(0);
-
-  const [showInfo, setShowInfo] = useState(true);
-  const [showMarkReadModal, setShowMarkReadModal] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [conversationSearchRequestTick, setConversationSearchRequestTick] = useState(0);
-  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
-  const [selectedGroupMembers, setSelectedGroupMembers] = useState<string[]>([]);
-  const [groupName, setGroupName] = useState('');
-  const [showPollModal, setShowPollModal] = useState(false);
-  const [pollQuestion, setPollQuestion] = useState('');
-  const [pollOptions, setPollOptions] = useState(['', '']);
-  const [pollMultipleChoice, setPollMultipleChoice] = useState(false);
-  const [showPollVoteModal, setShowPollVoteModal] = useState(false);
-  const [activePollId, setActivePollId] = useState<string | null>(null);
-  const [showMemberModal, setShowMemberModal] = useState(false);
-  const [showAddMembersModal, setShowAddMembersModal] = useState(false);
-  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
-  const [editGroupName, setEditGroupName] = useState('');
-  const [editGroupAvatarFile, setEditGroupAvatarFile] = useState<File | null>(null);
-  const [editGroupAvatarPreview, setEditGroupAvatarPreview] = useState<string | null>(null);
-  const [selectedAddMembers, setSelectedAddMembers] = useState<string[]>([]);
-  const [showAISummaryModal, setShowAISummaryModal] = useState(false);
-  const [showTaskModal, setShowTaskModal] = useState(false);
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskDeadline, setTaskDeadline] = useState('');
-  const [taskNote, setTaskNote] = useState('');
-  const [taskAssignees, setTaskAssignees] = useState<string[]>([]);
-  const [taskAssignToAll, setTaskAssignToAll] = useState(false);
-  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
-  const [aiSummaryResult, setAiSummaryResult] = useState('');
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
-  const [showContactsManagement, setShowContactsManagement] = useState(false);
-  const [contactsTab, setContactsTab] = useState<ContactsTabId>('friends');
-  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
-  const [addFriendQuery, setAddFriendQuery] = useState('');
-
-  const setActionBusy = useCallback((key: keyof GroupActionLoading, value: boolean) => {
-    setGroupActionLoading((prev) => ({ ...prev, [key]: value }));
-  }, []);
-
-  const fetchGroupMembers = useCallback(async (groupId: string) => {
-    setGroupLoading((prev) => ({ ...prev, members: true }));
-    try {
-      const res = await apiClient.get<ApiSuccessResponse<GroupMember[]>>(`/chat/groups/${groupId}/members`);
-      const members = res.data.data ?? [];
-      setGroupMembers(members);
-      
-      // Update join requested state if current user is not a member but in request list
-      // (This logic might be better elsewhere but for now let's ensure we have members)
-    } catch (err) {
-      console.error('[fetchGroupMembers] Error:', err);
-      setGroupMembers([]);
-    } finally {
-      setGroupLoading((prev) => ({ ...prev, members: false }));
-    }
-  }, []);
-
-  const fetchGroupRequests = useCallback(async (groupId: string) => {
-    setGroupLoading((prev) => ({ ...prev, requests: true }));
-    try {
-      const res = await apiClient.get<ApiSuccessResponse<GroupRequest[]>>(
-        `/chat/groups/${groupId}/requests`,
-      );
-      setGroupRequests(res.data.data ?? []);
-    } catch (err: any) {
-      // Bỏ qua lỗi 403 nếu người dùng không có quyền xem yêu cầu gia nhập
-      if (err.response?.status === 403) {
-        setGroupRequests([]);
-      } else {
-        console.error('[fetchGroupRequests] Error:', err);
-        setGroupRequests([]);
-      }
-    } finally {
-      setGroupLoading((prev) => ({ ...prev, requests: false }));
-    }
-  }, []);
-
-  const fetchGroupPolls = useCallback(async (groupId: string) => {
-    setGroupLoading((prev) => ({ ...prev, polls: true }));
-    try {
-      const res = await apiClient.get<ApiSuccessResponse<GroupPoll[]>>(
-        `/chat/groups/${groupId}/polls`,
-      );
-      setGroupPolls(res.data.data ?? []);
-    } catch (err) {
-      console.error('[fetchGroupPolls] Error:', err);
-      setGroupPolls([]);
-    } finally {
-      setGroupLoading((prev) => ({ ...prev, polls: false }));
-    }
-  }, []);
-
-  const fetchGroupTasks = useCallback(async (groupId: string) => {
-    setGroupLoading((prev) => ({ ...prev, tasks: true }));
-    try {
-      const res = await apiClient.get<ApiSuccessResponse<GroupTask[]>>(
-        `/chat/groups/${groupId}/tasks`,
-      );
-      setGroupTasks(res.data.data ?? []);
-    } catch (err) {
-      console.error('[fetchGroupTasks] Error:', err);
-      setGroupTasks([]);
-    } finally {
-      setGroupLoading((prev) => ({ ...prev, tasks: false }));
-    }
-  }, []);
-
-  const fetchLatestRecap = useCallback(async (groupId: string) => {
-    setGroupLoading((prev) => ({ ...prev, recap: true }));
-    try {
-      const res = await apiClient.get<ApiSuccessResponse<AIRecap | null>>(
-        `/chat/groups/${groupId}/ai-recap/latest`,
-      );
-      setLatestRecap(res.data.data ?? null);
-    } catch (err) {
-      // Just failing silently for recap
-      setLatestRecap(null);
-    } finally {
-      setGroupLoading((prev) => ({ ...prev, recap: false }));
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!activeConversationId || activeConversation?.type !== 'group') {
-      setGroupMembers([]);
-      setGroupRequests([]);
-      setGroupPolls([]);
-      setGroupTasks([]);
-      setLatestRecap(null);
-      setGroupJoinRequested(false);
-      return;
-    }
-
-    void Promise.all([
-      fetchGroupMembers(activeConversationId),
-      fetchGroupRequests(activeConversationId),
-      fetchGroupPolls(activeConversationId),
-      fetchGroupTasks(activeConversationId),
-      fetchLatestRecap(activeConversationId),
-    ]);
-  }, [
-    activeConversationId,
-    activeConversation?.type,
-    fetchGroupMembers,
-    fetchGroupRequests,
-    fetchGroupPolls,
-    fetchGroupTasks,
-    fetchLatestRecap,
-  ]);
-
-  useEffect(() => {
-    if (!activeConversationId || activeConversation?.type !== 'group') return;
-
-    const isCurrentGroup = (data: unknown): boolean => {
-      const payload = data as { groupId?: string; conversationId?: string };
-      const eventGroupId = payload?.groupId ?? payload?.conversationId;
-      return eventGroupId === activeConversationId;
-    };
-
-    const refreshMembers = () => {
-      void fetchGroupMembers(activeConversationId);
-      void refetchConversations();
-    };
-
-    const refreshRequests = () => {
-      void fetchGroupRequests(activeConversationId);
-      void refetchConversations();
-    };
-
-    const refreshPolls = () => {
-      void fetchGroupPolls(activeConversationId);
-    };
-
-    const refreshTasks = () => {
-      void fetchGroupTasks(activeConversationId);
-    };
-
-    const refreshRecap = () => {
-      void fetchLatestRecap(activeConversationId);
-    };
-
-
-
-    // Realtime cập nhật thành viên nhóm
-    const handleMemberChanged = (data: any) => {
-      if (!isCurrentGroup(data)) return;
-      refreshMembers();
-    };
-
-    const handleTaskChanged = (data: unknown) => {
-      if (!isCurrentGroup(data)) return;
-      refreshTasks();
-    };
-
-    const handleRequestsChanged = (data: unknown) => {
-      if (!isCurrentGroup(data)) return;
-      refreshRequests();
-    };
-
-    const handlePollChanged = (data: unknown) => {
-      if (!isCurrentGroup(data)) return;
-      refreshPolls();
-    };
-
-    const handleRecapChanged = (data: unknown) => {
-      if (!isCurrentGroup(data)) return;
-      refreshRecap();
-    };
-
-    socketService.on('group:member_joined', handleMemberChanged);
-    socketService.on('group:member_left', handleMemberChanged);
-    socketService.on('group:members_added', handleMemberChanged);
-    socketService.on('group:member_removed', handleMemberChanged);
-    socketService.on('group:role_changed', handleMemberChanged);
-    socketService.on('group:join_request_new', handleRequestsChanged);
-    socketService.on('group:join_request_updated', handleRequestsChanged);
-    socketService.on('group:poll_new', handlePollChanged);
-    socketService.on('group:poll_updated', handlePollChanged);
-    socketService.on('group:task_new', handleTaskChanged);
-    socketService.on('group:task_updated', handleTaskChanged);
-    socketService.on('group:recap_new', handleRecapChanged);
-
-    return () => {
-      socketService.off('group:member_joined', handleMemberChanged);
-      socketService.off('group:member_left', handleMemberChanged);
-      socketService.off('group:members_added', handleMemberChanged);
-      socketService.off('group:member_removed', handleMemberChanged);
-      socketService.off('group:role_changed', handleMemberChanged);
-      socketService.off('group:join_request_new', handleRequestsChanged);
-      socketService.off('group:join_request_updated', handleRequestsChanged);
-      socketService.off('group:poll_new', handlePollChanged);
-      socketService.off('group:poll_updated', handlePollChanged);
-      socketService.off('group:task_new', handleTaskChanged);
-      socketService.off('group:task_updated', handleTaskChanged);
-      socketService.off('group:recap_new', handleRecapChanged);
-    };
-  }, [
-    activeConversationId,
-    activeConversation?.type,
-    fetchGroupMembers,
-    refetchConversations,
-    fetchGroupRequests,
-    fetchGroupPolls,
-    fetchGroupTasks,
-    fetchLatestRecap,
-    dispatch,
-  ]);
+  const [showMemberModal, setShowMemberModal] = useState(false);
+  const jumpHighlightClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [jumpHighlightMessageId, setJumpHighlightMessageId] = useState<string | null>(null);
+  const [jumpFlashNonce, setJumpFlashNonce] = useState(0);
 
   useEffect(() => {
     const handleNewMessage = (msg: IMessage) => {
@@ -789,8 +492,8 @@ export default function ChatPage() {
                   toastId,
                   autoClose: 7000,
                   onClick: () => {
-                    setActivePollId(pollId);
-                    setShowPollVoteModal(true);
+                    modalActions.setActivePollId(pollId);
+                    modalActions.setShowPollVoteModal(true);
                   },
                 });
               }
@@ -925,50 +628,63 @@ export default function ChatPage() {
       }
     };
 
-    socketService.on('message:new', handleNewMessage);
-    socketService.on('group:disbanded', handleGroupDisbanded);
-    socketService.on('group:updated', handleGroupUpdated);
-    socketService.on('message:edited', handleEditedMessage);
-    socketService.on('message:recalled', handleRecalledMessage);
-    socketService.on('message:hidden_for_me', handleHiddenForMe);
-    socketService.on('message:pin_updated', handlePinUpdated);
-    socketService.on('message:reaction', handleReactionEvent);
-    socketService.on('message:typing', handleTypingEvent);
+    const wrappedNewMessage = (data: unknown) => handleNewMessage(data as IMessage);
+    const wrappedGroupDisbanded = (data: unknown) =>
+      handleGroupDisbanded(data as { conversationId?: string; groupId?: string });
+    const wrappedGroupUpdated = (data: unknown) => handleGroupUpdated(data);
+    const wrappedEdited = (data: unknown) =>
+      handleEditedMessage(data as { messageId: string; conversationId: string; content: string });
+    const wrappedRecalled = (data: unknown) =>
+      handleRecalledMessage(data as { messageId: string; conversationId: string });
+    const wrappedHidden = (data: unknown) =>
+      handleHiddenForMe(data as { messageId: string; conversationId: string });
+    const wrappedPin = (data: unknown) =>
+      handlePinUpdated(data as { messageId: string; conversationId: string; isPinned: boolean });
+    const wrappedReaction = (data: unknown) =>
+      handleReactionEvent(
+        data as { messageId: string; conversationId: string; reactions: Record<string, string[]> },
+      );
+    const wrappedTyping = (data: unknown) =>
+      handleTypingEvent(
+        data as {
+          conversationId: string;
+          userId: string;
+          isTyping: boolean;
+          displayName?: string;
+        },
+      );
+
+    socketService.on('message:new', wrappedNewMessage);
+    socketService.on('group:disbanded', wrappedGroupDisbanded);
+    socketService.on('group:updated', wrappedGroupUpdated);
+    socketService.on('message:edited', wrappedEdited);
+    socketService.on('message:recalled', wrappedRecalled);
+    socketService.on('message:hidden_for_me', wrappedHidden);
+    socketService.on('message:pin_updated', wrappedPin);
+    socketService.on('message:reaction', wrappedReaction);
+    socketService.on('message:typing', wrappedTyping);
 
     return () => {
-      socketService.off('message:new', handleNewMessage);
-      socketService.off('group:disbanded', handleGroupDisbanded);
-      socketService.off('group:updated', handleGroupUpdated);
-      socketService.off('message:edited', handleEditedMessage);
-      socketService.off('message:recalled', handleRecalledMessage);
-      socketService.off('message:hidden_for_me', handleHiddenForMe);
-      socketService.off('message:pin_updated', handlePinUpdated);
-      socketService.off('message:reaction', handleReactionEvent);
-      socketService.off('message:typing', handleTypingEvent);
+      socketService.off('message:new', wrappedNewMessage);
+      socketService.off('group:disbanded', wrappedGroupDisbanded);
+      socketService.off('group:updated', wrappedGroupUpdated);
+      socketService.off('message:edited', wrappedEdited);
+      socketService.off('message:recalled', wrappedRecalled);
+      socketService.off('message:hidden_for_me', wrappedHidden);
+      socketService.off('message:pin_updated', wrappedPin);
+      socketService.off('message:reaction', wrappedReaction);
+      socketService.off('message:typing', wrappedTyping);
     };
-  }, [dispatch, patchMessageInCache, fetchGroupMembers, isConnected, navigate]);
+  }, [dispatch, patchMessageInCache, fetchGroupMembers, isConnected, navigate, modalActions]);
 
   useEffect(() => {
-    dispatch(setActiveConversation(routeConversationId ?? null));
-  }, [routeConversationId, dispatch]);
-
-  useEffect(() => {
-    if (!routeConversationId) return;
-    if (convsLoading || convsFetching) return;
-    const exists = conversations.some((c) => c.conversationId === routeConversationId);
-    if (!exists) {
-      navigate('/chat', { replace: true });
-    }
-  }, [routeConversationId, convsLoading, convsFetching, conversations, navigate]);
-
-  useEffect(() => {
-    setMessageConfirm(null);
+    modalActions.setMessageConfirm(null);
     setJumpHighlightMessageId(null);
     if (jumpHighlightClearRef.current) {
       clearTimeout(jumpHighlightClearRef.current);
       jumpHighlightClearRef.current = null;
     }
-  }, [activeConversationId]);
+  }, [activeConversationId, modalActions]);
 
   // ── Small helpers ────────────────────────────────────────────────────
   const handleSelectConversation = useCallback(
@@ -978,120 +694,36 @@ export default function ChatPage() {
     [navigate],
   );
 
-  const handleSendMessage = useCallback(
-    async (overrideText?: string) => {
-      const rawContent = typeof overrideText === 'string' ? overrideText : inputText;
-      const content = rawContent.trim();
-
-      if (!activeConversationId || isSending || mediaUploading) return;
-
-      if (pendingAttachments.length > 0) {
-        const files = pendingAttachments.map((p) => p.file);
-        setMediaUploading(true);
-        try {
-          const up = await uploadMediaMulti(files).unwrap();
-          const results = up.data;
-          const captionFirst = content.length > 0 ? content : ' ';
-          for (let i = 0; i < results.length; i++) {
-            const r = results[i]!;
-            await sendMessage({
-              conversationId: activeConversationId,
-              type: messageTypeFromUploadResult(r),
-              content: i === 0 ? captionFirst : ' ',
-              mediaId: r.mediaId,
-              replyTo: i === 0 ? replyingTo?.messageId : undefined,
-            }).unwrap();
-          }
-          pendingAttachments.forEach((p) => {
-            if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
-          });
-          setPendingAttachments([]);
-          setInputText('');
-          dispatch(clearReplyingTo());
-        } catch {
-          /* giữ queue + text */
-        } finally {
-          setMediaUploading(false);
-        }
-        return;
-      }
-
-      if (!content) return;
-      setInputText('');
-      try {
-        await sendMessage({
-          conversationId: activeConversationId,
-          type: 'text',
-          content,
-          replyTo: replyingTo?.messageId,
-        }).unwrap();
-        dispatch(clearReplyingTo());
-      } catch {
-        setInputText(content);
-      }
-    },
-    [
-      inputText,
-      activeConversationId,
-      isSending,
-      mediaUploading,
-      pendingAttachments,
-      uploadMediaMulti,
-      sendMessage,
-      replyingTo,
-      dispatch,
-    ],
-  );
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void handleSendMessage();
-    }
-  };
-
-  const handleTyping = () => {
-    if (!activeConversationId) return;
-    if (!typingTimerRef.current) {
-      socketService.emit('message:typing', activeConversationId);
-    }
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    typingTimerRef.current = setTimeout(() => {
-      typingTimerRef.current = null;
-    }, 900);
-  };
-
-  const handleJumpToLatest = useCallback(() => {
-    setUnreadIncomingCount(0);
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
-
   const handleSaveEdit = useCallback(async () => {
-    if (!editingMessage || !editDraft.trim()) return;
-    if (editingMessage.type !== 'text') return;
+    if (!modalState.editingMessage || !modalState.editDraft.trim()) return;
+    if (modalState.editingMessage.type !== 'text') return;
     try {
       await editMessage({
-        messageId: editingMessage.messageId,
-        content: editDraft.trim(),
-        conversationId: editingMessage.conversationId,
-        createdAt: editingMessage.createdAt,
+        messageId: modalState.editingMessage.messageId,
+        content: modalState.editDraft.trim(),
+        conversationId: modalState.editingMessage.conversationId,
+        createdAt: modalState.editingMessage.createdAt,
       }).unwrap();
       dispatch(
         messageEdited({
-          messageId: editingMessage.messageId,
-          conversationId: editingMessage.conversationId,
-          content: editDraft.trim(),
+          messageId: modalState.editingMessage.messageId,
+          conversationId: modalState.editingMessage.conversationId,
+          content: modalState.editDraft.trim(),
         }),
       );
-      patchMessageInCache(editingMessage.conversationId, editingMessage.messageId, {
-        content: editDraft.trim(),
-        isEdited: true,
-      });
-      setEditingMessage(null);
+      patchMessageInCache(
+        modalState.editingMessage.conversationId,
+        modalState.editingMessage.messageId,
+        {
+          content: modalState.editDraft.trim(),
+          isEdited: true,
+        },
+      );
+      modalActions.setEditingMessage(null);
     } catch {
       /* giữ modal */
     }
-  }, [editingMessage, editDraft, editMessage, dispatch, patchMessageInCache]);
+  }, [modalState.editingMessage, modalState.editDraft, editMessage, dispatch, patchMessageInCache, modalActions]);
 
   const handleForwardMediaMessage = useCallback(
     async (targetConversationIds: string[], msg: IMessage, caption: string) => {
@@ -1125,19 +757,19 @@ export default function ChatPage() {
   );
 
   const handleRecallMsg = useCallback((msg: IMessage) => {
-    setActionMenuMsgId(null);
-    setMessageConfirm({ kind: 'recall', msg });
-  }, []);
+    modalActions.setActionMenuMsgId(null);
+    modalActions.setMessageConfirm({ kind: 'recall', msg });
+  }, [modalActions]);
 
   const handleDeleteMsg = useCallback((msg: IMessage) => {
-    setActionMenuMsgId(null);
-    setMessageConfirm({ kind: 'delete', msg });
-  }, []);
+    modalActions.setActionMenuMsgId(null);
+    modalActions.setMessageConfirm({ kind: 'delete', msg });
+  }, [modalActions]);
 
   const handleMessageConfirm = useCallback(async () => {
-    if (!messageConfirm) return;
-    const { kind, msg } = messageConfirm;
-    setMessageConfirmSubmitting(true);
+    if (!modalState.messageConfirm) return;
+    const { kind, msg } = modalState.messageConfirm;
+    modalActions.setMessageConfirmSubmitting(true);
     try {
       if (kind === 'recall') {
         await recallMessage({
@@ -1159,14 +791,14 @@ export default function ChatPage() {
         }).unwrap();
         applyMessageHiddenForMe(dispatch, msg.conversationId, msg.messageId);
       }
-      setMessageConfirm(null);
-      setActionMenuMsgId(null);
+      modalActions.setMessageConfirm(null);
+      modalActions.setActionMenuMsgId(null);
     } catch {
       /* ignore */
     } finally {
-      setMessageConfirmSubmitting(false);
+      modalActions.setMessageConfirmSubmitting(false);
     }
-  }, [messageConfirm, recallMessage, deleteMessage, dispatch, patchMessageInCache]);
+  }, [modalState.messageConfirm, recallMessage, deleteMessage, dispatch, patchMessageInCache, modalActions]);
 
   const handleTogglePinMsg = useCallback(
     async (msg: IMessage) => {
@@ -1181,7 +813,7 @@ export default function ChatPage() {
             !activeConversation.groupSettings.memberPermissions.pinMessages
           ) {
             toast.error('Nhóm không cho phép thành viên bỏ/ghim tin nhắn.');
-            setActionMenuMsgId(null);
+            modalActions.setActionMenuMsgId(null);
             return;
           }
           await unpinMessage({
@@ -1213,11 +845,11 @@ export default function ChatPage() {
             if (sameConv && pinnedMessagesOrdered.length >= MAX_PINNED_PER_CONVERSATION) {
               setPinReplaceIndex(null);
               setPinLimitModalMsg(msg);
-              setActionMenuMsgId(null);
+              modalActions.setActionMenuMsgId(null);
               return;
             }
             toast.error(`Đã đủ ${MAX_PINNED_PER_CONVERSATION} tin ghim trong cuộc trò chuyện này.`);
-            setActionMenuMsgId(null);
+            modalActions.setActionMenuMsgId(null);
             return;
           }
           const myRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
@@ -1228,7 +860,7 @@ export default function ChatPage() {
             !activeConversation.groupSettings.memberPermissions.pinMessages
           ) {
             toast.error('Nhóm không cho phép thành viên ghim tin nhắn.');
-            setActionMenuMsgId(null);
+            modalActions.setActionMenuMsgId(null);
             return;
           }
           await pinMessage({
@@ -1249,7 +881,7 @@ export default function ChatPage() {
             [cid]: [msg.messageId, ...(prev[cid] ?? []).filter((id) => id !== msg.messageId)],
           }));
         }
-        setActionMenuMsgId(null);
+        modalActions.setActionMenuMsgId(null);
       } catch (e: unknown) {
         const msg = (e as { data?: { error?: { message?: string } } })?.data?.error?.message;
         if (msg) toast.error(msg);
@@ -1318,7 +950,7 @@ export default function ChatPage() {
         [cid]: [toPin.messageId, ...(prev[cid] ?? []).filter((id) => id !== toPin.messageId)],
       }));
       setPinLimitModalMsg(null);
-      setActionMenuMsgId(null);
+      modalActions.setActionMenuMsgId(null);
     } catch {
       toast.error('Không cập nhật ghim được. Thử lại.');
     } finally {
@@ -1333,10 +965,6 @@ export default function ChatPage() {
     dispatch,
     patchMessageInCache,
   ]);
-
-  const jumpHighlightClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [jumpHighlightMessageId, setJumpHighlightMessageId] = useState<string | null>(null);
-  const [jumpFlashNonce, setJumpFlashNonce] = useState(0);
 
   const scrollToMessageBubble = useCallback((messageId: string) => {
     if (jumpHighlightClearRef.current) {
@@ -1358,41 +986,40 @@ export default function ChatPage() {
   }, []);
 
   const requestOpenConversationSearch = useCallback(() => {
-    setShowInfo(true);
+    modalActions.setShowInfo(true);
     setConversationSearchRequestTick((t) => t + 1);
-  }, []);
+  }, [modalActions]);
 
   const handleToggleGroupMember = useCallback((conversationId: string, checked: boolean) => {
-    setSelectedGroupMembers((prev) =>
+    modalActions.setSelectedGroupMembers((prev) =>
       checked ? [...prev, conversationId] : prev.filter((id) => id !== conversationId),
     );
-  }, []);
+  }, [modalActions]);
 
   const handleConfirmCreateGroup = useCallback(async () => {
-    if (selectedGroupMembers.length < 2) return;
+    if (modalState.selectedGroupMembers.length < 2) return;
     try {
       const result = await createConversation({
         type: 'group',
-        name: groupName || `Nhóm (${selectedGroupMembers.length + 1} thành viên)`,
-        memberIds: selectedGroupMembers,
+        name:
+          modalState.groupName ||
+          `Nhóm (${modalState.selectedGroupMembers.length + 1} thành viên)`,
+        memberIds: modalState.selectedGroupMembers,
       }).unwrap();
       const conversationId = result.data.conversationId;
       // Log trạng thái socket và thời điểm join room
       // eslint-disable-next-line no-console
-      console.log('[DEBUG] isConnected:', socketService.socket?.connected, 'conversationId:', conversationId, 'at', new Date().toISOString());
       socketService.emit('conversation:join', conversationId);
-      // eslint-disable-next-line no-console
-      console.log('[DEBUG] Đã emit conversation:join', conversationId, 'at', new Date().toISOString());
       void navigate(`/chat/${conversationId}`);
       dispatch(chatApi.endpoints.getMessages.initiate({ conversationId }));
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[DEBUG] Tạo nhóm lỗi:', err);
     }
-    setShowCreateGroupModal(false);
-    setSelectedGroupMembers([]);
-    setGroupName('');
-  }, [selectedGroupMembers, groupName, createConversation, navigate, dispatch]);
+    modalActions.setShowCreateGroupModal(false);
+    modalActions.setSelectedGroupMembers([]);
+    modalActions.setGroupName('');
+  }, [modalState.selectedGroupMembers, modalState.groupName, createConversation, navigate, dispatch, modalActions]);
 
   const handleFriendClick = useCallback(
     async (friendId: string, friendName: string) => {
@@ -1418,7 +1045,7 @@ export default function ChatPage() {
         }
 
         // Close contacts management and navigate to conversation
-        setShowContactsManagement(false);
+        modalActions.setShowContactsManagement(false);
         void navigate(`/chat/${existingConversation.conversationId}`);
       } catch (error) {
         console.error('❌ Failed to open conversation with friend:', error);
@@ -1429,53 +1056,18 @@ export default function ChatPage() {
     [conversations, createConversation, navigate],
   );
 
-  const closeTaskModal = useCallback(() => {
-    setShowTaskModal(false);
-    setTaskTitle('');
-    setTaskDeadline('');
-    setTaskNote('');
-    setTaskAssignees([]);
-    setTaskAssignToAll(false);
-  }, []);
-
   useEffect(() => {
     return () => {
-      if (editGroupAvatarPreview?.startsWith('blob:')) {
-        URL.revokeObjectURL(editGroupAvatarPreview);
+      if (modalState.editGroupAvatarPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(modalState.editGroupAvatarPreview);
       }
     };
-  }, [editGroupAvatarPreview]);
-
-  const openEditGroupModal = useCallback(() => {
-    if (activeConversation?.type !== 'group') return;
-    if (editGroupAvatarPreview?.startsWith('blob:')) {
-      URL.revokeObjectURL(editGroupAvatarPreview);
-    }
-    setEditGroupName(activeConversation.name ?? '');
-    setEditGroupAvatarFile(null);
-    setEditGroupAvatarPreview(activeConversation.avatar ?? null);
-    setShowEditGroupModal(true);
-  }, [activeConversation, editGroupAvatarPreview]);
-
-  const handleEditGroupAvatarFileChange = useCallback(
-    (file: File | null) => {
-      setEditGroupAvatarFile(file);
-      if (editGroupAvatarPreview?.startsWith('blob:')) {
-        URL.revokeObjectURL(editGroupAvatarPreview);
-      }
-      if (file) {
-        setEditGroupAvatarPreview(URL.createObjectURL(file));
-        return;
-      }
-      setEditGroupAvatarPreview(activeConversation?.avatar ?? null);
-    },
-    [activeConversation?.avatar, editGroupAvatarPreview],
-  );
+  }, [modalState.editGroupAvatarPreview]);
 
   const handleUpdateGroup = useCallback(async () => {
     if (!activeConversationId || activeConversation?.type !== 'group') return;
     
-    const nextName = editGroupName.trim();
+    const nextName = modalState.editGroupName.trim();
     if (!nextName) {
       toast.error('Tên nhóm không được để trống');
       return;
@@ -1486,7 +1078,7 @@ export default function ChatPage() {
     const previousAvatar = activeConversation.avatar;
     let nextAvatar = previousAvatar;
 
-    if (editGroupAvatarFile) {
+    if (modalState.editGroupAvatarFile) {
       /* Code cũ bị thiếu mediaType dẫn đến lỗi 400:
       const formData = new FormData();
       formData.append('file', editGroupAvatarFile);
@@ -1500,11 +1092,11 @@ export default function ChatPage() {
 
       // Code mới: Sử dụng mutation đã cấu hình chuẩn (gửi kèm cả mediaType)
       try {
-        const uploadResult = await uploadMedia({ 
-          file: editGroupAvatarFile, 
-          mediaType: 'image' 
+        const uploadResult = await uploadMedia({
+          file: modalState.editGroupAvatarFile,
+          mediaType: 'image',
         }).unwrap();
-        nextAvatar = uploadResult.data?.url ?? uploadResult.data?.fileUrl ?? previousAvatar;
+        nextAvatar = uploadResult.data?.url ?? previousAvatar;
       } catch (err) {
         console.error('Avatar upload failed:', err);
         // Không ngắt luồng chính, nhưng thông báo cho người dùng
@@ -1527,31 +1119,27 @@ export default function ChatPage() {
         name: nextName,
         avatar: nextAvatar,
       });
-      setShowEditGroupModal(false);
-      setEditGroupAvatarFile(null);
+      modalActions.setShowEditGroupModal(false);
+      modalActions.setEditGroupAvatarFile(null);
       toast.success('Cập nhật nhóm thành công');
 
       // System message: group name changed (centered)
       const now = new Date();
-      const userName = currentUser?.displayName || currentUser?.name || 'Bạn';
+      const userName = currentUser?.displayName || 'Bạn';
       let content = '';
       if (previousName && previousName !== nextName) {
         content = `Tên nhóm đã đổi từ '${previousName}' thành '${nextName}'`;
       } else {
         content = `${userName} đã đổi tên nhóm thành '${nextName}'`;
       }
-      const systemMsg = {
+      const systemMsg: IMessage = {
         messageId: `system-${Date.now()}`,
         conversationId: activeConversationId,
         senderId: 'system',
         senderDisplayName: 'Hệ thống',
         type: 'system',
-        subtype: 'group_name_changed',
-        position: 'center',
         content,
         mediaUrl: null,
-        mediaType: null,
-        mediaSize: null,
         thumbnailUrl: null,
         replyTo: null,
         replyToDetails: null,
@@ -1560,6 +1148,7 @@ export default function ChatPage() {
         isRecalled: false,
         isDeleted: false,
         reactions: {},
+        status: 'sent',
         createdAt: now.toISOString(),
       };
       // Push to local message list
@@ -1589,10 +1178,12 @@ export default function ChatPage() {
   }, [
     activeConversationId,
     activeConversation,
-    editGroupName,
-    editGroupAvatarFile,
+    modalState.editGroupName,
+    modalState.editGroupAvatarFile,
     dispatch,
     setActionBusy,
+    uploadMedia,
+    modalActions,
   ]);
 
   const handleDeleteGroup = useCallback(async () => {
@@ -1651,8 +1242,8 @@ export default function ChatPage() {
         toast.success('Đã gửi lời mời vào nhóm');
         // Nghiệp vụ mới: người được mời nằm ở "Chờ duyệt" cho tới khi được duyệt/chấp nhận.
         await fetchGroupRequests(activeConversationId);
-        setSelectedAddMembers([]);
-        setShowAddMembersModal(false);
+        modalActions.setSelectedAddMembers([]);
+        modalActions.setShowAddMembersModal(false);
       } catch (error) {
         const status = (error as any)?.response?.status;
         if (status === 403) {
@@ -1665,19 +1256,19 @@ export default function ChatPage() {
         setActionBusy('addMembers', false);
       }
     },
-    [activeConversationId, fetchGroupRequests, setActionBusy],
+    [activeConversationId, fetchGroupRequests, setActionBusy, modalActions],
   );
 
   const handleSubmitTask = useCallback(async () => {
-    if (!activeConversationId || !taskTitle.trim()) return;
+    if (!activeConversationId || !modalState.taskTitle.trim()) return;
     setActionBusy('createTask', true);
     const optimisticTask: GroupTask = {
       taskId: `tmp-${Date.now()}`,
-      title: taskTitle.trim(),
-      description: taskNote.trim(),
-      assignees: taskAssignees,
+      title: modalState.taskTitle.trim(),
+      description: modalState.taskNote.trim(),
+      assignees: modalState.taskAssignees,
       status: 'todo',
-      dueDate: taskDeadline || undefined,
+      dueDate: modalState.taskDeadline || undefined,
       createdAt: new Date().toISOString(),
       creatorId: currentUserId,
       creatorDisplayName: currentUser?.displayName?.trim() ?? null,
@@ -1685,15 +1276,15 @@ export default function ChatPage() {
     setGroupTasks((prev) => [optimisticTask, ...prev]);
     try {
       await apiClient.post(`/chat/groups/${activeConversationId}/tasks`, {
-        title: taskTitle.trim(),
-        description: taskNote.trim(),
-        assignees: taskAssignees,
-        assignToAll: taskAssignToAll,
-        dueDate: taskDeadline || undefined,
+        title: modalState.taskTitle.trim(),
+        description: modalState.taskNote.trim(),
+        assignees: modalState.taskAssignees,
+        assignToAll: modalState.taskAssignToAll,
+        dueDate: modalState.taskDeadline || undefined,
       });
       toast.success('Đã tạo công việc');
       await fetchGroupTasks(activeConversationId);
-      closeTaskModal();
+      modalActions.closeTaskModal();
     } catch (err) {
       setGroupTasks((prev) => prev.filter((task) => task.taskId !== optimisticTask.taskId));
       toast.error('Không thể tạo công việc');
@@ -1703,12 +1294,12 @@ export default function ChatPage() {
     }
   }, [
     activeConversationId,
-    taskTitle,
-    taskNote,
-    taskAssignees,
-    taskAssignToAll,
-    taskDeadline,
-    closeTaskModal,
+    modalState.taskTitle,
+    modalState.taskNote,
+    modalState.taskAssignees,
+    modalState.taskAssignToAll,
+    modalState.taskDeadline,
+    modalActions,
     fetchGroupTasks,
     setActionBusy,
     currentUserId,
@@ -1716,72 +1307,72 @@ export default function ChatPage() {
   ]);
 
   const openAISummaryFromPanel = useCallback(async () => {
-    setShowAISummaryModal(true);
+    modalActions.setShowAISummaryModal(true);
     if (latestRecap) {
-      setAiSummaryResult(latestRecap.content);
+      modalActions.setAiSummaryResult(latestRecap.content);
       return;
     }
-    setAiSummaryResult('');
-    setAiSummaryLoading(true);
+    modalActions.setAiSummaryResult('');
+    modalActions.setAiSummaryLoading(true);
     try {
       if (!activeConversationId) return;
       const result = await apiClient.post<ApiSuccessResponse<AIRecap>>(
         `/chat/groups/${activeConversationId}/ai-recap`,
       );
       setLatestRecap(result.data.data);
-      setAiSummaryResult(result.data.data?.content ?? '');
+      modalActions.setAiSummaryResult(result.data.data?.content ?? '');
     } catch {
-      setAiSummaryResult('Không thể tạo tóm tắt vào lúc này.');
+      modalActions.setAiSummaryResult('Không thể tạo tóm tắt vào lúc này.');
     } finally {
-      setAiSummaryLoading(false);
+      modalActions.setAiSummaryLoading(false);
     }
-  }, [activeConversationId, latestRecap]);
+  }, [activeConversationId, latestRecap, modalActions]);
 
   const handleRerunAISummary = useCallback(async () => {
     if (!activeConversationId) return;
-    setAiSummaryResult('');
-    setAiSummaryLoading(true);
+    modalActions.setAiSummaryResult('');
+    modalActions.setAiSummaryLoading(true);
     try {
       const result = await apiClient.post<ApiSuccessResponse<AIRecap>>(
         `/chat/groups/${activeConversationId}/ai-recap`,
       );
       setLatestRecap(result.data.data);
-      setAiSummaryResult(result.data.data?.content ?? '');
+      modalActions.setAiSummaryResult(result.data.data?.content ?? '');
       toast.success('Đã tạo AI recap');
     } catch {
-      setAiSummaryResult('Không thể làm mới tóm tắt.');
+      modalActions.setAiSummaryResult('Không thể làm mới tóm tắt.');
       toast.error('Không thể tạo AI recap');
     } finally {
-      setAiSummaryLoading(false);
+      modalActions.setAiSummaryLoading(false);
     }
-  }, [activeConversationId]);
+  }, [activeConversationId, modalActions]);
 
   const handleCreatePoll = useCallback(async () => {
-    if (!activeConversationId || !pollQuestion.trim()) return;
+    if (!activeConversationId || !modalState.pollQuestion.trim()) return;
     setActionBusy('createPoll', true);
     const optimisticPoll: GroupPoll = {
       pollId: `tmp-${Date.now()}`,
-      question: pollQuestion.trim(),
-      options: pollOptions.filter((o) => o.trim()).map((text) => ({ text, voters: [] })),
+      question: modalState.pollQuestion.trim(),
+      options: modalState.pollOptions.filter((o) => o.trim()).map((text) => ({ text, voters: [] })),
       createdAt: new Date().toISOString(),
       isClosed: false,
-      isMultipleChoice: pollMultipleChoice,
+      isMultipleChoice: modalState.pollMultipleChoice,
       creatorId: currentUserId,
       creatorDisplayName: currentUser?.displayName?.trim() ?? null,
     };
     setGroupPolls((prev) => [optimisticPoll, ...prev]);
     try {
       await apiClient.post(`/chat/groups/${activeConversationId}/polls`, {
-        question: pollQuestion.trim(),
-        options: pollOptions.filter((o) => !!o.trim()),
-        isMultipleChoice: pollMultipleChoice,
+        question: modalState.pollQuestion.trim(),
+        options: modalState.pollOptions.filter((o) => !!o.trim()),
+        isMultipleChoice: modalState.pollMultipleChoice,
       });
       toast.success('Tạo bình chọn thành công');
       await fetchGroupPolls(activeConversationId);
-      setShowPollModal(false);
-      setPollQuestion('');
-      setPollOptions(['', '']);
-      setPollMultipleChoice(false);
+      modalActions.setShowPollModal(false);
+      modalActions.setPollQuestion('');
+      modalActions.setPollOptions(['', '']);
+      modalActions.setPollMultipleChoice(false);
     } catch (err) {
       setGroupPolls((prev) => prev.filter((poll) => poll.pollId !== optimisticPoll.pollId));
       toast.error('Không thể tạo bình chọn');
@@ -1791,29 +1382,21 @@ export default function ChatPage() {
     }
   }, [
     activeConversationId,
-    pollQuestion,
-    pollOptions,
-    pollMultipleChoice,
+    modalState.pollQuestion,
+    modalState.pollOptions,
+    modalState.pollMultipleChoice,
     fetchGroupPolls,
     setActionBusy,
     currentUserId,
     currentUser?.displayName,
+    modalActions,
   ]);
 
   const openCreateGroupModal = useCallback(() => {
-    setShowCreateGroupModal(true);
-    setSelectedGroupMembers([]);
-    setGroupName('');
-  }, []);
-
-  const openAddMembersModal = useCallback(() => {
-    setSelectedAddMembers([]);
-    // Đảm bảo đã có danh sách member trước khi lọc bạn bè (tránh hiện cả người đã trong nhóm).
-    if (activeConversationId) {
-      void fetchGroupMembers(activeConversationId);
-    }
-    setShowAddMembersModal(true);
-  }, [activeConversationId, fetchGroupMembers]);
+    modalActions.setShowCreateGroupModal(true);
+    modalActions.setSelectedGroupMembers([]);
+    modalActions.setGroupName('');
+  }, [modalActions]);
 
   const handleToggleConversationMute = useCallback(
     async (conversationId: string) => {
@@ -1943,10 +1526,10 @@ export default function ChatPage() {
   }, [convPinLimitPendingId, conversations, updateConversationPreferences]);
 
   const handleToggleAddMember = useCallback((userId: string, checked: boolean) => {
-    setSelectedAddMembers((prev) =>
+    modalActions.setSelectedAddMembers((prev) =>
       checked ? [...prev, userId] : prev.filter((id) => id !== userId),
     );
-  }, []);
+  }, [modalActions]);
 
   const handleRequestJoin = useCallback(async () => {
     if (!activeConversationId || groupJoinRequested) return;
@@ -2016,12 +1599,6 @@ export default function ChatPage() {
     },
     [activeConversationId, groupPolls, setActionBusy],
   );
-
-  const handleAddFriendSubmit = useCallback(() => {
-    // Modal now handles all friend request logic internally
-    setShowAddFriendModal(false);
-    setAddFriendQuery('');
-  }, []);
 
   const handleApproveRequest = useCallback(async (userId: string) => {
     if (!activeConversationId) return;
@@ -2113,29 +1690,6 @@ export default function ChatPage() {
     }
   }, [activeConversationId, groupMembers, setActionBusy]);
 
-  const handleChangeMemberRole = useCallback(async (userId: string, role: GroupMemberRole) => {
-    if (!activeConversationId) return;
-    
-    if (currentUserRole !== 'owner') {
-      toast.error('Chỉ Trưởng nhóm mới có quyền phân quyền thành viên');
-      return;
-    }
-
-    setActionBusy('changeRole', true);
-    const before = groupMembers;
-    setGroupMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
-    try {
-      await apiClient.put(`/chat/groups/${activeConversationId}/members/${userId}/role`, { role });
-      toast.success('Đã cập nhật vai trò');
-    } catch (error) {
-      setGroupMembers(before);
-      toast.error('Không thể cập nhật vai trò');
-      console.error('Failed to change member role:', error);
-    } finally {
-      setActionBusy('changeRole', false);
-    }
-  }, [activeConversationId, groupMembers, setActionBusy]);
-
   const handleVotePoll = useCallback(async (pollId: string, optionIndex: number) => {
     if (!activeConversationId) return;
     setActionBusy('votePoll', true);
@@ -2185,9 +1739,9 @@ export default function ChatPage() {
   }, [activeConversationId, groupPolls, currentUserId, setActionBusy]);
 
   const openPollVoteModal = useCallback((pollId: string) => {
-    setActivePollId(pollId);
-    setShowPollVoteModal(true);
-  }, []);
+    modalActions.setActivePollId(pollId);
+    modalActions.setShowPollVoteModal(true);
+  }, [modalActions]);
 
   const handleToggleTaskStatus = useCallback(async (taskId: string) => {
     if (!activeConversationId) return;
@@ -2208,7 +1762,52 @@ export default function ChatPage() {
     }
   }, [activeConversationId, groupTasks, setActionBusy]);
 
-  const currentUserRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
+  const messageActions = useMemo(
+    () => ({
+      handleSaveEdit,
+      handleRecallMsg,
+      handleDeleteMsg,
+      handleMessageConfirm,
+      handleTogglePinMsg,
+      handleReactMessage,
+    }),
+    [
+      handleSaveEdit,
+      handleRecallMsg,
+      handleDeleteMsg,
+      handleMessageConfirm,
+      handleTogglePinMsg,
+      handleReactMessage,
+    ],
+  );
+
+  const contextValue = useChatPageContextValue({
+    currentUserId,
+    currentUserRole,
+    activeConversationId,
+    activeConversation,
+    groupMembers,
+    groupRequests,
+    groupPolls,
+    groupTasks,
+    groupJoinRequested,
+    groupLoading,
+    groupActionLoading,
+    setGroupTasks,
+    groupActions: groupController,
+    directActions,
+    messageActions,
+  });
+
+  const { messagesContainerRef, messagesEndRef, unreadIncomingCount, handleJumpToLatest } =
+    useChatScrollBehavior({
+      allMessages,
+      activeConversationId,
+      currentUserId,
+      typingUsers,
+      actionMenuMsgId: modalState.actionMenuMsgId,
+      setActionMenuMsgId: modalActions.setActionMenuMsgId,
+    });
 
   return (
     <ChatPageProvider value={contextValue}>
@@ -2226,32 +1825,30 @@ export default function ChatPage() {
       <ConversationListPanel
         conversations={conversations}
         convsLoading={convsLoading}
-        activeConversationId={activeConversationId}
-        currentUserId={currentUserId}
         activeMessages={allMessages}
-        showContactsManagement={showContactsManagement}
-        contactsTab={contactsTab}
-        onContactsTabChange={setContactsTab}
+        showContactsManagement={modalState.showContactsManagement}
+        contactsTab={modalState.contactsTab}
+        onContactsTabChange={modalActions.setContactsTab}
         onSelectConversation={handleSelectConversation}
         onPickSearchMessage={scrollToMessageBubble}
         onOpenCreateGroup={openCreateGroupModal}
-        onOpenMarkRead={() => setShowMarkReadModal(true)}
-        onOpenAddFriend={() => setShowAddFriendModal(true)}
+        onOpenMarkRead={() => modalActions.setShowMarkReadModal(true)}
+        onOpenAddFriend={() => modalActions.setShowAddFriendModal(true)}
         onToggleConversationMute={handleToggleConversationMute}
       />
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
-        {showContactsManagement ? (
+        {modalState.showContactsManagement ? (
           <FriendsListView onFriendClick={handleFriendClick} />
         ) : (
           <>
             <ChatHeader
               activeConversation={activeConversation}
-              typingUsers={typingUsers}
-              showInfo={showInfo}
-              onToggleShowInfo={() => setShowInfo(!showInfo)}
-              onAddMember={openAddMembersModal}
-              onEditGroup={openEditGroupModal}
+              typingUsers={[...typingUsers]}
+              showInfo={modalState.showInfo}
+              onToggleShowInfo={() => modalActions.setShowInfo(!modalState.showInfo)}
+              onAddMember={groupController.openAddMembersModal}
+              onEditGroup={groupController.openEditGroupModal}
               onAudioCall={handleAudioCall}
               onVideoCall={handleVideoCall}
               currentUserRole={currentUserRole}
@@ -2288,17 +1885,17 @@ export default function ChatPage() {
               activeConversationId={activeConversationId}
               activeConversation={activeConversation}
               currentUserId={currentUserId}
-              typingUsers={typingUsers}
+              typingUsers={[...typingUsers]}
               unreadIncomingCount={unreadIncomingCount}
               jumpHighlightMessageId={jumpHighlightMessageId}
               jumpFlashNonce={jumpFlashNonce}
               onJumpToMessage={scrollToMessageBubble}
-              actionMenuMsgId={actionMenuMsgId}
-              onActionMenuMsgIdChange={setActionMenuMsgId}
+              actionMenuMsgId={modalState.actionMenuMsgId}
+              onActionMenuMsgIdChange={modalActions.setActionMenuMsgId}
               onStartEdit={(msg) => {
                 if (msg.type !== 'text') return;
-                setEditingMessage(msg);
-                setEditDraft(msg.content);
+                modalActions.setEditingMessage(msg);
+                modalActions.setEditDraft(msg.content);
               }}
               onTogglePin={handleTogglePinMsg}
               onRecall={handleRecallMsg}
@@ -2324,32 +1921,20 @@ export default function ChatPage() {
             <ChatComposer
               activeConversation={activeConversation}
               activeConversationId={activeConversationId}
-              inputText={inputText}
-              onInputTextChange={setInputText}
-              onKeyDown={handleKeyDown}
-              onTyping={handleTyping}
-              onSend={handleSendMessage}
-              isSending={isSending}
-              isUploadingMedia={mediaUploading}
-              replyingTo={replyingTo}
-              onClearReply={() => dispatch(clearReplyingTo())}
-              onOpenPoll={() => setShowPollModal(true)}
-              onOpenTask={() => setShowTaskModal(true)}
-              pendingAttachments={pendingAttachments}
-              onAddPendingFiles={addPendingFiles}
-              onRemovePendingAttachment={removePendingAttachment}
+              onOpenPoll={() => modalActions.setShowPollModal(true)}
+              onOpenTask={() => modalActions.setShowTaskModal(true)}
             />
           </>
         )}
       </div>
 
-      {showInfo && !showContactsManagement && (
+      {modalState.showInfo && !modalState.showContactsManagement && (
         <ConversationInfoPanel
           numRequests={groupRequests.length}
           activeConversation={activeConversation}
           onOpenAISummaryFromPanel={openAISummaryFromPanel}
-          onEditGroup={openEditGroupModal}
-          onAddMembers={openAddMembersModal}
+          onEditGroup={groupController.openEditGroupModal}
+          onAddMembers={groupController.openAddMembersModal}
           onOpenCreateGroup={openCreateGroupModal}
           onToggleMuteNotifications={
             activeConversationId ? () => void handleToggleConversationMute(activeConversationId) : undefined
@@ -2367,10 +1952,10 @@ export default function ChatPage() {
           onClosePoll={(pollId) => void handleClosePoll(pollId)}
           onToggleTask={(taskId) => void handleToggleTaskStatus(taskId)}
           onOpenPollModalFromPanel={
-            activeConversation?.type === 'group' ? () => setShowPollModal(true) : undefined
+            activeConversation?.type === 'group' ? () => modalActions.setShowPollModal(true) : undefined
           }
           onOpenTaskModalFromPanel={
-            activeConversation?.type === 'group' ? () => setShowTaskModal(true) : undefined
+            activeConversation?.type === 'group' ? () => modalActions.setShowTaskModal(true) : undefined
           }
           polls={groupPolls}
           tasks={groupTasks}
@@ -2410,23 +1995,27 @@ export default function ChatPage() {
       )}
 
       <PollVoteModal
-        open={showPollVoteModal}
-        onClose={() => setShowPollVoteModal(false)}
-        poll={activePollId ? (groupPolls.find((p) => p.pollId === activePollId) as any) : null}
+        open={modalState.showPollVoteModal}
+        onClose={() => modalActions.setShowPollVoteModal(false)}
+        poll={
+          modalState.activePollId ? (groupPolls.find((p) => p.pollId === modalState.activePollId) as any) : null
+        }
         currentUserId={currentUserId}
         onToggleVote={(pollId, optionIndex) => void handleVotePoll(pollId, optionIndex)}
       />
 
-      <MarkReadModal open={showMarkReadModal} onClose={() => setShowMarkReadModal(false)} />
+      <MarkReadModal
+        open={modalState.showMarkReadModal}
+        onClose={() => modalActions.setShowMarkReadModal(false)}
+      />
       <AddFriendModal
-        open={showAddFriendModal}
-        query={addFriendQuery}
-        onQueryChange={setAddFriendQuery}
+        open={modalState.showAddFriendModal}
+        query={modalState.addFriendQuery}
+        onQueryChange={modalActions.setAddFriendQuery}
         onClose={() => {
-          setShowAddFriendModal(false);
-          setAddFriendQuery('');
+          modalActions.setShowAddFriendModal(false);
+          modalActions.setAddFriendQuery('');
         }}
-        onSubmit={handleAddFriendSubmit}
       />
       <PinLimitModal
         open={pinLimitModalMsg !== null}
@@ -2456,49 +2045,51 @@ export default function ChatPage() {
         onConfirmPinPending={() => void handleConfirmPendingConvPin()}
       />
       <ConfirmModal
-        open={messageConfirm !== null}
+        open={modalState.messageConfirm !== null}
         title={
-          messageConfirm?.kind === 'delete'
+          modalState.messageConfirm?.kind === 'delete'
             ? 'Xóa tin nhắn'
-            : messageConfirm?.kind === 'recall'
+            : modalState.messageConfirm?.kind === 'recall'
               ? 'Thu hồi tin nhắn'
               : ''
         }
         description={
-          messageConfirm?.kind === 'delete'
+          modalState.messageConfirm?.kind === 'delete'
             ? 'Chỉ xóa trên thiết bị của bạn; người khác trong cuộc trò chuyện vẫn thấy tin nhắn.'
-            : messageConfirm?.kind === 'recall'
+            : modalState.messageConfirm?.kind === 'recall'
               ? 'Thu hồi cho mọi người — không ai còn xem được nội dung tin này.'
               : undefined
         }
-        confirmLabel={messageConfirm?.kind === 'delete' ? 'Xóa' : 'Thu hồi'}
-        variant={messageConfirm?.kind === 'delete' ? 'danger' : 'primary'}
-        isConfirming={messageConfirmSubmitting}
+        confirmLabel={modalState.messageConfirm?.kind === 'delete' ? 'Xóa' : 'Thu hồi'}
+        variant={modalState.messageConfirm?.kind === 'delete' ? 'danger' : 'primary'}
+        isConfirming={modalState.messageConfirmSubmitting}
         onClose={() => {
-          if (!messageConfirmSubmitting) setMessageConfirm(null);
+          if (!modalState.messageConfirmSubmitting) modalActions.setMessageConfirm(null);
         }}
         onConfirm={() => void handleMessageConfirm()}
       />
-      <ProfileModal open={showProfileModal} onClose={() => setShowProfileModal(false)} />
+      <ProfileModal
+        open={modalState.showProfileModal}
+        onClose={() => modalActions.setShowProfileModal(false)}
+      />
       <CreateGroupModal
-        open={showCreateGroupModal}
-        onClose={() => setShowCreateGroupModal(false)}
-        conversations={conversations}
-        groupName={groupName}
-        onGroupNameChange={setGroupName}
-        selectedGroupMembers={selectedGroupMembers}
+        open={modalState.showCreateGroupModal}
+        onClose={() => modalActions.setShowCreateGroupModal(false)}
+        groupName={modalState.groupName}
+        onGroupNameChange={modalActions.setGroupName}
+        selectedGroupMembers={modalState.selectedGroupMembers}
         onToggleMember={handleToggleGroupMember}
         onConfirmCreate={handleConfirmCreateGroup}
       />
       <PollModal
-        open={showPollModal}
-        onClose={() => setShowPollModal(false)}
-        pollQuestion={pollQuestion}
-        onPollQuestionChange={setPollQuestion}
-        pollOptions={pollOptions}
-        onPollOptionsChange={setPollOptions}
-        multipleChoice={pollMultipleChoice}
-        onMultipleChoiceChange={setPollMultipleChoice}
+        open={modalState.showPollModal}
+        onClose={() => modalActions.setShowPollModal(false)}
+        pollQuestion={modalState.pollQuestion}
+        onPollQuestionChange={modalActions.setPollQuestion}
+        pollOptions={modalState.pollOptions}
+        onPollOptionsChange={modalActions.setPollOptions}
+        multipleChoice={modalState.pollMultipleChoice}
+        onMultipleChoiceChange={modalActions.setPollMultipleChoice}
         onCreatePoll={handleCreatePoll}
       />
       {false && (
@@ -2512,9 +2103,6 @@ export default function ChatPage() {
           onApprove={handleApproveRequest}
           onReject={handleRejectRequest}
           onKick={handleKickMember}
-          onChangeRole={async (userId, role) => {
-            await handleChangeMemberRole(userId, role);
-          }}
           busy={{
             approving: groupActionLoading.approveRequest,
             rejecting: groupActionLoading.rejectRequest,
@@ -2524,21 +2112,21 @@ export default function ChatPage() {
         />
       )}
       <AISummaryModal
-        open={showAISummaryModal}
-        onClose={() => setShowAISummaryModal(false)}
+        open={modalState.showAISummaryModal}
+        onClose={() => modalActions.setShowAISummaryModal(false)}
         conversationName={activeConversation?.name}
-        aiSummaryLoading={aiSummaryLoading}
-        aiSummaryResult={aiSummaryResult}
+        aiSummaryLoading={modalState.aiSummaryLoading}
+        aiSummaryResult={modalState.aiSummaryResult}
         onRerunSummary={handleRerunAISummary}
       />
       <TaskModal
-        open={showTaskModal}
-        onClose={closeTaskModal}
+        open={modalState.showTaskModal}
+        onClose={modalActions.closeTaskModal}
         currentUserId={currentUserId}
-        assignToAll={taskAssignToAll}
+        assignToAll={modalState.taskAssignToAll}
         onAssignToAllChange={(v) => {
-          setTaskAssignToAll(v);
-          if (v) setTaskAssignees([]);
+          modalActions.setTaskAssignToAll(v);
+          if (v) modalActions.setTaskAssignees([]);
         }}
         members={groupMembers.map((m) => ({
           id: m.userId,
@@ -2547,49 +2135,50 @@ export default function ChatPage() {
             m.userId === currentUserId ? m.avatar ?? currentUser?.avatar ?? undefined : m.avatar ?? undefined,
           role: m.role,
         }))}
-        taskTitle={taskTitle}
-        onTaskTitleChange={setTaskTitle}
-        taskDeadline={taskDeadline}
-        onTaskDeadlineChange={setTaskDeadline}
-        taskNote={taskNote}
-        onTaskNoteChange={setTaskNote}
-        taskAssignees={taskAssignees}
-        onTaskAssigneesChange={setTaskAssignees}
+        taskTitle={modalState.taskTitle}
+        onTaskTitleChange={modalActions.setTaskTitle}
+        taskDeadline={modalState.taskDeadline}
+        onTaskDeadlineChange={modalActions.setTaskDeadline}
+        taskNote={modalState.taskNote}
+        onTaskNoteChange={modalActions.setTaskNote}
+        taskAssignees={modalState.taskAssignees}
+        onTaskAssigneesChange={modalActions.setTaskAssignees}
         onSubmitTask={handleSubmitTask}
       />
 
       <AddMembersModal
-        open={showAddMembersModal}
-        onClose={() => setShowAddMembersModal(false)}
-        selectedIds={selectedAddMembers}
+        open={modalState.showAddMembersModal}
+        onClose={() => modalActions.setShowAddMembersModal(false)}
+        selectedIds={modalState.selectedAddMembers}
         existingMemberIds={groupMembers.map((member) => member.userId)}
         onToggleSelect={handleToggleAddMember}
-        onConfirm={() => void handleAddMembers(selectedAddMembers)}
+        onConfirm={() => void handleAddMembers(modalState.selectedAddMembers)}
         isSubmitting={groupActionLoading.addMembers}
       />
 
       <EditGroupModal
-        open={showEditGroupModal}
-        groupName={editGroupName}
-        avatarPreview={editGroupAvatarPreview}
+        open={modalState.showEditGroupModal}
+        groupName={modalState.editGroupName}
+        avatarPreview={modalState.editGroupAvatarPreview}
         isSaving={groupActionLoading.updateGroup}
         onClose={() => {
-          setShowEditGroupModal(false);
-          setEditGroupAvatarFile(null);
+          modalActions.setShowEditGroupModal(false);
+          modalActions.setEditGroupAvatarFile(null);
         }}
-        onGroupNameChange={setEditGroupName}
-        onAvatarFileChange={handleEditGroupAvatarFileChange}
+        onGroupNameChange={modalActions.setEditGroupName}
+        onAvatarFileChange={groupController.handleEditGroupAvatarFileChange}
         onSubmit={() => void handleUpdateGroup()}
       />
 
       <EditMessageDialog
-        editingMessage={editingMessage}
-        editDraft={editDraft}
-        onEditDraftChange={setEditDraft}
-        onClose={() => setEditingMessage(null)}
+        editingMessage={modalState.editingMessage}
+        editDraft={modalState.editDraft}
+        onEditDraftChange={modalActions.setEditDraft}
+        onClose={() => modalActions.setEditingMessage(null)}
         onSave={handleSaveEdit}
         isEditing={isEditing}
       />
     </div>
+    </ChatPageProvider>
   );
 }

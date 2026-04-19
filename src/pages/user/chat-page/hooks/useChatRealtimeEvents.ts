@@ -3,7 +3,7 @@ import { toast } from 'react-toastify';
 import { chatApi } from '@/store/api/chatApi';
 import {
   messageEdited,
-  messageHiddenForMe,
+  messageHiddenForViewer,
   messagePinUpdated,
   messageReacted,
   messageReceived,
@@ -114,7 +114,7 @@ export function useChatRealtimeEvents({
     };
 
     const handleHiddenForMe = (payload: { messageId: string; conversationId: string }) => {
-      dispatch(messageHiddenForMe(payload));
+      dispatch(messageHiddenForViewer(payload));
       removeMessageFromCache(payload.conversationId, payload.messageId);
       dispatch(chatApi.util.invalidateTags(['Conversations']));
     };

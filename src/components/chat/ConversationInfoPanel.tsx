@@ -22,6 +22,8 @@ import {
   X,
 } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
+import type { GroupMember, GroupMemberRole, GroupRequest } from '@/types/chat.group.types';
+import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import { apiClient } from '@/services/api';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -303,12 +305,20 @@ type ConversationInfoPanelProps = {
     leaveGroup?: boolean;
     deleteGroup?: boolean;
   };
-  const busyMemberActions = {
-    approving: group.actionLoading.approveRequest,
-    rejecting: group.actionLoading.rejectRequest,
-    removing: group.actionLoading.removeMember,
-    changingRole: group.actionLoading.changeRole,
+  busyMemberActions?: {
+    approving: boolean;
+    rejecting: boolean;
+    removing: boolean;
+    changingRole: boolean;
   };
+  numRequests?: number;
+  currentUserRole?: GroupMemberRole;
+  currentUserId?: string;
+  members?: GroupMember[];
+  requests?: GroupRequest[];
+  onApproveMember?: (userId: string) => void | Promise<void>;
+  onRejectMember?: (userId: string) => void | Promise<void>;
+  onKickMember?: (userId: string) => void | Promise<void>;
 
   /** Tin đã tải trong hội thoại — tìm trong phạm vi client. */
   conversationMessages?: IMessage[];
@@ -358,14 +368,19 @@ export function ConversationInfoPanel({
   conversations = [],
   onSelectConversation,
 }: ConversationInfoPanelProps) {
-  void onApproveMember;
-  void onRejectMember;
-  void onKickMember;
+  const { core, groupActions } = useChatPageContext();
   const isMuted = !!activeConversation?.isMuted;
   const isConvPinned = !!activeConversation?.isPinnedToTop;
   const isOwner = currentUserRole === 'owner';
   const canModerateMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
   const canDisbandGroup = currentUserRole === 'owner' || currentUserRole === 'admin';
+
+  const busyMemberActionsResolved = busyMemberActions ?? {
+    approving: false,
+    rejecting: false,
+    removing: false,
+    changingRole: false,
+  };
 
   const listMemberCount = (members as unknown[]).length;
   const effectiveMemberCount =
@@ -610,13 +625,13 @@ export function ConversationInfoPanel({
             onClose={() => setShowInlineMembers(false)}
             memberTab={memberTab}
             onMemberTabChange={setMemberTab}
-            members={group.members}
-            requests={group.requests}
+            members={members}
+            requests={requests}
             currentUserId={core.currentUserId}
-            onApprove={undefined}
-            onReject={undefined}
-            onKick={undefined}
-            busy={busyMemberActions}
+            onApprove={onApproveMember}
+            onReject={onRejectMember}
+            onKick={onKickMember}
+            busy={busyMemberActionsResolved}
             variant="inline"
             canModerate={canModerateMembers}
             onAddMembersClick={groupActions.openAddMembersModal}
@@ -942,8 +957,8 @@ export function ConversationInfoPanel({
             {activeConversation?.name ?? 'Hội thoại'}
             <button
               type="button"
-              onClick={groupActions.openEditGroupModal}
-              disabled={loading.updateGroup}
+              onClick={() => (onEditGroup ?? groupActions.openEditGroupModal)()}
+              disabled={!!loading?.updateGroup}
               className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
               title="Chỉnh sửa nhóm"
             >
@@ -1094,7 +1109,7 @@ export function ConversationInfoPanel({
               </div>
               <button
                 type="button"
-                onClick={groupActions.openAISummaryFromPanel}
+                onClick={() => onOpenAISummaryFromPanel()}
                 className="w-full relative flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-[#0068ff] to-[#8c52ff] hover:from-blue-700 hover:to-purple-700 text-white font-bold text-[14px] shadow-lg shadow-purple-600/20 transition-all hover:shadow-purple-600/40 hover:-translate-y-0.5"
               >
                 <Sparkles className="w-[18px] h-[18px]" />
@@ -1108,11 +1123,14 @@ export function ConversationInfoPanel({
             <div className="px-4 py-3 border-b border-black/5 dark:border-white/5 bg-white dark:bg-transparent">
               <button
                 type="button"
-                onClick={() => void groupActions.handleRequestJoin()}
-                disabled={isJoinRequested || loading.requestJoin}
+                onClick={() => {
+                  if (onRequestJoin) void onRequestJoin();
+                  else void groupActions.handleRequestJoin();
+                }}
+                disabled={isJoinRequested || !!loading?.requestJoin}
                 className="w-full rounded-xl py-2.5 text-sm font-bold bg-blue-600 text-white disabled:bg-blue-200 disabled:cursor-not-allowed"
               >
-                {isJoinRequested ? 'Đã gửi yêu cầu' : loading.requestJoin ? 'Đang gửi...' : 'Yêu cầu tham gia'}
+                {isJoinRequested ? 'Đã gửi yêu cầu' : loading?.requestJoin ? 'Đang gửi...' : 'Yêu cầu tham gia'}
               </button>
             </div>
 
@@ -1126,7 +1144,7 @@ export function ConversationInfoPanel({
               >
                 Quản lý thành viên ({activeConversation.memberCount})
                 <div className="flex items-center gap-2">
-                  {numRequests > 0 && (
+                  {(numRequests ?? 0) > 0 && (
                     <div className="w-[20px] h-[20px] rounded-full bg-red-500 flex items-center justify-center text-[10px] text-white font-bold">
                       {numRequests}
                     </div>
@@ -1145,7 +1163,7 @@ export function ConversationInfoPanel({
                   <div className="flex items-center gap-3 text-sm text-muted-foreground group-hover/wait:text-blue-600 font-medium transition-colors">
                     <UserPlus className="w-4 h-4 opacity-70" /> Duyệt người vào nhóm
                   </div>
-                  {numRequests > 0 && (
+                  {(numRequests ?? 0) > 0 && (
                     <div className="w-[22px] h-[22px] rounded-full bg-red-500 shadow-md shadow-red-500/20 flex items-center justify-center text-[10px] text-white font-bold">
                       {numRequests}
                     </div>

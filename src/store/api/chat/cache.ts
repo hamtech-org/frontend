@@ -42,3 +42,20 @@ export function patchConversationsFromNewMessage(
     }),
   );
 }
+
+/** Cập nhật một tin trong cache `getMessages` (so khớp messageId kiểu string để tránh lệch kiểu). */
+export function patchMessageInGetMessagesCache(
+  dispatch: AppDispatch,
+  conversationId: string,
+  messageId: string,
+  patch: Partial<IMessage>,
+): void {
+  const mid = String(messageId);
+  dispatch(
+    chatApi.util.updateQueryData('getMessages', { conversationId }, (draft) => {
+      if (!draft.data) return;
+      const m = draft.data.find((x) => String(x.messageId) === mid);
+      if (m) Object.assign(m, patch);
+    }),
+  );
+}

@@ -71,7 +71,7 @@ function OutgoingDeliveryTicks({
   if (!convIsDirect) {
     const mono = isMe ? 'text-white/75' : 'text-muted-foreground';
     return (
-      <Check className={`w-3 h-3 shrink-0 ${mono}`} strokeWidth={2.5} title="Đã gửi" aria-label="Đã gửi" />
+      <Check className={`w-3 h-3 shrink-0 ${mono}`} strokeWidth={2.5} aria-label="Đã gửi" />
     );
   }
   if (s === 'sent') {
@@ -79,7 +79,6 @@ function OutgoingDeliveryTicks({
       <Check
         className={`w-3 h-3 shrink-0 ${isMe ? 'text-white/75' : 'text-muted-foreground'}`}
         strokeWidth={2.5}
-        title="Đã gửi"
         aria-label="Đã gửi"
       />
     );
@@ -89,7 +88,6 @@ function OutgoingDeliveryTicks({
       <CheckCheck
         className={`w-3 h-3 shrink-0 ${isMe ? 'text-white/85' : 'text-slate-400 dark:text-slate-500'}`}
         strokeWidth={2.5}
-        title="Đã nhận"
         aria-label="Đã nhận"
       />
     );
@@ -98,7 +96,6 @@ function OutgoingDeliveryTicks({
     <CheckCheck
       className={`w-3 h-3 shrink-0 ${isMe ? 'text-sky-200' : 'text-blue-500 dark:text-blue-400'}`}
       strokeWidth={2.5}
-      title="Đã xem"
       aria-label="Đã xem"
     />
   );

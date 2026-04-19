@@ -15,16 +15,7 @@ import {
 } from '@/store/slices/chatSlice';
 import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
 import type { ConversationType, IConversation, IGroupSettings, IMessage, MessageStatus } from '@/types/chat.types';
-import { lastMessagePreviewContentFromMessage } from '@/utils/chatUtils';
-
-// Helper: sort conversations by lastMessage.createdAt desc
-function sortConversationsByLastMessage(convs: IConversation[]) {
-  return [...convs].sort((a, b) => {
-    const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
-    const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
-    return bTime - aTime;
-  });
-}
+import { lastMessagePreviewContentFromMessage, sortConversationsByLastMessage } from '@/utils/chatUtils';
 
 function applyMessageStatusPatch(
   dispatch: AppDispatch,
@@ -61,15 +52,6 @@ function applyMessageStatusPatch(
     );
   }
   dispatch(chatApi.util.invalidateTags([{ type: 'Messages', id: conversationId }]));
-}
-
-// Helper: sort conversations by lastMessage.createdAt desc
-function sortConversationsByLastMessage(convs: IConversation[]) {
-  return [...convs].sort((a, b) => {
-    const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
-    const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
-    return bTime - aTime;
-  });
 }
 
 type PatchMessageInCache = (

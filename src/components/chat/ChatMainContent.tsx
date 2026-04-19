@@ -1,4 +1,5 @@
 import type { RefObject, SetStateAction, Dispatch } from 'react';
+import { useMemo } from 'react';
 import { Phone, Video } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { PendingFriendsPanel } from '@/components/chat/PendingFriendsPanel';
@@ -8,8 +9,7 @@ import { PinnedMessagesBar } from '@/components/chat/PinnedMessagesBar';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { ShellSurface } from '@/components/layout/ShellPrimitives';
-import type { TypingUserEntry } from '@/store/slices/chatSlice';
-import type { IMessage } from '@/types/chat.types';
+import type { IConversation, IMessage, TypingUserEntry } from '@/types/chat.types';
 import type { ContactsTabId } from '@/components/chat/ConversationListPanel';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 import { useDispatch } from 'react-redux';
@@ -56,6 +56,14 @@ interface ChatMainContentProps {
   // Modal openers
   onOpenPoll: () => void;
   onOpenTask: () => void;
+
+  /** Khi không truyền (layout tối giản), chuyển tiếp media bị tắt. */
+  shareTargetConversations?: IConversation[];
+  onForwardMediaMessage?: (
+    targetConversationIds: string[],
+    message: IMessage,
+    caption: string,
+  ) => Promise<void>;
 }
 
 export function ChatMainContent(props: ChatMainContentProps) {
@@ -72,14 +80,23 @@ export function ChatMainContent(props: ChatMainContentProps) {
     onToggleShowInfo,
     typingUsers,
     pinned,
-    formatMessageTime,
     scroll,
     actionMenuMsgId,
     onActionMenuMsgIdChange,
     onStartEdit,
     onOpenPoll,
     onOpenTask,
+    shareTargetConversations = [],
+    onForwardMediaMessage = async () => {},
   } = props;
+
+  const pinnedMessagesList = useMemo(() => {
+    const primary = pinned.primaryMessage;
+    const others = pinned.otherMessages;
+    if (!primary) return others;
+    const rest = others.filter((m) => m.messageId !== primary.messageId);
+    return [primary, ...rest];
+  }, [pinned.primaryMessage, pinned.otherMessages]);
 
   return (
     <ShellSurface className="flex-1 flex flex-col min-w-0 min-h-0 relative border-0">
@@ -111,15 +128,11 @@ export function ChatMainContent(props: ChatMainContentProps) {
             currentUserRole={core.currentUserRole}
           />
 
-          {core.activeConversationId && pinned.primaryMessage && (
+          {core.activeConversationId && pinnedMessagesList.length > 0 && (
             <PinnedMessagesBar
-              primaryPinnedMessage={pinned.primaryMessage}
-              otherPinnedMessages={pinned.otherMessages}
-              showOtherPinnedPanel={pinned.showOtherPanel}
-              onToggleOtherPinnedPanel={pinned.onToggleOtherPanel}
+              pinnedMessages={pinnedMessagesList}
               onScrollToMessage={pinned.onScrollToMessage}
               onTogglePin={messageActions.handleTogglePinMsg}
-              formatMessageTime={formatMessageTime}
             />
           )}
 
@@ -154,6 +167,8 @@ export function ChatMainContent(props: ChatMainContentProps) {
               );
             }}
             onOpenPollVote={groupActions.openPollVoteModal}
+            shareTargetConversations={shareTargetConversations}
+            onForwardMediaMessage={onForwardMediaMessage}
           />
 
           {core.activeConversation?.type === 'group' &&

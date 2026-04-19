@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { chatApi } from '@/store/api/chatApi';
-import { messageEdited, messageHiddenForMe, messagePinUpdated, messageRecalled } from '@/store/slices/chatSlice';
+import { messageEdited, messageHiddenForViewer, messagePinUpdated, messageRecalled } from '@/store/slices/chatSlice';
 import type { AppDispatch } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
 import type { MessageConfirmState } from '@/types/chat.group.types';
@@ -126,7 +126,7 @@ export function useMessageModerationActions({
           conversationId: msg.conversationId,
           createdAt: msg.createdAt,
         }).unwrap();
-        dispatch(messageHiddenForMe({ messageId: msg.messageId, conversationId: msg.conversationId }));
+        dispatch(messageHiddenForViewer({ messageId: msg.messageId, conversationId: msg.conversationId }));
         removeMessageFromCache(msg.conversationId, msg.messageId);
         dispatch(chatApi.util.invalidateTags(['Conversations']));
       }

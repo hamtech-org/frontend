@@ -17,9 +17,9 @@ type MemberManagementModalProps = {
   members: GroupMember[];
   requests: GroupRequest[];
   currentUserId?: string;
-  onApprove?: (userId: string) => Promise<void>;
-  onReject?: (userId: string) => Promise<void>;
-  onKick?: (userId: string) => Promise<void>;
+  onApprove?: (userId: string) => void | Promise<void>;
+  onReject?: (userId: string) => void | Promise<void>;
+  onKick?: (userId: string) => void | Promise<void>;
   busy?: {
     approving?: boolean;
     rejecting?: boolean;

@@ -1,15 +1,17 @@
+import type { ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ConversationInfoPanel } from '@/components/chat/ConversationInfoPanel';
 
 interface ChatSideInfoRailProps {
   showInfo: boolean;
   showContactsManagement: boolean;
+  /** Nội dung panel thông tin (ví dụ `ConversationInfoPanel` với đủ props). */
+  children?: ReactNode;
 }
 
-export function ChatSideInfoRail({ showInfo, showContactsManagement }: ChatSideInfoRailProps) {
+export function ChatSideInfoRail({ showInfo, showContactsManagement, children }: ChatSideInfoRailProps) {
   return (
     <AnimatePresence initial={false}>
-      {showInfo && !showContactsManagement && (
+      {showInfo && !showContactsManagement && children ? (
         <motion.div
           key="conversation-info-panel"
           initial={{ width: 0, opacity: 0, x: 12 }}
@@ -18,9 +20,9 @@ export function ChatSideInfoRail({ showInfo, showContactsManagement }: ChatSideI
           transition={{ duration: 0.2, ease: 'easeOut' }}
           className="overflow-hidden shrink-0"
         >
-          <ConversationInfoPanel />
+          {children}
         </motion.div>
-      )}
+      ) : null}
     </AnimatePresence>
   );
 }

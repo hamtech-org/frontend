@@ -1,4 +1,9 @@
-import type { IConversation, IMessage } from '@/types/chat.types';
+import type {
+  IConversation,
+  IMessage,
+  IGroupMemberPermissions,
+  IGroupAdminSettings,
+} from '@/types/chat.types';
 
 export interface CreateConversationRequest {
   type: IConversation['type'];
@@ -37,6 +42,21 @@ export interface RecallMessageRequest {
 export interface MarkAsReadRequest {
   conversationId: string;
   messageId: string;
+}
+
+export interface UpdateConversationPreferencesRequest {
+  conversationId: string;
+  isMuted?: boolean;
+  isPinnedToTop?: boolean;
+  notificationsMutedUntil?: string | null;
+  muteFor?: '1h' | '4h' | '8h';
+}
+
+export interface UpdateGroupSettingsRequest {
+  groupId: string;
+  memberPermissions?: Partial<IGroupMemberPermissions>;
+  adminSettings?: Partial<IGroupAdminSettings>;
+  regenerateJoinLink?: boolean;
 }
 
 export interface PinMessageRequest {

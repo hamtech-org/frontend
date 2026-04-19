@@ -40,6 +40,15 @@ export function lastMessagePreviewContentFromMessage(msg: Pick<IMessage, 'conten
   return msg.content ?? '';
 }
 
+/** Danh sách hội thoại: sắp theo `lastMessage.createdAt` giảm dần (mới nhất trước). */
+export function sortConversationsByLastMessage(convs: IConversation[]): IConversation[] {
+  return [...convs].sort((a, b) => {
+    const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
+    const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
 /** Bỏ dạng [Ảnh]/[Video]/[File] từ backend — hiển thị text thuần cho sidebar. */
 function normalizeLastMessagePreview(type: MessageType, content: string): string {
   const t = (content ?? '').trim();

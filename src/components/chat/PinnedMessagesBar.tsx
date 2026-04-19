@@ -18,7 +18,6 @@ import {
   mediaThumbSrcForPinnedRow,
 } from '@/utils/chatUtils';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
-import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/chatPinConstants';
 
 type PinnedMessagesBarProps = {
   pinnedMessages: IMessage[];
