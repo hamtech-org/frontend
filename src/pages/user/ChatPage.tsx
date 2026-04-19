@@ -884,10 +884,6 @@ export default function ChatPage() {
   }, [routeConversationId, dispatch]);
 
   useEffect(() => {
-    setShowInChatSearch(false);
-  }, [activeConversationId]);
-
-  useEffect(() => {
     if (!routeConversationId) return;
     if (convsLoading || convsFetching) return;
     const exists = conversations.some((c) => c.conversationId === routeConversationId);
@@ -2452,6 +2448,8 @@ export default function ChatPage() {
           conversationMessages={allMessages}
           conversationSearchRequestTick={conversationSearchRequestTick}
           onJumpToMessage={scrollToMessageBubble}
+          conversations={conversations}
+          onSelectConversation={handleSelectConversation}
         />
       )}
 
