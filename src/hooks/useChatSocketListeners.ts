@@ -146,11 +146,7 @@ export function useChatSocketListeners(
           if (c) (c as IConversation).groupSettings = groupSettings;
         }),
       );
-      dispatch(
-        chatApi.util.updateQueryData('getGroupSettings', conversationId, (draft) => {
-          if (draft?.data !== undefined) draft.data = groupSettings;
-        }),
-      );
+      dispatch(chatApi.util.invalidateTags([{ type: 'GroupSettings', id: conversationId }]));
     };
 
     const handleGroupUpdate = (data: any) => {
