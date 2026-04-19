@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar, File, Search, User, X } from 'lucide-react';
-import type { IMessage } from '@/types/chat.types';
-import { lastMessagePreviewContentFromMessage } from '@/utils/chatUtils';
+import { Calendar, File, Search, User, Users, X } from 'lucide-react';
+import type { IConversation, IMessage } from '@/types/chat.types';
+import {
+  formatConversationListLastPreview,
+  isSystemChatNotificationMessage,
+  lastMessagePreviewContentFromMessage,
+} from '@/utils/chatUtils';
 import { formatZaloConversationTime } from '@/utils/formatDate';
 import { toast } from 'react-toastify';
+import { apiClient } from '@/services/api';
+import type { ApiSuccessResponse } from '@/types/api.types';
+
+export type ConversationSearchMemberRow = {
+  userId?: string;
+  displayName?: string | null;
+  name?: string | null;
+};
 
 export type ConversationSearchPanelProps = {
   messages: IMessage[];
@@ -12,6 +24,12 @@ export type ConversationSearchPanelProps = {
   onClose: () => void;
   onSelectMessage: (messageId: string) => void;
   conversationTitle?: string;
+  /** Thành viên nhóm — dùng cho lọc “Người gửi”. */
+  conversationMembers?: ConversationSearchMemberRow[];
+  conversationId?: string;
+  /** Giống sidebar ConversationListPanel: tìm hội thoại theo tên / preview / id. */
+  conversations?: IConversation[];
+  onSelectConversation?: (conversationId: string) => void;
 };
 
 function searchHaystack(m: IMessage): string {
@@ -58,6 +76,24 @@ function formatFileSize(bytes: number | null | undefined): string {
   return `${(kb / 1024).toFixed(2)} MB`;
 }
 
+/** Biên ngày theo giờ máy người dùng → ISO gửi API browse. */
+function localDayBoundsIso(dateStr: string): { from: string; to: string } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const start = new Date(y, mo - 1, d, 0, 0, 0, 0);
+  const end = new Date(y, mo - 1, d, 23, 59, 59, 999);
+  if (Number.isNaN(start.getTime())) return null;
+  return { from: start.toISOString(), to: end.toISOString() };
+}
+
+function messageOnLocalDay(createdAt: string, dateStr: string): boolean {
+  if (!dateStr) return true;
+  const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return false;
+  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return key === dateStr;
+}
+
 const INITIAL_MSG_LIMIT = 15;
 const INITIAL_FILE_LIMIT = 8;
 
@@ -68,12 +104,86 @@ export function ConversationSearchPanel({
   onClose,
   onSelectMessage,
   conversationTitle,
+  conversationMembers = [],
+  conversationId,
+  conversations = [],
+  onSelectConversation,
 }: ConversationSearchPanelProps) {
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
+  const [senderUserId, setSenderUserId] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+  const [browseRemote, setBrowseRemote] = useState<IMessage[] | null>(null);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [browseError, setBrowseError] = useState<string | null>(null);
   const [msgLimit, setMsgLimit] = useState(INITIAL_MSG_LIMIT);
   const [fileLimit, setFileLimit] = useState(INITIAL_FILE_LIMIT);
   const lastEmptyToastNeedle = useRef<string | null>(null);
+
+  const memberSelectOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { userId: string; label: string }[] = [];
+    for (const row of conversationMembers) {
+      const id = row.userId?.trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const raw = (row.displayName ?? row.name ?? '').trim();
+      const label =
+        currentUserId && id === currentUserId ? 'Bạn' : raw || 'Thành viên';
+      out.push({ userId: id, label });
+    }
+    out.sort((a, b) => a.label.localeCompare(b.label, 'vi'));
+    return out;
+  }, [conversationMembers, currentUserId]);
+
+  useEffect(() => {
+    setSenderUserId('');
+    setDateFilter('');
+    setBrowseRemote(null);
+    setBrowseError(null);
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId || (!senderUserId && !dateFilter)) {
+      setBrowseRemote(null);
+      setBrowseLoading(false);
+      setBrowseError(null);
+      return;
+    }
+    let cancelled = false;
+    setBrowseLoading(true);
+    setBrowseError(null);
+    const params: Record<string, string> = { limit: '250' };
+    if (senderUserId) params.senderId = senderUserId;
+    if (dateFilter) {
+      const bounds = localDayBoundsIso(dateFilter);
+      if (bounds) {
+        params.from = bounds.from;
+        params.to = bounds.to;
+      }
+    }
+    void apiClient
+      .get<ApiSuccessResponse<IMessage[]>>(`/chat/conversations/${conversationId}/messages/browse`, {
+        params,
+      })
+      .then((res) => {
+        if (cancelled) return;
+        const payload = res.data?.data;
+        setBrowseRemote(Array.isArray(payload) ? payload : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBrowseRemote(null);
+        setBrowseError('Không tải được thêm tin từ máy chủ.');
+        toast.warning('Lọc theo thành viên/ngày: chỉ hiển thị tin đã tải trên máy (lỗi mạng).');
+      })
+      .finally(() => {
+        if (!cancelled) setBrowseLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, senderUserId, dateFilter]);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(q), 400);
@@ -83,17 +193,56 @@ export function ConversationSearchPanel({
   useEffect(() => {
     setMsgLimit(INITIAL_MSG_LIMIT);
     setFileLimit(INITIAL_FILE_LIMIT);
-  }, [debouncedQ]);
+  }, [debouncedQ, senderUserId, dateFilter]);
+
+  const searchPool = useMemo(() => {
+    const map = new Map<string, IMessage>();
+    for (const m of messages) map.set(m.messageId, m);
+    if (browseRemote?.length) {
+      for (const m of browseRemote) map.set(m.messageId, m);
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }, [messages, browseRemote]);
+
+  const listableConversations = useMemo(
+    () => conversations.filter((c) => !(c.type === 'group' && c.isDeleted)),
+    [conversations],
+  );
+
+  const filteredConversationsFull = useMemo(() => {
+    const needle = debouncedQ.trim().toLowerCase();
+    if (!needle || !onSelectConversation) return [] as IConversation[];
+    return listableConversations.filter((c) => {
+      const name = (c.name ?? '').toLowerCase();
+      const preview = formatConversationListLastPreview(c, currentUserId ?? '').toLowerCase();
+      return (
+        name.includes(needle) ||
+        preview.includes(needle) ||
+        c.conversationId.toLowerCase().includes(needle)
+      );
+    });
+  }, [listableConversations, debouncedQ, currentUserId, onSelectConversation]);
+
+  const filteredConversationsDisplay = filteredConversationsFull.slice(0, 8);
+  const conversationMatchCount = filteredConversationsFull.length;
 
   const { messageHits, fileHits } = useMemo(() => {
     const needle = debouncedQ.trim().toLowerCase();
-    if (!needle) return { messageHits: [] as IMessage[], fileHits: [] as IMessage[] };
+    const hasText = needle.length > 0;
+    if (!hasText && !senderUserId && !dateFilter) {
+      return { messageHits: [] as IMessage[], fileHits: [] as IMessage[] };
+    }
     const msgOut: IMessage[] = [];
     const fileOut: IMessage[] = [];
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i]!;
+    for (let i = searchPool.length - 1; i >= 0; i--) {
+      const m = searchPool[i]!;
       if (m.isRecalled || m.isDeleted) continue;
-      if (!searchHaystack(m).includes(needle)) continue;
+      if (isSystemChatNotificationMessage(m)) continue;
+      if (senderUserId && m.senderId !== senderUserId) continue;
+      if (dateFilter && !messageOnLocalDay(m.createdAt, dateFilter)) continue;
+      if (hasText && !searchHaystack(m).includes(needle)) continue;
       if (m.type === 'file') {
         if (fileOut.length < 200) fileOut.push(m);
       } else if (msgOut.length < 200) {
@@ -102,13 +251,13 @@ export function ConversationSearchPanel({
       if (msgOut.length >= 200 && fileOut.length >= 200) break;
     }
     return { messageHits: msgOut, fileHits: fileOut };
-  }, [messages, debouncedQ]);
+  }, [searchPool, debouncedQ, senderUserId, dateFilter]);
 
-  const totalHits = messageHits.length + fileHits.length;
+  const totalHits = conversationMatchCount + messageHits.length + fileHits.length;
 
   useEffect(() => {
     const needle = debouncedQ.trim().toLowerCase();
-    if (!needle) {
+    if (!needle && !senderUserId && !dateFilter) {
       lastEmptyToastNeedle.current = null;
       return;
     }
@@ -116,10 +265,15 @@ export function ConversationSearchPanel({
       lastEmptyToastNeedle.current = null;
       return;
     }
-    if (lastEmptyToastNeedle.current === needle) return;
-    lastEmptyToastNeedle.current = needle;
-    toast.info('Không tìm thấy tin nhắn hoặc file phù hợp trong phạm vi tin đã tải.');
-  }, [debouncedQ, totalHits]);
+    const toastKey = `${needle}\0${senderUserId}\0${dateFilter}`;
+    if (lastEmptyToastNeedle.current === toastKey) return;
+    lastEmptyToastNeedle.current = toastKey;
+    toast.info(
+      onSelectConversation
+        ? 'Không tìm thấy hội thoại, tin nhắn hoặc file phù hợp (đã gộp tin tải thêm từ máy chủ nếu có).'
+        : 'Không tìm thấy tin nhắn hoặc file phù hợp (đã gộp tin tải thêm từ máy chủ nếu có).',
+    );
+  }, [debouncedQ, totalHits, onSelectConversation, senderUserId, dateFilter]);
 
   const needleForUi = debouncedQ.trim();
   const shownMessages = messageHits.slice(0, msgLimit);
@@ -142,6 +296,11 @@ export function ConversationSearchPanel({
 
   const jump = (messageId: string) => {
     onSelectMessage(messageId);
+    onClose();
+  };
+
+  const pickConversation = (conversationId: string) => {
+    onSelectConversation?.(conversationId);
     onClose();
   };
 
@@ -188,49 +347,150 @@ export function ConversationSearchPanel({
             </button>
           ) : null}
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-muted-foreground">Lọc theo:</span>
-          <button
-            type="button"
-            disabled
-            className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-black/[0.03] px-2.5 py-1.5 text-xs font-semibold text-muted-foreground opacity-60 dark:border-white/10 dark:bg-white/[0.04]"
-            title="Sắp có"
-          >
-            <User className="h-3.5 w-3.5" />
-            Người gửi
-          </button>
-          <button
-            type="button"
-            disabled
-            className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-black/[0.03] px-2.5 py-1.5 text-xs font-semibold text-muted-foreground opacity-60 dark:border-white/10 dark:bg-white/[0.04]"
-            title="Sắp có"
-          >
-            <Calendar className="h-3.5 w-3.5" />
-            Ngày gửi
-          </button>
-        </div>
-        <p className="mt-2 text-[11px] font-medium leading-snug text-muted-foreground">
-          Trong phạm vi tin đã tải — cuộn lịch sử chat để tải thêm nếu cần.
-        </p>
+        <div className="mt-3 flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+  <span className="flex h-7 shrink-0 items-center text-[10px] font-semibold text-muted-foreground">
+    Lọc theo
+  </span>
+
+  {memberSelectOptions.length > 0 ? (
+    <label className="flex h-7 min-w-0 max-w-[140px] items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 shadow-sm dark:border-white/[0.1] dark:bg-white/[0.05]">
+      <User className="h-3 w-3 shrink-0 text-muted-foreground" />
+
+      <select
+        value={senderUserId}
+        onChange={(e) => setSenderUserId(e.target.value)}
+        className="min-w-0 flex-1 truncate border-0 bg-transparent text-[11px] font-medium outline-none"
+      >
+        <option value="">Người gửi</option>
+        {memberSelectOptions.map((opt) => (
+          <option key={opt.userId} value={opt.userId}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  ) : (
+    <button
+      type="button"
+      disabled
+      className="flex h-7 items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 text-[11px] text-muted-foreground opacity-60 dark:border-white/[0.1] dark:bg-white/[0.05]"
+    >
+      <User className="h-3 w-3" />
+      Người gửi
+    </button>
+  )}
+
+  <div className="flex h-7 items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 shadow-sm dark:border-white/[0.1] dark:bg-white/[0.05]">
+    <Calendar className="h-3 w-3 shrink-0 text-muted-foreground" />
+
+    <input
+      type="date"
+      value={dateFilter}
+      onChange={(e) => setDateFilter(e.target.value)}
+      className="w-[105px] border-0 bg-transparent text-[11px] font-medium outline-none"
+    />
+
+    {dateFilter && (
+      <button
+        type="button"
+        onClick={() => setDateFilter("")}
+        className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    )}
+  </div>
+</div>
+        {browseError ? (
+          <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">{browseError}</p>
+        ) : null}
       </div>
 
       <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
-        {needleForUi === '' ? (
+        {!needleForUi && !senderUserId && !dateFilter ? (
           <div className="flex flex-col items-center px-6 py-12 text-center">
             <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-2xl bg-[#0068ff]/10 text-[#0068ff] dark:bg-[#0068ff]/20">
               <Search className="h-12 w-12 stroke-[1.25]" />
             </div>
             <p className="max-w-sm text-sm font-medium leading-relaxed text-muted-foreground">
-              Hãy nhập từ khóa để tìm tin nhắn và file trong trò chuyện
+              {onSelectConversation
+                ? 'Chọn thành viên hoặc ngày để xem tin; có thể thêm từ khóa để thu hẹp. Hoặc chỉ nhập từ khóa để tìm hội thoại / tin.'
+                : 'Chọn thành viên hoặc ngày để xem tin; có thể thêm từ khóa để thu hẹp.'}
               {conversationTitle ? (
                 <span className="mt-1 block truncate text-xs font-semibold text-foreground/80">{conversationTitle}</span>
               ) : null}
             </p>
           </div>
+        ) : totalHits === 0 && !browseLoading ? (
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <Search className="mb-2 h-8 w-8 text-muted-foreground/30" />
+            <p className="text-sm font-medium text-muted-foreground">Không tìm thấy kết quả</p>
+            <p className="mt-1 max-w-xs text-[12px] text-muted-foreground/80">
+              {onSelectConversation
+                ? 'Thử tên hội thoại, nội dung tin hoặc file (trong chat đang mở).'
+                : 'Thử từ khóa khác hoặc cuộn lịch sử để tải thêm tin.'}
+            </p>
+          </div>
         ) : (
           <div className="space-y-6 px-3 py-4 pb-8">
+            {browseLoading ? (
+              <p className="px-1 py-2 text-center text-[12px] font-medium text-muted-foreground">
+                Đang tải tin từ máy chủ theo bộ lọc…
+              </p>
+            ) : null}
+            {onSelectConversation && filteredConversationsDisplay.length > 0 ? (
+              <section>
+                <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">
+                  Hội thoại ({conversationMatchCount})
+                </h4>
+                <ul className="divide-y divide-black/[0.05] overflow-hidden rounded-xl border border-black/[0.06] dark:divide-white/[0.06] dark:border-white/10">
+                  {filteredConversationsDisplay.map((contact) => {
+                    const displayName = contact.name ?? 'Hội thoại';
+                    const preview = formatConversationListLastPreview(contact, currentUserId ?? '');
+                    return (
+                      <li key={contact.conversationId}>
+                        <button
+                          type="button"
+                          onClick={() => pickConversation(contact.conversationId)}
+                          className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                        >
+                          {contact.avatar ? (
+                            <img
+                              src={contact.avatar}
+                              alt=""
+                              className="h-9 w-9 shrink-0 rounded-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/40">
+                              {contact.type === 'group' ? (
+                                <Users className="h-4 w-4 text-blue-600" />
+                              ) : (
+                                <User className="h-4 w-4 text-blue-600" />
+                              )}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[13px] font-semibold text-foreground">
+                              <HighlightMatch text={displayName} needle={needleForUi} />
+                            </p>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              <HighlightMatch text={preview} needle={needleForUi} />
+                            </p>
+                          </div>
+                          {contact.type === 'group' ? (
+                            <Users className="h-3.5 w-3.5 shrink-0 text-blue-600" />
+                          ) : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : null}
+
             <section>
-              <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">Tin nhắn</h4>
+              <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">Tin nhắn (trong hội thoại hiện tại)</h4>
               {messageHits.length === 0 ? (
                 <p className="px-2 py-4 text-center text-[13px] text-muted-foreground">Không có tin nhắn khớp.</p>
               ) : (
