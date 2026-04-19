@@ -2,16 +2,17 @@ import { AnimatePresence, motion } from 'motion/react';
 import { MessageSquare, X } from 'lucide-react';
 import type { IMessage } from '@/types/chat.types';
 import { PinnedRowPreview } from '@/components/chat/PinnedMessagesBar';
+import { MAX_PINNED_CHATS_TO_TOP, MAX_PINNED_PER_CONVERSATION } from '@/components/chat/chatPinConstants';
 
-export const MAX_PINNED_PER_CONVERSATION = 3;
+export { MAX_PINNED_CHATS_TO_TOP, MAX_PINNED_PER_CONVERSATION };
 
 type PinLimitModalProps = {
   open: boolean;
-  /** 3 tin đang ghim (thứ tự MRU: [mới … cũ]). */
+  /** Tin đang ghim (thứ tự MRU: tin ghim gần nhất lên đầu). */
   currentPinned: IMessage[];
   /** Tin sắp ghim thêm. */
   pendingPin: IMessage | null;
-  /** Chỉ số tin trong `currentPinned` sẽ bị bỏ ghim (0…2), null = chưa chọn. */
+  /** Chỉ số tin trong `currentPinned` sẽ bị bỏ ghim, null = chưa chọn. */
   replaceIndex: number | null;
   onReplaceIndexChange: (index: number) => void;
   isSubmitting?: boolean;

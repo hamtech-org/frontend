@@ -109,6 +109,22 @@ export function ChatComposer({
     e.target.value = '';
   };
 
+  const groupDisbanded =
+    activeConversation?.type === 'group' && !!activeConversation.isDeleted;
+
+  if (groupDisbanded) {
+    return (
+      <div className="flex shrink-0 flex-col gap-2 border-t border-black/5 bg-ethereal-bg/80 p-4 backdrop-blur-md dark:border-white/5 dark:bg-midnight-bg/80 sm:p-6">
+        <p className="text-center text-[15px] font-semibold text-slate-700 dark:text-slate-200">
+          Nhóm đã được giải tán
+        </p>
+        <p className="text-center text-sm text-muted-foreground">
+          Không thể gửi tin nhắn mới trong cuộc trò chuyện này.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 sm:p-6 border-t border-black/5 dark:border-white/5 shrink-0 bg-ethereal-bg/80 dark:bg-midnight-bg/80 backdrop-blur-md flex flex-col gap-3">
       {replyingTo && (

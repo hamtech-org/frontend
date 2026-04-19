@@ -1,5 +1,4 @@
-import type { TypingUserEntry } from '@/store/slices/chatSlice';
-import type { IConversation, IMessage, MessageType } from '@/types/chat.types';
+import type { IConversation, IMessage, MessageType, TypingUserEntry } from '@/types/chat.types';
 
 export function decodeJwtUserId(token: string | null): string | null {
   if (!token) return null;
@@ -20,6 +19,18 @@ export function typingLabel(entry: TypingUserEntry): string {
 export function typingInitial(entry: TypingUserEntry): string {
   const ch = typingLabel(entry).trim().slice(0, 1).toUpperCase();
   return ch || '?';
+}
+
+/** Dòng `content` hiển thị trên sidebar / lastMessage (tin đầy đủ từ socket hoặc API). */
+export function lastMessagePreviewContentFromMessage(msg: Pick<IMessage, 'content' | 'type' | 'isRecalled' | 'isDeleted' | 'mediaOriginalName'>): string {
+  if (msg.isRecalled) return 'Tin nhắn đã được thu hồi';
+  if (msg.isDeleted) return 'Tin nhắn đã xóa';
+  const c = (msg.content ?? '').trim();
+  if (c !== '') return msg.content ?? '';
+  if (msg.type === 'image') return 'Hình ảnh';
+  if (msg.type === 'video') return 'Video';
+  if (msg.type === 'file') return msg.mediaOriginalName?.trim() || 'Tệp tin';
+  return msg.content ?? '';
 }
 
 /** Bỏ dạng [Ảnh]/[Video]/[File] từ backend — hiển thị text thuần cho sidebar. */

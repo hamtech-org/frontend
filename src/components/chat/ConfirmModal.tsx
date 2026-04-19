@@ -1,12 +1,14 @@
+import type { ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
 
-export type ConfirmModalVariant = 'primary' | 'danger';
+/** `dangerSoft`: nút xác nhận nền đỏ nhạt chữ đỏ đậm (kiểu Zalo — giải tán nhóm). */
+export type ConfirmModalVariant = 'primary' | 'danger' | 'dangerSoft';
 
 type ConfirmModalProps = {
   open: boolean;
   title: string;
-  description?: string;
+  description?: ReactNode;
   confirmLabel: string;
   cancelLabel?: string;
   variant?: ConfirmModalVariant;
@@ -29,7 +31,9 @@ export function ConfirmModal({
   const confirmClass =
     variant === 'danger'
       ? 'bg-red-600 text-white hover:bg-red-700 shadow-sm'
-      : 'bg-[#0068ff] text-white hover:bg-blue-700 shadow-sm';
+      : variant === 'dangerSoft'
+        ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-950/45 dark:text-red-200 dark:hover:bg-red-900/55'
+        : 'bg-[#0068ff] text-white hover:bg-blue-700 shadow-sm';
 
   return (
     <AnimatePresence>

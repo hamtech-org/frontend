@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
   chatApi,
+  patchMessageInGetMessagesCache,
   useGetConversationsQuery,
   useGetMessagesQuery,
   useSendMessageMutation,
@@ -12,9 +13,12 @@ import {
   useDeleteMessageMutation,
   useRecallMessageMutation,
   useMarkAsReadMutation,
+  useUpdateConversationPreferencesMutation,
   usePinMessageMutation,
   useUnpinMessageMutation,
   useReactMessageMutation,
+  useLeaveGroupMutation,
+  useDeleteGroupMutation,
 } from '@/store/api/chatApi';
 import { useUploadMediaMutation, useUploadMediaMultiMutation, type MediaUploadResult } from '@/store/api/mediaApi';
 import { useSocketContext } from '@/contexts/SocketContext';
@@ -36,8 +40,7 @@ import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
 import { socketService } from '@/services/socket';
 import type { AppDispatch, RootState } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
-import { formatTime } from '@/utils/formatDate';
-import { decodeJwtUserId } from '@/utils/chatUtils';
+import { decodeJwtUserId, lastMessagePreviewContentFromMessage } from '@/utils/chatUtils';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
 import { ConversationListPanel, type ContactsTabId } from '@/components/chat/ConversationListPanel';
 import { FriendsListView } from '@/components/chat/FriendsListView';
@@ -45,12 +48,14 @@ import { AddFriendModal } from '@/components/chat/AddFriendModal';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import { PinnedMessagesBar } from '@/components/chat/PinnedMessagesBar';
 import { ConversationInfoPanel } from '@/components/chat/ConversationInfoPanel';
+import type { MuteNotificationsApplyPayload } from '@/components/chat/MuteNotificationsModal';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { EditMessageDialog } from '@/components/chat/EditMessageDialog';
 import { MarkReadModal } from '@/components/chat/MarkReadModal';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
-import { PinLimitModal, MAX_PINNED_PER_CONVERSATION } from '@/components/chat/PinLimitModal';
+import { PinLimitModal, MAX_PINNED_CHATS_TO_TOP, MAX_PINNED_PER_CONVERSATION } from '@/components/chat/PinLimitModal';
+import { ConversationPinLimitModal } from '@/components/chat/ConversationPinLimitModal';
 import { ProfileModal } from '@/components/chat/ProfileModal';
 import { CreateGroupModal } from '@/components/chat/CreateGroupModal';
 import { PollModal } from '@/components/chat/PollModal';
@@ -98,6 +103,8 @@ type GroupPoll = {
   createdAt: string;
   isClosed?: boolean;
   isMultipleChoice?: boolean;
+  creatorId?: string;
+  creatorDisplayName?: string | null;
 };
 
 type GroupTask = {
@@ -108,6 +115,9 @@ type GroupTask = {
   participants?: string[];
   status: 'todo' | 'in_progress' | 'done';
   dueDate?: string;
+  createdAt?: string;
+  creatorId?: string;
+  creatorDisplayName?: string | null;
 };
 
 type AIRecap = {
@@ -174,6 +184,10 @@ export default function ChatPage() {
     refetch: refetchConversations,
   } = useGetConversationsQuery();
   const conversations = conversationsData?.data ?? [];
+  const conversationsPinnedToTop = useMemo(
+    () => conversations.filter((c) => c.isPinnedToTop),
+    [conversations],
+  );
 
   const activeConversationId = useSelector((state: RootState) => state.chat.activeConversationId);
   const socketMessages = useSelector((state: RootState) => {
@@ -194,9 +208,30 @@ export default function ChatPage() {
 
   const allMessages = useMemo(() => {
     const apiMessages = messagesData?.data ?? [];
-    const merged: IMessage[] = [...apiMessages];
+    const statusRank = (x?: string) => (x === 'read' ? 3 : x === 'delivered' ? 2 : x === 'sent' ? 1 : 0);
+    // Ghép isPinned / status từ buffer socket: khi patch RTK không khớp messageId hoặc refetch chậm, Redux vẫn đúng.
+    const merged: IMessage[] = apiMessages.map((m) => {
+      const mid = String(m.messageId);
+      const sm = socketMessages.find((s) => String(s.messageId) === mid);
+      if (!sm) return m;
+      const pin = Boolean(m.isPinned) || Boolean(sm.isPinned);
+      const bestStatus =
+        statusRank(sm.status) > statusRank(m.status) ? sm.status : m.status ?? sm.status;
+      const readBy = (m.readBy?.length ?? 0) >= (sm.readBy?.length ?? 0) ? m.readBy : sm.readBy;
+      const pinChanged = pin !== Boolean(m.isPinned);
+      const statusChanged = bestStatus !== m.status;
+      const readByChanged = JSON.stringify(readBy ?? []) !== JSON.stringify(m.readBy ?? []);
+      if (!pinChanged && !statusChanged && !readByChanged) return m;
+      return {
+        ...m,
+        isPinned: pin,
+        ...(bestStatus ? { status: bestStatus } : {}),
+        ...(readBy?.length ? { readBy } : {}),
+      };
+    });
     socketMessages.forEach((sm) => {
-      if (!merged.some((m) => m.messageId === sm.messageId)) {
+      const sid = String(sm.messageId);
+      if (!merged.some((m) => String(m.messageId) === sid)) {
         merged.push(sm);
       }
     });
@@ -204,7 +239,10 @@ export default function ChatPage() {
     return merged;
   }, [messagesData, socketMessages]);
 
-  /** Thứ tự ghim MRU (tin ghim gần nhất lên đầu thanh) — giống Zalo. */
+  /**
+   * Thứ tự ghim MRU: tin vừa ghim lên đầu thanh / modal (khớp `pinnedMessagesOrdered`).
+   * Giới hạn số tin ghim: `MAX_PINNED_PER_CONVERSATION` (đồng bộ backend).
+   */
   const [pinnedMessageOrderByConv, setPinnedMessageOrderByConv] = useState<Record<string, string[]>>({});
 
   const { primaryPinnedMessage, otherPinnedMessages } = useMemo(() => {
@@ -256,9 +294,12 @@ export default function ChatPage() {
   const [deleteMessage] = useDeleteMessageMutation();
   const [recallMessage] = useRecallMessageMutation();
   const [markAsRead] = useMarkAsReadMutation();
+  const [updateConversationPreferences] = useUpdateConversationPreferencesMutation();
   const [pinMessage] = usePinMessageMutation();
   const [unpinMessage] = useUnpinMessageMutation();
   const [reactMessage] = useReactMessageMutation();
+  const [leaveGroupMutation] = useLeaveGroupMutation();
+  const [deleteGroupMutation] = useDeleteGroupMutation();
 
   const activeConversation = conversations.find((c) => c.conversationId === activeConversationId);
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
@@ -316,17 +357,14 @@ export default function ChatPage() {
   const [pinLimitModalMsg, setPinLimitModalMsg] = useState<IMessage | null>(null);
   const [pinReplaceIndex, setPinReplaceIndex] = useState<number | null>(null);
   const [pinLimitSubmitting, setPinLimitSubmitting] = useState(false);
+  const [convPinLimitPendingId, setConvPinLimitPendingId] = useState<string | null>(null);
+  const [convPinLimitConfirmBusy, setConvPinLimitConfirmBusy] = useState(false);
+  const [convPinLimitUnpinningId, setConvPinLimitUnpinningId] = useState<string | null>(null);
   const lastMarkReadKeyRef = useRef<string>('');
 
   const patchMessageInCache = useCallback(
     (conversationId: string, messageId: string, patch: Partial<IMessage>) => {
-      dispatch(
-        chatApi.util.updateQueryData('getMessages', { conversationId }, (draft) => {
-          if (!draft.data) return;
-          const m = draft.data.find((x) => x.messageId === messageId);
-          if (m) Object.assign(m, patch);
-        }),
-      );
+      patchMessageInGetMessagesCache(dispatch, conversationId, messageId, patch);
     },
     [dispatch],
   );
@@ -401,6 +439,7 @@ export default function ChatPage() {
   const [showInfo, setShowInfo] = useState(true);
   const [showMarkReadModal, setShowMarkReadModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [conversationSearchRequestTick, setConversationSearchRequestTick] = useState(0);
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [selectedGroupMembers, setSelectedGroupMembers] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
@@ -582,7 +621,7 @@ export default function ChatPage() {
     // Realtime cập nhật thành viên nhóm
     const handleMemberChanged = (data: any) => {
       if (!isCurrentGroup(data)) return;
-      if (activeConversationId) fetchGroupMembers(activeConversationId);
+      refreshMembers();
     };
 
     const handleTaskChanged = (data: unknown) => {
@@ -636,11 +675,11 @@ export default function ChatPage() {
     activeConversationId,
     activeConversation?.type,
     fetchGroupMembers,
+    refetchConversations,
     fetchGroupRequests,
     fetchGroupPolls,
     fetchGroupTasks,
     fetchLatestRecap,
-    refetchConversations,
     dispatch,
   ]);
 
@@ -656,7 +695,7 @@ export default function ChatPage() {
           if (conv) {
             conv.lastMessage = {
               messageId: msg.messageId,
-              content: msg.content,
+              content: lastMessagePreviewContentFromMessage(msg),
               senderId: msg.senderId,
               type: msg.type,
               createdAt: msg.createdAt,
@@ -774,6 +813,23 @@ export default function ChatPage() {
       }
     };
 
+    const handleGroupDisbanded = (data: { conversationId?: string; groupId?: string }) => {
+      const cid = data?.conversationId ?? data?.groupId;
+      if (!cid) return;
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          if (!draft?.data) return;
+          draft.data = draft.data.filter((c) => c.conversationId !== cid);
+        }),
+      );
+      dispatch(chatApi.util.invalidateTags([{ type: 'Messages', id: cid }]));
+      if (cid === activeConversationIdRef.current) {
+        toast.info('Nhóm đã được giải tán');
+        dispatch(setActiveConversation(null));
+        void navigate('/chat', { replace: true });
+      }
+    };
+
     const handleGroupUpdated = (data: any) => {
       console.log('📢 Received group:updated:', data);
       if (!data?.conversationId) return;
@@ -801,6 +857,7 @@ export default function ChatPage() {
     };
 
     socketService.on('message:new', handleNewMessage);
+    socketService.on('group:disbanded', handleGroupDisbanded);
     socketService.on('group:updated', handleGroupUpdated);
     socketService.on('message:edited', handleEditedMessage);
     socketService.on('message:recalled', handleRecalledMessage);
@@ -811,6 +868,7 @@ export default function ChatPage() {
 
     return () => {
       socketService.off('message:new', handleNewMessage);
+      socketService.off('group:disbanded', handleGroupDisbanded);
       socketService.off('group:updated', handleGroupUpdated);
       socketService.off('message:edited', handleEditedMessage);
       socketService.off('message:recalled', handleRecalledMessage);
@@ -819,11 +877,15 @@ export default function ChatPage() {
       socketService.off('message:reaction', handleReactionEvent);
       socketService.off('message:typing', handleTypingEvent);
     };
-  }, [dispatch, patchMessageInCache, fetchGroupMembers, isConnected]);
+  }, [dispatch, patchMessageInCache, fetchGroupMembers, isConnected, navigate]);
 
   useEffect(() => {
     dispatch(setActiveConversation(routeConversationId ?? null));
   }, [routeConversationId, dispatch]);
+
+  useEffect(() => {
+    setShowInChatSearch(false);
+  }, [activeConversationId]);
 
   useEffect(() => {
     if (!routeConversationId) return;
@@ -1080,6 +1142,37 @@ export default function ChatPage() {
     }
   }, [editingMessage, editDraft, editMessage, dispatch, patchMessageInCache]);
 
+  const handleForwardMediaMessage = useCallback(
+    async (targetConversationIds: string[], msg: IMessage, caption: string) => {
+      if (targetConversationIds.length === 0) return;
+      if (
+        !msg.mediaUrl ||
+        (msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'file')
+      ) {
+        toast.error('Không chia sẻ được tin này');
+        throw new Error('invalid');
+      }
+      const text = caption.trim();
+      const content = text.length > 0 ? text : ' ';
+      try {
+        for (const targetConversationId of targetConversationIds) {
+          await sendMessage({
+            conversationId: targetConversationId,
+            type: msg.type,
+            content,
+            mediaUrl: msg.mediaUrl,
+          }).unwrap();
+        }
+        const n = targetConversationIds.length;
+        toast.success(n === 1 ? 'Đã chia sẻ tới 1 hội thoại' : `Đã chia sẻ tới ${n} hội thoại`);
+      } catch {
+        toast.error('Chia sẻ thất bại');
+        throw new Error('send failed');
+      }
+    },
+    [sendMessage],
+  );
+
   const handleRecallMsg = useCallback((msg: IMessage) => {
     setActionMenuMsgId(null);
     setMessageConfirm({ kind: 'recall', msg });
@@ -1172,7 +1265,7 @@ export default function ChatPage() {
               setActionMenuMsgId(null);
               return;
             }
-            toast.error('Đã đủ 3 tin ghim trong cuộc trò chuyện này.');
+            toast.error(`Đã đủ ${MAX_PINNED_PER_CONVERSATION} tin ghim trong cuộc trò chuyện này.`);
             setActionMenuMsgId(null);
             return;
           }
@@ -1313,7 +1406,10 @@ export default function ChatPage() {
     }, 2300);
   }, []);
 
-  const formatMessageTime = (createdAt: string) => formatTime(createdAt);
+  const requestOpenConversationSearch = useCallback(() => {
+    setShowInfo(true);
+    setConversationSearchRequestTick((t) => t + 1);
+  }, []);
 
   const handleToggleGroupMember = useCallback((conversationId: string, checked: boolean) => {
     setSelectedGroupMembers((prev) =>
@@ -1550,43 +1646,50 @@ export default function ChatPage() {
 
   const handleDeleteGroup = useCallback(async () => {
     if (!activeConversationId) return;
-    
-    if (currentUserRole !== 'owner') {
-      toast.error('Chỉ Trưởng nhóm mới có quyền giải tán nhóm');
-      return;
-    }
-
-    if (!window.confirm('Giải tán nhóm?')) return;
-
     setActionBusy('deleteGroup', true);
     try {
-      await apiClient.delete(`/chat/groups/${activeConversationId}`);
-      toast.success('Giải tán nhóm thành công');
+      await deleteGroupMutation(activeConversationId).unwrap();
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          if (!draft?.data) return;
+          draft.data = draft.data.filter((c) => c.conversationId !== activeConversationId);
+        }),
+      );
+      toast.success('Đã giải tán nhóm');
       void navigate('/chat', { replace: true });
-    } catch (error) {
-      toast.error('Không thể giải tán nhóm');
+    } catch (error: unknown) {
+      const msg =
+        (error as { data?: { error?: { message?: string } } })?.data?.error?.message ??
+        (error as { message?: string })?.message;
+      toast.error(typeof msg === 'string' && msg.trim() ? msg : 'Không thể giải tán nhóm');
       console.error('Failed to delete group:', error);
+      throw error;
     } finally {
       setActionBusy('deleteGroup', false);
     }
-  }, [activeConversationId, navigate, setActionBusy]);
+  }, [activeConversationId, deleteGroupMutation, dispatch, navigate, setActionBusy]);
 
-  const handleLeaveGroup = useCallback(async () => {
+  const handleLeaveGroup = useCallback(async (opts?: { newOwnerUserId?: string }) => {
     if (!activeConversationId) return;
-    if (!window.confirm('Bạn chắc chắn muốn rời nhóm?')) return;
-
     setActionBusy('leaveGroup', true);
     try {
-      await apiClient.post(`/chat/groups/${activeConversationId}/leave`);
+      await leaveGroupMutation({
+        groupId: activeConversationId,
+        newOwnerUserId: opts?.newOwnerUserId,
+      }).unwrap();
       toast.success('Đã rời nhóm');
       void navigate('/chat', { replace: true });
-    } catch (error) {
-      toast.error('Không thể rời nhóm');
+    } catch (error: unknown) {
+      const msg =
+        (error as { data?: { error?: { message?: string } } })?.data?.error?.message ??
+        (error as { message?: string })?.message;
+      toast.error(typeof msg === 'string' && msg.trim() ? msg : 'Không thể rời nhóm');
       console.error('Failed to leave group:', error);
+      throw error;
     } finally {
       setActionBusy('leaveGroup', false);
     }
-  }, [activeConversationId, navigate, setActionBusy]);
+  }, [activeConversationId, leaveGroupMutation, navigate, setActionBusy]);
 
   const handleAddMembers = useCallback(
     async (memberIds: string[]) => {
@@ -1624,6 +1727,9 @@ export default function ChatPage() {
       assignees: taskAssignees,
       status: 'todo',
       dueDate: taskDeadline || undefined,
+      createdAt: new Date().toISOString(),
+      creatorId: currentUserId,
+      creatorDisplayName: currentUser?.displayName?.trim() ?? null,
     };
     setGroupTasks((prev) => [optimisticTask, ...prev]);
     try {
@@ -1654,6 +1760,8 @@ export default function ChatPage() {
     closeTaskModal,
     fetchGroupTasks,
     setActionBusy,
+    currentUserId,
+    currentUser?.displayName,
   ]);
 
   const openAISummaryFromPanel = useCallback(async () => {
@@ -1707,6 +1815,8 @@ export default function ChatPage() {
       createdAt: new Date().toISOString(),
       isClosed: false,
       isMultipleChoice: pollMultipleChoice,
+      creatorId: currentUserId,
+      creatorDisplayName: currentUser?.displayName?.trim() ?? null,
     };
     setGroupPolls((prev) => [optimisticPoll, ...prev]);
     try {
@@ -1728,7 +1838,16 @@ export default function ChatPage() {
     } finally {
       setActionBusy('createPoll', false);
     }
-  }, [activeConversationId, pollQuestion, pollOptions, pollMultipleChoice, fetchGroupPolls, setActionBusy]);
+  }, [
+    activeConversationId,
+    pollQuestion,
+    pollOptions,
+    pollMultipleChoice,
+    fetchGroupPolls,
+    setActionBusy,
+    currentUserId,
+    currentUser?.displayName,
+  ]);
 
   const openCreateGroupModal = useCallback(() => {
     setShowCreateGroupModal(true);
@@ -1744,6 +1863,133 @@ export default function ChatPage() {
     }
     setShowAddMembersModal(true);
   }, [activeConversationId, fetchGroupMembers]);
+
+  const handleToggleConversationMute = useCallback(
+    async (conversationId: string) => {
+      const c = conversations.find((x) => x.conversationId === conversationId);
+      if (!(c?.isMuted ?? false)) return;
+      try {
+        await updateConversationPreferences({
+          conversationId,
+          isMuted: false,
+          notificationsMutedUntil: null,
+        }).unwrap();
+        toast.success('Đã bật thông báo');
+      } catch {
+        toast.error('Không thể cập nhật thông báo');
+      }
+    },
+    [conversations, updateConversationPreferences],
+  );
+
+  const handleApplyMuteFromModal = useCallback(
+    async (payload: MuteNotificationsApplyPayload) => {
+      if (!activeConversationId) {
+        toast.error('Không có hội thoại đang mở');
+        throw new Error('no_active');
+      }
+      try {
+        if (payload.kind === 'muteFor') {
+          await updateConversationPreferences({
+            conversationId: activeConversationId,
+            muteFor: payload.muteFor,
+          }).unwrap();
+          toast.success(
+            payload.muteFor === '1h'
+              ? 'Đã tắt thông báo trong 1 giờ'
+              : 'Đã tắt thông báo trong 4 giờ',
+          );
+        } else if (payload.kind === 'untilIso') {
+          await updateConversationPreferences({
+            conversationId: activeConversationId,
+            isMuted: false,
+            notificationsMutedUntil: payload.notificationsMutedUntil,
+          }).unwrap();
+          toast.success('Đã tắt thông báo đến 8:00 sáng');
+        } else {
+          await updateConversationPreferences({
+            conversationId: activeConversationId,
+            isMuted: true,
+          }).unwrap();
+          toast.success('Đã tắt thông báo đến khi bạn bật lại');
+        }
+      } catch {
+        toast.error('Không thể cập nhật thông báo');
+        throw new Error('mute_failed');
+      }
+    },
+    [activeConversationId, updateConversationPreferences],
+  );
+
+  const handleToggleConversationPin = useCallback(
+    async (conversationId: string) => {
+      const c = conversations.find((x) => x.conversationId === conversationId);
+      const next = !(c?.isPinnedToTop ?? false);
+      if (next) {
+        const pinnedTopCount = conversations.filter((x) => x.isPinnedToTop).length;
+        if (!c?.isPinnedToTop && pinnedTopCount >= MAX_PINNED_CHATS_TO_TOP) {
+          setConvPinLimitPendingId(conversationId);
+          return;
+        }
+      }
+      try {
+        await updateConversationPreferences({ conversationId, isPinnedToTop: next }).unwrap();
+        toast.success(next ? 'Đã ghim hội thoại' : 'Đã bỏ ghim hội thoại');
+      } catch (e: unknown) {
+        const err = e as { status?: number; data?: { error?: { message?: string } } };
+        const msg = err?.data?.error?.message ?? '';
+        if (
+          next &&
+          (msg.includes('Chỉ ghim được tối đa') || err.status === 403)
+        ) {
+          setConvPinLimitPendingId(conversationId);
+        } else {
+          toast.error(msg || 'Không thể cập nhật ghim hội thoại');
+        }
+      }
+    },
+    [conversations, updateConversationPreferences],
+  );
+
+  const handleUnpinFromConvPinModal = useCallback(
+    async (targetConversationId: string) => {
+      setConvPinLimitUnpinningId(targetConversationId);
+      try {
+        await updateConversationPreferences({
+          conversationId: targetConversationId,
+          isPinnedToTop: false,
+        }).unwrap();
+        toast.success('Đã bỏ ghim hội thoại');
+      } catch (err: unknown) {
+        const msg = (err as { data?: { error?: { message?: string } } })?.data?.error?.message;
+        toast.error(msg ?? 'Không thể bỏ ghim');
+      } finally {
+        setConvPinLimitUnpinningId(null);
+      }
+    },
+    [updateConversationPreferences],
+  );
+
+  const handleConfirmPendingConvPin = useCallback(async () => {
+    if (!convPinLimitPendingId) return;
+    const pinnedTopCount = conversations.filter((x) => x.isPinnedToTop).length;
+    if (pinnedTopCount >= MAX_PINNED_CHATS_TO_TOP) {
+      toast.info('Vui lòng bỏ ghim ít nhất một hội thoại trước.');
+      return;
+    }
+    const pendingId = convPinLimitPendingId;
+    setConvPinLimitConfirmBusy(true);
+    try {
+      await updateConversationPreferences({ conversationId: pendingId, isPinnedToTop: true }).unwrap();
+      toast.success('Đã ghim hội thoại');
+      setConvPinLimitPendingId(null);
+    } catch (err: unknown) {
+      const msg = (err as { data?: { error?: { message?: string } } })?.data?.error?.message;
+      toast.error(msg ?? 'Không thể ghim hội thoại');
+    } finally {
+      setConvPinLimitConfirmBusy(false);
+    }
+  }, [convPinLimitPendingId, conversations, updateConversationPreferences]);
 
   const handleToggleAddMember = useCallback((userId: string, checked: boolean) => {
     setSelectedAddMembers((prev) =>
@@ -1855,6 +2101,7 @@ export default function ChatPage() {
     try {
       await apiClient.post(`/chat/groups/${activeConversationId}/requests/${userId}/approve`);
       toast.success('Đã duyệt yêu cầu');
+      void refetchConversations();
     } catch (err) {
       setGroupRequests(beforeRequests);
       setGroupMembers(beforeMembers);
@@ -1863,7 +2110,7 @@ export default function ChatPage() {
     } finally {
       setActionBusy('approveRequest', false);
     }
-  }, [activeConversationId, groupRequests, groupMembers, setActionBusy]);
+  }, [activeConversationId, groupRequests, groupMembers, refetchConversations, setActionBusy]);
 
   const handleRejectRequest = useCallback(async (userId: string) => {
     if (!activeConversationId) return;
@@ -1901,7 +2148,7 @@ export default function ChatPage() {
     if (window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) {
       setActionBusy('removeMember', true);
       const before = groupMembers;
-      setGroupMembers((prev) => prev.map((m) => (m.userId === userId ? { ...m, role } : m)));
+      setGroupMembers((prev) => prev.filter((m) => m.userId !== userId));
       try {
         await apiClient.delete(`/chat/groups/${activeConversationId}/members/${userId}`);
         toast.success('Đã xóa thành viên');
@@ -2035,10 +2282,10 @@ export default function ChatPage() {
         onContactsTabChange={setContactsTab}
         onSelectConversation={handleSelectConversation}
         onPickSearchMessage={scrollToMessageBubble}
-        formatMessageTime={formatMessageTime}
         onOpenCreateGroup={openCreateGroupModal}
         onOpenMarkRead={() => setShowMarkReadModal(true)}
         onOpenAddFriend={() => setShowAddFriendModal(true)}
+        onToggleConversationMute={handleToggleConversationMute}
       />
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
@@ -2056,16 +2303,31 @@ export default function ChatPage() {
               onAudioCall={handleAudioCall}
               onVideoCall={handleVideoCall}
               currentUserRole={currentUserRole}
+              resolvedMemberCount={
+                activeConversation?.type === 'group' && groupMembers.length > 0
+                  ? groupMembers.length
+                  : undefined
+              }
+              onSearchMessages={activeConversationId ? requestOpenConversationSearch : undefined}
             />
 
-            {activeConversationId && pinnedMessagesOrdered.length > 0 && (
-              <PinnedMessagesBar
-                key={activeConversationId}
-                pinnedMessages={pinnedMessagesOrdered}
-                onScrollToMessage={scrollToMessageBubble}
-                onTogglePin={handleTogglePinMsg}
-              />
-            )}
+            {activeConversationId &&
+              ((activeConversation?.pinnedMessageCount ?? 0) > 0 || pinnedMessagesOrdered.length > 0) && (
+                <div className="w-full shrink-0">
+                  {pinnedMessagesOrdered.length > 0 ? (
+                    <PinnedMessagesBar
+                      key={activeConversationId}
+                      pinnedMessages={pinnedMessagesOrdered}
+                      onScrollToMessage={scrollToMessageBubble}
+                      onTogglePin={handleTogglePinMsg}
+                    />
+                  ) : (
+                    <div className="w-full shrink-0 border-b border-slate-200 dark:border-slate-700 bg-[#f5f6f8] dark:bg-zinc-800/50 px-3 py-2.5 text-center text-xs text-muted-foreground">
+                      Đang tải danh sách tin ghim…
+                    </div>
+                  )}
+                </div>
+              )}
 
             <ChatMessageList
               messagesContainerRef={messagesContainerRef}
@@ -2103,6 +2365,8 @@ export default function ChatPage() {
                 );
               }}
               onOpenPollVote={(pollId) => openPollVoteModal(pollId)}
+              shareTargetConversations={conversations}
+              onForwardMediaMessage={handleForwardMediaMessage}
             />
 
             <ChatComposer
@@ -2134,12 +2398,28 @@ export default function ChatPage() {
           onOpenAISummaryFromPanel={openAISummaryFromPanel}
           onEditGroup={openEditGroupModal}
           onAddMembers={openAddMembersModal}
+          onOpenCreateGroup={openCreateGroupModal}
+          onToggleMuteNotifications={
+            activeConversationId ? () => void handleToggleConversationMute(activeConversationId) : undefined
+          }
+          onApplyMuteFromModal={
+            activeConversationId ? handleApplyMuteFromModal : undefined
+          }
+          onTogglePinConversation={
+            activeConversationId ? () => void handleToggleConversationPin(activeConversationId) : undefined
+          }
           onRequestJoin={() => void handleRequestJoin()}
           onVotePoll={(pollId, optionIndex) => void handleVotePoll(pollId, optionIndex)}
           onOpenPollVote={(pollId) => openPollVoteModal(pollId)}
           onAddPollOption={(pollId) => void handleAddPollOption(pollId)}
           onClosePoll={(pollId) => void handleClosePoll(pollId)}
           onToggleTask={(taskId) => void handleToggleTaskStatus(taskId)}
+          onOpenPollModalFromPanel={
+            activeConversation?.type === 'group' ? () => setShowPollModal(true) : undefined
+          }
+          onOpenTaskModalFromPanel={
+            activeConversation?.type === 'group' ? () => setShowTaskModal(true) : undefined
+          }
           polls={groupPolls}
           tasks={groupTasks}
           isJoinRequested={groupJoinRequested}
@@ -2149,9 +2429,11 @@ export default function ChatPage() {
             recap: groupLoading.recap || groupActionLoading.generateRecap,
             requestJoin: groupActionLoading.requestJoin,
             updateGroup: groupActionLoading.updateGroup,
+            leaveGroup: groupActionLoading.leaveGroup,
+            deleteGroup: groupActionLoading.deleteGroup,
           }}
-          onLeaveGroup={() => void handleLeaveGroup()}
-          onDeleteGroup={() => void handleDeleteGroup()}
+          onLeaveGroup={handleLeaveGroup}
+          onDeleteGroup={handleDeleteGroup}
           // Modal "Thành viên" đã render ngay trong panel, giữ callback cũ để tương thích nhưng không dùng nữa.
           onOpenMemberModal={() => {}}
           currentUserRole={currentUserRole}
@@ -2167,6 +2449,9 @@ export default function ChatPage() {
             removing: groupActionLoading.removeMember,
             changingRole: groupActionLoading.changeRole,
           }}
+          conversationMessages={allMessages}
+          conversationSearchRequestTick={conversationSearchRequestTick}
+          onJumpToMessage={scrollToMessageBubble}
         />
       )}
 
@@ -2200,6 +2485,21 @@ export default function ChatPage() {
           if (!pinLimitSubmitting) setPinLimitModalMsg(null);
         }}
         onConfirm={handleConfirmPinReplace}
+      />
+      <ConversationPinLimitModal
+        open={convPinLimitPendingId !== null}
+        pendingConversationId={convPinLimitPendingId}
+        pendingName={
+          conversations.find((x) => x.conversationId === convPinLimitPendingId)?.name ?? 'Hội thoại'
+        }
+        pinnedConversations={conversationsPinnedToTop}
+        isConfirming={convPinLimitConfirmBusy}
+        unpinningConversationId={convPinLimitUnpinningId}
+        onClose={() => {
+          if (!convPinLimitConfirmBusy && !convPinLimitUnpinningId) setConvPinLimitPendingId(null);
+        }}
+        onUnpinConversation={(id) => void handleUnpinFromConvPinModal(id)}
+        onConfirmPinPending={() => void handleConfirmPendingConvPin()}
       />
       <ConfirmModal
         open={messageConfirm !== null}

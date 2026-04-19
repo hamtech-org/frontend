@@ -18,6 +18,7 @@ import {
   mediaThumbSrcForPinnedRow,
 } from '@/utils/chatUtils';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
+import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/chatPinConstants';
 
 type PinnedMessagesBarProps = {
   pinnedMessages: IMessage[];
@@ -227,7 +228,7 @@ export function PinnedMessagesBar({
   onTogglePin,
 }: PinnedMessagesBarProps) {
   const total = pinnedMessages.length;
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   if (total === 0) return null;
 
@@ -239,11 +240,13 @@ export function PinnedMessagesBar({
           className="w-full px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 text-left rounded-none transition-all duration-200 hover:bg-slate-200/60 dark:hover:bg-zinc-700/60 hover:shadow-[inset_0_0_0_1px_rgba(0,104,255,0.15)] active:scale-[0.998]"
           onClick={() => setExpanded(true)}
         >
-          <span className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-            <span className="inline-flex w-7 h-7 rounded-full bg-[#0068ff] items-center justify-center shrink-0">
-              <MessageSquare className="w-3.5 h-3.5 text-white" strokeWidth={2} />
+          <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 sm:flex-row sm:items-center sm:gap-2">
+            <span className="inline-flex items-center gap-2 shrink-0">
+              <span className="inline-flex w-7 h-7 rounded-full bg-[#0068ff] items-center justify-center shrink-0">
+                <MessageSquare className="w-3.5 h-3.5 text-white" strokeWidth={2} />
+              </span>
+              <span className="whitespace-nowrap">Danh sách ghim ({total})</span>
             </span>
-            Danh sách ghim ({total})
           </span>
           <span className="text-[13px] text-slate-600 dark:text-slate-400 flex items-center gap-1 shrink-0">
             Mở rộng
@@ -257,7 +260,14 @@ export function PinnedMessagesBar({
   return (
     <div className="w-full shrink-0 flex flex-col border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-zinc-900">
       <div className="flex items-center justify-between gap-2 px-3 sm:px-6 py-2 bg-[#f5f6f8] dark:bg-zinc-800/80 border-b border-slate-200/90 dark:border-slate-700/90">
-        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Danh sách ghim ({total})</h3>
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-sm font-semibold text-slate-800 dark:text-slate-100 sm:flex-row sm:items-center sm:gap-2">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+            Danh sách ghim ({total})
+          </h3>
+          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            Tối đa {MAX_PINNED_PER_CONVERSATION} tin nhắn
+          </p>
+        </div>
         <button
           type="button"
           className="text-[13px] font-medium text-slate-600 dark:text-slate-300 hover:text-[#0068ff] dark:hover:text-blue-300 flex items-center gap-1 py-1 px-1.5 rounded-md hover:bg-slate-200/70 dark:hover:bg-slate-700/60 transition-colors"

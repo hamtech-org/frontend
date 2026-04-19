@@ -9,6 +9,7 @@ import type {
 import type { ApiSuccessResponse } from '@/types/api.types';
 import type { AppDispatch } from '@/store/store';
 import { baseQueryWithReauth } from './baseQuery';
+import { lastMessagePreviewContentFromMessage } from '@/utils/chatUtils';
 
 // ─── Request types ─────────────────────────────────────────────────────────────
 
@@ -56,6 +57,14 @@ export interface RecallMessageRequest {
 export interface MarkAsReadRequest {
   conversationId: string;
   messageId: string;
+}
+
+export interface UpdateConversationPreferencesRequest {
+  conversationId: string;
+  isMuted?: boolean;
+  isPinnedToTop?: boolean;
+  notificationsMutedUntil?: string | null;
+  muteFor?: '1h' | '4h' | '8h';
 }
 
 export interface PinMessageRequest {
@@ -120,16 +129,7 @@ export function patchConversationsFromNewMessage(
       if (!draft?.data) return;
       const conv = draft.data.find((c) => c.conversationId === msg.conversationId);
       if (!conv) return;
-      const previewContent =
-        msg.content?.trim() !== ''
-          ? msg.content
-          : msg.type === 'image'
-            ? '[Ảnh]'
-            : msg.type === 'video'
-              ? '[Video]'
-              : msg.type === 'file'
-                ? '[File]'
-                : msg.content;
+      const previewContent = lastMessagePreviewContentFromMessage(msg);
       const alreadySamePreview =
         conv.lastMessage &&
         conv.lastMessage.content === previewContent &&
@@ -146,6 +146,23 @@ export function patchConversationsFromNewMessage(
       if (msg.conversationId !== activeConversationId && !alreadySamePreview) {
         conv.unreadCount = (conv.unreadCount ?? 0) + 1;
       }
+    }),
+  );
+}
+
+/** Cập nhật một tin trong cache `getMessages` (so khớp messageId kiểu string để tránh lệch kiểu). */
+export function patchMessageInGetMessagesCache(
+  dispatch: AppDispatch,
+  conversationId: string,
+  messageId: string,
+  patch: Partial<IMessage>,
+): void {
+  const mid = String(messageId);
+  dispatch(
+    chatApi.util.updateQueryData('getMessages', { conversationId }, (draft) => {
+      if (!draft.data) return;
+      const m = draft.data.find((x) => String(x.messageId) === mid);
+      if (m) Object.assign(m, patch);
     }),
   );
 }
@@ -277,6 +294,21 @@ export const chatApi = createApi({
         method: 'POST',
         body: { messageId },
       }),
+      invalidatesTags: (_r, _e, { conversationId }) => [
+        'Conversations',
+        { type: 'Messages', id: conversationId },
+      ],
+    }),
+
+    updateConversationPreferences: builder.mutation<
+      ApiSuccessResponse<null>,
+      UpdateConversationPreferencesRequest
+    >({
+      query: ({ conversationId, ...body }) => ({
+        url: `/chat/conversations/${conversationId}/preferences`,
+        method: 'PATCH',
+        body,
+      }),
       invalidatesTags: ['Conversations'],
     }),
 
@@ -288,6 +320,7 @@ export const chatApi = createApi({
       }),
       invalidatesTags: (_result, _error, { conversationId }) => [
         { type: 'Messages', id: conversationId },
+        'Conversations',
       ],
     }),
 
@@ -301,6 +334,7 @@ export const chatApi = createApi({
       },
       invalidatesTags: (_result, _error, { conversationId }) => [
         { type: 'Messages', id: conversationId },
+        'Conversations',
       ],
     }),
 
@@ -333,10 +367,14 @@ export const chatApi = createApi({
       invalidatesTags: ['Conversations'],
     }),
 
-    leaveGroup: builder.mutation<ApiSuccessResponse<null>, string>({
-      query: (groupId) => ({
+    leaveGroup: builder.mutation<
+      ApiSuccessResponse<null>,
+      { groupId: string; newOwnerUserId?: string }
+    >({
+      query: ({ groupId, newOwnerUserId }) => ({
         url: `/chat/groups/${groupId}/leave`,
         method: 'POST',
+        body: newOwnerUserId ? { newOwnerUserId } : {},
       }),
       invalidatesTags: ['Conversations'],
     }),
@@ -469,6 +507,7 @@ export const {
   useDeleteMessageMutation,
   useRecallMessageMutation,
   useMarkAsReadMutation,
+  useUpdateConversationPreferencesMutation,
   usePinMessageMutation,
   useUnpinMessageMutation,
   useReactMessageMutation,

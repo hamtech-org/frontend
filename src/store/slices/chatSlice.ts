@@ -1,10 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import type { IConversation, IMessage, MessageStatus } from '@/types/chat.types';
-
-export interface TypingUserEntry {
-  userId: string;
-  displayName: string;
-}
+import type { IConversation, IMessage, MessageStatus, TypingUserEntry } from '@/types/chat.types';
+import { lastMessagePreviewContentFromMessage } from '@/utils/chatUtils';
 
 interface ChatState {
   conversations: IConversation[];
@@ -58,7 +54,7 @@ const chatSlice = createSlice({
       if (conv && !exists) {
         conv.lastMessage = {
           messageId: msg.messageId,
-          content: msg.content,
+          content: lastMessagePreviewContentFromMessage(msg),
           senderId: msg.senderId,
           type: msg.type,
           createdAt: msg.createdAt,

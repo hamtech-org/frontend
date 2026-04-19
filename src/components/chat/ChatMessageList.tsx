@@ -1,6 +1,7 @@
 import { useState, useCallback, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
+  Check,
   CheckCheck,
   CalendarClock,
   ClipboardList,
@@ -23,14 +24,15 @@ import {
   CircleCheck,
   Image as LucideImage,
 } from 'lucide-react';
-import type { IConversation, IMessage, IReplyToDetails } from '@/types/chat.types';
-import type { TypingUserEntry } from '@/store/slices/chatSlice';
+import type { IConversation, IMessage, IReplyToDetails, MessageStatus } from '@/types/chat.types';
+import type { TypingUserEntry } from '@/types/chat.types';
 import { formatTime, formatDate } from '@/utils/formatDate';
 import { typingInitial, typingLabel } from '@/utils/chatUtils';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { MediaLightbox } from '@/components/chat/MediaLightbox';
 import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMenu';
+import { ForwardMediaPickerModal } from '@/components/chat/ForwardMediaPickerModal';
 import { formatFileSize } from '@/utils/fileHelper';
 import { apiClient } from '@/services/api';
 import { toast } from 'react-toastify';
@@ -53,6 +55,53 @@ async function downloadAuthedFile(url: string, filename: string): Promise<boolea
   } catch {
     return false;
   }
+}
+
+/** Trạng thái gửi/nhận/đã xem (Zalo) — chỉ tin của mình; nhóm chỉ hiện «đã gửi». */
+function OutgoingDeliveryTicks({
+  status,
+  convIsDirect,
+  isMe,
+}: {
+  status?: MessageStatus;
+  convIsDirect: boolean;
+  isMe: boolean;
+}) {
+  const s = status ?? 'sent';
+  if (!convIsDirect) {
+    const mono = isMe ? 'text-white/75' : 'text-muted-foreground';
+    return (
+      <Check className={`w-3 h-3 shrink-0 ${mono}`} strokeWidth={2.5} title="Đã gửi" aria-label="Đã gửi" />
+    );
+  }
+  if (s === 'sent') {
+    return (
+      <Check
+        className={`w-3 h-3 shrink-0 ${isMe ? 'text-white/75' : 'text-muted-foreground'}`}
+        strokeWidth={2.5}
+        title="Đã gửi"
+        aria-label="Đã gửi"
+      />
+    );
+  }
+  if (s === 'delivered') {
+    return (
+      <CheckCheck
+        className={`w-3 h-3 shrink-0 ${isMe ? 'text-white/85' : 'text-slate-400 dark:text-slate-500'}`}
+        strokeWidth={2.5}
+        title="Đã nhận"
+        aria-label="Đã nhận"
+      />
+    );
+  }
+  return (
+    <CheckCheck
+      className={`w-3 h-3 shrink-0 ${isMe ? 'text-sky-200' : 'text-blue-500 dark:text-blue-400'}`}
+      strokeWidth={2.5}
+      title="Đã xem"
+      aria-label="Đã xem"
+    />
+  );
 }
 
 function isRichMediaMessage(msg: IMessage): boolean {
@@ -294,6 +343,9 @@ export type ChatMessageListProps = {
   jumpFlashNonce?: number;
   /** Cuộn tới tin + bật highlight (ưu tiên hơn scroll nội bộ — dùng cho trích dẫn trả lời). */
   onJumpToMessage?: (messageId: string) => void;
+  /** Danh sách hội thoại để gửi tiếp ảnh/video sang chat khác. */
+  shareTargetConversations: IConversation[];
+  onForwardMediaMessage: (targetConversationIds: string[], message: IMessage, caption: string) => Promise<void>;
 };
 
 export function ChatMessageList({
@@ -320,6 +372,8 @@ export function ChatMessageList({
   jumpHighlightMessageId = null,
   jumpFlashNonce = 0,
   onJumpToMessage,
+  shareTargetConversations,
+  onForwardMediaMessage,
 }: ChatMessageListProps) {
   const scrollToMessage = (messageId: string) => {
     if (onJumpToMessage) {
@@ -374,6 +428,7 @@ export function ChatMessageList({
     msg: IMessage;
     kind: 'image' | 'video';
   } | null>(null);
+  const [forwardMediaMessage, setForwardMediaMessage] = useState<IMessage | null>(null);
 
   const copyImageToClipboard = useCallback(async (url: string) => {
     try {
@@ -392,20 +447,6 @@ export function ChatMessageList({
       toast.success('Đã copy hình ảnh');
     } catch {
       toast.error('Không copy được hình ảnh');
-    }
-  }, []);
-
-  const shareConversationFromMenu = useCallback(async () => {
-    const url = window.location.href;
-    try {
-      if (typeof navigator !== 'undefined' && navigator.share) {
-        await navigator.share({ title: document.title, url });
-      } else {
-        await navigator.clipboard.writeText(url);
-        toast.success('Đã copy link hội thoại');
-      }
-    } catch {
-      /* người dùng hủy chia sẻ */
     }
   }, []);
 
@@ -820,6 +861,17 @@ export function ChatMessageList({
                               }`
                         }
                       >
+                        {Boolean(msg.isPinned) && !msg.isDeleted && !msg.isRecalled && (
+                          <span
+                            className={`pointer-events-none absolute z-20 flex h-6 w-6 items-center justify-center rounded-full border border-amber-200/95 bg-amber-50 text-amber-700 shadow-sm dark:border-amber-700 dark:bg-amber-950/90 dark:text-amber-200 ${
+                              isWideMediaBubble ? 'left-2 top-2' : '-right-0.5 -top-1.5'
+                            }`}
+                            title="Tin nhắn đã ghim"
+                            aria-label="Tin nhắn đã ghim"
+                          >
+                            <Pin className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
+                          </span>
+                        )}
                         {msg.replyToDetails && (
                           <ReplyQuoteStrip
                             details={msg.replyToDetails}
@@ -1132,7 +1184,7 @@ export function ChatMessageList({
                         {canPinMessage(msg) && (
                           <button
                             type="button"
-                            title={msg.isPinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'}
+                            title={Boolean(msg.isPinned) ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'}
                             onClick={(e) => {
                               e.stopPropagation();
                               void onTogglePin(msg);
@@ -1141,11 +1193,11 @@ export function ChatMessageList({
                           >
                             <Pin
                               className={`w-3.5 h-3.5 ${
-                                msg.isPinned
+                                Boolean(msg.isPinned)
                                   ? 'text-[#0068ff] dark:text-blue-400 fill-blue-500/25'
                                   : 'text-muted-foreground hover:text-[#0068ff] dark:hover:text-blue-400'
                               }`}
-                              strokeWidth={msg.isPinned ? 2.25 : 2}
+                              strokeWidth={Boolean(msg.isPinned) ? 2.25 : 2}
                             />
                           </button>
                         )}
@@ -1205,13 +1257,42 @@ export function ChatMessageList({
 
                   {showMeta && (
                     <div
-                      className={`flex items-center gap-1 mt-1 px-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
+                      className={`mt-1 px-1 ${isMe ? 'flex flex-col items-end gap-0.5' : 'flex flex-row items-center gap-1'}`}
                     >
-                      <span className="text-[10px] text-muted-foreground/70">
-                        {formatTime(msg.createdAt)}
-                      </span>
-                      {isMe && !msg.isRecalled && !msg.isDeleted && (
-                        <CheckCheck className="w-3 h-3 text-blue-400" />
+                      <div
+                        className={`flex items-center gap-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
+                      >
+                        <span className="text-[10px] text-muted-foreground/70">
+                          {formatTime(msg.createdAt)}
+                        </span>
+                        {isMe && !msg.isRecalled && !msg.isDeleted && (
+                          <OutgoingDeliveryTicks
+                            status={msg.status}
+                            convIsDirect={activeConversation?.type === 'direct'}
+                            isMe={isMe}
+                          />
+                        )}
+                      </div>
+                      {isMe && !msg.isRecalled && !msg.isDeleted && msg.readBy && msg.readBy.length > 0 && (
+                        <div
+                          className="flex flex-wrap items-center justify-end gap-x-1 gap-y-0 max-w-[min(100%,280px)]"
+                          title={msg.readBy
+                            .map((r) => (r.displayName?.trim() ? r.displayName : 'Thành viên'))
+                            .join(', ')}
+                        >
+                          <span className="text-[10px] text-white/65 shrink-0">Đã xem</span>
+                          {msg.readBy.slice(0, 6).map((r) => (
+                            <span
+                              key={r.userId}
+                              className="text-[10px] font-semibold text-white/90 truncate max-w-[100px]"
+                            >
+                              {r.displayName?.trim() || 'Người dùng'}
+                            </span>
+                          ))}
+                          {msg.readBy.length > 6 ? (
+                            <span className="text-[10px] text-white/65">+{msg.readBy.length - 6}</span>
+                          ) : null}
+                        </div>
                       )}
                     </div>
                   )}
@@ -1293,7 +1374,10 @@ export function ChatMessageList({
               onReply={() => {
                 onReply(mediaContextMenu.msg);
               }}
-              onShare={() => void shareConversationFromMenu()}
+              onShare={() => {
+                if (!mediaContextMenu) return;
+                setForwardMediaMessage(mediaContextMenu.msg);
+              }}
               onCopyImage={() => void copyImageToClipboard(imageDisplaySrc(mediaContextMenu.msg))}
               onSaveToDevice={() =>
                 void handleMediaDownload(
@@ -1306,18 +1390,21 @@ export function ChatMessageList({
                 )
               }
               onTogglePin={() => void onTogglePin(mediaContextMenu.msg)}
-              onMarkStar={() => toast.info('Đánh dấu tin nhắn — đang phát triển')}
-              onSelectMultiple={() => toast.info('Chọn nhiều tin nhắn — đang phát triển')}
-              onViewDetails={() =>
-                toast.info(
-                  `Tin nhắn: ${mediaContextMenu.msg.messageId.slice(0, 8)}… · ${formatTime(mediaContextMenu.msg.createdAt)}`,
-                  { autoClose: 4000 },
-                )
-              }
               onRecall={() => void onRecall(mediaContextMenu.msg)}
               onDeleteForMe={() => void onDelete(mediaContextMenu.msg)}
             />
           )}
+          <ForwardMediaPickerModal
+            open={forwardMediaMessage !== null}
+            onClose={() => setForwardMediaMessage(null)}
+            conversations={shareTargetConversations}
+            excludeConversationId={activeConversationId}
+            message={forwardMediaMessage}
+            onShare={async (conversationIds, caption) => {
+              if (!forwardMediaMessage) return;
+              await onForwardMediaMessage(conversationIds, forwardMediaMessage, caption);
+            }}
+          />
         </>
       )}
     </div>

@@ -3,13 +3,10 @@ import { createPortal } from 'react-dom';
 import {
   Download,
   Image as ImageIcon,
-  Info,
-  List,
   Pin,
   Reply,
   RotateCcw,
   Share2,
-  Star,
   Trash2,
 } from 'lucide-react';
 
@@ -28,9 +25,6 @@ type ImageMessageContextMenuProps = {
   onCopyImage: () => void;
   onSaveToDevice: () => void;
   onTogglePin: () => void;
-  onMarkStar: () => void;
-  onSelectMultiple: () => void;
-  onViewDetails: () => void;
   onRecall: () => void;
   onDeleteForMe: () => void;
 };
@@ -83,16 +77,13 @@ export function ImageMessageContextMenu({
   onCopyImage,
   onSaveToDevice,
   onTogglePin,
-  onMarkStar,
-  onSelectMultiple,
-  onViewDetails,
   onRecall,
   onDeleteForMe,
 }: ImageMessageContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const pad = 8;
   const estW = 268;
-  const estH = mediaKind === 'video' ? 360 : 400;
+  const estH = mediaKind === 'video' ? 280 : 320;
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
   const left = Math.min(Math.max(pad, anchorX), vw - estW - pad);
@@ -152,9 +143,6 @@ export function ImageMessageContextMenu({
             onClose();
           }}
         />
-        <MenuRow icon={Star} label="Đánh dấu tin nhắn" onClick={() => { onMarkStar(); onClose(); }} />
-        <MenuRow icon={List} label="Chọn nhiều tin nhắn" onClick={() => { onSelectMultiple(); onClose(); }} />
-        <MenuRow icon={Info} label="Xem chi tiết" onClick={() => { onViewDetails(); onClose(); }} />
         <Divider />
         {isMe && (
           <MenuRow
