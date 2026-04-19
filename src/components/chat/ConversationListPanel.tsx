@@ -1,8 +1,22 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, MessageCircle, MoreHorizontal, Search, User, UserPlus, Users } from 'lucide-react';
+import {
+  BellOff,
+  ChevronDown,
+  Image,
+  MessageCircle,
+  MoreHorizontal,
+  Paperclip,
+  Pin,
+  Search,
+  User,
+  UserPlus,
+  Users,
+  Video,
+} from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
-import { formatConversationListLastPreview } from '@/utils/chatUtils';
+import { formatConversationListLastPreview, parseConversationListMediaPreview } from '@/utils/chatUtils';
+import { formatZaloConversationTime } from '@/utils/formatDate';
 import { ContactsManagementPanel, type ContactsTabId } from '@/components/chat/ContactsManagementPanel';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 
@@ -18,15 +32,32 @@ type ConversationListPanelProps = {
   onContactsTabChange: (tab: ContactsTabId) => void;
   onSelectConversation: (conversationId: string) => void;
   onPickSearchMessage?: (messageId: string) => void;
-  formatMessageTime: (createdAt: string) => string;
   onOpenCreateGroup: () => void;
   onOpenMarkRead: () => void;
   onOpenAddFriend?: () => void;
+  onToggleConversationMute?: (conversationId: string) => void;
+  /** Tuỳ chọn: ghi đè formatter (mặc định Zalo + tick mỗi phút). */
+  formatMessageTime?: (createdAt: string) => string;
 };
 
-// Sort conversations by lastMessage.createdAt desc
-function sortConversationsByLastMessage(convs: IConversation[]) {
+function formatUnreadBadge(n: number): string {
+  if (n > 99) return '99+';
+  if (n > 9) return '9+';
+  return String(n);
+}
+
+/**
+ * Ghim hội thoại lên đầu trước; tiếp theo ưu tiên hội thoại có nhiều tin ghim hơn;
+ * cuối cùng theo tin nhắn gần nhất.
+ */
+function sortConversationsForSidebar(convs: IConversation[]) {
   return [...convs].sort((a, b) => {
+    const ap = a.isPinnedToTop ? 1 : 0;
+    const bp = b.isPinnedToTop ? 1 : 0;
+    if (bp !== ap) return bp - ap;
+    const aPins = a.pinnedMessageCount ?? 0;
+    const bPins = b.pinnedMessageCount ?? 0;
+    if (bPins !== aPins) return bPins - aPins;
     const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
     const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
     return bTime - aTime;
@@ -42,12 +73,30 @@ export function ConversationListPanel({
   onContactsTabChange,
   onSelectConversation,
   onPickSearchMessage,
-  formatMessageTime,
   onOpenCreateGroup,
   onOpenMarkRead,
   onOpenAddFriend,
+  onToggleConversationMute,
+  formatMessageTime: formatMessageTimeProp,
 }: ConversationListPanelProps) {
-  const { core: { currentUserId, activeConversationId } } = useChatPageContext();
+  const {
+    core: { currentUserId, activeConversationId },
+  } = useChatPageContext();
+
+  const [listTimeNow, setListTimeNow] = useState(() => new Date());
+  useEffect(() => {
+    const tick = () => setListTimeNow(new Date());
+    const id = window.setInterval(tick, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
   const blurCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -60,9 +109,15 @@ export function ConversationListPanel({
 
   const q = searchQuery.trim().toLowerCase();
 
+  /** Nhóm đã giải tán không còn trong sidebar (đồng bộ với API đã lọc `isDeleted`). */
+  const listableConversations = useMemo(
+    () => conversations.filter((c) => !(c.type === 'group' && c.isDeleted)),
+    [conversations],
+  );
+
   const filteredConversations = useMemo(() => {
     if (!q) return [];
-    return conversations.filter((c) => {
+    return listableConversations.filter((c) => {
       const name = (c.name ?? '').toLowerCase();
       const preview = formatConversationListLastPreview(c, currentUserId).toLowerCase();
       return (
@@ -71,7 +126,7 @@ export function ConversationListPanel({
         c.conversationId.toLowerCase().includes(q)
       );
     });
-  }, [conversations, q, currentUserId]);
+  }, [listableConversations, q, currentUserId]);
 
   const filteredMessages = useMemo(() => {
     if (!q || !activeConversationId || !activeMessages.length) return [];
@@ -292,17 +347,28 @@ export function ConversationListPanel({
             </div>
           )}
           {!convsLoading &&
-            sortConversationsByLastMessage(conversations).map((conv, index) => {
+            sortConversationsForSidebar(listableConversations).map((conv, index) => {
               const isActive = activeConversationId === conv.conversationId;
               const hasUnread = (conv.unreadCount ?? 0) > 0;
               const isGroup = conv.type === 'group';
+              const isMuted = !!conv.isMuted;
+              const hasPinnedMessages = (conv.pinnedMessageCount ?? 0) > 0;
+              const isConvPinnedToTop = !!conv.isPinnedToTop;
+              /** Chỉ icon ghim hội thoại lên đầu; tin ghim trong chat không dùng icon này (tránh nhầm giới hạn 5). */
+              const showConvPinIcon = isConvPinnedToTop;
               const displayName = conv.name ?? 'Hội thoại';
               const lastMsgText = formatConversationListLastPreview(conv, currentUserId);
+              const lastMsgType = conv.lastMessage?.type;
+              const lastPreviewParts =
+                lastMsgType === 'image' || lastMsgType === 'video' || lastMsgType === 'file'
+                  ? parseConversationListMediaPreview(lastMsgText, lastMsgType)
+                  : { prefix: '', suffix: '' };
               const lastMsgTime = conv.lastMessage?.createdAt
-                ? formatMessageTime(conv.lastMessage.createdAt)
+                ? (formatMessageTimeProp?.(conv.lastMessage.createdAt) ??
+                    formatZaloConversationTime(conv.lastMessage.createdAt, listTimeNow))
                 : '';
               return (
-                <motion.button
+                <motion.div
                   key={conv.conversationId}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -310,60 +376,131 @@ export function ConversationListPanel({
                   transition={{ duration: 0.4, ease: 'easeOut', delay: Math.min(index * 0.03, 0.3) }}
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => onSelectConversation(conv.conversationId)}
-                  className={`w-full p-3 rounded-2xl flex items-center gap-3 transition-colors group ${isActive ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'hover:bg-muted'}`}
+                  className={`w-full p-3 rounded-2xl flex items-center gap-2 transition-colors group ${isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
                 >
-                  <div className="relative shrink-0">
-                    {conv.avatar ? (
-                      <img
-                        src={conv.avatar}
-                        alt={displayName}
-                        className="size-11 rounded-full object-cover border-2 border-inherit"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="size-11 rounded-full bg-primary/10 flex items-center justify-center border-2 border-inherit">
-                        {isGroup ? (
-                          <Users className="size-5 text-primary" />
-                        ) : (
-                          <User className="size-5 text-primary" />
-                        )}
-                      </div>
-                    )}
-                    {isGroup && (
-                      <div className="absolute bottom-0 right-0 size-3.5 bg-primary rounded-full border-2 border-inherit flex items-center justify-center">
-                        <Users className="size-2 text-primary-foreground" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 text-left overflow-hidden">
-                    <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => onSelectConversation(conv.conversationId)}
+                    className="flex flex-1 min-w-0 items-center gap-3 text-left rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                  >
+                    <div className="relative shrink-0">
+                      {conv.avatar ? (
+                        <img
+                          src={conv.avatar}
+                          alt={displayName}
+                          className="w-11 h-11 rounded-full object-cover border-2 border-inherit"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-11 h-11 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center border-2 border-inherit">
+                          {isGroup ? (
+                            <Users className="w-5 h-5 text-blue-600" />
+                          ) : (
+                            <User className="w-5 h-5 text-blue-600" />
+                          )}
+                        </div>
+                      )}
+                      {isGroup && (
+                        <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-blue-600 rounded-full border-2 border-inherit flex items-center justify-center">
+                          <Users className="w-2 h-2 text-white" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 text-left overflow-hidden min-w-0">
                       <p className="text-[15px] font-bold truncate">{displayName}</p>
                       <p
-                        className={`text-[11px] font-medium ${isActive ? 'text-white/70' : 'text-muted-foreground'}`}
+                        className={`text-[13px] mt-0.5 flex items-center gap-1 min-w-0 ${
+                          isActive
+                            ? 'text-white/80'
+                            : hasUnread
+                              ? 'font-semibold text-foreground'
+                              : 'text-black/50 dark:text-white/50'
+                        }`}
+                      >
+                        {lastMsgType === 'image' ||
+                        lastMsgType === 'video' ||
+                        lastMsgType === 'file' ? (
+                          <>
+                            {lastPreviewParts.prefix ? (
+                              <span className="shrink-0">{lastPreviewParts.prefix}</span>
+                            ) : null}
+                            {lastMsgType === 'image' && (
+                              <Image
+                                className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white/90' : 'text-blue-500'}`}
+                                aria-hidden
+                              />
+                            )}
+                            {lastMsgType === 'video' && (
+                              <Video
+                                className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white/90' : 'text-violet-500'}`}
+                                aria-hidden
+                              />
+                            )}
+                            {lastMsgType === 'file' && (
+                              <Paperclip
+                                className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white/90' : 'text-slate-600 dark:text-slate-400'}`}
+                                aria-hidden
+                              />
+                            )}
+                            {lastPreviewParts.suffix ? (
+                              <span className="truncate min-w-0">{lastPreviewParts.suffix}</span>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="truncate min-w-0">{lastMsgText}</span>
+                        )}
+                      </p>
+                    </div>
+                  </button>
+                  <div className="shrink-0 flex flex-col items-end gap-1 self-stretch justify-between py-0.5 pl-1 min-w-[52px]">
+                    <div className="flex items-center gap-1 justify-end w-full">
+                      {isMuted && onToggleConversationMute && (
+                        <button
+                          type="button"
+                          title="Bật thông báo"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleConversationMute(conv.conversationId);
+                          }}
+                          className={`p-0.5 rounded-md shrink-0 transition-colors ${isActive ? 'hover:bg-white/15' : 'hover:bg-black/10 dark:hover:bg-white/10'}`}
+                        >
+                          <BellOff
+                            className={`w-3.5 h-3.5 ${isActive ? 'text-white/70' : 'text-zinc-500 dark:text-zinc-400'}`}
+                            strokeWidth={1.75}
+                            aria-hidden
+                          />
+                        </button>
+                      )}
+                      <p
+                        className={`text-[11px] font-medium tabular-nums shrink-0 ${isActive ? 'text-white/70' : 'text-muted-foreground'}`}
                       >
                         {lastMsgTime}
                       </p>
                     </div>
-                    <p
-                      className={`text-[13px] truncate mt-0.5 ${
-                        isActive
-                          ? 'text-white/80'
-                          : hasUnread
-                            ? 'font-semibold text-foreground'
-                            : 'text-muted-foreground'
-                      }`}
-                    >
-                      {lastMsgText}
-                    </p>
+                    {showConvPinIcon && (
+                      <div
+                        className="flex items-center justify-end w-full gap-0.5"
+                        title={
+                          hasPinnedMessages
+                            ? 'Ghim hội thoại (có tin ghim trong chat)'
+                            : 'Ghim hội thoại lên đầu danh sách'
+                        }
+                      >
+                        <span className="p-0.5 rounded-md shrink-0 pointer-events-none" aria-hidden>
+                          <Pin
+                            className={`w-3.5 h-3.5 ${isActive ? 'text-white/85' : 'text-zinc-600 dark:text-zinc-400'}`}
+                            strokeWidth={1.75}
+                          />
+                        </span>
+                      </div>
+                    )}
+                    {(conv.unreadCount ?? 0) > 0 && !isActive && (
+                      <div className="min-h-[18px] min-w-[18px] px-1 rounded-full bg-zinc-500/85 dark:bg-zinc-400/90 flex items-center justify-center text-[10px] font-bold text-white leading-none">
+                        {formatUnreadBadge(conv.unreadCount ?? 0)}
+                      </div>
+                    )}
                   </div>
-                  {(conv.unreadCount ?? 0) > 0 && !isActive && (
-                    <div className="size-4 bg-primary rounded-full flex items-center justify-center text-[10px] font-bold text-primary-foreground shrink-0">
-                      {conv.unreadCount}
-                    </div>
-                  )}
-                </motion.button>
+                </motion.div>
               );
             })}
         </div>

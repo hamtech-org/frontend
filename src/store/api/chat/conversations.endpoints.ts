@@ -1,7 +1,11 @@
 import type { ChatEndpointBuilder } from '@/store/api/chat/endpointBuilder';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import type { IConversation } from '@/types/chat.types';
-import type { CreateConversationRequest, MarkAsReadRequest } from '@/store/api/chat/types';
+import type {
+  CreateConversationRequest,
+  MarkAsReadRequest,
+  UpdateConversationPreferencesRequest,
+} from '@/store/api/chat/types';
 
 export function buildConversationsEndpoints(builder: ChatEndpointBuilder) {
   return {
@@ -22,6 +26,21 @@ export function buildConversationsEndpoints(builder: ChatEndpointBuilder) {
         url: `/chat/conversations/${conversationId}/read`,
         method: 'POST',
         body: { messageId },
+      }),
+      invalidatesTags: (_r, _e, { conversationId }) => [
+        'Conversations',
+        { type: 'Messages', id: conversationId },
+      ],
+    }),
+
+    updateConversationPreferences: builder.mutation<
+      ApiSuccessResponse<null>,
+      UpdateConversationPreferencesRequest
+    >({
+      query: ({ conversationId, ...body }) => ({
+        url: `/chat/conversations/${conversationId}/preferences`,
+        method: 'PATCH',
+        body,
       }),
       invalidatesTags: ['Conversations'],
     }),

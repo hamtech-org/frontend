@@ -76,15 +76,23 @@ export function buildMessagesEndpoints(builder: ChatEndpointBuilder) {
         method: 'POST',
         body,
       }),
-      invalidatesTags: (_result, _error, { conversationId }) => [{ type: 'Messages', id: conversationId }],
+      invalidatesTags: (_result, _error, { conversationId }) => [
+        { type: 'Messages', id: conversationId },
+        'Conversations',
+      ],
     }),
     unpinMessage: builder.mutation<ApiSuccessResponse<null>, PinMessageRequest>({
-      query: ({ messageId, ...body }) => ({
-        url: `/chat/messages/${messageId}/pin`,
-        method: 'DELETE',
-        body,
-      }),
-      invalidatesTags: (_result, _error, { conversationId }) => [{ type: 'Messages', id: conversationId }],
+      query: ({ messageId, conversationId, createdAt }) => {
+        const q = new URLSearchParams({ conversationId, createdAt });
+        return {
+          url: `/chat/messages/${messageId}/pin?${q.toString()}`,
+          method: 'DELETE',
+        };
+      },
+      invalidatesTags: (_result, _error, { conversationId }) => [
+        { type: 'Messages', id: conversationId },
+        'Conversations',
+      ],
     }),
     reactMessage: builder.mutation<ApiSuccessResponse<Record<string, string[]>>, ReactMessageRequest>({
       query: ({ messageId, ...body }) => ({
@@ -96,3 +104,4 @@ export function buildMessagesEndpoints(builder: ChatEndpointBuilder) {
     }),
   };
 }
+

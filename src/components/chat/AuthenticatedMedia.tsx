@@ -6,12 +6,20 @@ type AuthenticatedMediaProps = {
   alt?: string;
   className?: string;
   kind: 'image' | 'video';
+  /** Chỉ áp dụng khi kind="video" (ví dụ lightbox). */
+  videoAutoPlay?: boolean;
 };
 
 /**
  * Fetches private media with Bearer token then displays via blob URL (img/video).
  */
-export function AuthenticatedMedia({ src, alt = '', className, kind }: AuthenticatedMediaProps) {
+export function AuthenticatedMedia({
+  src,
+  alt = '',
+  className,
+  kind,
+  videoAutoPlay = false,
+}: AuthenticatedMediaProps) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -56,12 +64,26 @@ export function AuthenticatedMedia({ src, alt = '', className, kind }: Authentic
   }
 
   if (!blobUrl) {
-    return <div className="rounded-lg h-40 max-w-full bg-black/10 dark:bg-white/10 animate-pulse" aria-hidden />;
+    return (
+      <div
+        className="rounded-lg min-h-32 max-w-full max-h-[min(75vh,32rem)] bg-zinc-200/50 dark:bg-zinc-600/35 animate-pulse"
+        aria-hidden
+      />
+    );
   }
 
   if (kind === 'video') {
-    return <video src={blobUrl} controls className={className} playsInline />;
+    return (
+      <video
+        src={blobUrl}
+        controls
+        className={className}
+        playsInline
+        preload="metadata"
+        autoPlay={videoAutoPlay}
+      />
+    );
   }
 
-  return <img src={blobUrl} alt={alt} className={className} />;
+  return <img src={blobUrl} alt={alt} className={className} loading="lazy" decoding="async" />;
 }

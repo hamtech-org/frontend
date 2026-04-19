@@ -1,24 +1,8 @@
-import { chatApi } from '@/store/api/chat/core';
+export * from './chat/types';
+export { chatApi } from './chat/core';
+export { patchConversationsFromNewMessage, patchMessageInGetMessagesCache } from './chat/cache';
 
-export { chatApi };
-export { patchConversationsFromNewMessage } from '@/store/api/chat/cache';
-
-export type {
-  CreateConversationRequest,
-  SendMessageRequest,
-  EditMessageRequest,
-  DeleteMessageRequest,
-  RecallMessageRequest,
-  MarkAsReadRequest,
-  PinMessageRequest,
-  ReactMessageRequest,
-  UpdateGroupRequest,
-  AddMembersRequest,
-  ChangeMemberRoleRequest,
-  CreatePollRequest,
-  CreateTaskRequest,
-  UpdateTaskStatusRequest,
-} from '@/store/api/chat/types';
+import { chatApi } from './chat/core';
 
 export const {
   useGetConversationsQuery,
@@ -30,6 +14,7 @@ export const {
   useDeleteMessageMutation,
   useRecallMessageMutation,
   useMarkAsReadMutation,
+  useUpdateConversationPreferencesMutation,
   usePinMessageMutation,
   useUnpinMessageMutation,
   useReactMessageMutation,
@@ -52,4 +37,6 @@ export const {
   useGetTasksQuery,
   useGetGroupRequestsQuery,
   useGetLatestAIRecapQuery,
+  useGetGroupSettingsQuery,
+  useUpdateGroupSettingsMutation,
 } = chatApi;

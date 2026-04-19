@@ -11,7 +11,7 @@ import { buildAiRecapEndpoints } from '@/store/api/chat/aiRecap.endpoints';
 export const chatApi = createApi({
   reducerPath: 'chatApi',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['Conversations', 'Messages', 'Polls', 'Tasks', 'GroupRequests'],
+  tagTypes: ['Conversations', 'Messages', 'Polls', 'Tasks', 'GroupRequests', 'GroupSettings'],
   endpoints: (builder) => ({
     ...buildConversationsEndpoints(builder),
     ...buildMessagesEndpoints(builder),

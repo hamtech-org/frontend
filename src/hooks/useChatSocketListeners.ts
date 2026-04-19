@@ -1,27 +1,57 @@
 import { useEffect, useRef } from 'react';
 import { socketService } from '@/services/socket';
 import type { AppDispatch } from '@/store/store';
+import { store } from '@/store/store';
 import { chatApi } from '@/store/api/chatApi';
-import type { IConversation } from '@/types/chat.types';
 import {
   messageReceived,
   messageRecalled,
   messageEdited,
-  messageHiddenForMe,
   messagePinUpdated,
   messageReacted,
+  messageStatusUpdated,
   typingStarted,
   typingStopped,
 } from '@/store/slices/chatSlice';
-import type { IMessage } from '@/types/chat.types';
+import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
+import type { ConversationType, IConversation, IGroupSettings, IMessage, MessageStatus } from '@/types/chat.types';
+import { lastMessagePreviewContentFromMessage, sortConversationsByLastMessage } from '@/utils/chatUtils';
 
-// Helper: sort conversations by lastMessage.createdAt desc
-function sortConversationsByLastMessage(convs: IConversation[]) {
-  return [...convs].sort((a, b) => {
-    const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
-    const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
-    return bTime - aTime;
-  });
+function applyMessageStatusPatch(
+  dispatch: AppDispatch,
+  patchMessageInCache: PatchMessageInCache,
+  conversationId: string,
+  messageId: string,
+  status: MessageStatus,
+  currentUserId: string,
+) {
+  if (status !== 'read') {
+    patchMessageInCache(conversationId, messageId, { status });
+    dispatch(messageStatusUpdated({ conversationId, messageId, status }));
+    return;
+  }
+  const msgs = chatApi.endpoints.getMessages.select({ conversationId })(store.getState())?.data?.data ?? [];
+  const pivot = msgs.find((m) => String(m.messageId) === String(messageId));
+  if (!pivot) {
+    patchMessageInCache(conversationId, messageId, { status: 'read' });
+    dispatch(messageStatusUpdated({ conversationId, messageId, status: 'read' }));
+    dispatch(chatApi.util.invalidateTags([{ type: 'Messages', id: conversationId }]));
+    return;
+  }
+  const pivotMs = new Date(pivot.createdAt).getTime();
+  for (const m of msgs) {
+    if (m.senderId !== currentUserId) continue;
+    if (new Date(m.createdAt).getTime() > pivotMs) continue;
+    patchMessageInCache(conversationId, m.messageId, { status: 'read' });
+    dispatch(
+      messageStatusUpdated({
+        conversationId,
+        messageId: m.messageId,
+        status: 'read',
+      }),
+    );
+  }
+  dispatch(chatApi.util.invalidateTags([{ type: 'Messages', id: conversationId }]));
 }
 
 type PatchMessageInCache = (
@@ -38,6 +68,8 @@ export function useChatSocketListeners(
   patchMessageInCache: PatchMessageInCache,
   activeConversationId: string | null,
   socketReady: boolean,
+  currentUserId: string,
+  getConversationType: (conversationId: string) => ConversationType | undefined,
 ): void {
   const typingCleanupTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const activeConversationIdRef = useRef(activeConversationId);
@@ -49,6 +81,16 @@ export function useChatSocketListeners(
     const handleNewMessage = (data: unknown) => {
       const msg = data as IMessage;
       dispatch(messageReceived(msg));
+      if (
+        currentUserId &&
+        msg.senderId !== currentUserId &&
+        getConversationType(msg.conversationId) === 'direct'
+      ) {
+        socketService.emit('message:delivered_ack', {
+          conversationId: msg.conversationId,
+          messageId: msg.messageId,
+        });
+      }
       // Cập nhật lastMessage, updatedAt, unreadCount và sort lại danh sách
       dispatch(
         chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
@@ -57,7 +99,7 @@ export function useChatSocketListeners(
           if (conv) {
             conv.lastMessage = {
               messageId: msg.messageId,
-              content: msg.content,
+              content: lastMessagePreviewContentFromMessage(msg),
               senderId: msg.senderId,
               type: msg.type,
               createdAt: msg.createdAt,
@@ -97,14 +139,7 @@ export function useChatSocketListeners(
 
     const handleHiddenForMe = (data: unknown) => {
       const { messageId, conversationId } = data as { messageId: string; conversationId: string };
-      dispatch(messageHiddenForMe({ messageId, conversationId }));
-      dispatch(
-        chatApi.util.updateQueryData('getMessages', { conversationId }, (draft) => {
-          if (!draft.data) return;
-          draft.data = draft.data.filter((x) => x.messageId !== messageId);
-        }),
-      );
-      dispatch(chatApi.util.invalidateTags(['Conversations']));
+      applyMessageHiddenForMe(dispatch, conversationId, messageId);
     };
 
     const handlePinUpdated = (data: unknown) => {
@@ -115,6 +150,8 @@ export function useChatSocketListeners(
       };
       dispatch(messagePinUpdated({ messageId, conversationId, isPinned }));
       patchMessageInCache(conversationId, messageId, { isPinned });
+      // META.pinnedMessageCount đổi trên server — refetch danh sách hội thoại
+      dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
 
     const handleReacted = (data: unknown) => {
@@ -125,6 +162,19 @@ export function useChatSocketListeners(
       };
       dispatch(messageReacted({ messageId, conversationId, reactions }));
       patchMessageInCache(conversationId, messageId, { reactions });
+    };
+
+    const handleMessageStatus = (data: unknown) => {
+      const p = data as { conversationId?: string; messageId?: string; status?: MessageStatus };
+      if (!p?.conversationId || !p?.messageId || !p?.status) return;
+      applyMessageStatusPatch(
+        dispatch,
+        patchMessageInCache,
+        p.conversationId,
+        p.messageId,
+        p.status,
+        currentUserId,
+      );
     };
 
     const handleTyping = (data: unknown) => {
@@ -143,11 +193,49 @@ export function useChatSocketListeners(
       }, 1000);
     };
 
+    const handleGroupSettingsUpdated = (data: unknown) => {
+      const p = data as { conversationId?: string; groupSettings?: IGroupSettings };
+      const conversationId = p?.conversationId;
+      const groupSettings = p?.groupSettings;
+      if (!conversationId || !groupSettings) return;
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          if (!draft?.data) return;
+          const c = draft.data.find((x) => x.conversationId === conversationId);
+          if (c) (c as IConversation).groupSettings = groupSettings;
+        }),
+      );
+      dispatch(chatApi.util.invalidateTags([{ type: 'GroupSettings', id: conversationId }]));
+    };
+
+    const handleGroupDisbanded = (data: unknown) => {
+      const p = data as { conversationId?: string; groupId?: string };
+      const id = p?.conversationId ?? p?.groupId;
+      if (!id) return;
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          if (!draft?.data) return;
+          draft.data = draft.data.filter((c) => c.conversationId !== id);
+        }),
+      );
+      dispatch(chatApi.util.invalidateTags([{ type: 'Messages', id }]));
+    };
+
     const handleGroupUpdate = (data: any) => {
       // Khi có thay đổi về nhóm (member, role, poll, task, etc.)
       // Server có thể emit `groupId` hoặc `conversationId` tùy nơi gọi.
       // Giữ code cũ nhưng fallback để đảm bảo invalidate đúng.
       const groupId = data?.groupId ?? data?.conversationId;
+      const memberCountFromSocket = typeof data?.memberCount === 'number' ? data.memberCount : undefined;
+      if (groupId && memberCountFromSocket !== undefined) {
+        dispatch(
+          chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+            if (!draft?.data) return;
+            const c = draft.data.find((x) => x.conversationId === groupId);
+            if (c) c.memberCount = memberCountFromSocket;
+          }),
+        );
+      }
       if (!groupId) {
         dispatch(chatApi.util.invalidateTags(['Conversations']));
         return;
@@ -165,6 +253,7 @@ export function useChatSocketListeners(
     };
 
     socketService.on('message:new', handleNewMessage);
+    socketService.on('message:status', handleMessageStatus);
     socketService.on('message:recall', handleRecall);
     socketService.on('message:edited', handleEdited);
     socketService.on('message:hidden_for_me', handleHiddenForMe);
@@ -173,7 +262,9 @@ export function useChatSocketListeners(
     socketService.on('message:typing_indicator', handleTyping);
 
     // Lắng nghe các sự kiện nhóm
+    socketService.on('group:disbanded', handleGroupDisbanded);
     socketService.on('group:updated', handleGroupUpdate);
+    socketService.on('group:settings_updated', handleGroupSettingsUpdated);
     socketService.on('group:member_joined', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
     socketService.on('group:member_left', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
     socketService.on('group:members_added', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
@@ -192,6 +283,7 @@ export function useChatSocketListeners(
 
     return () => {
       socketService.off('message:new', handleNewMessage);
+      socketService.off('message:status', handleMessageStatus);
       socketService.off('message:recall', handleRecall);
       socketService.off('message:edited', handleEdited);
       socketService.off('message:hidden_for_me', handleHiddenForMe);
@@ -199,7 +291,9 @@ export function useChatSocketListeners(
       socketService.off('message:reacted', handleReacted);
       socketService.off('message:typing_indicator', handleTyping);
       
+      socketService.off('group:disbanded', handleGroupDisbanded);
       socketService.off('group:updated');
+      socketService.off('group:settings_updated', handleGroupSettingsUpdated);
       socketService.off('group:member_joined');
       socketService.off('group:member_left');
       socketService.off('group:members_added');
@@ -216,5 +310,5 @@ export function useChatSocketListeners(
       Object.values(typingCleanupTimersRef.current).forEach(clearTimeout);
       typingCleanupTimersRef.current = {};
     };
-  }, [dispatch, patchMessageInCache, socketReady]);
+  }, [dispatch, patchMessageInCache, socketReady, currentUserId, getConversationType]);
 }

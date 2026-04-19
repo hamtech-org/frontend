@@ -1,10 +1,11 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCheck, CheckSquare, Users, X } from 'lucide-react';
+import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 
 type TaskModalProps = {
   open: boolean;
   onClose: () => void;
-  members: Array<{ id: string; name: string; avatar: string; role: string }>;
+  members: Array<{ id: string; name: string; avatar?: string | null; role: string }>;
   currentUserId?: string;
   assignToAll?: boolean;
   onAssignToAllChange?: (value: boolean) => void;
@@ -159,10 +160,11 @@ export function TaskModal({
                           <CheckCheck className="absolute w-3 h-3 text-white pointer-events-none" />
                         )}
                       </div>
-                      <img
-                        src={member.avatar}
-                        className="w-9 h-9 rounded-full object-cover shrink-0"
-                        alt=""
+                      <ZaloStyleAvatar
+                        userId={member.id}
+                        displayName={member.name ?? member.id}
+                        avatarUrl={member.avatar}
+                        className="w-9 h-9"
                       />
                       <div className="flex-1 overflow-hidden">
                         <p className="font-semibold text-[14px] text-black dark:text-white truncate group-hover:text-green-600 transition-colors">

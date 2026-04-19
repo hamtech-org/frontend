@@ -1,10 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import type { IConversation, IMessage, MessageStatus } from '@/types/chat.types';
-
-export interface TypingUserEntry {
-  userId: string;
-  displayName: string;
-}
+import type { IConversation, IMessage, MessageStatus, TypingUserEntry } from '@/types/chat.types';
+import { lastMessagePreviewContentFromMessage } from '@/utils/chatUtils';
 
 interface ChatState {
   conversations: IConversation[];
@@ -58,7 +54,7 @@ const chatSlice = createSlice({
       if (conv && !exists) {
         conv.lastMessage = {
           messageId: msg.messageId,
-          content: msg.content,
+          content: lastMessagePreviewContentFromMessage(msg),
           senderId: msg.senderId,
           type: msg.type,
           createdAt: msg.createdAt,
@@ -154,8 +150,19 @@ const chatSlice = createSlice({
       if (conv) conv.unreadCount = 0;
     },
 
-    /** Ẩn tin chỉ phía user hiện tại: gỡ khỏi state (server đã lưu MessageUserHide). */
-    messageHiddenForMe: (
+    /** Legacy / hiếm: xóa mềm toàn cục trên bản ghi tin (khác với ẩn chỉ phía mình). */
+    messageDeleted: (
+      state,
+      action: PayloadAction<{ messageId: string; conversationId: string }>,
+    ) => {
+      const { messageId, conversationId } = action.payload;
+      const messages = state.messages[conversationId];
+      if (!messages) return;
+      state.messages[conversationId] = messages.filter((m) => m.messageId !== messageId);
+    },
+
+    /** Bỏ tin khỏi buffer socket — dùng khi user chọn "Xóa" (chỉ ẩn phía mình). */
+    messageHiddenForViewer: (
       state,
       action: PayloadAction<{ messageId: string; conversationId: string }>,
     ) => {
@@ -246,7 +253,8 @@ export const {
   typingStarted,
   typingStopped,
   resetUnread,
-  messageHiddenForMe,
+  messageDeleted,
+  messageHiddenForViewer,
   messagePinUpdated,
   messageReacted,
   setReplyingTo,
