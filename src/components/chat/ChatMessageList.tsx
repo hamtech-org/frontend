@@ -861,17 +861,6 @@ export function ChatMessageList({
                               }`
                         }
                       >
-                        {Boolean(msg.isPinned) && !msg.isDeleted && !msg.isRecalled && (
-                          <span
-                            className={`pointer-events-none absolute z-20 flex h-6 w-6 items-center justify-center rounded-full border border-amber-200/95 bg-amber-50 text-amber-700 shadow-sm dark:border-amber-700 dark:bg-amber-950/90 dark:text-amber-200 ${
-                              isWideMediaBubble ? 'left-2 top-2' : '-right-0.5 -top-1.5'
-                            }`}
-                            title="Tin nhắn đã ghim"
-                            aria-label="Tin nhắn đã ghim"
-                          >
-                            <Pin className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
-                          </span>
-                        )}
                         {msg.replyToDetails && (
                           <ReplyQuoteStrip
                             details={msg.replyToDetails}
