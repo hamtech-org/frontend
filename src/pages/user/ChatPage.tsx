@@ -119,7 +119,7 @@ export default function ChatPage() {
   const currentUserRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
 
   // ── Contexts ─────────────────────────────────────────────────────────
-  const { initiateCall } = useCallContext();
+  const { initiateCall, initiateGroupCall } = useCallContext();
   const { isConnected } = useSocketContext();
 
   // ── Modal state ──────────────────────────────────────────────────────
@@ -165,6 +165,7 @@ export default function ChatPage() {
     navigate,
     createConversation,
     initiateCall,
+    initiateGroupCall,
     selectedGroupMembers: modalState.selectedGroupMembers,
     groupName: modalState.groupName,
     setShowCreateGroupModal: modalActions.setShowCreateGroupModal,

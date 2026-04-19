@@ -1,4 +1,6 @@
 import type { RefObject, SetStateAction, Dispatch } from 'react';
+import { Phone, Video } from 'lucide-react';
+import { useSelector } from 'react-redux';
 import { PendingFriendsPanel } from '@/components/chat/PendingFriendsPanel';
 import { FriendsListView } from '@/components/chat/FriendsListView';
 import { ChatHeader } from '@/components/chat/ChatHeader';
@@ -11,8 +13,9 @@ import type { IMessage } from '@/types/chat.types';
 import type { ContactsTabId } from '@/components/chat/ConversationListPanel';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 import { useDispatch } from 'react-redux';
-import type { AppDispatch } from '@/store/store';
+import type { AppDispatch, RootState } from '@/store/store';
 import { setReplyingTo } from '@/store/slices/chatSlice';
+import { useCallContext } from '@/contexts/CallContext';
 
 interface ChatMainContentProps {
   // UI visibility (from modalState)
@@ -58,6 +61,9 @@ interface ChatMainContentProps {
 export function ChatMainContent(props: ChatMainContentProps) {
   const { core, group, groupActions, directActions, messageActions } = useChatPageContext();
   const dispatch = useDispatch<AppDispatch>();
+  const { joinActiveGroupCall } = useCallContext();
+  const activeGroupCall = useSelector((s: RootState) => s.call.activeGroupCall);
+  const callStatus = useSelector((s: RootState) => s.call.status);
 
   const {
     showContactsManagement,
@@ -92,8 +98,16 @@ export function ChatMainContent(props: ChatMainContentProps) {
             onToggleShowInfo={onToggleShowInfo}
             onAddMember={groupActions.openAddMembersModal}
             onEditGroup={groupActions.openEditGroupModal}
-            onAudioCall={directActions.handleAudioCall}
-            onVideoCall={directActions.handleVideoCall}
+            onAudioCall={
+              core.activeConversation?.type === 'group'
+                ? directActions.handleGroupAudioCall
+                : directActions.handleAudioCall
+            }
+            onVideoCall={
+              core.activeConversation?.type === 'group'
+                ? directActions.handleGroupVideoCall
+                : directActions.handleVideoCall
+            }
             currentUserRole={core.currentUserRole}
           />
 
@@ -141,6 +155,38 @@ export function ChatMainContent(props: ChatMainContentProps) {
             }}
             onOpenPollVote={groupActions.openPollVoteModal}
           />
+
+          {core.activeConversation?.type === 'group' &&
+            activeGroupCall?.conversationId === core.activeConversationId && (
+              <div className="shrink-0 px-3 pb-2 pt-1 border-t border-black/5 dark:border-white/10 bg-background">
+                <div className="rounded-2xl border border-black/8 dark:border-white/10 bg-white dark:bg-white/5 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+                  <div className="flex items-start gap-2 min-w-0">
+                    {activeGroupCall.type === 'video' ? (
+                      <Video className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                    ) : (
+                      <Phone className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">
+                        {activeGroupCall.type === 'video' ? 'Cuộc gọi video nhóm' : 'Cuộc gọi thoại nhóm'}{' '}
+                        <span className="font-normal text-muted-foreground">đang diễn ra</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Tham gia muộn nếu bạn chưa vào kênh — nút sẽ ẩn khi cuộc gọi kết thúc.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={callStatus !== 'idle' && callStatus !== 'ended'}
+                    onClick={() => joinActiveGroupCall()}
+                    className="shrink-0 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium"
+                  >
+                    Tham gia
+                  </button>
+                </div>
+              </div>
+            )}
 
           <ChatComposer
             activeConversation={core.activeConversation}

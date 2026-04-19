@@ -8,7 +8,7 @@ import incomingRingtone from '@/assets/ringtones/amThanhNhan.mp3';
 
 export default function IncomingCallModal() {
   const { acceptCall, rejectCall } = useCallContext();
-  const { status, callType, callerName, callerId } = useSelector(
+  const { status, callType, callerName, callerId, callScope } = useSelector(
     (state: RootState) => state.call,
   );
 
@@ -70,7 +70,9 @@ export default function IncomingCallModal() {
               ) : (
                 <Phone className="w-4 h-4" />
               )}
-              Cuộc gọi {callType === 'video' ? 'video' : 'thoại'} đến...
+              {callScope === 'group'
+                ? `Cuộc gọi nhóm ${callType === 'video' ? 'video' : 'thoại'} — ${callerName || callerId} đang mời bạn`
+                : `Cuộc gọi ${callType === 'video' ? 'video' : 'thoại'} đến...`}
             </p>
 
             <div className="flex items-center justify-center gap-8">

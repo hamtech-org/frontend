@@ -1,5 +1,7 @@
 export type CallType = 'audio' | 'video';
 
+export type CallScope = 'direct' | 'group';
+
 export type CallStatus =
   | 'idle'
   | 'outgoing-ringing'
@@ -10,9 +12,21 @@ export type CallStatus =
 
 export type UpgradeStatus = 'none' | 'pending-outgoing' | 'pending-incoming' | 'accepted';
 
+/** Phiên cuộc gọi nhóm đang mở — dùng nút Tham gia muộn trong chat. */
+export type ActiveGroupCallSession = {
+  conversationId: string;
+  channelName: string;
+  type: CallType;
+  hostId: string;
+  sessionId: string;
+};
+
 export interface CallState {
   status: CallStatus;
   callType: CallType | null;
+  callScope: CallScope;
+  /** Với nhóm: người bắt đầu cuộc gọi (quyền kết thúc cho tất cả). */
+  hostId: string | null;
   channelName: string | null;
   conversationId: string | null;
   callerId: string | null;
@@ -26,6 +40,8 @@ export interface CallState {
   returnTo: string | null;
   /** Lý do kết thúc để hiển thị UI full-screen (missed/rejected/...) */
   endReason: 'missed' | 'rejected' | null;
+  /** Cuộc gọi nhóm đang diễn ra (theo server) — hiện banner Tham gia trong chat nhóm. */
+  activeGroupCall: ActiveGroupCallSession | null;
 }
 
 export interface IncomingCallData {
@@ -34,4 +50,7 @@ export interface IncomingCallData {
   type: CallType;
   channelName: string;
   conversationId: string;
+  scope?: CallScope;
+  hostId?: string;
+  sessionId?: string;
 }

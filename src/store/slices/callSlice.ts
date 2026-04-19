@@ -1,9 +1,11 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import type { CallState, CallType, IncomingCallData } from '@/types/call.types';
+import type { CallState, CallType, CallScope, IncomingCallData, ActiveGroupCallSession } from '@/types/call.types';
 
 const initialState: CallState = {
   status: 'idle',
   callType: null,
+  callScope: 'direct',
+  hostId: null,
   channelName: null,
   conversationId: null,
   callerId: null,
@@ -15,6 +17,7 @@ const initialState: CallState = {
   isScreenSharing: false,
   returnTo: null,
   endReason: null,
+  activeGroupCall: null,
 };
 
 const callSlice = createSlice({
@@ -24,16 +27,20 @@ const callSlice = createSlice({
     setOutgoingCall: (
       state,
       action: PayloadAction<{
-        calleeId: string;
+        calleeId?: string | null;
         callType: CallType;
         channelName: string;
         conversationId?: string | null;
         returnTo?: string | null;
+        callScope?: CallScope;
+        hostId?: string | null;
       }>,
     ) => {
       state.status = 'outgoing-ringing';
       state.callType = action.payload.callType;
-      state.calleeId = action.payload.calleeId;
+      state.callScope = action.payload.callScope ?? 'direct';
+      state.hostId = action.payload.hostId ?? null;
+      state.calleeId = action.payload.calleeId ?? null;
       state.channelName = action.payload.channelName;
       state.conversationId = action.payload.conversationId ?? state.conversationId ?? null;
       state.isMicOn = true;
@@ -51,6 +58,8 @@ const callSlice = createSlice({
       state.callerName = action.payload.callerName;
       state.channelName = action.payload.channelName;
       state.conversationId = action.payload.conversationId;
+      state.callScope = action.payload.scope ?? 'direct';
+      state.hostId = action.payload.hostId ?? action.payload.callerId;
       state.calleeId = null;
       state.isMicOn = true;
       state.isCameraOn = action.payload.type === 'video';
@@ -96,7 +105,49 @@ const callSlice = createSlice({
     setScreenSharing: (state, action: PayloadAction<boolean>) => {
       state.isScreenSharing = action.payload;
     },
-    resetCall: () => initialState,
+    setActiveGroupCall: (state, action: PayloadAction<ActiveGroupCallSession | null>) => {
+      state.activeGroupCall = action.payload;
+    },
+    clearActiveGroupCallMatching: (
+      state,
+      action: PayloadAction<{ conversationId: string; sessionId?: string }>,
+    ) => {
+      const cur = state.activeGroupCall;
+      if (!cur || cur.conversationId !== action.payload.conversationId) return;
+      if (action.payload.sessionId && cur.sessionId !== action.payload.sessionId) return;
+      state.activeGroupCall = null;
+    },
+    /** Tham gia muộn: vào CallPage không qua trạng thái đổ chuông. */
+    setJoiningGroupCall: (
+      state,
+      action: PayloadAction<{
+        callType: CallType;
+        channelName: string;
+        conversationId: string;
+        hostId: string;
+        returnTo: string;
+      }>,
+    ) => {
+      state.status = 'connecting';
+      state.callType = action.payload.callType;
+      state.callScope = 'group';
+      state.hostId = action.payload.hostId;
+      state.channelName = action.payload.channelName;
+      state.conversationId = action.payload.conversationId;
+      state.returnTo = action.payload.returnTo;
+      state.callerId = null;
+      state.calleeId = null;
+      state.callerName = null;
+      state.isMicOn = true;
+      state.isCameraOn = action.payload.callType === 'video';
+      state.upgradeStatus = 'none';
+      state.isScreenSharing = false;
+      state.endReason = null;
+    },
+    resetCall: (state) => {
+      const active = state.activeGroupCall;
+      Object.assign(state, { ...initialState, activeGroupCall: active });
+    },
   },
 });
 
@@ -115,6 +166,9 @@ export const {
   setUpgradeAccepted,
   resetUpgrade,
   setScreenSharing,
+  setActiveGroupCall,
+  clearActiveGroupCallMatching,
+  setJoiningGroupCall,
   resetCall,
 } = callSlice.actions;
 
