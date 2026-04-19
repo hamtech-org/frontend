@@ -21,6 +21,13 @@ export function typingInitial(entry: TypingUserEntry): string {
   return ch || '?';
 }
 
+/** Tin hệ thống / thông báo nhóm (dòng giữa) — không đưa vào tìm kiếm trong trò chuyện. */
+export function isSystemChatNotificationMessage(msg: IMessage): boolean {
+  if ((msg as { type?: string }).type === 'system') return true;
+  if ((msg as { position?: string }).position === 'center') return true;
+  return false;
+}
+
 /** Dòng `content` hiển thị trên sidebar / lastMessage (tin đầy đủ từ socket hoặc API). */
 export function lastMessagePreviewContentFromMessage(msg: Pick<IMessage, 'content' | 'type' | 'isRecalled' | 'isDeleted' | 'mediaOriginalName'>): string {
   if (msg.isRecalled) return 'Tin nhắn đã được thu hồi';
