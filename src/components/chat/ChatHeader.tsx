@@ -135,19 +135,6 @@ export function ChatHeader({
             </button>
             <button
               type="button"
-              title="Gọi thoại nhóm"
-              onClick={onAudioCall}
-              disabled={!onAudioCall}
-              className={`p-2 sm:p-2.5 rounded-full transition-all text-muted-foreground ${
-                onAudioCall
-                  ? 'hover:bg-black/5 dark:hover:bg-white/5 hover:text-blue-600'
-                  : 'opacity-40 cursor-not-allowed'
-              }`}
-            >
-              <Phone className="w-5 h-5" />
-            </button>
-            <button
-              type="button"
               title="Cuộc gọi video nhóm"
               onClick={onVideoCall}
               disabled={!onVideoCall}
