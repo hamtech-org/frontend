@@ -27,6 +27,7 @@ const ProfilePage: React.FC = () => {
   
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [faceLoginEnabled, setFaceLoginEnabled] = useState(() => {
     const saved = localStorage.getItem('faceLoginEnabled');
     return saved !== null ? saved === 'true' : false; // Default to false if not set
@@ -77,13 +78,18 @@ const ProfilePage: React.FC = () => {
 
   const onSubmit = async (data: UpdateProfileFormValues) => {
     try {
-      await updateProfile({
-        displayName: data.displayName,
-        bio: data.bio,
-        phone: data.phone,
-        avatar: data.avatar,
-      }).unwrap();
+      const formData = new FormData();
+      formData.append('displayName', data.displayName);
+      if (data.bio) formData.append('bio', data.bio);
+      if (data.phone) formData.append('phone', data.phone);
+      if (selectedFile) {
+        formData.append('file', selectedFile);
+      }
+
+      await updateProfile(formData).unwrap();
       setMessage({ type: 'success', text: 'Cập nhật hồ sơ thành công!' });
+      setSelectedFile(null);
+      setAvatarPreview(null); // Reset preview to show fresh avatar from API
       setTimeout(() => setMessage(null), 3000);
     } catch (err: any) {
       setMessage({
@@ -100,12 +106,11 @@ const ProfilePage: React.FC = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setSelectedFile(file);
       const reader = new FileReader();
       reader.onload = (event) => {
         const base64 = event.target?.result as string;
         setAvatarPreview(base64);
-        // In a real app, you'd upload to S3 and get the URL
-        // For now, we'll just store the base64 data
       };
       reader.readAsDataURL(file);
     }
@@ -286,7 +291,7 @@ const ProfilePage: React.FC = () => {
                     alt={user?.displayName}
                     className="w-32 h-32 rounded-full border-4 border-white dark:border-gray-800 object-cover"
                   />
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 rounded-full transition flex items-center justify-center">
+                  <div className="absolute inset-0 bg-opacity-0 group-hover:bg-opacity-40 rounded-full transition flex items-center justify-center">
                     <Camera className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition" />
                   </div>
                 </button>

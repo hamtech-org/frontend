@@ -158,12 +158,7 @@ const chatSlice = createSlice({
       const { messageId, conversationId } = action.payload;
       const messages = state.messages[conversationId];
       if (!messages) return;
-      const msg = messages.find((m) => m.messageId === messageId);
-      if (msg) {
-        msg.isDeleted = true;
-        msg.content = '';
-        msg.isPinned = false;
-      }
+      state.messages[conversationId] = messages.filter((m) => m.messageId !== messageId);
     },
 
     /** Bỏ tin khỏi buffer socket — dùng khi user chọn "Xóa" (chỉ ẩn phía mình). */

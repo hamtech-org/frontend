@@ -18,14 +18,13 @@ import type { IConversation, IMessage } from '@/types/chat.types';
 import { formatConversationListLastPreview, parseConversationListMediaPreview } from '@/utils/chatUtils';
 import { formatZaloConversationTime } from '@/utils/formatDate';
 import { ContactsManagementPanel, type ContactsTabId } from '@/components/chat/ContactsManagementPanel';
+import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 
 export type { ContactsTabId };
 
 type ConversationListPanelProps = {
   conversations: IConversation[];
   convsLoading: boolean;
-  activeConversationId: string | null;
-  currentUserId: string;
   /** Tin trong hội thoại đang mở — dùng cho mục “Tin nhắn” trong tìm kiếm sidebar. */
   activeMessages?: IMessage[];
   showContactsManagement: boolean;
@@ -68,8 +67,6 @@ function sortConversationsForSidebar(convs: IConversation[]) {
 export function ConversationListPanel({
   conversations,
   convsLoading,
-  activeConversationId,
-  currentUserId,
   activeMessages = [],
   showContactsManagement,
   contactsTab,
@@ -170,8 +167,8 @@ export function ConversationListPanel({
   };
 
   return (
-    <div className="w-[340px] border-r border-black/5 dark:border-white/5 flex flex-col shrink-0 min-h-0 bg-white dark:bg-[#1a1a1a]">
-      <div className="pt-5 px-4 space-y-4 shrink-0 border-b border-black/5 dark:border-white/5 mb-2">
+    <div className="w-[340px] border-r border-border flex flex-col shrink-0 min-h-0 bg-card text-card-foreground">
+      <div className="pt-5 px-4 flex flex-col gap-4 shrink-0 border-b border-border mb-2">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -186,7 +183,7 @@ export function ConversationListPanel({
               }}
               onFocus={handleSearchFocus}
               onBlur={handleSearchBlur}
-              className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-black/5 dark:bg-white/5 border-none focus:ring-1 ring-blue-600/50 transition-all outline-none text-sm font-medium"
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-muted border border-transparent focus:ring-1 ring-ring transition-colors outline-none text-sm font-medium"
             />
             <AnimatePresence>
               {showSearchResults && openSearchDropdown && (
@@ -196,11 +193,11 @@ export function ConversationListPanel({
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.15 }}
                   onMouseDown={(e) => e.preventDefault()}
-                  className="absolute top-full left-0 right-0 mt-2 z-50 bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 rounded-xl shadow-xl max-h-[400px] overflow-y-auto custom-scrollbar divide-y divide-black/5 dark:divide-white/5"
+                  className="absolute top-full left-0 right-0 mt-2 z-50 bg-card border border-border rounded-xl shadow-xl max-h-[400px] overflow-y-auto custom-scrollbar divide-y divide-border"
                 >
                   {filteredConversations.length > 0 && (
                     <div>
-                      <div className="px-3 py-2 bg-black/5 dark:bg-white/5">
+                      <div className="px-3 py-2 bg-muted">
                         <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
                           Hội thoại ({filteredConversations.length})
                         </p>
@@ -213,32 +210,32 @@ export function ConversationListPanel({
                             key={contact.conversationId}
                             type="button"
                             onClick={() => pickConversation(contact.conversationId)}
-                            className="w-full px-3 py-2.5 flex items-center gap-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+                            className="w-full px-3 py-2.5 flex items-center gap-2.5 hover:bg-muted transition-colors text-left"
                           >
                             {contact.avatar ? (
                               <img
                                 src={contact.avatar}
                                 alt=""
-                                className="w-9 h-9 rounded-full object-cover shrink-0"
+                                className="size-9 rounded-full object-cover shrink-0"
                                 referrerPolicy="no-referrer"
                               />
                             ) : (
-                              <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                              <div className="size-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                                 {contact.type === 'group' ? (
-                                  <Users className="w-4 h-4 text-blue-600" />
+                                  <Users className="size-4 text-primary" />
                                 ) : (
-                                  <User className="w-4 h-4 text-blue-600" />
+                                  <User className="size-4 text-primary" />
                                 )}
                               </div>
                             )}
                             <div className="flex-1 min-w-0">
-                              <p className="text-[13px] font-semibold text-black dark:text-white truncate">
+                              <p className="text-[13px] font-semibold text-foreground truncate">
                                 {displayName}
                               </p>
                               <p className="text-[11px] text-muted-foreground truncate">{preview}</p>
                             </div>
                             {contact.type === 'group' && (
-                              <Users className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                              <Users className="size-3.5 text-primary shrink-0" />
                             )}
                           </button>
                         );
@@ -248,7 +245,7 @@ export function ConversationListPanel({
 
                   {filteredMessages.length > 0 && (
                     <div>
-                      <div className="px-3 py-2 bg-black/5 dark:bg-white/5">
+                      <div className="px-3 py-2 bg-muted">
                         <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
                           Tin nhắn (trong hội thoại hiện tại)
                         </p>
@@ -258,14 +255,14 @@ export function ConversationListPanel({
                           key={msg.messageId}
                           type="button"
                           onClick={() => pickMessage(msg.messageId)}
-                          className="w-full px-3 py-2.5 flex items-start gap-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+                          className="w-full px-3 py-2.5 flex items-start gap-2.5 hover:bg-muted transition-colors text-left"
                         >
-                          <MessageCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                          <MessageCircle className="size-4 text-primary shrink-0 mt-0.5" />
                           <div className="flex-1 min-w-0">
                             <p className="text-[11px] font-semibold text-muted-foreground">
                               {msg.senderDisplayName ?? msg.senderId}
                             </p>
-                            <p className="text-[13px] text-black dark:text-white truncate">{msg.content}</p>
+                            <p className="text-[13px] text-foreground truncate">{msg.content}</p>
                           </div>
                         </button>
                       ))}
@@ -289,7 +286,7 @@ export function ConversationListPanel({
             type="button"
             title="Thêm bạn bè"
             onClick={() => onOpenAddFriend?.()}
-            className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-black dark:hover:text-white transition-colors"
+            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           >
             <UserPlus className="w-[18px] h-[18px]" />
           </button>
@@ -297,7 +294,7 @@ export function ConversationListPanel({
             type="button"
             onClick={onOpenCreateGroup}
             title="Tạo nhóm mới"
-            className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-black dark:hover:text-white transition-colors"
+            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           >
             <Users className="w-[18px] h-[18px]" />
           </button>
@@ -306,13 +303,13 @@ export function ConversationListPanel({
           <div className="flex items-center gap-5">
             <button
               type="button"
-              className="text-sm font-bold text-blue-600 border-b-[3px] border-blue-600 pb-2.5 transition-colors"
+              className="text-sm font-bold text-primary border-b-[3px] border-primary pb-2.5 transition-colors"
             >
               Ưu tiên
             </button>
             <button
               type="button"
-              className="text-sm font-bold text-muted-foreground hover:text-black dark:hover:text-white border-b-[3px] border-transparent pb-2.5 transition-colors"
+              className="text-sm font-bold text-muted-foreground hover:text-foreground border-b-[3px] border-transparent pb-2.5 transition-colors"
             >
               Khác
             </button>
@@ -320,7 +317,7 @@ export function ConversationListPanel({
           <div className="flex items-center gap-3 pb-2.5">
             <button
               type="button"
-              className="flex items-center gap-1 text-[13px] font-semibold text-muted-foreground hover:text-black dark:hover:text-white transition-colors"
+              className="flex items-center gap-1 text-[13px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
             >
               Phân loại <ChevronDown className="w-4 h-4" />
             </button>
@@ -328,7 +325,7 @@ export function ConversationListPanel({
               type="button"
               onClick={onOpenMarkRead}
               title="Đánh dấu đã đọc"
-              className="text-muted-foreground hover:text-black dark:hover:text-white transition-colors p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
+              className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted"
             >
               <MoreHorizontal className="w-4 h-4" />
             </button>
@@ -339,7 +336,7 @@ export function ConversationListPanel({
       {showContactsManagement ? (
         <ContactsManagementPanel contactsTab={contactsTab} onContactsTabChange={onContactsTabChange} />
       ) : (
-        <div className="flex-1 overflow-y-auto px-4 space-y-2 min-h-0 custom-scrollbar pr-2 pb-4">
+        <div className="flex-1 overflow-y-auto px-4 min-h-0 custom-scrollbar pr-2 pb-4 flex flex-col gap-2">
           {convsLoading && (
             <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
               Đang tải...

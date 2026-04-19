@@ -47,6 +47,7 @@ export interface IConversation {
   lastMessage: ILastMessage | null;
   memberCount: number;
   unreadCount: number;
+  updatedAt?: string;
   otherUserId?: string;
   /** ISO: tắt push đến mốc này (1h/8h). Hiển thị cùng logic `isMuted` hiệu lực từ API. */
   notificationsMutedUntil?: string | null;

@@ -11,7 +11,8 @@ import type { AppDispatch } from '@/store/store';
 import { baseQueryWithReauth } from './baseQuery';
 import { lastMessagePreviewContentFromMessage } from '@/utils/chatUtils';
 
-// ─── Request types ─────────────────────────────────────────────────────────────
+export { chatApi };
+export { patchConversationsFromNewMessage } from '@/store/api/chat/cache';
 
 export interface CreateConversationRequest {
   type: IConversation['type'];

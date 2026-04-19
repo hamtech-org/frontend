@@ -12,8 +12,29 @@ export const userApi = createApi({
       query: () => '/users/me',
       providesTags: ['User'],
     }),
-    updateProfile: builder.mutation<ApiSuccessResponse<IUser>, Partial<IUser>>({
-      query: (body) => ({ url: '/users/me', method: 'PUT', body }),
+    updateProfile: builder.mutation<ApiSuccessResponse<IUser>, FormData | Partial<IUser>>({
+      query: (body) => {
+        // If body is FormData, send it as-is; otherwise wrap in FormData
+        let formData: FormData;
+        if (body instanceof FormData) {
+          formData = body;
+        } else {
+          formData = new FormData();
+          if (typeof body === 'object' && body !== null) {
+            Object.entries(body).forEach(([key, value]) => {
+              if (value !== null && value !== undefined && value !== '') {
+                formData.append(key, String(value));
+              }
+            });
+          }
+        }
+        
+        return {
+          url: '/users/me',
+          method: 'PUT',
+          body: formData,
+        };
+      },
       invalidatesTags: ['User'],
     }),
 
@@ -71,6 +92,11 @@ export const userApi = createApi({
       query: () => '/users/friends/requests/pending',
       providesTags: ['Friend'],
     }),
+
+    getSuggestedFriends: builder.query<ApiSuccessResponse<IUser[]>, { limit?: number }>({
+      query: ({ limit = 10 }) => `/users/friends/suggestions?limit=${limit}`,
+      providesTags: ['Friend'],
+    }),
   }),
 });
 
@@ -84,4 +110,5 @@ export const {
   useRemoveFriendMutation,
   useGetFriendsQuery,
   useGetPendingRequestsQuery,
+  useGetSuggestedFriendsQuery,
 } = userApi;

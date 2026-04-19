@@ -1,7 +1,21 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate, useParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
+import { ChatMainContent } from '@/components/chat/ChatMainContent';
+import { ChatModalsHost } from '@/components/chat/ChatModalsHost';
+import { ChatNavRail } from '@/components/chat/ChatNavRail';
+import { ChatSideInfoRail } from '@/components/chat/ChatSideInfoRail';
+import { ConversationListPanel } from '@/components/chat/ConversationListPanel';
+import { useCallContext } from '@/contexts/CallContext';
+import { useSocketContext } from '@/contexts/SocketContext';
+import { ChatPageProvider, useChatPageContextValue } from '@/pages/user/chat-page/ChatPageContext';
+import { useChatMessageData } from '@/pages/user/chat-page/hooks/useChatMessageData';
+import { useChatModalController } from '@/pages/user/chat-page/hooks/useChatModalController';
+import { useChatRealtimeEvents } from '@/pages/user/chat-page/hooks/useChatRealtimeEvents';
+import { useChatScrollBehavior } from '@/pages/user/chat-page/hooks/useChatScrollBehavior';
+import { useConversationRealtimeLifecycle } from '@/pages/user/chat-page/hooks/useConversationRealtimeLifecycle';
+import { useConversationRoutingSync } from '@/pages/user/chat-page/hooks/useConversationRoutingSync';
+import { useDirectConversationActions } from '@/pages/user/chat-page/hooks/useDirectConversationActions';
+import { useGroupConversationController } from '@/pages/user/chat-page/hooks/useGroupConversationController';
+import { useGroupData } from '@/pages/user/chat-page/hooks/useGroupData';
+import { useMessageModerationActions } from '@/pages/user/chat-page/hooks/useMessageModerationActions';
 import {
   chatApi,
   patchMessageInGetMessagesCache,
@@ -9,12 +23,12 @@ import {
   useGetMessagesQuery,
   useSendMessageMutation,
   useCreateConversationMutation,
-  useEditMessageMutation,
   useDeleteMessageMutation,
-  useRecallMessageMutation,
+  useEditMessageMutation,
   useMarkAsReadMutation,
   useUpdateConversationPreferencesMutation,
   usePinMessageMutation,
+  useRecallMessageMutation,
   useUnpinMessageMutation,
   useReactMessageMutation,
   useLeaveGroupMutation,
@@ -170,6 +184,7 @@ export default function ChatPage() {
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
   const dispatch = useDispatch<AppDispatch>();
 
+  // ── Auth ──────────────────────────────────────────────────────────────
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const accessToken = useSelector((state: RootState) => state.auth.accessToken);
   const currentUserId = useMemo(
@@ -177,6 +192,7 @@ export default function ChatPage() {
     [currentUser?.userId, accessToken],
   );
 
+  // ── Conversations query ──────────────────────────────────────────────
   const {
     data: conversationsData,
     isLoading: convsLoading,
@@ -190,21 +206,13 @@ export default function ChatPage() {
   );
 
   const activeConversationId = useSelector((state: RootState) => state.chat.activeConversationId);
-  const socketMessages = useSelector((state: RootState) => {
-    if (!activeConversationId) return EMPTY_ARRAY;
-    return state.chat.messages[activeConversationId] ?? EMPTY_ARRAY;
-  });
+  const activeConversation = conversations.find((c) => c.conversationId === activeConversationId);
 
   const typingUsers = useSelector((state: RootState) => {
-    if (!activeConversationId) return EMPTY_ARRAY;
-    return state.chat.typingUsers[activeConversationId] ?? EMPTY_ARRAY;
+    if (!activeConversationId) return EMPTY_TYPING_USERS;
+    return state.chat.typingUsers[activeConversationId] ?? EMPTY_TYPING_USERS;
   });
-  const replyingTo = useSelector((state: RootState) => state.chat.replyingTo);
 
-  const { data: messagesData } = useGetMessagesQuery(
-    { conversationId: activeConversationId! },
-    { skip: !activeConversationId },
-  );
 
   const allMessages = useMemo(() => {
     const apiMessages = messagesData?.data ?? [];
@@ -286,9 +294,6 @@ export default function ChatPage() {
 
   const [sendMessage, { isLoading: isSending }] = useSendMessageMutation();
   const [uploadMedia] = useUploadMediaMutation();
-  const [uploadMediaMulti] = useUploadMediaMultiMutation();
-  const [mediaUploading, setMediaUploading] = useState(false);
-  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [createConversation] = useCreateConversationMutation();
   const [editMessage, { isLoading: isEditing }] = useEditMessageMutation();
   const [deleteMessage] = useDeleteMessageMutation();
@@ -301,47 +306,40 @@ export default function ChatPage() {
   const [leaveGroupMutation] = useLeaveGroupMutation();
   const [deleteGroupMutation] = useDeleteGroupMutation();
 
-  const activeConversation = conversations.find((c) => c.conversationId === activeConversationId);
-  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
-  const [groupRequests, setGroupRequests] = useState<GroupRequest[]>([]);
-  const [groupPolls, setGroupPolls] = useState<GroupPoll[]>([]);
-  const [groupTasks, setGroupTasks] = useState<GroupTask[]>([]);
-  const [latestRecap, setLatestRecap] = useState<AIRecap | null>(null);
-  const [groupJoinRequested, setGroupJoinRequested] = useState(false);
-  const [groupLoading, setGroupLoading] = useState({
-    members: false,
-    requests: false,
-    polls: false,
-    tasks: false,
-    recap: false,
+  // ── Group data ───────────────────────────────────────────────────────
+  const {
+    groupMembers,
+    setGroupMembers,
+    groupRequests,
+    setGroupRequests,
+    groupPolls,
+    setGroupPolls,
+    groupTasks,
+    setGroupTasks,
+    latestRecap,
+    setLatestRecap,
+    groupJoinRequested,
+    setGroupJoinRequested,
+    groupLoading,
+    groupActionLoading,
+    setActionBusy,
+    fetchGroupMembers,
+    fetchGroupRequests,
+    fetchGroupPolls,
+    fetchGroupTasks,
+  } = useGroupData({
+    activeConversationId,
+    activeConversationType: activeConversation?.type,
+    refetchConversations,
   });
-  const [groupActionLoading, setGroupActionLoading] = useState<GroupActionLoading>({
-    updateGroup: false,
-    deleteGroup: false,
-    leaveGroup: false,
-    addMembers: false,
-    removeMember: false,
-    changeRole: false,
-    requestJoin: false,
-    approveRequest: false,
-    rejectRequest: false,
-    createPoll: false,
-    votePoll: false,
-    addPollOption: false,
-    closePoll: false,
-    createTask: false,
-    updateTask: false,
-    generateRecap: false,
-  });
+  const currentUserRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
 
-  const { initiateCall } = useCallContext();
+  // ── Contexts ─────────────────────────────────────────────────────────
+  const { initiateCall, initiateGroupCall } = useCallContext();
   const { isConnected } = useSocketContext();
 
-  const handleAudioCall = useCallback(() => {
-    if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
-    // CallContext sẽ lưu returnTo = location.pathname (đang là /chat/:conversationId)
-    initiateCall(activeConversation.otherUserId, 'audio');
-  }, [activeConversation, initiateCall]);
+  // ── Modal state ──────────────────────────────────────────────────────
+  const { state: modalState, actions: modalActions } = useChatModalController();
 
   const handleVideoCall = useCallback(() => {
     if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
@@ -366,69 +364,140 @@ export default function ChatPage() {
     (conversationId: string, messageId: string, patch: Partial<IMessage>) => {
       patchMessageInGetMessagesCache(dispatch, conversationId, messageId, patch);
     },
-    [dispatch],
-  );
-
-  const handleReactMessage = useCallback(
-    async (msg: IMessage, emoji: string) => {
-      try {
-        await reactMessage({
-          messageId: msg.messageId,
-          conversationId: msg.conversationId,
-          createdAt: msg.createdAt,
-          emoji,
-        }).unwrap();
-        // Socket or invalidation will handle the UI update, but optimistic update is better:
-        // Already handled correctly by socket if we want to wait, or we can patch manually.
-        // I will let socket handle it by default, or you can do optimistic updates here.
-      } catch {
-        /* ignore */
-      }
+    groupSetters: {
+      setGroupMembers,
+      setGroupRequests,
+      setGroupPolls,
+      setGroupTasks,
+      setGroupJoinRequested,
+      setLatestRecap,
     },
-    [reactMessage],
+    groupFetchers: { fetchGroupMembers, fetchGroupRequests, fetchGroupPolls, fetchGroupTasks },
+    modalState,
+    modalActions,
+    setActionBusy,
+    navigate,
+  });
+
+  // ── Direct conversation actions ──────────────────────────────────────
+  const directActions = useDirectConversationActions({
+    conversations,
+    activeConversation,
+    dispatch,
+    navigate,
+    createConversation,
+    initiateCall,
+    initiateGroupCall,
+    selectedGroupMembers: modalState.selectedGroupMembers,
+    groupName: modalState.groupName,
+    setShowCreateGroupModal: modalActions.setShowCreateGroupModal,
+    setSelectedGroupMembers: modalActions.setSelectedGroupMembers,
+    setGroupName: modalActions.setGroupName,
+    setShowContactsManagement: modalActions.setShowContactsManagement,
+  });
+
+  // ── Message moderation ───────────────────────────────────────────────
+  const {
+    handleSaveEdit,
+    handleRecallMsg,
+    handleDeleteMsg,
+    handleMessageConfirm,
+    handleTogglePinMsg,
+  } = useMessageModerationActions({
+    dispatch,
+    editingMessage: modalState.editingMessage,
+    editDraft: modalState.editDraft,
+    setEditingMessage: modalActions.setEditingMessage,
+    setActionMenuMsgId: modalActions.setActionMenuMsgId,
+    messageConfirm: modalState.messageConfirm,
+    setMessageConfirm: modalActions.setMessageConfirm,
+    setMessageConfirmSubmitting: modalActions.setMessageConfirmSubmitting,
+    patchMessageInCache,
+    removeMessageFromCache,
+    editMessage,
+    recallMessage,
+    deleteMessage,
+    pinMessage,
+    unpinMessage,
+  });
+
+  // ── Memoized message actions for context ─────────────────────────────
+  const messageActions = useMemo(
+    () => ({
+      handleSaveEdit,
+      handleRecallMsg,
+      handleDeleteMsg,
+      handleMessageConfirm,
+      handleTogglePinMsg,
+      handleReactMessage,
+    }),
+    [handleSaveEdit, handleRecallMsg, handleDeleteMsg, handleMessageConfirm, handleTogglePinMsg, handleReactMessage],
   );
 
+  // ── Build context value ──────────────────────────────────────────────
+  const contextValue = useChatPageContextValue({
+    currentUserId,
+    currentUserRole,
+    activeConversationId,
+    activeConversation,
+    groupMembers,
+    groupRequests,
+    groupPolls,
+    groupTasks,
+    groupJoinRequested,
+    groupLoading,
+    groupActionLoading,
+    setGroupTasks,
+    groupActions: groupController,
+    directActions,
+    messageActions,
+  });
+
+  // ── Scroll behavior ──────────────────────────────────────────────────
+  const { messagesContainerRef, messagesEndRef, unreadIncomingCount, handleJumpToLatest } =
+    useChatScrollBehavior({
+      allMessages,
+      activeConversationId,
+      currentUserId,
+      typingUsers,
+      actionMenuMsgId: modalState.actionMenuMsgId,
+      setActionMenuMsgId: modalActions.setActionMenuMsgId,
+    });
+
+
+
+  // ── Realtime events & lifecycle ──────────────────────────────────────
+  useChatRealtimeEvents({
+    dispatch,
+    isConnected,
+    activeConversationId,
+    setActivePollId: modalActions.setActivePollId,
+    setShowPollVoteModal: modalActions.setShowPollVoteModal,
+    fetchGroupMembers,
+    patchMessageInCache,
+    removeMessageFromCache,
+  });
+
+  useConversationRoutingSync({
+    dispatch,
+    routeConversationId,
+    conversations,
+    convsLoading,
+    convsFetching,
+    navigate,
+  });
+
+  useConversationRealtimeLifecycle({
+    activeConversationId,
+    latestMessageIdForRead,
+    dispatch,
+    markAsRead,
+  });
+
+  // ── Side effects ─────────────────────────────────────────────────────
   useEffect(() => {
     void refetchConversations();
   }, [activeConversationId, refetchConversations]);
-
-  // Lưu inputText theo conversationId
-  const [inputTextMap, setInputTextMap] = useState<{ [convId: string]: string }>({});
-  const inputText = activeConversationId ? inputTextMap[activeConversationId] || '' : '';
-  const setInputText = (text: string) => {
-    if (!activeConversationId) return;
-    setInputTextMap((prev) => ({ ...prev, [activeConversationId]: text }));
-  };
-
-  const addPendingFiles = useCallback((files: File[]) => {
-    setPendingAttachments((prev) => {
-      if (prev.length >= MAX_PENDING_FILES) return prev;
-      const next = [...prev];
-      for (const file of files) {
-        if (next.length >= MAX_PENDING_FILES) break;
-        if (file.size > roughMaxBytesForFile(file)) continue;
-        const previewUrl =
-          file.type.startsWith('image/') || file.type.startsWith('video/')
-            ? URL.createObjectURL(file)
-            : null;
-        next.push({ localId: crypto.randomUUID(), file, previewUrl });
-      }
-      return next;
-    });
-  }, []);
-
-  const removePendingAttachment = useCallback((localId: string) => {
-    setPendingAttachments((prev) => {
-      const hit = prev.find((p) => p.localId === localId);
-      if (hit?.previewUrl) URL.revokeObjectURL(hit.previewUrl);
-      return prev.filter((p) => p.localId !== localId);
-    });
-  }, []);
-
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const prevLastMessageIdRef = useRef<string | null>(null);
-  const activeConversationIdRef = useRef<string | null>(activeConversationId);
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
@@ -901,121 +970,7 @@ export default function ChatPage() {
     }
   }, [activeConversationId]);
 
-  useEffect(() => {
-    setPendingAttachments((prev) => {
-      prev.forEach((p) => {
-        if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
-      });
-      return [];
-    });
-  }, [activeConversationId]);
-
-  useEffect(() => {
-    if (!activeConversationId) return;
-    socketService.emit('conversation:join', activeConversationId);
-    dispatch(resetUnread(activeConversationId));
-    return () => {
-      socketService.emit('conversation:leave', activeConversationId);
-    };
-  }, [activeConversationId, dispatch]);
-
-  useEffect(() => {
-    if (!activeConversationId || !latestMessageIdForRead) return;
-    const key = `${activeConversationId}:${latestMessageIdForRead}`;
-    if (lastMarkReadKeyRef.current === key) return;
-    lastMarkReadKeyRef.current = key;
-    // Gửi sự kiện đã đọc qua socket để đồng bộ realtime unreadCount
-    socketService.emit('message:read', {
-      conversationId: activeConversationId,
-      messageId: latestMessageIdForRead,
-    });
-    void markAsRead({ conversationId: activeConversationId, messageId: latestMessageIdForRead });
-  }, [activeConversationId, latestMessageIdForRead, markAsRead]);
-
-  useEffect(() => {
-    prevLastMessageIdRef.current = null;
-    setUnreadIncomingCount(0);
-    lastMarkReadKeyRef.current = '';
-  }, [activeConversationId]);
-
-  useEffect(() => {
-    if (!actionMenuMsgId) return;
-    const close = () => setActionMenuMsgId(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [actionMenuMsgId]);
-
-  useEffect(() => {
-    if (!activeConversationId || allMessages.length === 0) return;
-
-    const latestMessage = allMessages[allMessages.length - 1];
-    const previousMessageId = prevLastMessageIdRef.current;
-    if (previousMessageId === null) {
-      prevLastMessageIdRef.current = latestMessage.messageId;
-      const scrollToEnd = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
-      };
-      requestAnimationFrame(() => {
-        requestAnimationFrame(scrollToEnd);
-      });
-      return;
-    }
-    if (latestMessage.messageId === previousMessageId) return;
-
-    const isMyMessage = latestMessage.senderId === currentUserId;
-    const container = messagesContainerRef.current;
-    const distanceToBottom = container
-      ? container.scrollHeight - container.scrollTop - container.clientHeight
-      : 0;
-    const isOverflowing = container ? container.scrollHeight > container.clientHeight + 1 : false;
-    const isNearBottom = distanceToBottom < CHAT_NEAR_BOTTOM_PX;
-
-    if (isMyMessage) {
-      setUnreadIncomingCount(0);
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    } else if (isNearBottom || !isOverflowing) {
-      setUnreadIncomingCount(0);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        });
-      });
-    } else {
-      setUnreadIncomingCount((count) => count + 1);
-    }
-
-    prevLastMessageIdRef.current = latestMessage.messageId;
-  }, [allMessages, activeConversationId, currentUserId]);
-
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      const distanceToBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceToBottom < CHAT_NEAR_BOTTOM_PX) {
-        setUnreadIncomingCount(0);
-      }
-    };
-
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container || typingUsers.length === 0) return;
-
-    const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    const isNearBottom = distanceToBottom < CHAT_NEAR_BOTTOM_PX;
-    if (!isNearBottom) return;
-
-    requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    });
-  }, [typingUsers.length]);
-
+  // ── Small helpers ────────────────────────────────────────────────────
   const handleSelectConversation = useCallback(
     (conversationId: string) => {
       void navigate(`/chat/${conversationId}`);
@@ -2256,16 +2211,17 @@ export default function ChatPage() {
   const currentUserRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
 
   return (
-    <div className="absolute inset-0 w-full h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
-      <ChatNavRail
-        navigate={navigate}
-        onOpenProfile={() => setShowProfileModal(true)}
-        showContactsManagement={showContactsManagement}
-        onToggleContacts={() => {
-          setShowContactsManagement((v) => !v);
-          setContactsTab('friends');
-        }}
-      />
+    <ChatPageProvider value={contextValue}>
+      <div className="w-full h-full min-h-0 flex overflow-hidden bg-background">
+        <ChatNavRail
+          navigate={navigate}
+          onOpenProfile={() => modalActions.setShowProfileModal(true)}
+          showContactsManagement={modalState.showContactsManagement}
+          onToggleContacts={() => {
+            modalActions.setShowContactsManagement((v) => !v);
+            modalActions.setContactsTab('friends');
+          }}
+        />
 
       <ConversationListPanel
         conversations={conversations}

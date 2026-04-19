@@ -313,7 +313,12 @@ function imageDisplaySrc(msg: IMessage): string {
 }
 
 type CallLogContent =
-  | { kind: 'completed' | 'missed' | 'rejected'; callType: 'audio' | 'video'; durationSec?: number }
+  | {
+      kind: 'completed' | 'missed' | 'rejected';
+      callType: 'audio' | 'video';
+      durationSec?: number;
+      scope?: string;
+    }
   | Record<string, unknown>;
 
 export type ChatMessageListProps = {
@@ -750,9 +755,11 @@ export function ChatMessageList({
               const callType = (payload as any)?.callType as string | undefined;
               const durationSec = Number((payload as any)?.durationSec ?? 0);
               const durationLabel =
-                durationSec > 0
-                  ? `${Math.floor(durationSec / 60)} phút ${durationSec % 60} giây`
-                  : '0 phút 0 giây';
+                kind === 'missed' || kind === 'rejected'
+                  ? '—'
+                  : durationSec > 0
+                    ? `${Math.floor(durationSec / 60)} phút ${String(durationSec % 60).padStart(2, '0')} giây`
+                    : '0 phút 0 giây';
 
               const title =
                 kind === 'missed'
@@ -763,6 +770,14 @@ export function ChatMessageList({
                       ? 'Cuộc gọi video'
                       : 'Cuộc gọi thoại';
 
+              const isMeCall = msg.senderId === currentUserId;
+              const prevCall = index > 0 ? allMessages[index - 1] : undefined;
+              const nextCall = index < allMessages.length - 1 ? allMessages[index + 1] : undefined;
+              const isSameSenderAsPrevCall = !!prevCall && prevCall.senderId === msg.senderId;
+              const isSameSenderAsNextCall = !!nextCall && nextCall.senderId === msg.senderId;
+              const showAvatarCall = !isMeCall && !isSameSenderAsNextCall;
+              const showMetaCall = !isSameSenderAsNextCall;
+
               return (
                 <motion.div
                   id={`chat-msg-${msg.messageId}`}
@@ -770,18 +785,63 @@ export function ChatMessageList({
                   initial={{ opacity: 0, y: 8, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ duration: 0.18, ease: 'easeOut' }}
-                  className="flex justify-center my-3"
+                  className={`flex items-end gap-2 group/msg ${isMeCall ? 'flex-row-reverse' : 'flex-row'} ${isSameSenderAsPrevCall ? 'mt-0' : 'mt-1'}`}
                 >
-                  <div className="min-w-[260px] max-w-[360px] rounded-2xl bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      {callType === 'video' ? (
-                        <Video className="w-4 h-4 text-blue-600" />
-                      ) : (
-                        <Phone className="w-4 h-4 text-blue-600" />
-                      )}
-                      <p className="text-sm font-bold text-foreground">{title}</p>
+                  {showAvatarCall ? (
+                    <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-indigo-500 flex items-center justify-center shrink-0 text-white text-xs font-bold shadow-sm mb-0.5">
+                      {(msg.senderDisplayName ?? msg.senderId).trim().slice(0, 1).toUpperCase()}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">{durationLabel}</p>
+                  ) : isMeCall ? null : (
+                    <div className="w-8 shrink-0" aria-hidden />
+                  )}
+
+                  <div
+                    className={`flex flex-col max-w-[55%] sm:max-w-[45%] ${isMeCall ? 'items-end' : 'items-start'}`}
+                  >
+                    {!isMeCall && activeConversation?.type === 'group' && !isSameSenderAsPrevCall && (
+                      <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
+                        {msg.senderDisplayName ?? msg.senderId}
+                      </p>
+                    )}
+
+                    <div
+                      className={
+                        isMeCall
+                          ? 'min-w-[200px] max-w-full rounded-2xl rounded-br-sm px-4 py-3 shadow-sm bg-linear-to-br from-blue-500 to-blue-600 text-white'
+                          : 'min-w-[200px] max-w-full rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground'
+                      }
+                    >
+                      <div
+                        className={`flex items-center gap-2 ${isMeCall ? 'justify-end' : 'justify-start'} flex-wrap`}
+                      >
+                        {callType === 'video' ? (
+                          <Video
+                            className={`w-4 h-4 shrink-0 ${isMeCall ? 'text-blue-100' : 'text-blue-600 dark:text-blue-400'}`}
+                          />
+                        ) : (
+                          <Phone
+                            className={`w-4 h-4 shrink-0 ${isMeCall ? 'text-blue-100' : 'text-blue-600 dark:text-blue-400'}`}
+                          />
+                        )}
+                        <p className={`text-sm font-bold ${isMeCall ? 'text-white' : 'text-foreground'}`}>{title}</p>
+                      </div>
+                      <p
+                        className={`text-xs mt-1 ${isMeCall ? 'text-blue-100/90 text-right' : 'text-muted-foreground'}`}
+                      >
+                        {durationLabel}
+                      </p>
+                    </div>
+
+                    {showMetaCall && (
+                      <div
+                        className={`flex items-center gap-1 mt-1 px-1 ${isMeCall ? 'flex-row-reverse' : 'flex-row'}`}
+                      >
+                        <span className="text-[10px] text-muted-foreground/70">
+                          {formatTime(msg.createdAt)}
+                        </span>
+                        {isMeCall && <CheckCheck className="w-3 h-3 text-blue-400" />}
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               );
@@ -1229,6 +1289,37 @@ export function ChatMessageList({
                                 >
                                   <RotateCcw className="w-3.5 h-3.5 shrink-0" /> Thu hồi
                                 </button>
+                                <button
+                                  type="button"
+                                  className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-red-500/10 text-red-600 flex items-center gap-2"
+                                  onClick={() => void onDelete(msg)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 shrink-0" /> Xóa
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {!isMe && (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              title="Thao tác"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onActionMenuMsgIdChange(
+                                  actionMenuMsgId === msg.messageId ? null : msg.messageId,
+                                );
+                              }}
+                              className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
+                            >
+                              <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
+                            </button>
+                            {actionMenuMsgId === msg.messageId && (
+                              <div
+                                className="absolute z-50 min-w-[168px] rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl py-1 left-0 bottom-full mb-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <button
                                   type="button"
                                   className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-red-500/10 text-red-600 flex items-center gap-2"

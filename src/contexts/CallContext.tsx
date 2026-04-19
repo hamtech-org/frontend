@@ -4,7 +4,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { socketService } from '@/services/socket';
 import { apiClient } from '@/services/api';
 import type { RootState, AppDispatch } from '@/store/store';
-import type { CallType, IncomingCallData } from '@/types/call.types';
+import { store } from '@/store/store';
+import type { CallType, CallScope, IncomingCallData } from '@/types/call.types';
 import {
   setOutgoingCall,
   setIncomingCall,
@@ -19,6 +20,8 @@ import {
   setUpgradePendingIncoming,
   setUpgradeAccepted,
   resetUpgrade,
+  setActiveGroupCall,
+  setJoiningGroupCall,
 } from '@/store/slices/callSlice';
 
 const AGORA_APP_ID = import.meta.env.VITE_AGORA_APP_ID;
@@ -29,11 +32,45 @@ interface AgoraTokenResponse {
   channel: string;
 }
 
+type ChannelReadyPayload = {
+  channelName: string;
+  conversationId?: string;
+  scope?: CallScope;
+  hostId?: string;
+  sessionId?: string;
+};
+
+function buildCallSearch(
+  channelName: string,
+  type: CallType,
+  conversationId: string,
+  returnTo: string,
+  scope: CallScope,
+  hostId?: string | null,
+): string {
+  const params = new URLSearchParams();
+  params.set('channel', channelName);
+  params.set('type', type);
+  params.set('conversationId', conversationId);
+  params.set('returnTo', returnTo);
+  params.set('scope', scope);
+  if (hostId) params.set('hostId', hostId);
+  return params.toString();
+}
+
 interface CallContextValue {
   initiateCall: (calleeId: string, type: CallType) => void;
+  initiateGroupCall: (type: CallType) => void;
   acceptCall: () => void;
   rejectCall: () => void;
+  /** Cuộc gọi 1-1: gửi call:end + log. */
   endCall: (meta?: { durationSec?: number; result?: 'completed' | 'missed' | 'rejected' }) => void;
+  /** Nhóm: rời Agora, cuộc gọi tiếp tục với người khác. */
+  leaveGroupCall: () => void;
+  /** Nhóm: chỉ host — kết thúc cho mọi người. */
+  endGroupCallForAll: (meta?: { durationSec?: number }) => void;
+  /** Nhóm: vào kênh đang mở từ chat (phiên active). */
+  joinActiveGroupCall: () => void;
   onToggleMic: () => void;
   onToggleCamera: () => void;
   requestUpgradeToVideo: () => void;
@@ -49,9 +86,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const location = useLocation();
   const navigate = useNavigate();
   const callState = useSelector((state: RootState) => state.call);
+  const currentUserId = useSelector((state: RootState) => state.auth.user?.userId ?? '');
 
   const getConversationIdFromPath = (pathname: string): string | null => {
-    // /chat/:conversationId
     const parts = pathname.split('/').filter(Boolean);
     if (parts[0] !== 'chat') return null;
     return parts[1] ?? null;
@@ -60,7 +97,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const onIncoming = (data: unknown) => {
       const payload = data as IncomingCallData;
-      // Lưu route hiện tại để sau khi kết thúc call quay lại đúng cuộc chat
       dispatch(setReturnTo(location.pathname));
       dispatch(setIncomingCall(payload));
     };
@@ -75,8 +111,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const onEnded = () => {
-      // Nếu đang rung ở phía người nhận mà bị kết thúc (caller cancel/timeout) => coi như call nhỡ
-      if (callState.status === 'incoming-ringing') {
+      const st = store.getState().call.status;
+      if (st === 'incoming-ringing') {
         dispatch(setEndReason('missed'));
       }
       dispatch(setCallEnded());
@@ -110,7 +146,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       socketService.off('call:upgrade-request', onUpgradeRequest);
       socketService.off('call:upgrade-response', onUpgradeResponse);
     };
-  }, [dispatch, navigate, callState.status]);
+  }, [dispatch, location.pathname]);
 
   const fetchAgoraToken = useCallback(async (channelName: string): Promise<AgoraTokenResponse> => {
     const res = await apiClient.get('/agora/rtc-token', {
@@ -123,15 +159,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (calleeId: string, type: CallType) => {
       if (callState.status !== 'idle') return;
 
-      // Nếu đang ở /chat/:conversationId thì ưu tiên quay lại đúng màn hình này
       dispatch(setReturnTo(location.pathname));
       const conversationId = getConversationIdFromPath(location.pathname);
       if (!conversationId) return;
-      socketService.emit('call:initiate', { calleeId, type, conversationId });
+      socketService.emit('call:initiate', { calleeId, type, conversationId, scope: 'direct' });
 
-      // once: tránh chồng listener khi bấm gọi nhanh / StrictMode; tự gỡ sau 1 lần nhận
       socketService.once('call:channel-ready', (data: unknown) => {
-        const payload = data as { channelName: string; conversationId?: string };
+        const payload = data as ChannelReadyPayload;
         dispatch(
           setOutgoingCall({
             calleeId,
@@ -139,21 +173,76 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             channelName: payload.channelName,
             conversationId: payload.conversationId ?? conversationId,
             returnTo: location.pathname,
+            callScope: payload.scope ?? 'direct',
+            hostId: payload.hostId ?? null,
           }),
         );
         navigate(
-          `/call?channel=${payload.channelName}&type=${type}&conversationId=${encodeURIComponent(
+          `/call?${buildCallSearch(
+            payload.channelName,
+            type,
             payload.conversationId ?? conversationId,
-          )}&returnTo=${encodeURIComponent(location.pathname)}`,
+            location.pathname,
+            payload.scope ?? 'direct',
+            payload.hostId,
+          )}`,
         );
       });
     },
     [callState.status, dispatch, navigate, location.pathname],
   );
 
+  const initiateGroupCall = useCallback(
+    (type: CallType) => {
+      if (callState.status !== 'idle') return;
+
+      dispatch(setReturnTo(location.pathname));
+      const conversationId = getConversationIdFromPath(location.pathname);
+      if (!conversationId) return;
+      socketService.emit('call:initiate', { type, conversationId, scope: 'group' });
+
+      socketService.once('call:channel-ready', (data: unknown) => {
+        const payload = data as ChannelReadyPayload;
+        const conv = payload.conversationId ?? conversationId;
+        if (payload.scope === 'group' && payload.sessionId && conv) {
+          dispatch(
+            setActiveGroupCall({
+              conversationId: conv,
+              channelName: payload.channelName,
+              type,
+              hostId: payload.hostId ?? currentUserId,
+              sessionId: payload.sessionId,
+            }),
+          );
+        }
+        dispatch(
+          setOutgoingCall({
+            callType: type,
+            channelName: payload.channelName,
+            conversationId: conv,
+            returnTo: location.pathname,
+            callScope: 'group',
+            hostId: payload.hostId ?? null,
+            calleeId: null,
+          }),
+        );
+        navigate(
+          `/call?${buildCallSearch(
+            payload.channelName,
+            type,
+            conv,
+            location.pathname,
+            'group',
+            payload.hostId,
+          )}`,
+        );
+      });
+    },
+    [callState.status, currentUserId, dispatch, navigate, location.pathname],
+  );
+
   const acceptCall = useCallback(() => {
-    if (callState.status !== 'incoming-ringing' || !callState.channelName || !callState.callerId)
-      return;
+    if (callState.status !== 'incoming-ringing' || !callState.channelName || !callState.callerId) return;
 
     socketService.emit('call:accept', {
       channelName: callState.channelName,
@@ -163,12 +252,20 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     dispatch(setCallAccepted());
     const rt = callState.returnTo ?? location.pathname;
+    const convId = callState.conversationId || '';
+    const scope = callState.callScope;
+    const hostId = callState.hostId ?? callState.callerId;
     navigate(
-      `/call?channel=${callState.channelName}&type=${callState.callType || 'audio'}&conversationId=${encodeURIComponent(
-        callState.conversationId || '',
-      )}&returnTo=${encodeURIComponent(rt)}`,
+      `/call?${buildCallSearch(
+        callState.channelName,
+        callState.callType || 'audio',
+        convId,
+        rt,
+        scope,
+        scope === 'group' ? hostId : null,
+      )}`,
     );
-  }, [callState, dispatch, navigate]);
+  }, [callState, dispatch, navigate, location.pathname]);
 
   const rejectCall = useCallback(() => {
     if (!callState.channelName || !callState.callerId) return;
@@ -182,22 +279,80 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dispatch(resetCall());
   }, [callState, dispatch]);
 
-  const endCall = useCallback((meta?: { durationSec?: number; result?: 'completed' | 'missed' | 'rejected' }) => {
-    const peerId = callState.callerId || callState.calleeId;
-    if (!callState.channelName || !peerId || !callState.conversationId) return;
+  const endCall = useCallback(
+    (meta?: { durationSec?: number; result?: 'completed' | 'missed' | 'rejected' }) => {
+      if (callState.callScope === 'group') return;
+      const peerId = callState.callerId || callState.calleeId;
+      if (!callState.channelName || !peerId || !callState.conversationId) return;
 
-    socketService.emit('call:end', {
+      socketService.emit('call:end', {
+        channelName: callState.channelName,
+        peerId,
+        conversationId: callState.conversationId,
+        type: callState.callType || 'audio',
+        durationSec: meta?.durationSec,
+        result: meta?.result,
+      });
+      dispatch(setCallEnded());
+    },
+    [callState, dispatch],
+  );
+
+  const leaveGroupCall = useCallback(() => {
+    if (callState.callScope !== 'group' || !callState.channelName || !callState.conversationId) return;
+    socketService.emit('call:group-leave', {
       channelName: callState.channelName,
-      peerId,
       conversationId: callState.conversationId,
-      type: callState.callType || 'audio',
-      durationSec: meta?.durationSec,
-      result: meta?.result,
     });
     dispatch(setCallEnded());
   }, [callState, dispatch]);
 
+  const endGroupCallForAll = useCallback(
+    (meta?: { durationSec?: number }) => {
+      if (callState.callScope !== 'group' || !callState.channelName || !callState.conversationId) return;
+      if (!callState.hostId || callState.hostId !== currentUserId) return;
+
+      socketService.emit('call:group-end-all', {
+        channelName: callState.channelName,
+        conversationId: callState.conversationId,
+        type: callState.callType || 'audio',
+        durationSec: meta?.durationSec,
+      });
+      dispatch(setCallEnded());
+    },
+    [callState, dispatch, currentUserId],
+  );
+
+  const joinActiveGroupCall = useCallback(() => {
+    const session = store.getState().call.activeGroupCall;
+    const st = store.getState().call.status;
+    if (!session) return;
+    if (st !== 'idle' && st !== 'ended') return;
+    const returnTo = location.pathname;
+    dispatch(setReturnTo(returnTo));
+    dispatch(
+      setJoiningGroupCall({
+        callType: session.type,
+        channelName: session.channelName,
+        conversationId: session.conversationId,
+        hostId: session.hostId,
+        returnTo,
+      }),
+    );
+    navigate(
+      `/call?${buildCallSearch(
+        session.channelName,
+        session.type,
+        session.conversationId,
+        returnTo,
+        'group',
+        session.hostId,
+      )}`,
+    );
+  }, [dispatch, navigate, location.pathname]);
+
   const requestUpgradeToVideo = useCallback(() => {
+    if (callState.callScope === 'group') return;
     const peerId = callState.callerId || callState.calleeId;
     if (!callState.channelName || !peerId) return;
 
@@ -210,6 +365,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const respondUpgradeToVideo = useCallback(
     (accepted: boolean) => {
+      if (callState.callScope === 'group') return;
       const peerId = callState.callerId || callState.calleeId;
       if (!callState.channelName || !peerId) return;
 
@@ -234,9 +390,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <CallContext.Provider
       value={{
         initiateCall,
+        initiateGroupCall,
         acceptCall,
         rejectCall,
         endCall,
+        leaveGroupCall,
+        endGroupCallForAll,
+        joinActiveGroupCall,
         onToggleMic,
         onToggleCamera,
         requestUpgradeToVideo,

@@ -63,6 +63,15 @@ function applyMessageStatusPatch(
   dispatch(chatApi.util.invalidateTags([{ type: 'Messages', id: conversationId }]));
 }
 
+// Helper: sort conversations by lastMessage.createdAt desc
+function sortConversationsByLastMessage(convs: IConversation[]) {
+  return [...convs].sort((a, b) => {
+    const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
+    const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
 type PatchMessageInCache = (
   conversationId: string,
   messageId: string,
@@ -285,7 +294,7 @@ export function useChatSocketListeners(
     socketService.on('group:poll_updated', (data: any) => handleGroupUpdate({ ...data, type: 'poll' }));
     socketService.on('group:task_new', (data: any) => handleGroupUpdate({ ...data, type: 'task' }));
     socketService.on('group:task_updated', (data: any) => handleGroupUpdate({ ...data, type: 'task' }));
-    socketService.on('group:recap_new', (data: any) => {
+    socketService.on('group:recap_new', () => {
       // Có thể hiển thị thông báo "AI vừa tạo tóm tắt mới!"
       dispatch(chatApi.util.invalidateTags(['Conversations']));
     });

@@ -303,21 +303,11 @@ type ConversationInfoPanelProps = {
     leaveGroup?: boolean;
     deleteGroup?: boolean;
   };
-  numRequests: number;
-  currentUserRole?: 'owner' | 'admin' | 'member';
-  currentUserId?: string;
-
-  // Data + handlers để render modal "Thành viên" ngay trong tab này
-  members?: any[];
-  requests?: any[];
-  onApproveMember?: (userId: string) => Promise<void>;
-  onRejectMember?: (userId: string) => Promise<void>;
-  onKickMember?: (userId: string) => Promise<void>;
-  busyMemberActions?: {
-    approving?: boolean;
-    rejecting?: boolean;
-    removing?: boolean;
-    changingRole?: boolean;
+  const busyMemberActions = {
+    approving: group.actionLoading.approveRequest,
+    rejecting: group.actionLoading.rejectRequest,
+    removing: group.actionLoading.removeMember,
+    changingRole: group.actionLoading.changeRole,
   };
 
   /** Tin đã tải trong hội thoại — tìm trong phạm vi client. */
@@ -424,7 +414,7 @@ export function ConversationInfoPanel({
       setBulletinModalMode(null);
       onOpenMemberModal?.(tab);
     },
-    [onOpenMemberModal],
+    [],
   );
 
   const memberNameById = useMemo(() => {
@@ -608,7 +598,7 @@ export function ConversationInfoPanel({
   }, [galleryKind, activeConversation?.conversationId]);
 
   return (
-    <div className="w-[280px] lg:w-[340px] border-l border-black/5 dark:border-white/5 flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all hidden md:flex">
+    <div className="w-[280px] lg:w-[340px] h-full min-h-0 border-l border-black/5 dark:border-white/5 flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all hidden md:flex">
       <div className="h-20 px-6 flex items-center justify-center border-b border-black/5 dark:border-white/5 font-bold text-lg sticky top-0 bg-inherit z-10 shrink-0">
         Thông tin {activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}
       </div>
@@ -620,19 +610,16 @@ export function ConversationInfoPanel({
             onClose={() => setShowInlineMembers(false)}
             memberTab={memberTab}
             onMemberTabChange={setMemberTab}
-            members={members}
-            requests={requests}
-            currentUserId={currentUserId}
-            // Không truyền handler từ ChatPage để tránh window.confirm (hộp browser "localhost").
-            // Modal sẽ tự gọi API + dùng ConfirmModal UI.
+            members={group.members}
+            requests={group.requests}
+            currentUserId={core.currentUserId}
             onApprove={undefined}
             onReject={undefined}
             onKick={undefined}
-            onChangeRole={async () => {}}
             busy={busyMemberActions}
             variant="inline"
             canModerate={canModerateMembers}
-            onAddMembersClick={onAddMembers}
+            onAddMembersClick={groupActions.openAddMembersModal}
             groupId={activeConversation?.conversationId}
           />
         </div>
@@ -955,8 +942,8 @@ export function ConversationInfoPanel({
             {activeConversation?.name ?? 'Hội thoại'}
             <button
               type="button"
-              onClick={onEditGroup}
-              disabled={loading?.updateGroup}
+              onClick={groupActions.openEditGroupModal}
+              disabled={loading.updateGroup}
               className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
               title="Chỉnh sửa nhóm"
             >
@@ -1107,7 +1094,7 @@ export function ConversationInfoPanel({
               </div>
               <button
                 type="button"
-                onClick={onOpenAISummaryFromPanel}
+                onClick={groupActions.openAISummaryFromPanel}
                 className="w-full relative flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-[#0068ff] to-[#8c52ff] hover:from-blue-700 hover:to-purple-700 text-white font-bold text-[14px] shadow-lg shadow-purple-600/20 transition-all hover:shadow-purple-600/40 hover:-translate-y-0.5"
               >
                 <Sparkles className="w-[18px] h-[18px]" />
@@ -1121,11 +1108,11 @@ export function ConversationInfoPanel({
             <div className="px-4 py-3 border-b border-black/5 dark:border-white/5 bg-white dark:bg-transparent">
               <button
                 type="button"
-                onClick={onRequestJoin}
-                disabled={isJoinRequested || loading?.requestJoin}
+                onClick={() => void groupActions.handleRequestJoin()}
+                disabled={isJoinRequested || loading.requestJoin}
                 className="w-full rounded-xl py-2.5 text-sm font-bold bg-blue-600 text-white disabled:bg-blue-200 disabled:cursor-not-allowed"
               >
-                {isJoinRequested ? 'Đã gửi yêu cầu' : loading?.requestJoin ? 'Đang gửi...' : 'Yêu cầu tham gia'}
+                {isJoinRequested ? 'Đã gửi yêu cầu' : loading.requestJoin ? 'Đang gửi...' : 'Yêu cầu tham gia'}
               </button>
             </div>
 
