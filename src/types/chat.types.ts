@@ -46,6 +46,8 @@ export interface IConversation {
   name: string | null;
   avatar: string | null;
   lastMessage: ILastMessage | null;
+  /** META (server): thời điểm tin cuối trên hội thoại — ưu tiên khi sort sidebar. */
+  lastMessageAt?: string;
   memberCount: number;
   unreadCount: number;
   updatedAt?: string;

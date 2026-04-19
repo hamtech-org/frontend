@@ -18,7 +18,7 @@ const DAY_MS = 86_400_000;
  * Thời gian danh sách hội thoại kiểu Zalo (VN).
  * `now` truyền vào để test / tick UI định kỳ.
  *
- * - &lt; 1 phút: "Vừa xong"
+ * - &lt; 1 phút: "Vài giây" (kể cả lệch đồng hồ nhẹ với server → tránh nháy DD/MM/YYYY)
  * - &lt; 60 phút: "X phút"
  * - &lt; 24 giờ: "X giờ"
  * - &lt; 7 ngày: "X ngày"
@@ -30,9 +30,10 @@ export function formatZaloConversationTime(iso: string, now: Date = new Date()):
   if (!t.isValid()) return '';
 
   const diff = now.getTime() - t.valueOf();
-  if (diff < 0) return t.format('DD/MM/YYYY');
+  /** Tin “vừa gửi” nhưng `createdAt` hơi sau `now` (lệch giờ client/server) — không hiện ngày. */
+  if (diff < 0) return 'Vài giây';
 
-  if (diff < MINUTE_MS) return 'Vừa xong';
+  if (diff < MINUTE_MS) return 'Vài giây';
   if (diff < 60 * MINUTE_MS) {
     const minutes = Math.floor(diff / MINUTE_MS);
     return `${Math.max(1, minutes)} phút`;

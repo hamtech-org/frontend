@@ -15,7 +15,7 @@ import {
 } from '@/store/slices/chatSlice';
 import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
 import type { ConversationType, IConversation, IGroupSettings, IMessage, MessageStatus } from '@/types/chat.types';
-import { lastMessagePreviewContentFromMessage, sortConversationsByLastMessage } from '@/utils/chatUtils';
+import { lastMessagePreviewContentFromMessage, sortConversationsForSidebar } from '@/utils/chatUtils';
 
 function applyMessageStatusPatch(
   dispatch: AppDispatch,
@@ -105,13 +105,14 @@ export function useChatSocketListeners(
               createdAt: msg.createdAt,
               senderDisplayName: msg.senderDisplayName?.trim() ?? null,
             };
+            conv.lastMessageAt = msg.createdAt;
             conv.updatedAt = msg.createdAt;
             // Nếu user chưa mở cuộc trò chuyện này thì tăng unreadCount
             if (activeConversationIdRef.current !== msg.conversationId) {
               conv.unreadCount = (conv.unreadCount ?? 0) + 1;
             }
           }
-          draft.data = sortConversationsByLastMessage(draft.data);
+          draft.data = sortConversationsForSidebar(draft.data);
         })
       );
     };

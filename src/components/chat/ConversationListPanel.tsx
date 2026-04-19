@@ -15,7 +15,11 @@ import {
   Video,
 } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
-import { formatConversationListLastPreview, parseConversationListMediaPreview } from '@/utils/chatUtils';
+import {
+  formatConversationListLastPreview,
+  parseConversationListMediaPreview,
+  sortConversationsForSidebar,
+} from '@/utils/chatUtils';
 import { formatZaloConversationTime } from '@/utils/formatDate';
 import { ContactsManagementPanel, type ContactsTabId } from '@/components/chat/ContactsManagementPanel';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
@@ -44,24 +48,6 @@ function formatUnreadBadge(n: number): string {
   if (n > 99) return '99+';
   if (n > 9) return '9+';
   return String(n);
-}
-
-/**
- * Ghim hội thoại lên đầu trước; tiếp theo ưu tiên hội thoại có nhiều tin ghim hơn;
- * cuối cùng theo tin nhắn gần nhất.
- */
-function sortConversationsForSidebar(convs: IConversation[]) {
-  return [...convs].sort((a, b) => {
-    const ap = a.isPinnedToTop ? 1 : 0;
-    const bp = b.isPinnedToTop ? 1 : 0;
-    if (bp !== ap) return bp - ap;
-    const aPins = a.pinnedMessageCount ?? 0;
-    const bPins = b.pinnedMessageCount ?? 0;
-    if (bPins !== aPins) return bPins - aPins;
-    const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
-    const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
-    return bTime - aTime;
-  });
 }
 
 export function ConversationListPanel({
@@ -115,9 +101,15 @@ export function ConversationListPanel({
     [conversations],
   );
 
+  /** Thứ tự hiển thị sidebar: ghim hội thoại → nhiều tin ghim → hoạt động mới nhất. */
+  const sortedSidebarConversations = useMemo(
+    () => sortConversationsForSidebar(listableConversations),
+    [listableConversations],
+  );
+
   const filteredConversations = useMemo(() => {
     if (!q) return [];
-    return listableConversations.filter((c) => {
+    const hit = listableConversations.filter((c) => {
       const name = (c.name ?? '').toLowerCase();
       const preview = formatConversationListLastPreview(c, currentUserId).toLowerCase();
       return (
@@ -126,17 +118,23 @@ export function ConversationListPanel({
         c.conversationId.toLowerCase().includes(q)
       );
     });
+    return sortConversationsForSidebar(hit);
   }, [listableConversations, q, currentUserId]);
 
   const filteredMessages = useMemo(() => {
     if (!q || !activeConversationId || !activeMessages.length) return [];
-    return activeMessages
-      .filter((m) => {
-        const content = (m.content ?? '').toLowerCase();
-        const sender = (m.senderDisplayName ?? m.senderId ?? '').toLowerCase();
-        return content.includes(q) || sender.includes(q);
-      })
-      .slice(0, 8);
+    const hit = activeMessages.filter((m) => {
+      const content = (m.content ?? '').toLowerCase();
+      const sender = (m.senderDisplayName ?? m.senderId ?? '').toLowerCase();
+      return content.includes(q) || sender.includes(q);
+    });
+    hit.sort((a, b) => {
+      const ap = a.isPinned ? 1 : 0;
+      const bp = b.isPinned ? 1 : 0;
+      if (bp !== ap) return bp - ap;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    return hit.slice(0, 8);
   }, [activeMessages, activeConversationId, q]);
 
   const openSearchDropdown = searchQuery.trim().length > 0;
@@ -347,7 +345,7 @@ export function ConversationListPanel({
             </div>
           )}
           {!convsLoading &&
-            sortConversationsForSidebar(listableConversations).map((conv, index) => {
+            sortedSidebarConversations.map((conv, index) => {
               const isActive = activeConversationId === conv.conversationId;
               const hasUnread = (conv.unreadCount ?? 0) > 0;
               const isGroup = conv.type === 'group';
