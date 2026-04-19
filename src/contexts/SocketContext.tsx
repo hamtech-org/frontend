@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { socketService } from '@/services/socket';
+import {
+  attachCallGroupSocketToRedux,
+  resetCallGroupSocketReduxAttachment,
+} from '@/services/callGroupReduxSync';
 import { useAuth } from '@/hooks/useAuth';
 import { GlobalChatSocketBridge } from '@/components/GlobalChatSocketBridge';
 
@@ -15,19 +19,33 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     if (accessToken) {
+      resetCallGroupSocketReduxAttachment();
       socketService.connect(accessToken);
-      
-      socketService.on('connect', () => {
+
+      const handleSocketConnect = () => {
         setIsConnected(true);
-        // Emit online status to notify friends
+        attachCallGroupSocketToRedux();
         socketService.emit('friend:statusChanged', 'online');
-      });
-      
+      };
+
+      socketService.on('connect', handleSocketConnect);
+      try {
+        if (socketService.getSocket().connected) {
+          handleSocketConnect();
+        }
+      } catch {
+        /* socket chưa tạo — chờ sự kiện connect */
+      }
+
       socketService.on('disconnect', () => {
         setIsConnected(false);
+        resetCallGroupSocketReduxAttachment();
       });
     }
-    return () => { socketService.disconnect(); };
+    return () => {
+      resetCallGroupSocketReduxAttachment();
+      socketService.disconnect();
+    };
   }, [accessToken]);
 
   return (

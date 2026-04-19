@@ -12,6 +12,10 @@ import {
   Minimize2,
   MonitorUp,
   MonitorOff,
+  LogOut,
+  Users,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 import AgoraRTC, {
   type IAgoraRTCClient,
@@ -40,9 +44,13 @@ export default function CallPage() {
   const urlCallType = searchParams.get('type') as 'audio' | 'video' | null;
   const conversationIdParam = searchParams.get('conversationId');
   const returnToParam = searchParams.get('returnTo');
+  const scopeParam = searchParams.get('scope');
+  const hostIdParam = searchParams.get('hostId');
 
   const {
     endCall,
+    leaveGroupCall,
+    endGroupCallForAll,
     fetchAgoraToken,
     appId,
     onToggleMic,
@@ -53,6 +61,8 @@ export default function CallPage() {
   const {
     status,
     callType,
+    callScope,
+    hostId,
     isMicOn,
     isCameraOn,
     upgradeStatus,
@@ -62,23 +72,45 @@ export default function CallPage() {
     calleeId,
     endReason,
   } = useSelector((state: RootState) => state.call);
+  const currentUserId = useSelector((state: RootState) => state.auth.user?.userId ?? '');
 
   const resolvedReturnTo = decodeURIComponent(returnToParam || returnTo || '/chat');
   const resolvedConversationId = decodeURIComponent(conversationIdParam || conversationId || '');
+  const resolvedConversationIdRef = useRef(resolvedConversationId);
+  resolvedConversationIdRef.current = resolvedConversationId;
+
+  const isGroup =
+    callScope === 'group' ||
+    scopeParam === 'group' ||
+    Boolean(channelName?.startsWith('grp_'));
+  const hostIdResolved = (hostId || hostIdParam || '').trim();
+  const isHost = Boolean(
+    hostIdResolved && currentUserId && hostIdResolved === currentUserId,
+  );
 
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [timer, setTimer] = useState(0);
   const [remoteUser, setRemoteUser] = useState<IAgoraRTCRemoteUser | null>(null);
+  /** UIDs người xa (nhóm) — cập nhật khi publish audio/video. */
+  const [remoteUids, setRemoteUids] = useState<number[]>([]);
   const [joined, setJoined] = useState(false);
   const [remoteHasVideo, setRemoteHasVideo] = useState(false);
+  /** Ghim video (camera hoặc màn hình chia sẻ) của một remote trong cuộc gọi nhóm — hiển thị fullscreen phía trên. */
+  const [pinnedRemoteUid, setPinnedRemoteUid] = useState<number | null>(null);
   const ringbackRef = useRef<HTMLAudioElement | null>(null);
 
   const clientRef = useRef<IAgoraRTCClient | null>(null);
+  const isGroupRef = useRef(isGroup);
+  isGroupRef.current = isGroup;
+  const pinnedRemoteUidRef = useRef<number | null>(null);
+  pinnedRemoteUidRef.current = pinnedRemoteUid;
+
   const micTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const camTrackRef = useRef<ICameraVideoTrack | null>(null);
   const screenTrackRef = useRef<ILocalVideoTrack | null>(null);
   const localVideoRef = useRef<HTMLDivElement>(null);
   const remoteVideoRef = useRef<HTMLDivElement>(null);
+  const pinnedMainRef = useRef<HTMLDivElement>(null);
 
   const isVideoCall = (urlCallType ?? callType) === 'video';
   const isVideoCallRef = useRef(isVideoCall);
@@ -102,7 +134,6 @@ export default function CallPage() {
     throw new Error('Track creation failed');
   };
 
-  // Ringback for caller while waiting (outgoing-ringing)
   useEffect(() => {
     const audio = new Audio(outgoingRingback);
     audio.loop = true;
@@ -137,6 +168,23 @@ export default function CallPage() {
     const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
     clientRef.current = client;
     const videoCall = isVideoCallRef.current;
+    const group = channelName.startsWith('grp_');
+
+    /** Đặt video remote (camera hoặc screen track) vào ô grid hoặc vùng ghim theo `pinnedRemoteUidRef`. */
+    const placeGroupRemoteVideo = (user: IAgoraRTCRemoteUser) => {
+      const track = user.videoTrack;
+      if (!track) return;
+      const uidNum = Number(user.uid);
+      const pinned = pinnedRemoteUidRef.current;
+      track.stop();
+      if (pinned === uidNum) {
+        const main = pinnedMainRef.current;
+        if (main) track.play(main);
+      } else {
+        const cell = document.getElementById(`agora-remote-${uidNum}`);
+        if (cell) track.play(cell);
+      }
+    };
 
     const init = async () => {
       try {
@@ -149,47 +197,91 @@ export default function CallPage() {
 
         client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
           await client.subscribe(user, mediaType);
-          if (mediaType === 'video' && remoteVideoRef.current) {
-            user.videoTrack?.play(remoteVideoRef.current);
-            setRemoteHasVideo(true);
+          const uidNum = Number(user.uid);
+          if (group) {
+            setRemoteUids((prev) => (prev.includes(uidNum) ? prev : [...prev, uidNum]));
+          }
+          if (mediaType === 'video') {
+            if (group) {
+              placeGroupRemoteVideo(user);
+              setRemoteHasVideo(true);
+            } else if (remoteVideoRef.current) {
+              user.videoTrack?.play(remoteVideoRef.current);
+              setRemoteHasVideo(true);
+            }
           }
           if (mediaType === 'audio') {
             user.audioTrack?.play();
           }
-          setRemoteUser(user);
+          if (!group) setRemoteUser(user);
         });
 
         client.on('user-unpublished', (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
           if (mediaType === 'video') {
             user.videoTrack?.stop();
-            setRemoteHasVideo(false);
+            if (group && pinnedRemoteUidRef.current === Number(user.uid)) {
+              setPinnedRemoteUid(null);
+            }
+            if (!group) {
+              setRemoteHasVideo(false);
+            } else {
+              setRemoteHasVideo(client.remoteUsers.some((u) => u.videoTrack != null));
+            }
           }
           if (mediaType === 'audio') {
             user.audioTrack?.stop();
           }
         });
 
-        client.on('user-left', () => {
-          setRemoteUser(null);
-          setRemoteHasVideo(false);
-          dispatch(setCallEnded());
+        client.on('user-left', (user: IAgoraRTCRemoteUser) => {
+          const uidNum = Number(user.uid);
+          if (isGroupRef.current) {
+            if (pinnedRemoteUidRef.current === uidNum) {
+              setPinnedRemoteUid(null);
+            }
+            setRemoteUids((prev) => prev.filter((u) => u !== uidNum));
+            if (client.remoteUsers.length === 0) {
+              const convId = resolvedConversationIdRef.current;
+              if (convId) {
+                socketService.emit('call:group-vacant', {
+                  channelName,
+                  conversationId: convId,
+                });
+              }
+              dispatch(setCallEnded());
+            }
+          } else {
+            setRemoteUser(null);
+            setRemoteHasVideo(false);
+            dispatch(setCallEnded());
+          }
         });
 
         await client.join(appId, channelName, token, uid);
         if (cancelled) return;
         setJoined(true);
+        if (group) {
+          dispatch(setCallConnected());
+        }
 
         const micTrack = await createTrackWithRetry(() =>
           AgoraRTC.createMicrophoneAudioTrack(),
         );
-        if (cancelled) { (micTrack as IMicrophoneAudioTrack).close(); return; }
+        if (cancelled) {
+          (micTrack as IMicrophoneAudioTrack).close();
+          return;
+        }
         micTrackRef.current = micTrack;
 
         if (videoCall) {
           const camTrack = await createTrackWithRetry(() =>
             AgoraRTC.createCameraVideoTrack(),
           );
-          if (cancelled) { (camTrack as ICameraVideoTrack).close(); (micTrack as IMicrophoneAudioTrack).close(); return; }
+          if (cancelled) {
+            (camTrack as ICameraVideoTrack).close();
+            (micTrack as IMicrophoneAudioTrack).close();
+            return;
+          }
           camTrackRef.current = camTrack;
           if (localVideoRef.current) {
             (camTrack as ICameraVideoTrack).play(localVideoRef.current);
@@ -214,13 +306,53 @@ export default function CallPage() {
       micTrackRef.current = null;
       camTrackRef.current = null;
       screenTrackRef.current = null;
-      // Luôn leave đúng instance client của effect này (StrictMode: ref có thể đã trỏ client khác)
       void client.leave().catch(() => undefined);
       if (clientRef.current === client) {
         clientRef.current = null;
       }
     };
-  }, [channelName, appId, fetchAgoraToken, dispatch, navigate]);
+  }, [
+    channelName,
+    appId,
+    fetchAgoraToken,
+    dispatch,
+    navigate,
+    resolvedReturnTo,
+    conversationIdParam,
+    conversationId,
+  ]);
+
+  useEffect(() => {
+    if (!isGroup) setPinnedRemoteUid(null);
+  }, [isGroup]);
+
+  /** Khi đổi ghim hoặc danh sách UID, gắn lại mọi remote video vào ô grid hoặc vùng ghim fullscreen. */
+  useEffect(() => {
+    if (!isGroup || !isVideoCall) return;
+    const client = clientRef.current;
+    if (!client || client.connectionState !== 'CONNECTED') return;
+
+    const placeAll = () => {
+      const pinned = pinnedRemoteUidRef.current;
+      for (const user of client.remoteUsers) {
+        const track = user.videoTrack;
+        if (!track) continue;
+        const uidNum = Number(user.uid);
+        track.stop();
+        if (pinned === uidNum) {
+          const main = pinnedMainRef.current;
+          if (main) track.play(main);
+        } else {
+          const cell = document.getElementById(`agora-remote-${uidNum}`);
+          if (cell) track.play(cell);
+        }
+      }
+    };
+
+    placeAll();
+    const id = requestAnimationFrame(() => placeAll());
+    return () => cancelAnimationFrame(id);
+  }, [pinnedRemoteUid, remoteUids, isGroup, isVideoCall, joined, status]);
 
   useEffect(() => {
     micTrackRef.current?.setEnabled(isMicOn);
@@ -230,8 +362,8 @@ export default function CallPage() {
     camTrackRef.current?.setEnabled(isCameraOn);
   }, [isCameraOn]);
 
-  // Handle upgrade accepted: create and publish camera track
   useEffect(() => {
+    if (isGroup) return;
     if (upgradeStatus !== 'accepted') return;
     const client = clientRef.current;
     if (!client || client.connectionState !== 'CONNECTED') return;
@@ -243,7 +375,10 @@ export default function CallPage() {
           const camTrack = await createTrackWithRetry(() =>
             AgoraRTC.createCameraVideoTrack(),
           );
-          if (cancelled) { (camTrack as ICameraVideoTrack).close(); return; }
+          if (cancelled) {
+            (camTrack as ICameraVideoTrack).close();
+            return;
+          }
           camTrackRef.current = camTrack;
           await client.publish([camTrack]);
         }
@@ -256,8 +391,10 @@ export default function CallPage() {
     };
 
     enableCamera();
-    return () => { cancelled = true; };
-  }, [upgradeStatus]);
+    return () => {
+      cancelled = true;
+    };
+  }, [upgradeStatus, isGroup]);
 
   useEffect(() => {
     if (status !== 'ended') return;
@@ -267,7 +404,6 @@ export default function CallPage() {
     if (clientRef.current?.connectionState === 'CONNECTED') {
       clientRef.current.leave();
     }
-    // Nếu có endReason (missed/rejected) thì show full-screen UI một lúc rồi mới thoát
     if (endReason) {
       const t = window.setTimeout(() => {
         dispatch(resetCall());
@@ -279,21 +415,27 @@ export default function CallPage() {
     navigate(resolvedReturnTo);
   }, [status, dispatch, navigate, resolvedReturnTo, endReason]);
 
-  // Timeout outgoing call: nếu B không accept/reject trong X giây => coi như bận
   useEffect(() => {
     if (status !== 'outgoing-ringing') return;
     const timeoutMs = 25_000;
     const t = window.setTimeout(() => {
-      // Nếu vẫn đang ringing thì timeout
       dispatch(setEndReason('missed'));
-      // Notify backend to log missed call + close callee modal
-      if (channelName && resolvedConversationId && calleeId) {
-        socketService.emit('call:missed', {
-          channelName,
-          peerId: calleeId,
-          conversationId: resolvedConversationId,
-          type: (urlCallType ?? callType ?? 'audio'),
-        });
+      const type = (urlCallType ?? callType ?? 'audio') as 'audio' | 'video';
+      if (channelName && resolvedConversationId) {
+        if (channelName.startsWith('grp_')) {
+          socketService.emit('call:group-missed', {
+            channelName,
+            conversationId: resolvedConversationId,
+            type,
+          });
+        } else if (calleeId) {
+          socketService.emit('call:missed', {
+            channelName,
+            peerId: calleeId,
+            conversationId: resolvedConversationId,
+            type,
+          });
+        }
       }
       dispatch(setCallEnded());
     }, timeoutMs);
@@ -302,7 +444,7 @@ export default function CallPage() {
 
   useEffect(() => {
     if (status !== 'connected') return;
-    const interval = setInterval(() => setTimer((t) => t + 1), 1000);
+    const interval = setInterval(() => setTimer((x) => x + 1), 1000);
     return () => clearInterval(interval);
   }, [status]);
 
@@ -312,21 +454,44 @@ export default function CallPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleEndCall = useCallback(() => {
-    // Include duration + completed result
-    // endCall() will emit call:end; backend will create call log message
-    endCall({ durationSec: timer, result: 'completed' });
+  const cleanupLocalMedia = useCallback(() => {
     micTrackRef.current?.close();
     camTrackRef.current?.close();
     screenTrackRef.current?.close();
+    micTrackRef.current = null;
+    camTrackRef.current = null;
+    screenTrackRef.current = null;
     if (clientRef.current?.connectionState === 'CONNECTED') {
-      clientRef.current.leave();
+      void clientRef.current.leave();
     }
+  }, []);
+
+  const handleDirectEnd = useCallback(() => {
+    endCall({ durationSec: timer, result: 'completed' });
+    cleanupLocalMedia();
     setTimeout(() => {
       dispatch(resetCall());
       navigate(resolvedReturnTo);
     }, 500);
-  }, [endCall, timer, dispatch, navigate, resolvedReturnTo]);
+  }, [endCall, timer, dispatch, navigate, resolvedReturnTo, cleanupLocalMedia]);
+
+  const handleGroupLeave = useCallback(() => {
+    leaveGroupCall();
+    cleanupLocalMedia();
+    setTimeout(() => {
+      dispatch(resetCall());
+      navigate(resolvedReturnTo);
+    }, 500);
+  }, [leaveGroupCall, dispatch, navigate, resolvedReturnTo, cleanupLocalMedia]);
+
+  const handleGroupEndAll = useCallback(() => {
+    endGroupCallForAll({ durationSec: timer });
+    cleanupLocalMedia();
+    setTimeout(() => {
+      dispatch(resetCall());
+      navigate(resolvedReturnTo);
+    }, 500);
+  }, [endGroupCallForAll, timer, dispatch, navigate, resolvedReturnTo, cleanupLocalMedia]);
 
   const toggleFullScreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -370,7 +535,11 @@ export default function CallPage() {
 
         screenTrack.on('track-ended', async () => {
           if (clientRef.current?.connectionState === 'CONNECTED') {
-            try { await clientRef.current.unpublish([screenTrack]); } catch { /* already unpublished */ }
+            try {
+              await clientRef.current.unpublish([screenTrack]);
+            } catch {
+              /* already unpublished */
+            }
           }
           screenTrack.close();
           screenTrackRef.current = null;
@@ -392,18 +561,19 @@ export default function CallPage() {
     }
   }, [isScreenSharing, dispatch, restoreCameraAfterScreenShare]);
 
-  const currentCallIsVideo = callType === 'video' || upgradeStatus === 'accepted';
+  const currentCallIsVideo = callType === 'video' || (!isGroup && upgradeStatus === 'accepted');
 
   const statusLabel =
     status === 'connected'
       ? `Đang gọi • ${formatTime(timer)}`
       : joined
-        ? 'Đang chờ người tham gia...'
+        ? isGroup
+          ? 'Đang chờ thành viên tham gia...'
+          : 'Đang chờ người tham gia...'
         : 'Đang kết nối...';
 
   return (
     <div className="fixed inset-0 z-[100] bg-gray-950 text-white flex flex-col overflow-hidden">
-      {/* Full-screen failure UI (missed / rejected) */}
       <AnimatePresence>
         {status === 'ended' && endReason && (
           <motion.div
@@ -434,110 +604,199 @@ export default function CallPage() {
                   ? 'Người nghe đã từ chối cuộc gọi.'
                   : 'Người nghe không phản hồi.'}
               </p>
-              <p className="text-xs text-white/40 mt-5">
-                Tự động quay lại cuộc trò chuyện...
-              </p>
+              <p className="text-xs text-white/40 mt-5">Tự động quay lại cuộc trò chuyện...</p>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Remote video — always in DOM, visibility controlled by CSS */}
-      <div
-        ref={remoteVideoRef}
-        className={`absolute inset-0 z-0 ${remoteHasVideo ? '' : 'invisible'}`}
-      />
-
-      {/* Avatar / audio indicator overlay (hidden when remote video is active) */}
-      {!remoteHasVideo && (
-        <div className="absolute inset-0 z-0 flex items-center justify-center">
-          {remoteUser && !currentCallIsVideo ? (
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-green-600 to-emerald-400 flex items-center justify-center animate-pulse">
-                <Mic className="w-14 h-14" />
-              </div>
-              <p className="text-white/60 text-sm font-medium">Đang nghe...</p>
+      {isGroup && currentCallIsVideo ? (
+        <div className="absolute inset-0 z-0 pt-24 pb-40 px-4 flex flex-col gap-3 min-h-0 overflow-hidden pointer-events-none">
+          {pinnedRemoteUid != null && (
+            <div className="relative flex-1 min-h-[42vh] rounded-xl overflow-hidden border border-white/10 bg-gray-900 shadow-xl pointer-events-auto shrink">
+              <div ref={pinnedMainRef} className="absolute inset-0 bg-black" />
+              <button
+                type="button"
+                title="Bỏ ghim"
+                onClick={() => setPinnedRemoteUid(null)}
+                className="absolute top-3 right-3 z-20 flex items-center gap-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white text-xs px-3 py-2 border border-white/10"
+              >
+                <PinOff className="w-4 h-4" />
+                Bỏ ghim
+              </button>
+              <span className="absolute bottom-3 left-3 z-20 text-[11px] bg-black/70 px-2 py-1 rounded text-white/90">
+                Đang ghim (video / chia sẻ màn hình) · UID {pinnedRemoteUid}
+              </span>
             </div>
-          ) : (
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-5xl font-bold">
-                ?
+          )}
+          <div
+            className={`pointer-events-auto min-h-0 ${
+              pinnedRemoteUid != null
+                ? 'shrink-0 max-h-[32vh] overflow-x-auto overflow-y-hidden py-1'
+                : 'flex-1 overflow-auto'
+            }`}
+          >
+            <div
+              className={
+                pinnedRemoteUid != null
+                  ? 'flex flex-row gap-2 w-max pb-1'
+                  : 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-w-6xl mx-auto'
+              }
+            >
+              {(pinnedRemoteUid != null
+                ? remoteUids.filter((u) => u !== pinnedRemoteUid)
+                : remoteUids
+              ).map((uid) => (
+                <div
+                  key={uid}
+                  className={
+                    pinnedRemoteUid != null
+                      ? 'relative w-[140px] shrink-0 aspect-video bg-gray-900 rounded-lg overflow-hidden border border-white/10 group/tile'
+                      : 'relative aspect-video bg-gray-900 rounded-xl overflow-hidden border border-white/10 group/tile'
+                  }
+                >
+                  <div id={`agora-remote-${uid}`} className="absolute inset-0" />
+                  <button
+                    type="button"
+                    title="Ghim toàn màn hình (camera hoặc màn hình đang share)"
+                    onClick={() => setPinnedRemoteUid(uid)}
+                    className="absolute top-2 right-2 z-20 rounded-lg bg-black/60 p-1.5 opacity-0 group-hover/tile:opacity-100 sm:opacity-100 hover:bg-black/80 transition-opacity border border-white/10"
+                  >
+                    <Pin className="w-4 h-4 text-white" />
+                  </button>
+                  <span className="absolute top-2 left-2 z-10 text-[10px] bg-black/60 px-2 py-0.5 rounded pointer-events-none">
+                    #{uid}
+                  </span>
+                </div>
+              ))}
+              {remoteUids.length === 0 && (
+                <div className="col-span-full flex flex-col items-center justify-center min-h-[40vh] text-white/40 w-full max-w-6xl mx-auto">
+                  <Users className="w-16 h-16 mb-3 opacity-30" />
+                  <p className="text-sm">Đang chờ thành viên vào kênh...</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : isGroup && !currentCallIsVideo ? (
+        <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pt-16 pb-32">
+          <Users className="w-20 h-20 text-white/25 mb-4" />
+          <p className="text-white/50 text-sm mb-6">Cuộc gọi thoại nhóm</p>
+          <div className="flex flex-wrap justify-center gap-3 max-w-md">
+            {remoteUids.map((uid) => (
+              <div
+                key={uid}
+                className="w-16 h-16 rounded-full bg-gradient-to-tr from-green-600 to-emerald-500 flex items-center justify-center text-sm font-bold animate-pulse"
+              >
+                {uid % 10}
               </div>
-              {!remoteUser && (
-                <p className="text-white/40 text-sm">Đang chờ người tham gia...</p>
+            ))}
+            {remoteUids.length === 0 && (
+              <p className="text-white/40 text-sm w-full text-center">Đang chờ thành viên...</p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div
+            ref={remoteVideoRef}
+            className={`absolute inset-0 z-0 ${remoteHasVideo ? '' : 'invisible'}`}
+          />
+          {!remoteHasVideo && (
+            <div className="absolute inset-0 z-0 flex items-center justify-center">
+              {remoteUser && !currentCallIsVideo ? (
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-green-600 to-emerald-400 flex items-center justify-center animate-pulse">
+                    <Mic className="w-14 h-14" />
+                  </div>
+                  <p className="text-white/60 text-sm font-medium">Đang nghe...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-5xl font-bold">
+                    ?
+                  </div>
+                  {!remoteUser && (
+                    <p className="text-white/40 text-sm">Đang chờ người tham gia...</p>
+                  )}
+                </div>
               )}
             </div>
           )}
-        </div>
+        </>
       )}
 
-      {/* Gradient overlay */}
       <div className="absolute inset-0 z-[1] bg-gradient-to-t from-black/70 via-transparent to-black/30 pointer-events-none" />
 
-      {/* Upgrade to video: incoming request prompt */}
-      <AnimatePresence>
-        {upgradeStatus === 'pending-incoming' && (
-          <motion.div
-            initial={{ opacity: 0, y: -30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -30 }}
-            className="absolute top-24 left-1/2 -translate-x-1/2 z-30 w-[340px]"
-          >
-            <div className="rounded-2xl bg-gray-900/95 border border-white/10 backdrop-blur-xl p-5 shadow-2xl">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center">
-                  <Video className="w-5 h-5 text-blue-400" />
+      {!isGroup && (
+        <>
+          <AnimatePresence>
+            {upgradeStatus === 'pending-incoming' && (
+              <motion.div
+                initial={{ opacity: 0, y: -30 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -30 }}
+                className="absolute top-24 left-1/2 -translate-x-1/2 z-30 w-[340px]"
+              >
+                <div className="rounded-2xl bg-gray-900/95 border border-white/10 backdrop-blur-xl p-5 shadow-2xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center">
+                      <Video className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">Yêu cầu chuyển sang Video</p>
+                      <p className="text-xs text-white/50">Đối phương muốn bật camera</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => respondUpgradeToVideo(false)}
+                      className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
+                    >
+                      Từ chối
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => respondUpgradeToVideo(true)}
+                      className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-sm font-medium transition-all"
+                    >
+                      Chấp nhận
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold text-sm">Yêu cầu chuyển sang Video</p>
-                  <p className="text-xs text-white/50">Đối phương muốn bật camera</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {upgradeStatus === 'pending-outgoing' && (
+              <motion.div
+                initial={{ opacity: 0, y: -30 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -30 }}
+                className="absolute top-24 left-1/2 -translate-x-1/2 z-30"
+              >
+                <div className="rounded-2xl bg-gray-900/95 border border-white/10 backdrop-blur-xl px-6 py-4 shadow-2xl flex items-center gap-3">
+                  <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm text-white/70">Đang chờ đối phương chấp nhận...</p>
                 </div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => respondUpgradeToVideo(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
-                >
-                  Từ chối
-                </button>
-                <button
-                  onClick={() => respondUpgradeToVideo(true)}
-                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-sm font-medium transition-all"
-                >
-                  Chấp nhận
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
 
-      {/* Upgrade to video: outgoing pending indicator */}
-      <AnimatePresence>
-        {upgradeStatus === 'pending-outgoing' && (
-          <motion.div
-            initial={{ opacity: 0, y: -30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -30 }}
-            className="absolute top-24 left-1/2 -translate-x-1/2 z-30"
-          >
-            <div className="rounded-2xl bg-gray-900/95 border border-white/10 backdrop-blur-xl px-6 py-4 shadow-2xl flex items-center gap-3">
-              <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-white/70">Đang chờ đối phương chấp nhận...</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Header */}
       <motion.div
         initial={{ y: -60 }}
         animate={{ y: 0 }}
         className="relative z-10 p-6 flex items-center justify-between"
       >
         <div>
-          <h2 className="text-xl font-bold tracking-tight">
+          <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            {isGroup && <Users className="w-6 h-6 text-blue-400" />}
             {currentCallIsVideo ? 'Video Call' : 'Voice Call'}
+            {isGroup && <span className="text-sm font-normal text-white/50">(nhóm)</span>}
           </h2>
           <p className="text-sm text-white/50 flex items-center gap-2">
             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -545,20 +804,16 @@ export default function CallPage() {
           </p>
         </div>
         <button
+          type="button"
           onClick={toggleFullScreen}
           className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"
         >
-          {isFullScreen ? (
-            <Minimize2 className="w-5 h-5" />
-          ) : (
-            <Maximize2 className="w-5 h-5" />
-          )}
+          {isFullScreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
         </button>
       </motion.div>
 
       <div className="flex-1" />
 
-      {/* Local self-view (video/screen share) */}
       {currentCallIsVideo && (
         <motion.div
           drag
@@ -572,43 +827,38 @@ export default function CallPage() {
         </motion.div>
       )}
 
-      {/* Controls */}
       <motion.div
         initial={{ y: 80 }}
         animate={{ y: 0 }}
-        className="relative z-10 p-8 flex items-center justify-center gap-4"
+        className="relative z-10 p-8 flex flex-wrap items-center justify-center gap-3"
       >
-        {/* Mic toggle */}
         <button
+          type="button"
           onClick={onToggleMic}
           title={isMicOn ? 'Tắt mic' : 'Bật mic'}
           className={`p-4 rounded-2xl transition-all ${
-            !isMicOn
-              ? 'bg-red-600 text-white'
-              : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
+            !isMicOn ? 'bg-red-600 text-white' : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
           }`}
         >
           {isMicOn ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
         </button>
 
-        {/* Camera toggle (only in video mode) */}
         {currentCallIsVideo && (
           <button
+            type="button"
             onClick={onToggleCamera}
             title={isCameraOn ? 'Tắt camera' : 'Bật camera'}
             className={`p-4 rounded-2xl transition-all ${
-              !isCameraOn
-                ? 'bg-red-600 text-white'
-                : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
+              !isCameraOn ? 'bg-red-600 text-white' : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
             }`}
           >
             {isCameraOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
           </button>
         )}
 
-        {/* Switch to video (only in audio mode, when connected) */}
-        {!currentCallIsVideo && status === 'connected' && upgradeStatus === 'none' && (
+        {!isGroup && !currentCallIsVideo && status === 'connected' && upgradeStatus === 'none' && (
           <button
+            type="button"
             onClick={requestUpgradeToVideo}
             title="Chuyển sang Video Call"
             className="p-4 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-blue-600/80 transition-all"
@@ -617,9 +867,9 @@ export default function CallPage() {
           </button>
         )}
 
-        {/* Screen share (only in video mode) */}
         {currentCallIsVideo && (
           <button
+            type="button"
             onClick={handleScreenShare}
             title={isScreenSharing ? 'Dừng chia sẻ màn hình' : 'Chia sẻ màn hình'}
             className={`p-4 rounded-2xl transition-all ${
@@ -628,22 +878,52 @@ export default function CallPage() {
                 : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
             }`}
           >
-            {isScreenSharing ? (
-              <MonitorOff className="w-6 h-6" />
-            ) : (
-              <MonitorUp className="w-6 h-6" />
-            )}
+            {isScreenSharing ? <MonitorOff className="w-6 h-6" /> : <MonitorUp className="w-6 h-6" />}
           </button>
         )}
 
-        {/* End call */}
-        <button
-          onClick={handleEndCall}
-          title="Kết thúc cuộc gọi"
-          className="p-5 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-2xl shadow-red-600/40 transition-all hover:scale-110 active:scale-95"
-        >
-          <PhoneOff className="w-7 h-7" />
-        </button>
+        {isGroup ? (
+          isHost ? (
+            <>
+              <button
+                type="button"
+                onClick={handleGroupLeave}
+                title="Rời cuộc gọi — nhóm vẫn tiếp tục"
+                className="p-4 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all flex items-center gap-2 text-sm font-medium"
+              >
+                <LogOut className="w-6 h-6" />
+                Rời
+              </button>
+              <button
+                type="button"
+                onClick={handleGroupEndAll}
+                title="Kết thúc cuộc gọi cho mọi người"
+                className="p-5 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-xl flex items-center gap-2 text-sm font-semibold px-6"
+              >
+                <PhoneOff className="w-7 h-7" />
+                Kết thúc tất cả
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={handleGroupLeave}
+              title="Rời cuộc gọi"
+              className="p-5 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-xl flex items-center gap-2"
+            >
+              <LogOut className="w-7 h-7" />
+            </button>
+          )
+        ) : (
+          <button
+            type="button"
+            onClick={handleDirectEnd}
+            title="Kết thúc cuộc gọi"
+            className="p-5 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-2xl shadow-red-600/40 transition-all hover:scale-110 active:scale-95"
+          >
+            <PhoneOff className="w-7 h-7" />
+          </button>
+        )}
       </motion.div>
     </div>
   );

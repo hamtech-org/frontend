@@ -25,6 +25,7 @@ interface UseDirectConversationActionsParams {
     payload: CreateConversationPayload,
   ) => { unwrap: () => Promise<CreateConversationResult> };
   initiateCall: (userId: string, type: 'audio' | 'video') => void;
+  initiateGroupCall: (type: 'audio' | 'video') => void;
   selectedGroupMembers: string[];
   groupName: string;
   setShowCreateGroupModal: (v: boolean) => void;
@@ -44,6 +45,7 @@ export function useDirectConversationActions({
   navigate,
   createConversation,
   initiateCall,
+  initiateGroupCall,
   selectedGroupMembers,
   groupName,
   setShowCreateGroupModal,
@@ -151,19 +153,36 @@ export function useDirectConversationActions({
     initiateCall(activeConversation.otherUserId, 'video');
   }, [activeConversation, initiateCall]);
 
-  return useMemo(() => ({
-    handleConfirmCreateGroup,
-    handleFriendClick,
-    handleFriendRequestAccepted,
-    handleToggleGroupMember,
-    handleAudioCall,
-    handleVideoCall,
-  }), [
-    handleConfirmCreateGroup,
-    handleFriendClick,
-    handleFriendRequestAccepted,
-    handleToggleGroupMember,
-    handleAudioCall,
-    handleVideoCall,
-  ]);
+  const handleGroupAudioCall = useCallback(() => {
+    if (activeConversation?.type !== 'group') return;
+    initiateGroupCall('audio');
+  }, [activeConversation, initiateGroupCall]);
+
+  const handleGroupVideoCall = useCallback(() => {
+    if (activeConversation?.type !== 'group') return;
+    initiateGroupCall('video');
+  }, [activeConversation, initiateGroupCall]);
+
+  return useMemo(
+    () => ({
+      handleConfirmCreateGroup,
+      handleFriendClick,
+      handleFriendRequestAccepted,
+      handleToggleGroupMember,
+      handleAudioCall,
+      handleVideoCall,
+      handleGroupAudioCall,
+      handleGroupVideoCall,
+    }),
+    [
+      handleConfirmCreateGroup,
+      handleFriendClick,
+      handleFriendRequestAccepted,
+      handleToggleGroupMember,
+      handleAudioCall,
+      handleVideoCall,
+      handleGroupAudioCall,
+      handleGroupVideoCall,
+    ],
+  );
 }
