@@ -264,9 +264,6 @@ export function PinnedMessagesBar({
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
             Danh sách ghim ({total})
           </h3>
-          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            Tối đa {MAX_PINNED_PER_CONVERSATION} tin nhắn
-          </p>
         </div>
         <button
           type="button"
