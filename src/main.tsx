@@ -14,6 +14,16 @@ import { initializeAmplify } from '@/config/amplify';
 
 initializeAmplify();
 
+if (import.meta.env.DEV) {
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = (event as PromiseRejectionEvent).reason;
+    console.warn('[unhandledrejection]', reason);
+  });
+  window.addEventListener('error', (event) => {
+    console.warn('[window.error]', event.error ?? event.message);
+  });
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <Provider store={store}>
     <BrowserRouter>
