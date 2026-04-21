@@ -40,12 +40,39 @@ export function lastMessagePreviewContentFromMessage(msg: Pick<IMessage, 'conten
   return msg.content ?? '';
 }
 
-/** Danh sách hội thoại: sắp theo `lastMessage.createdAt` giảm dần (mới nhất trước). */
-export function sortConversationsByLastMessage(convs: IConversation[]): IConversation[] {
+/**
+ * Mốc “hoạt động gần nhất” của hội thoại (server gửi `lastMessageAt` trên META;
+ * fallback `updatedAt`, `lastMessage.createdAt`).
+ */
+export function conversationActivityMs(conv: IConversation): number {
+  let best = 0;
+  const consider = (iso: string | undefined | null) => {
+    if (iso == null || iso === '') return;
+    const t = new Date(iso).getTime();
+    if (Number.isFinite(t)) best = Math.max(best, t);
+  };
+  consider(conv.lastMessageAt);
+  consider(conv.updatedAt);
+  consider(conv.lastMessage?.createdAt ?? null);
+  return best;
+}
+
+/**
+ * Sidebar + cache RTK: ghim hội thoại (`isPinnedToTop`) lên đầu → mới hoạt động nhất
+ * → (tie) nhiều tin ghim trong chat hơn → id ổn định.
+ */
+export function sortConversationsForSidebar(convs: IConversation[]): IConversation[] {
   return [...convs].sort((a, b) => {
-    const aTime = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
-    const bTime = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
-    return bTime - aTime;
+    const ap = a.isPinnedToTop ? 1 : 0;
+    const bp = b.isPinnedToTop ? 1 : 0;
+    if (bp !== ap) return bp - ap;
+    const ta = conversationActivityMs(a);
+    const tb = conversationActivityMs(b);
+    if (tb !== ta) return tb - ta;
+    const aPins = a.pinnedMessageCount ?? 0;
+    const bPins = b.pinnedMessageCount ?? 0;
+    if (bPins !== aPins) return bPins - aPins;
+    return a.conversationId.localeCompare(b.conversationId);
   });
 }
 

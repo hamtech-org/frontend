@@ -5,6 +5,7 @@ import {
   formatConversationListLastPreview,
   isSystemChatNotificationMessage,
   lastMessagePreviewContentFromMessage,
+  sortConversationsForSidebar,
 } from '@/utils/chatUtils';
 import { formatZaloConversationTime } from '@/utils/formatDate';
 import { toast } from 'react-toastify';
@@ -201,9 +202,12 @@ export function ConversationSearchPanel({
     if (browseRemote?.length) {
       for (const m of browseRemote) map.set(m.messageId, m);
     }
-    return Array.from(map.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+    return Array.from(map.values()).sort((a, b) => {
+      const ap = a.isPinned ? 1 : 0;
+      const bp = b.isPinned ? 1 : 0;
+      if (bp !== ap) return bp - ap;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
   }, [messages, browseRemote]);
 
   const listableConversations = useMemo(
@@ -214,7 +218,7 @@ export function ConversationSearchPanel({
   const filteredConversationsFull = useMemo(() => {
     const needle = debouncedQ.trim().toLowerCase();
     if (!needle || !onSelectConversation) return [] as IConversation[];
-    return listableConversations.filter((c) => {
+    const hit = listableConversations.filter((c) => {
       const name = (c.name ?? '').toLowerCase();
       const preview = formatConversationListLastPreview(c, currentUserId ?? '').toLowerCase();
       return (
@@ -223,6 +227,7 @@ export function ConversationSearchPanel({
         c.conversationId.toLowerCase().includes(needle)
       );
     });
+    return sortConversationsForSidebar(hit);
   }, [listableConversations, debouncedQ, currentUserId, onSelectConversation]);
 
   const filteredConversationsDisplay = filteredConversationsFull.slice(0, 8);

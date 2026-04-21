@@ -15,7 +15,7 @@ import {
 } from '@/store/slices/chatSlice';
 import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
 import type { ConversationType, IConversation, IGroupSettings, IMessage, MessageStatus } from '@/types/chat.types';
-import { lastMessagePreviewContentFromMessage, sortConversationsByLastMessage } from '@/utils/chatUtils';
+import { lastMessagePreviewContentFromMessage, sortConversationsForSidebar } from '@/utils/chatUtils';
 
 function applyMessageStatusPatch(
   dispatch: AppDispatch,
@@ -105,13 +105,14 @@ export function useChatSocketListeners(
               createdAt: msg.createdAt,
               senderDisplayName: msg.senderDisplayName?.trim() ?? null,
             };
+            conv.lastMessageAt = msg.createdAt;
             conv.updatedAt = msg.createdAt;
             // Nếu user chưa mở cuộc trò chuyện này thì tăng unreadCount
             if (activeConversationIdRef.current !== msg.conversationId) {
               conv.unreadCount = (conv.unreadCount ?? 0) + 1;
             }
           }
-          draft.data = sortConversationsByLastMessage(draft.data);
+          draft.data = sortConversationsForSidebar(draft.data);
         })
       );
     };
@@ -122,7 +123,17 @@ export function useChatSocketListeners(
       patchMessageInCache(payload.conversationId, payload.messageId, {
         isRecalled: true,
         content: 'Tin nhắn đã được thu hồi',
+        isPinned: false,
       });
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          if (!draft?.data) return;
+          const conv = draft.data.find((c) => c.conversationId === payload.conversationId);
+          const lm = conv?.lastMessage;
+          if (!conv || !lm || String(lm.messageId) !== String(payload.messageId)) return;
+          lm.content = 'Tin nhắn đã được thu hồi';
+        }),
+      );
       dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
 
@@ -255,6 +266,7 @@ export function useChatSocketListeners(
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:status', handleMessageStatus);
     socketService.on('message:recall', handleRecall);
+    socketService.on('message:recalled', handleRecall);
     socketService.on('message:edited', handleEdited);
     socketService.on('message:hidden_for_me', handleHiddenForMe);
     socketService.on('message:pin_updated', handlePinUpdated);
@@ -285,6 +297,7 @@ export function useChatSocketListeners(
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:status', handleMessageStatus);
       socketService.off('message:recall', handleRecall);
+      socketService.off('message:recalled', handleRecall);
       socketService.off('message:edited', handleEdited);
       socketService.off('message:hidden_for_me', handleHiddenForMe);
       socketService.off('message:pin_updated', handlePinUpdated);

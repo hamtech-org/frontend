@@ -1,6 +1,7 @@
 import type { AppDispatch } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
 import { chatApi } from '@/store/api/chat/core';
+import { sortConversationsForSidebar } from '@/utils/chatUtils';
 
 /** Cập nhật preview lastMessage + unread trên cache getConversations (gọi sau khi module đã export chatApi). */
 export function patchConversationsFromNewMessage(
@@ -36,9 +37,12 @@ export function patchConversationsFromNewMessage(
         createdAt: msg.createdAt,
         senderDisplayName: msg.senderDisplayName?.trim() ?? null,
       };
+      conv.lastMessageAt = msg.createdAt;
+      conv.updatedAt = msg.createdAt;
       if (msg.conversationId !== activeConversationId && !alreadySamePreview) {
         conv.unreadCount = (conv.unreadCount ?? 0) + 1;
       }
+      draft.data = sortConversationsForSidebar(draft.data);
     }),
   );
 }

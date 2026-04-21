@@ -41,20 +41,16 @@ import {
 import { useUploadMediaMutation } from '@/store/api/mediaApi';
 import {
   setActiveConversation,
-  messageReceived,
   messageEdited,
   messageRecalled,
   messagePinUpdated,
-  messageReacted,
-  typingStarted,
-  typingStopped,
   setReplyingTo,
 } from '@/store/slices/chatSlice';
 import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
 import { socketService } from '@/services/socket';
 import type { AppDispatch, RootState } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
-import { decodeJwtUserId, lastMessagePreviewContentFromMessage } from '@/utils/chatUtils';
+import { decodeJwtUserId } from '@/utils/chatUtils';
 import type { TypingUserEntry } from '@/types/chat.types';
 import { FriendsListView } from '@/components/chat/FriendsListView';
 import { AddFriendModal } from '@/components/chat/AddFriendModal';
@@ -173,21 +169,33 @@ export default function ChatPage() {
   const allMessages = useMemo(() => {
     const apiMessages = messagesData?.data ?? [];
     const statusRank = (x?: string) => (x === 'read' ? 3 : x === 'delivered' ? 2 : x === 'sent' ? 1 : 0);
-    // Ghép isPinned / status từ buffer socket: khi patch RTK không khớp messageId hoặc refetch chậm, Redux vẫn đúng.
+    const RECALL_TEXT = 'Tin nhắn đã được thu hồi';
+    // Ghép isPinned / status / thu hồi từ buffer socket: khi patch RTK chậm hoặc refetch chưa về, Redux/socket vẫn phải thắng.
     const merged: IMessage[] = apiMessages.map((m) => {
       const mid = String(m.messageId);
       const sm = socketMessages.find((s) => String(s.messageId) === mid);
       if (!sm) return m;
-      const pin = Boolean(m.isPinned) || Boolean(sm.isPinned);
+      const isRecalled = Boolean(m.isRecalled) || Boolean(sm.isRecalled);
+      const isDeleted = Boolean(m.isDeleted) || Boolean(sm.isDeleted);
+      const pin = (Boolean(m.isPinned) || Boolean(sm.isPinned)) && !isRecalled && !isDeleted;
       const bestStatus =
         statusRank(sm.status) > statusRank(m.status) ? sm.status : m.status ?? sm.status;
       const readBy = (m.readBy?.length ?? 0) >= (sm.readBy?.length ?? 0) ? m.readBy : sm.readBy;
       const pinChanged = pin !== Boolean(m.isPinned);
       const statusChanged = bestStatus !== m.status;
       const readByChanged = JSON.stringify(readBy ?? []) !== JSON.stringify(m.readBy ?? []);
-      if (!pinChanged && !statusChanged && !readByChanged) return m;
+      const recallChanged = isRecalled !== Boolean(m.isRecalled);
+      const deleteChanged = isDeleted !== Boolean(m.isDeleted);
+      const recallContentPending = isRecalled && String(m.content ?? '').trim() !== RECALL_TEXT;
+      if (!pinChanged && !statusChanged && !readByChanged && !recallChanged && !deleteChanged && !recallContentPending) {
+        return m;
+      }
+      const content = isRecalled ? RECALL_TEXT : m.content;
       return {
         ...m,
+        isRecalled,
+        isDeleted,
+        content,
         isPinned: pin,
         ...(bestStatus ? { status: bestStatus } : {}),
         ...(readBy?.length ? { readBy } : {}),
@@ -455,93 +463,70 @@ export default function ChatPage() {
   const [jumpHighlightMessageId, setJumpHighlightMessageId] = useState<string | null>(null);
   const [jumpFlashNonce, setJumpFlashNonce] = useState(0);
 
+  /** GlobalChatSocketBridge đã xử lý hầu hết socket chat; ở đây chỉ giữ UI chỉ thuộc ChatPage. */
   useEffect(() => {
-    const handleNewMessage = (msg: IMessage) => {
-      dispatch(messageReceived(msg));
-      // Không hiện toast popup cho system message, chỉ hiển thị trong khung chat
-
-      // Đồng bộ ngay lập tức tin nhắn cuối cùng (lastMessage) ở thanh sidebar
-      dispatch(
-        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
-          const conv = draft?.data?.find((item) => item.conversationId === msg.conversationId);
-          if (conv) {
-            conv.lastMessage = {
-              messageId: msg.messageId,
-              content: lastMessagePreviewContentFromMessage(msg),
-              senderId: msg.senderId,
-              type: msg.type,
-              createdAt: msg.createdAt,
-              senderDisplayName: msg.senderDisplayName,
-            };
-          }
-        })
-      );
-
-      // Khi có poll mới trong hội thoại đang mở -> hiện toast/banner, click để mở modal (đỡ gián đoạn)
+    if (!isConnected) return;
+    const onPollSystemMessage = (data: unknown) => {
+      const msg = data as IMessage;
       try {
-        if (msg.conversationId === activeConversationIdRef.current && (msg as any).type === 'system') {
-          const raw = String(msg.content ?? '').trim();
-          if (raw.startsWith('{')) {
-            const obj = JSON.parse(raw) as any;
-            if (obj?.kind === 'poll_created' && obj?.poll?.pollId) {
-              const pollId = String(obj.poll.pollId);
-              const question = String(obj?.poll?.question ?? '').trim();
-              const toastId = `poll-created-${pollId}`;
-              if (!toast.isActive(toastId)) {
-                toast.info(question ? `Có bình chọn mới: ${question}` : 'Có bình chọn mới', {
-                  toastId,
-                  autoClose: 7000,
-                  onClick: () => {
-                    modalActions.setActivePollId(pollId);
-                    modalActions.setShowPollVoteModal(true);
-                  },
-                });
-              }
-            }
-          }
+        if (msg.conversationId !== activeConversationIdRef.current || (msg as { type?: string }).type !== 'system') {
+          return;
         }
+        const raw = String(msg.content ?? '').trim();
+        if (!raw.startsWith('{')) return;
+        const obj = JSON.parse(raw) as { kind?: string; poll?: { pollId?: string; question?: string } };
+        if (obj?.kind !== 'poll_created' || !obj.poll?.pollId) return;
+        const pollId = String(obj.poll.pollId);
+        const question = String(obj.poll?.question ?? '').trim();
+        const toastId = `poll-created-${pollId}`;
+        if (toast.isActive(toastId)) return;
+        toast.info(question ? `Có bình chọn mới: ${question}` : 'Có bình chọn mới', {
+          toastId,
+          autoClose: 7000,
+          onClick: () => {
+            modalActions.setActivePollId(pollId);
+            modalActions.setShowPollVoteModal(true);
+          },
+        });
       } catch {
-        // ignore
+        /* ignore */
       }
     };
-
-    const handleEditedMessage = (payload: {
-      messageId: string;
-      conversationId: string;
-      content: string;
-    }) => {
-      dispatch(messageEdited(payload));
-      patchMessageInCache(payload.conversationId, payload.messageId, {
-        content: payload.content,
-        isEdited: true,
-      });
+    socketService.on('message:new', onPollSystemMessage);
+    return () => {
+      socketService.off('message:new', onPollSystemMessage);
     };
+  }, [isConnected, modalActions]);
 
-    const handleRecalledMessage = (payload: { messageId: string; conversationId: string }) => {
-      dispatch(messageRecalled(payload));
-      patchMessageInCache(payload.conversationId, payload.messageId, {
-        isRecalled: true,
-        content: 'Tin nhắn đã được thu hồi',
-        isPinned: false,
-      });
+  useEffect(() => {
+    if (!isConnected) return;
+    const onDisbanded = (data: unknown) => {
+      const p = data as { conversationId?: string; groupId?: string };
+      const cid = p?.conversationId ?? p?.groupId;
+      if (!cid) return;
+      if (cid !== activeConversationIdRef.current) return;
+      toast.info('Nhóm đã được giải tán');
+      dispatch(setActiveConversation(null));
+      void navigate('/chat', { replace: true });
+    };
+    socketService.on('group:disbanded', onDisbanded);
+    return () => {
+      socketService.off('group:disbanded', onDisbanded);
+    };
+  }, [isConnected, dispatch, navigate]);
+
+  useEffect(() => {
+    if (!isConnected) return;
+    const stripRecallFromPins = (data: unknown) => {
+      const payload = data as { messageId: string; conversationId: string };
       setPinnedMessageOrderByConv((prev) => {
         const cid = payload.conversationId;
         const cur = prev[cid] ?? [];
         return { ...prev, [cid]: cur.filter((id) => id !== payload.messageId) };
       });
     };
-
-    const handleHiddenForMe = (payload: { messageId: string; conversationId: string }) => {
-      applyMessageHiddenForMe(dispatch, payload.conversationId, payload.messageId);
-    };
-
-    const handlePinUpdated = (payload: {
-      messageId: string;
-      conversationId: string;
-      isPinned: boolean;
-    }) => {
-      dispatch(messagePinUpdated(payload));
-      patchMessageInCache(payload.conversationId, payload.messageId, { isPinned: payload.isPinned });
+    const onPinUpdated = (data: unknown) => {
+      const payload = data as { messageId: string; conversationId: string; isPinned: boolean };
       setPinnedMessageOrderByConv((prev) => {
         const cid = payload.conversationId;
         const cur = prev[cid] ?? [];
@@ -554,128 +539,15 @@ export default function ChatPage() {
         return { ...prev, [cid]: cur.filter((id) => id !== payload.messageId) };
       });
     };
-
-    const handleReactionEvent = (payload: {
-      messageId: string;
-      conversationId: string;
-      reactions: Record<string, string[]>;
-    }) => {
-      dispatch(messageReacted(payload));
-      patchMessageInCache(payload.conversationId, payload.messageId, {
-        reactions: payload.reactions,
-      });
-    };
-
-    const handleTypingEvent = (payload: {
-      conversationId: string;
-      userId: string;
-      isTyping: boolean;
-      displayName?: string;
-    }) => {
-      if (payload.isTyping) {
-        dispatch(
-          typingStarted({
-            conversationId: payload.conversationId,
-            userId: payload.userId,
-            displayName: payload.displayName,
-          }),
-        );
-      } else {
-        dispatch(typingStopped({ conversationId: payload.conversationId, userId: payload.userId }));
-      }
-    };
-
-    const handleGroupDisbanded = (data: { conversationId?: string; groupId?: string }) => {
-      const cid = data?.conversationId ?? data?.groupId;
-      if (!cid) return;
-      dispatch(
-        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
-          if (!draft?.data) return;
-          draft.data = draft.data.filter((c) => c.conversationId !== cid);
-        }),
-      );
-      dispatch(chatApi.util.invalidateTags([{ type: 'Messages', id: cid }]));
-      if (cid === activeConversationIdRef.current) {
-        toast.info('Nhóm đã được giải tán');
-        dispatch(setActiveConversation(null));
-        void navigate('/chat', { replace: true });
-      }
-    };
-
-    const handleGroupUpdated = (data: any) => {
-      console.log('📢 Received group:updated:', data);
-      if (!data?.conversationId) return;
-      
-      dispatch(
-        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
-          const conv = draft?.data?.find((item) => item.conversationId === data.conversationId);
-          if (conv) {
-            console.log('✅ Patching conversation in sidebar:', data.name);
-            if (data.name) conv.name = data.name;
-            if (data.avatar) conv.avatar = data.avatar;
-          }
-        })
-      );
-
-      // Thông báo cho người dùng bằng Toast
-      if (data.conversationId !== activeConversationIdRef.current) {
-        toast.info(`Nhóm '${data.name}' vừa cập nhật thông tin`);
-      }
-
-      if (data.conversationId === activeConversationIdRef.current) {
-        console.log('🔄 Refreshing current active group details');
-        void fetchGroupMembers(data.conversationId);
-      }
-    };
-
-    const wrappedNewMessage = (data: unknown) => handleNewMessage(data as IMessage);
-    const wrappedGroupDisbanded = (data: unknown) =>
-      handleGroupDisbanded(data as { conversationId?: string; groupId?: string });
-    const wrappedGroupUpdated = (data: unknown) => handleGroupUpdated(data);
-    const wrappedEdited = (data: unknown) =>
-      handleEditedMessage(data as { messageId: string; conversationId: string; content: string });
-    const wrappedRecalled = (data: unknown) =>
-      handleRecalledMessage(data as { messageId: string; conversationId: string });
-    const wrappedHidden = (data: unknown) =>
-      handleHiddenForMe(data as { messageId: string; conversationId: string });
-    const wrappedPin = (data: unknown) =>
-      handlePinUpdated(data as { messageId: string; conversationId: string; isPinned: boolean });
-    const wrappedReaction = (data: unknown) =>
-      handleReactionEvent(
-        data as { messageId: string; conversationId: string; reactions: Record<string, string[]> },
-      );
-    const wrappedTyping = (data: unknown) =>
-      handleTypingEvent(
-        data as {
-          conversationId: string;
-          userId: string;
-          isTyping: boolean;
-          displayName?: string;
-        },
-      );
-
-    socketService.on('message:new', wrappedNewMessage);
-    socketService.on('group:disbanded', wrappedGroupDisbanded);
-    socketService.on('group:updated', wrappedGroupUpdated);
-    socketService.on('message:edited', wrappedEdited);
-    socketService.on('message:recalled', wrappedRecalled);
-    socketService.on('message:hidden_for_me', wrappedHidden);
-    socketService.on('message:pin_updated', wrappedPin);
-    socketService.on('message:reaction', wrappedReaction);
-    socketService.on('message:typing', wrappedTyping);
-
+    socketService.on('message:recall', stripRecallFromPins);
+    socketService.on('message:recalled', stripRecallFromPins);
+    socketService.on('message:pin_updated', onPinUpdated);
     return () => {
-      socketService.off('message:new', wrappedNewMessage);
-      socketService.off('group:disbanded', wrappedGroupDisbanded);
-      socketService.off('group:updated', wrappedGroupUpdated);
-      socketService.off('message:edited', wrappedEdited);
-      socketService.off('message:recalled', wrappedRecalled);
-      socketService.off('message:hidden_for_me', wrappedHidden);
-      socketService.off('message:pin_updated', wrappedPin);
-      socketService.off('message:reaction', wrappedReaction);
-      socketService.off('message:typing', wrappedTyping);
+      socketService.off('message:recall', stripRecallFromPins);
+      socketService.off('message:recalled', stripRecallFromPins);
+      socketService.off('message:pin_updated', onPinUpdated);
     };
-  }, [dispatch, patchMessageInCache, fetchGroupMembers, isConnected, navigate, modalActions]);
+  }, [isConnected]);
 
   useEffect(() => {
     modalActions.setMessageConfirm(null);
@@ -793,8 +665,11 @@ export default function ChatPage() {
       }
       modalActions.setMessageConfirm(null);
       modalActions.setActionMenuMsgId(null);
-    } catch {
-      /* ignore */
+    } catch (e: unknown) {
+      const d = e && typeof e === 'object' && 'data' in e ? (e as { data: unknown }).data : null;
+      const body = d && typeof d === 'object' ? (d as { error?: { message?: string } }) : null;
+      const apiMsg = body?.error?.message?.trim();
+      toast.error(apiMsg || (modalState.messageConfirm?.kind === 'recall' ? 'Thu hồi tin nhắn thất bại' : 'Xóa tin nhắn thất bại'));
     } finally {
       modalActions.setMessageConfirmSubmitting(false);
     }
