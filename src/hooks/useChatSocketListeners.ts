@@ -99,7 +99,7 @@ export function useChatSocketListeners(
           if (conv) {
             conv.lastMessage = {
               messageId: msg.messageId,
-              content: lastMessagePreviewContentFromMessage(msg),
+              content: lastMessagePreviewContentFromMessage(msg, currentUserId),
               senderId: msg.senderId,
               type: msg.type,
               createdAt: msg.createdAt,
@@ -263,6 +263,23 @@ export function useChatSocketListeners(
       }
     };
 
+    /** Cùng ref cho on/off — không dùng `off(event)` không handler (sẽ xóa cả listener của ChatPage / module khác). */
+    const onGroupMemberJoinedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'member' });
+    const onGroupMemberLeftGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'member' });
+    const onGroupMembersAddedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'member' });
+    const onGroupMemberRemovedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'member' });
+    const onGroupRoleChangedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'member' });
+    const onGroupJoinRequestNewGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'request' });
+    const onGroupJoinRequestUpdatedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'request' });
+    const onGroupPollNewGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'poll' });
+    const onGroupPollUpdatedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'poll' });
+    const onGroupTaskNewGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'task' });
+    const onGroupTaskUpdatedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'task' });
+    const onGroupTaskDeletedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'task' });
+    const onGroupRecapNew = () => {
+      dispatch(chatApi.util.invalidateTags(['Conversations']));
+    };
+
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:status', handleMessageStatus);
     socketService.on('message:recall', handleRecall);
@@ -277,21 +294,19 @@ export function useChatSocketListeners(
     socketService.on('group:disbanded', handleGroupDisbanded);
     socketService.on('group:updated', handleGroupUpdate);
     socketService.on('group:settings_updated', handleGroupSettingsUpdated);
-    socketService.on('group:member_joined', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
-    socketService.on('group:member_left', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
-    socketService.on('group:members_added', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
-    socketService.on('group:member_removed', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
-    socketService.on('group:role_changed', (data: any) => handleGroupUpdate({ ...data, type: 'member' }));
-    socketService.on('group:join_request_new', (data: any) => handleGroupUpdate({ ...data, type: 'request' }));
-    socketService.on('group:join_request_updated', (data: any) => handleGroupUpdate({ ...data, type: 'request' }));
-    socketService.on('group:poll_new', (data: any) => handleGroupUpdate({ ...data, type: 'poll' }));
-    socketService.on('group:poll_updated', (data: any) => handleGroupUpdate({ ...data, type: 'poll' }));
-    socketService.on('group:task_new', (data: any) => handleGroupUpdate({ ...data, type: 'task' }));
-    socketService.on('group:task_updated', (data: any) => handleGroupUpdate({ ...data, type: 'task' }));
-    socketService.on('group:recap_new', () => {
-      // Có thể hiển thị thông báo "AI vừa tạo tóm tắt mới!"
-      dispatch(chatApi.util.invalidateTags(['Conversations']));
-    });
+    socketService.on('group:member_joined', onGroupMemberJoinedGU);
+    socketService.on('group:member_left', onGroupMemberLeftGU);
+    socketService.on('group:members_added', onGroupMembersAddedGU);
+    socketService.on('group:member_removed', onGroupMemberRemovedGU);
+    socketService.on('group:role_changed', onGroupRoleChangedGU);
+    socketService.on('group:join_request_new', onGroupJoinRequestNewGU);
+    socketService.on('group:join_request_updated', onGroupJoinRequestUpdatedGU);
+    socketService.on('group:poll_new', onGroupPollNewGU);
+    socketService.on('group:poll_updated', onGroupPollUpdatedGU);
+    socketService.on('group:task_new', onGroupTaskNewGU);
+    socketService.on('group:task_updated', onGroupTaskUpdatedGU);
+    socketService.on('group:task_deleted', onGroupTaskDeletedGU);
+    socketService.on('group:recap_new', onGroupRecapNew);
 
     return () => {
       socketService.off('message:new', handleNewMessage);
@@ -305,20 +320,21 @@ export function useChatSocketListeners(
       socketService.off('message:typing_indicator', handleTyping);
       
       socketService.off('group:disbanded', handleGroupDisbanded);
-      socketService.off('group:updated');
+      socketService.off('group:updated', handleGroupUpdate);
       socketService.off('group:settings_updated', handleGroupSettingsUpdated);
-      socketService.off('group:member_joined');
-      socketService.off('group:member_left');
-      socketService.off('group:members_added');
-      socketService.off('group:member_removed');
-      socketService.off('group:role_changed');
-      socketService.off('group:join_request_new');
-      socketService.off('group:join_request_updated');
-      socketService.off('group:poll_new');
-      socketService.off('group:poll_updated');
-      socketService.off('group:task_new');
-      socketService.off('group:task_updated');
-      socketService.off('group:recap_new');
+      socketService.off('group:member_joined', onGroupMemberJoinedGU);
+      socketService.off('group:member_left', onGroupMemberLeftGU);
+      socketService.off('group:members_added', onGroupMembersAddedGU);
+      socketService.off('group:member_removed', onGroupMemberRemovedGU);
+      socketService.off('group:role_changed', onGroupRoleChangedGU);
+      socketService.off('group:join_request_new', onGroupJoinRequestNewGU);
+      socketService.off('group:join_request_updated', onGroupJoinRequestUpdatedGU);
+      socketService.off('group:poll_new', onGroupPollNewGU);
+      socketService.off('group:poll_updated', onGroupPollUpdatedGU);
+      socketService.off('group:task_new', onGroupTaskNewGU);
+      socketService.off('group:task_updated', onGroupTaskUpdatedGU);
+      socketService.off('group:task_deleted', onGroupTaskDeletedGU);
+      socketService.off('group:recap_new', onGroupRecapNew);
 
       Object.values(typingCleanupTimersRef.current).forEach(clearTimeout);
       typingCleanupTimersRef.current = {};
