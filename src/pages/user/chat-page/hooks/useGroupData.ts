@@ -109,7 +109,32 @@ export function useGroupData({
     setGroupLoading((prev) => ({ ...prev, tasks: true }));
     try {
       const res = await groupApi.getTasks(groupId);
-      setGroupTasks(res.data.data ?? []);
+      const next = (res.data.data ?? []) as GroupTask[];
+      setGroupTasks((prev) => {
+        const prevById = new Map(prev.map((t) => [String(t.taskId), t]));
+        return next.map((t) => {
+          const p = prevById.get(String(t.taskId));
+          const serverParticipants = Array.isArray((t as { participants?: string[] }).participants)
+            ? (t as { participants?: string[] }).participants
+            : undefined;
+          const participants =
+            serverParticipants && serverParticipants.length > 0
+              ? serverParticipants
+              : Array.isArray(p?.participants) && p.participants.length > 0
+                ? p.participants
+                : serverParticipants ?? p?.participants ?? [];
+          return {
+            ...t,
+            // Preserve client-only fields across refetch (backend may not return them).
+            ...(p?.assignToAll !== undefined ? { assignToAll: p.assignToAll } : {}),
+            ...(p?.broadcast !== undefined ? { broadcast: p.broadcast } : {}),
+            ...(Array.isArray(participants) ? { participants } : {}),
+            ...(p?.creatorId ? { creatorId: p.creatorId } : {}),
+            ...(p?.creatorDisplayName ? { creatorDisplayName: p.creatorDisplayName } : {}),
+            ...(p?.createdAt ? { createdAt: p.createdAt } : {}),
+          };
+        });
+      });
     } catch (err) {
       console.error('[fetchGroupTasks] Error:', err);
       setGroupTasks([]);
@@ -207,6 +232,7 @@ export function useGroupData({
     socketService.on('group:poll_updated', handlePollChanged);
     socketService.on('group:task_new', handleTaskChanged);
     socketService.on('group:task_updated', handleTaskChanged);
+    socketService.on('group:task_deleted', handleTaskChanged);
     socketService.on('group:recap_new', handleRecapChanged);
 
     return () => {
@@ -221,6 +247,7 @@ export function useGroupData({
       socketService.off('group:poll_updated', handlePollChanged);
       socketService.off('group:task_new', handleTaskChanged);
       socketService.off('group:task_updated', handleTaskChanged);
+      socketService.off('group:task_deleted', handleTaskChanged);
       socketService.off('group:recap_new', handleRecapChanged);
     };
   }, [
