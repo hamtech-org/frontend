@@ -8,6 +8,7 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
+import { BarChart2, CheckCircle2, ClipboardList, X } from 'lucide-react';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
 import { ConversationListPanel } from '@/components/chat/ConversationListPanel';
 import { useCallContext } from '@/contexts/CallContext';
@@ -15,6 +16,7 @@ import { useSocketContext } from '@/contexts/SocketContext';
 import { ChatPageProvider, useChatPageContextValue } from '@/pages/user/chat-page/ChatPageContext';
 import { useChatModalController } from '@/pages/user/chat-page/hooks/useChatModalController';
 import { useChatScrollBehavior } from '@/pages/user/chat-page/hooks/useChatScrollBehavior';
+import { useTaskReminderScheduler } from '@/pages/user/chat-page/hooks/useTaskReminderScheduler';
 import { useConversationRealtimeLifecycle } from '@/pages/user/chat-page/hooks/useConversationRealtimeLifecycle';
 import { useConversationRoutingSync } from '@/pages/user/chat-page/hooks/useConversationRoutingSync';
 import { useDirectConversationActions } from '@/pages/user/chat-page/hooks/useDirectConversationActions';
@@ -41,12 +43,17 @@ import {
 import { useUploadMediaMutation } from '@/store/api/mediaApi';
 import {
   setActiveConversation,
+  messageReceived,
   messageEdited,
   messageRecalled,
   messagePinUpdated,
   setReplyingTo,
 } from '@/store/slices/chatSlice';
-import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
+import {
+  applyMessageHiddenForMe,
+  hideTaskAssignedCardsForTaskId,
+  patchTaskAssignedSystemMessages,
+} from '@/store/applyMessageHiddenForMe';
 import { socketService } from '@/services/socket';
 import type { AppDispatch, RootState } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
@@ -57,7 +64,10 @@ import { AddFriendModal } from '@/components/chat/AddFriendModal';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import { PinnedMessagesBar } from '@/components/chat/PinnedMessagesBar';
 import { ConversationInfoPanel } from '@/components/chat/ConversationInfoPanel';
-import type { MuteNotificationsApplyPayload } from '@/components/chat/MuteNotificationsModal';
+import {
+  nextLocalEightAmIsoString,
+  type MuteNotificationsApplyPayload,
+} from '@/components/chat/MuteNotificationsModal';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { EditMessageDialog } from '@/components/chat/EditMessageDialog';
@@ -99,6 +109,16 @@ type GroupTask = {
   description?: string;
   assignees: string[];
   participants?: string[];
+  assignToAll?: boolean;
+  broadcast?: boolean;
+  subtasks?: Array<{
+    id: string;
+    assigneeId: string;
+    assigneeName: string;
+    content: string;
+    done: boolean;
+    completedAt: string | null;
+  }>;
   status: 'todo' | 'in_progress' | 'done';
   dueDate?: string;
   createdAt?: string;
@@ -111,6 +131,21 @@ type AIRecap = {
   content: string;
   createdAt: string;
 };
+
+function isoToDatetimeLocalValue(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Giá trị lưu trong JSON thẻ giao việc (ISO) từ input datetime-local. */
+function deadlineLocalInputToJsonValue(input: string | null | undefined): string | null {
+  if (!input?.trim()) return null;
+  const d = new Date(input);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
 
 const EMPTY_ARRAY: any[] = [];
 const EMPTY_TYPING_USERS: readonly TypingUserEntry[] = [];
@@ -462,6 +497,66 @@ export default function ChatPage() {
   const jumpHighlightClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [jumpHighlightMessageId, setJumpHighlightMessageId] = useState<string | null>(null);
   const [jumpFlashNonce, setJumpFlashNonce] = useState(0);
+  const [chatFrameNotice, setChatFrameNotice] = useState<{
+    text: string;
+    atIso: string;
+    variant?: 'poll' | 'task_assigned' | 'task_joined';
+    onClick?: () => void;
+  } | null>(null);
+  const chatFrameNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chatFrameNoticeDedupeRef = useRef<Map<string, number>>(new Map());
+
+  const showChatFrameNotice = useCallback(
+    (
+      text: string,
+      opts?: {
+        atIso?: string;
+        onClick?: () => void;
+        ttlMs?: number;
+        variant?: 'poll' | 'task_assigned' | 'task_joined';
+      },
+    ) => {
+      const atIso = opts?.atIso ?? new Date().toISOString();
+      setChatFrameNotice({ text, atIso, onClick: opts?.onClick, variant: opts?.variant });
+      if (chatFrameNoticeTimerRef.current) clearTimeout(chatFrameNoticeTimerRef.current);
+      chatFrameNoticeTimerRef.current = setTimeout(() => setChatFrameNotice(null), opts?.ttlMs ?? 7000);
+    },
+    [],
+  );
+
+  const dedupedNotice = useCallback(
+    (
+      key: string,
+      text: string,
+      opts?: {
+        atIso?: string;
+        onClick?: () => void;
+        ttlMs?: number;
+        variant?: 'poll' | 'task_assigned' | 'task_joined';
+        dedupeMs?: number;
+      },
+    ) => {
+      const now = Date.now();
+      const dedupeMs = opts?.dedupeMs ?? 2500;
+      const last = chatFrameNoticeDedupeRef.current.get(key) ?? 0;
+      if (now - last < dedupeMs) return;
+      chatFrameNoticeDedupeRef.current.set(key, now);
+      // prune old keys occasionally
+      if (chatFrameNoticeDedupeRef.current.size > 200) {
+        for (const [k, ts] of chatFrameNoticeDedupeRef.current.entries()) {
+          if (now - ts > 60_000) chatFrameNoticeDedupeRef.current.delete(k);
+        }
+      }
+      showChatFrameNotice(text, opts);
+    },
+    [showChatFrameNotice],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (chatFrameNoticeTimerRef.current) clearTimeout(chatFrameNoticeTimerRef.current);
+    };
+  }, []);
 
   /** GlobalChatSocketBridge đã xử lý hầu hết socket chat; ở đây chỉ giữ UI chỉ thuộc ChatPage. */
   useEffect(() => {
@@ -474,20 +569,44 @@ export default function ChatPage() {
         }
         const raw = String(msg.content ?? '').trim();
         if (!raw.startsWith('{')) return;
-        const obj = JSON.parse(raw) as { kind?: string; poll?: { pollId?: string; question?: string } };
-        if (obj?.kind !== 'poll_created' || !obj.poll?.pollId) return;
-        const pollId = String(obj.poll.pollId);
-        const question = String(obj.poll?.question ?? '').trim();
-        const toastId = `poll-created-${pollId}`;
-        if (toast.isActive(toastId)) return;
-        toast.info(question ? `Có bình chọn mới: ${question}` : 'Có bình chọn mới', {
-          toastId,
-          autoClose: 7000,
-          onClick: () => {
-            modalActions.setActivePollId(pollId);
-            modalActions.setShowPollVoteModal(true);
-          },
-        });
+        const obj = JSON.parse(raw) as {
+          kind?: string;
+          poll?: { pollId?: string; question?: string };
+          task?: { taskId?: string; title?: string };
+          actor?: { name?: string };
+          createdAt?: string;
+        };
+        const kind = String(obj?.kind ?? '');
+        const atIso = String(obj?.createdAt ?? msg.createdAt ?? new Date().toISOString());
+
+        if (kind === 'poll_created' && obj.poll?.pollId) {
+          const pollId = String(obj.poll.pollId);
+          const question = String(obj.poll?.question ?? '').trim();
+          showChatFrameNotice(question ? `Có bình chọn mới: ${question}` : 'Có bình chọn mới', {
+            atIso,
+            variant: 'poll',
+            onClick: () => {
+              modalActions.setActivePollId(pollId);
+              modalActions.setShowPollVoteModal(true);
+            },
+          });
+          return;
+        }
+
+        if (kind === 'task_assigned') {
+          void fetchGroupTasks(msg.conversationId);
+          return;
+        }
+
+        if (kind === 'task_joined') {
+          void fetchGroupTasks(msg.conversationId);
+          return;
+        }
+
+        if (kind === 'task_updated' || kind === 'task_deleted') {
+          void fetchGroupTasks(msg.conversationId);
+          return;
+        }
       } catch {
         /* ignore */
       }
@@ -496,7 +615,173 @@ export default function ChatPage() {
     return () => {
       socketService.off('message:new', onPollSystemMessage);
     };
-  }, [isConnected, modalActions]);
+  }, [isConnected, modalActions, showChatFrameNotice, fetchGroupTasks]);
+
+  // Group realtime notifications: show banner for any group:* changes (members/roles/settings/requests/polls/tasks)
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const isActive = (payload: any): boolean => {
+      const cid = String(payload?.conversationId ?? payload?.groupId ?? '').trim();
+      return Boolean(cid && cid === String(activeConversationIdRef.current ?? ''));
+    };
+
+    const onGroupUpdated = (data: any) => {
+      if (!isActive(data)) return;
+      const name = String(data?.name ?? '').trim();
+      dedupedNotice(
+        `group:updated:${String(activeConversationIdRef.current)}`,
+        name ? `Nhóm đã cập nhật: ${name}` : 'Nhóm đã cập nhật thông tin',
+        { variant: 'task_assigned' },
+      );
+      void fetchGroupMembers(String(activeConversationIdRef.current));
+    };
+
+    const onSettingsUpdated = (data: any) => {
+      if (!isActive(data)) return;
+      dedupedNotice(`group:settings:${String(activeConversationIdRef.current)}`, 'Cài đặt nhóm đã thay đổi', {
+        variant: 'task_assigned',
+      });
+    };
+
+    const onRoleChanged = (data: any) => {
+      if (!isActive(data)) return;
+      dedupedNotice(`group:role:${String(data?.userId ?? '')}`, 'Vai trò thành viên đã thay đổi', {
+        variant: 'task_assigned',
+      });
+      void fetchGroupMembers(String(activeConversationIdRef.current));
+    };
+
+    const onMemberJoined = (data: any) => {
+      if (!isActive(data)) return;
+      dedupedNotice(`group:member_joined:${String(data?.userId ?? '')}`, 'Có thành viên mới tham gia nhóm', {
+        variant: 'task_assigned',
+      });
+      void fetchGroupMembers(String(activeConversationIdRef.current));
+    };
+
+    const onMemberLeft = (data: any) => {
+      if (!isActive(data)) return;
+      dedupedNotice(`group:member_left:${String(data?.userId ?? '')}`, 'Một thành viên vừa rời nhóm', {
+        variant: 'task_assigned',
+      });
+      void fetchGroupMembers(String(activeConversationIdRef.current));
+    };
+
+    const onMemberRemoved = (data: any) => {
+      if (!isActive(data)) return;
+      dedupedNotice(`group:member_removed:${String(data?.userId ?? '')}`, 'Một thành viên đã bị xóa khỏi nhóm', {
+        variant: 'task_assigned',
+      });
+      void fetchGroupMembers(String(activeConversationIdRef.current));
+    };
+
+    const onJoinRequestNew = (data: any) => {
+      if (!isActive(data)) return;
+      dedupedNotice(`group:join_req_new:${String(activeConversationIdRef.current)}`, 'Có yêu cầu tham gia nhóm mới', {
+        variant: 'task_assigned',
+      });
+      void fetchGroupRequests(String(activeConversationIdRef.current));
+    };
+
+    const onJoinRequestUpdated = (data: any) => {
+      if (!isActive(data)) return;
+      dedupedNotice(
+        `group:join_req_upd:${String(activeConversationIdRef.current)}`,
+        'Danh sách yêu cầu tham gia đã cập nhật',
+        { variant: 'task_assigned' },
+      );
+      void fetchGroupRequests(String(activeConversationIdRef.current));
+    };
+
+    const onPollNew = (data: any) => {
+      if (!isActive(data)) return;
+      dedupedNotice(`group:poll_new:${String(activeConversationIdRef.current)}`, 'Có bình chọn mới trong nhóm', {
+        variant: 'poll',
+      });
+      void fetchGroupPolls(String(activeConversationIdRef.current));
+    };
+
+    const onPollUpdated = (data: any) => {
+      if (!isActive(data)) return;
+      dedupedNotice(`group:poll_upd:${String(data?.pollId ?? '')}`, 'Bình chọn vừa được cập nhật', {
+        variant: 'poll',
+      });
+      void fetchGroupPolls(String(activeConversationIdRef.current));
+    };
+
+    const onTaskNew = (data: any) => {
+      if (!isActive(data)) return;
+      void fetchGroupTasks(String(activeConversationIdRef.current));
+    };
+
+    const onTaskUpdated = (data: any) => {
+      if (!isActive(data)) return;
+      void fetchGroupTasks(String(activeConversationIdRef.current));
+    };
+
+    const onTaskDeleted = (data: any) => {
+      if (!isActive(data)) return;
+      void fetchGroupTasks(String(activeConversationIdRef.current));
+    };
+
+    const onGroupDisbanded = (data: any) => {
+      if (!isActive(data)) return;
+      dedupedNotice(`group:disbanded:${String(activeConversationIdRef.current)}`, 'Nhóm đã bị giải tán', {
+        variant: 'task_assigned',
+        dedupeMs: 10_000,
+      });
+    };
+
+    const onGroupDeleted = (data: any) => {
+      if (!isActive(data)) return;
+      dedupedNotice(`group:deleted:${String(activeConversationIdRef.current)}`, 'Nhóm đã bị xóa', {
+        variant: 'task_assigned',
+        dedupeMs: 10_000,
+      });
+    };
+
+    socketService.on('group:updated', onGroupUpdated);
+    socketService.on('group:settings_updated', onSettingsUpdated);
+    socketService.on('group:role_changed', onRoleChanged);
+    socketService.on('group:member_joined', onMemberJoined);
+    socketService.on('group:member_left', onMemberLeft);
+    socketService.on('group:member_removed', onMemberRemoved);
+    socketService.on('group:join_request_new', onJoinRequestNew);
+    socketService.on('group:join_request_updated', onJoinRequestUpdated);
+    socketService.on('group:poll_new', onPollNew);
+    socketService.on('group:poll_updated', onPollUpdated);
+    socketService.on('group:task_new', onTaskNew);
+    socketService.on('group:task_updated', onTaskUpdated);
+    socketService.on('group:task_deleted', onTaskDeleted);
+    socketService.on('group:disbanded', onGroupDisbanded);
+    socketService.on('group:deleted', onGroupDeleted);
+
+    return () => {
+      socketService.off('group:updated', onGroupUpdated);
+      socketService.off('group:settings_updated', onSettingsUpdated);
+      socketService.off('group:role_changed', onRoleChanged);
+      socketService.off('group:member_joined', onMemberJoined);
+      socketService.off('group:member_left', onMemberLeft);
+      socketService.off('group:member_removed', onMemberRemoved);
+      socketService.off('group:join_request_new', onJoinRequestNew);
+      socketService.off('group:join_request_updated', onJoinRequestUpdated);
+      socketService.off('group:poll_new', onPollNew);
+      socketService.off('group:poll_updated', onPollUpdated);
+      socketService.off('group:task_new', onTaskNew);
+      socketService.off('group:task_updated', onTaskUpdated);
+      socketService.off('group:task_deleted', onTaskDeleted);
+      socketService.off('group:disbanded', onGroupDisbanded);
+      socketService.off('group:deleted', onGroupDeleted);
+    };
+  }, [
+    isConnected,
+    dedupedNotice,
+    fetchGroupMembers,
+    fetchGroupRequests,
+    fetchGroupPolls,
+    fetchGroupTasks,
+  ]);
 
   useEffect(() => {
     if (!isConnected) return;
@@ -883,12 +1168,10 @@ export default function ChatPage() {
       }).unwrap();
       const conversationId = result.data.conversationId;
       // Log trạng thái socket và thời điểm join room
-      // eslint-disable-next-line no-console
       socketService.emit('conversation:join', conversationId);
       void navigate(`/chat/${conversationId}`);
       dispatch(chatApi.endpoints.getMessages.initiate({ conversationId }));
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error('[DEBUG] Tạo nhóm lỗi:', err);
     }
     modalActions.setShowCreateGroupModal(false);
@@ -1134,14 +1417,81 @@ export default function ChatPage() {
     [activeConversationId, fetchGroupRequests, setActionBusy, modalActions],
   );
 
+  // Subtasks editor (inside TaskModal) — local UI state.
+  const [taskSubtaskRows, setTaskSubtaskRows] = useState<Array<{ assigneeId: string; content: string }>>([]);
+
+
   const handleSubmitTask = useCallback(async () => {
     if (!activeConversationId || !modalState.taskTitle.trim()) return;
+    const isGroupOptIn = Boolean(modalState.taskAssignToAll);
+    const cleanSubtaskRows = taskSubtaskRows
+      .map((r) => ({ assigneeId: String(r.assigneeId ?? ''), content: String(r.content ?? '').trim() }))
+      .filter((r) => r.assigneeId && r.content);
+    const editingId = modalState.editingTaskId ? String(modalState.editingTaskId) : null;
+
+    if (editingId) {
+      setActionBusy('updateTask', true);
+      try {
+        await apiClient.patch(`/chat/groups/${activeConversationId}/tasks/${editingId}`, {
+          title: modalState.taskTitle.trim(),
+          description: modalState.taskNote.trim(),
+          assignees: isGroupOptIn ? [] : modalState.taskAssignees,
+          assignToAll: isGroupOptIn,
+          dueDate: modalState.taskDeadline || undefined,
+          subtasks: cleanSubtaskRows,
+        });
+        await fetchGroupTasks(activeConversationId);
+        const byId = new Map(groupMembers.map((m) => [m.userId, m.displayName ?? m.name ?? m.userId]));
+        const assigneeLabel =
+          cleanSubtaskRows.length > 0
+            ? cleanSubtaskRows.map((r) => String(byId.get(r.assigneeId) ?? r.assigneeId)).join(', ')
+            : isGroupOptIn
+              ? 'Cả nhóm'
+              : modalState.taskAssignees.map((id) => String(byId.get(id) ?? id)).join(', ') || 'cả nhóm';
+        patchTaskAssignedSystemMessages(dispatch, activeConversationId, editingId, {
+          title: modalState.taskTitle.trim(),
+          dueDate: deadlineLocalInputToJsonValue(modalState.taskDeadline),
+          note: modalState.taskNote.trim() ? modalState.taskNote.trim() : null,
+          assigneeLabel,
+          assignToAll: isGroupOptIn,
+          broadcast: isGroupOptIn,
+        });
+        toast.success('Đã lưu thay đổi');
+        modalActions.closeTaskModal();
+      } catch (err) {
+        const st = (err as any)?.response?.status;
+        toast.error(st === 403 ? 'Bạn không có quyền sửa công việc này' : 'Không thể lưu công việc');
+        console.error('Failed to patch task:', err);
+      } finally {
+        setActionBusy('updateTask', false);
+      }
+      return;
+    }
+
     setActionBusy('createTask', true);
     const optimisticTask: GroupTask = {
       taskId: `tmp-${Date.now()}`,
       title: modalState.taskTitle.trim(),
       description: modalState.taskNote.trim(),
-      assignees: modalState.taskAssignees,
+      // If "assign to all", assignees stays empty (opt-in via participants).
+      assignees: isGroupOptIn ? [] : modalState.taskAssignees,
+      participants: [],
+      assignToAll: isGroupOptIn,
+      broadcast: isGroupOptIn,
+      subtasks:
+        cleanSubtaskRows.length > 0
+          ? cleanSubtaskRows.map((r) => ({
+              id: `sub-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+              assigneeId: r.assigneeId,
+              assigneeName:
+                groupMembers.find((m) => m.userId === r.assigneeId)?.displayName ??
+                groupMembers.find((m) => m.userId === r.assigneeId)?.name ??
+                r.assigneeId,
+              content: r.content,
+              done: false,
+              completedAt: null,
+            }))
+          : undefined,
       status: 'todo',
       dueDate: modalState.taskDeadline || undefined,
       createdAt: new Date().toISOString(),
@@ -1150,15 +1500,90 @@ export default function ChatPage() {
     };
     setGroupTasks((prev) => [optimisticTask, ...prev]);
     try {
-      await apiClient.post(`/chat/groups/${activeConversationId}/tasks`, {
+      const createRes = await apiClient.post(`/chat/groups/${activeConversationId}/tasks`, {
         title: modalState.taskTitle.trim(),
         description: modalState.taskNote.trim(),
-        assignees: modalState.taskAssignees,
-        assignToAll: modalState.taskAssignToAll,
+        assignees: isGroupOptIn ? [] : modalState.taskAssignees,
+        assignToAll: isGroupOptIn,
         dueDate: modalState.taskDeadline || undefined,
+        subtasks: cleanSubtaskRows.length > 0 ? cleanSubtaskRows : undefined,
       });
+      const createdTaskId =
+        (createRes as any)?.data?.data?.taskId ??
+        (createRes as any)?.data?.taskId ??
+        (createRes as any)?.data?.data?.id ??
+        null;
       toast.success('Đã tạo công việc');
       await fetchGroupTasks(activeConversationId);
+      // Avoid duplicate task cards in chat: optimistic tmp taskId vs server taskId.
+      applyMessageHiddenForMe(
+        dispatch,
+        activeConversationId,
+        `local-task-card:${activeConversationId}:${optimisticTask.taskId}`,
+      );
+
+      // Broadcast system card to everyone (local JSON, no spam).
+      const byId = new Map(groupMembers.map((m) => [m.userId, m.displayName ?? m.name ?? m.userId]));
+      const subtasks =
+        optimisticTask.subtasks?.map((s) => ({
+          id: s.id,
+          assigneeId: s.assigneeId,
+          assigneeName: String(byId.get(s.assigneeId) ?? s.assigneeId),
+          content: s.content,
+          done: false,
+          completedAt: null,
+        })) ?? [];
+      const assigneeLabel =
+        subtasks.length > 0
+          ? subtasks.map((s) => s.assigneeName).join(', ')
+          : isGroupOptIn
+            ? 'Cả nhóm'
+            : (modalState.taskAssignees.map((id) => String(byId.get(id) ?? id)).join(', ') || 'cả nhóm');
+      const content = JSON.stringify({
+        kind: 'task_assigned',
+        actor: { userId: currentUserId, name: currentUser?.displayName?.trim() ?? 'Bạn' },
+        task: {
+          taskId: createdTaskId ? String(createdTaskId) : optimisticTask.taskId,
+          title: optimisticTask.title,
+          dueDate: optimisticTask.dueDate ?? null,
+          note: optimisticTask.description?.trim() ? optimisticTask.description.trim() : null,
+          assigneeLabel,
+          assignToAll: isGroupOptIn,
+          broadcast: isGroupOptIn,
+          subtasks: subtasks.length > 0 ? subtasks : undefined,
+        },
+      });
+      const taskIdForCard = createdTaskId ? String(createdTaskId) : optimisticTask.taskId;
+      const systemMsg: IMessage = {
+        messageId: `local-task-card:${activeConversationId}:${taskIdForCard}`,
+        conversationId: activeConversationId,
+        senderId: 'system',
+        senderDisplayName: 'Hệ thống',
+        type: 'system',
+        content,
+        mediaUrl: null,
+        thumbnailUrl: null,
+        replyTo: null,
+        replyToDetails: null,
+        isPinned: false,
+        isEdited: false,
+        isRecalled: false,
+        isDeleted: false,
+        reactions: {},
+        status: 'sent',
+        createdAt: new Date().toISOString(),
+      } as any;
+      dispatch(
+        chatApi.util.updateQueryData('getMessages', { conversationId: activeConversationId }, (draft) => {
+          if (!draft.data) draft.data = [];
+          if (!draft.data.some((m) => String(m.messageId) === String(systemMsg.messageId))) {
+            draft.data.push(systemMsg);
+          }
+        }),
+      );
+      dispatch(messageReceived(systemMsg));
+      socketService.emit('message:new', systemMsg);
+
       modalActions.closeTaskModal();
     } catch (err) {
       setGroupTasks((prev) => prev.filter((task) => task.taskId !== optimisticTask.taskId));
@@ -1174,12 +1599,122 @@ export default function ChatPage() {
     modalState.taskAssignees,
     modalState.taskAssignToAll,
     modalState.taskDeadline,
+    modalState.editingTaskId,
     modalActions,
     fetchGroupTasks,
     setActionBusy,
+    dispatch,
     currentUserId,
     currentUser?.displayName,
+    groupMembers,
+    taskSubtaskRows,
   ]);
+
+  const openCreateTaskModal = useCallback(() => {
+    modalActions.setEditingTaskId(null);
+    modalActions.setTaskTitle('');
+    modalActions.setTaskNote('');
+    modalActions.setTaskDeadline('');
+    modalActions.setTaskAssignToAll(false);
+    modalActions.setTaskAssignees([]);
+    const first = groupMembers[0]?.userId ?? '';
+    setTaskSubtaskRows(first ? [{ assigneeId: first, content: '' }] : []);
+    modalActions.setShowTaskModal(true);
+  }, [groupMembers, modalActions]);
+
+  const openEditTaskFromGroupTask = useCallback(
+    (taskId: string) => {
+      const task = groupTasks.find((t) => String(t.taskId) === String(taskId));
+      if (!task) {
+        toast.error('Không tìm thấy công việc');
+        return;
+      }
+      if (String((task as GroupTask).creatorId ?? '') !== String(currentUserId)) {
+        toast.error('Chỉ người tạo mới chỉnh sửa được');
+        return;
+      }
+      modalActions.setEditingTaskId(String(task.taskId));
+      modalActions.setTaskTitle(String(task.title ?? ''));
+      modalActions.setTaskNote(String(task.description ?? ''));
+      modalActions.setTaskDeadline(isoToDatetimeLocalValue(task.dueDate ?? null));
+      const assignToAll = Boolean(
+        task.assignToAll || task.broadcast || !(Array.isArray(task.assignees) && task.assignees.length > 0),
+      );
+      modalActions.setTaskAssignToAll(assignToAll);
+      modalActions.setTaskAssignees(Array.isArray(task.assignees) ? task.assignees.map(String) : []);
+      const subs = Array.isArray(task.subtasks) ? task.subtasks : [];
+      const first = groupMembers[0]?.userId ?? '';
+      if (subs.length > 0) {
+        setTaskSubtaskRows(
+          subs.map((s) => ({
+            assigneeId: String(s.assigneeId ?? first),
+            content: String(s.content ?? ''),
+          })),
+        );
+      } else {
+        setTaskSubtaskRows(first ? [{ assigneeId: first, content: '' }] : []);
+      }
+      modalActions.setShowTaskModal(true);
+    },
+    [currentUserId, groupMembers, groupTasks, modalActions],
+  );
+
+  const handleDeleteGroupTask = useCallback(
+    async (taskId: string, opts?: { skipConfirm?: boolean }) => {
+      if (!activeConversationId) return;
+      const tid = String(taskId);
+      const titleFromBoard = String(groupTasks.find((t) => String(t.taskId) === tid)?.title ?? '').trim();
+      const titleFromEditor =
+        modalState.editingTaskId && String(modalState.editingTaskId) === tid
+          ? modalState.taskTitle.trim()
+          : '';
+      const displayTitle = (titleFromEditor || titleFromBoard || 'Công việc').trim();
+
+      if (!opts?.skipConfirm) {
+        modalActions.setTaskDeleteConfirm({ taskId: tid, title: displayTitle });
+        return;
+      }
+
+      setActionBusy('updateTask', true);
+      try {
+        await apiClient.delete(`/chat/groups/${activeConversationId}/tasks/${tid}`);
+        setGroupTasks((prev) => prev.filter((t) => String(t.taskId) !== tid));
+        modalActions.setTaskDeleteConfirm(null);
+        if (modalState.editingTaskId && String(modalState.editingTaskId) === tid) {
+          modalActions.closeTaskModal();
+        }
+        toast.success(
+          titleFromBoard || titleFromEditor
+            ? `Đã hủy công việc "${(titleFromBoard || titleFromEditor).trim()}"`
+            : 'Đã hủy công việc',
+        );
+        await fetchGroupTasks(activeConversationId);
+      } catch (err) {
+        const st = (err as any)?.response?.status;
+        toast.error(st === 403 ? 'Bạn không có quyền hủy công việc này' : 'Không thể hủy công việc');
+        console.error('Failed to delete task:', err);
+        await fetchGroupTasks(activeConversationId);
+      } finally {
+        setActionBusy('updateTask', false);
+      }
+    },
+    [
+      activeConversationId,
+      fetchGroupTasks,
+      groupTasks,
+      modalActions,
+      modalState.editingTaskId,
+      modalState.taskTitle,
+      setActionBusy,
+      setGroupTasks,
+    ],
+  );
+
+  const handleConfirmDeleteTask = useCallback(() => {
+    const c = modalState.taskDeleteConfirm;
+    if (!c?.taskId) return;
+    void handleDeleteGroupTask(c.taskId, { skipConfirm: true });
+  }, [handleDeleteGroupTask, modalState.taskDeleteConfirm]);
 
   const openAISummaryFromPanel = useCallback(async () => {
     modalActions.setShowAISummaryModal(true);
@@ -1304,9 +1839,11 @@ export default function ChatPage() {
             muteFor: payload.muteFor,
           }).unwrap();
           toast.success(
-            payload.muteFor === '1h'
-              ? 'Đã tắt thông báo trong 1 giờ'
-              : 'Đã tắt thông báo trong 4 giờ',
+            payload.muteFor === '1m'
+              ? 'Đã tắt thông báo trong 1 phút'
+              : payload.muteFor === '5m'
+                ? 'Đã tắt thông báo trong 5 phút'
+                : 'Đã tắt thông báo trong 10 phút',
           );
         } else if (payload.kind === 'untilIso') {
           await updateConversationPreferences({
@@ -1314,7 +1851,18 @@ export default function ChatPage() {
             isMuted: false,
             notificationsMutedUntil: payload.notificationsMutedUntil,
           }).unwrap();
-          toast.success('Đã tắt thông báo đến 8:00 sáng');
+          const refEight = new Date(nextLocalEightAmIsoString()).getTime();
+          const picked = new Date(payload.notificationsMutedUntil).getTime();
+          const nearEightAm = Number.isFinite(picked) && Math.abs(picked - refEight) < 120_000;
+          toast.success(
+            nearEightAm ? 'Đã tắt thông báo đến 8:00 sáng' : 'Đã cập nhật nhắc tắt thông báo',
+          );
+        } else if (payload.kind === 'clearScheduledMute') {
+          await updateConversationPreferences({
+            conversationId: activeConversationId,
+            notificationsMutedUntil: null,
+          }).unwrap();
+          toast.success('Đã hủy lịch tắt thông báo');
         } else {
           await updateConversationPreferences({
             conversationId: activeConversationId,
@@ -1618,24 +2166,60 @@ export default function ChatPage() {
     modalActions.setShowPollVoteModal(true);
   }, [modalActions]);
 
-  const handleToggleTaskStatus = useCallback(async (taskId: string) => {
-    if (!activeConversationId) return;
-    setActionBusy('updateTask', true);
-    const before = groupTasks;
-    const currentTask = groupTasks.find((task) => task.taskId === taskId);
-    if (!currentTask) return;
-    const nextStatus: GroupTask['status'] = currentTask.status === 'done' ? 'todo' : 'done';
-    setGroupTasks((prev) => prev.map((task) => (task.taskId === taskId ? { ...task, status: nextStatus } : task)));
-    try {
-      await apiClient.put(`/chat/groups/${activeConversationId}/tasks/${taskId}`, { status: nextStatus });
-    } catch (error) {
-      setGroupTasks(before);
-      toast.error('Không thể cập nhật công việc');
-      console.error('Failed to update task:', error);
-    } finally {
-      setActionBusy('updateTask', false);
-    }
-  }, [activeConversationId, groupTasks, setActionBusy]);
+  const handleTaskJoined = useCallback(
+    async (taskId: string) => {
+      if (!activeConversationId) return;
+      const tid = String(taskId);
+      const taskRow = groupTasks.find((t) => String(t.taskId) === tid);
+      if (taskRow?.dueDate != null && String(taskRow.dueDate).trim() !== '') {
+        const dueMs = new Date(String(taskRow.dueDate)).getTime();
+        if (Number.isFinite(dueMs) && Date.now() > dueMs) {
+          toast.error('Đã quá hạn, không thể xác nhận tham gia');
+          return;
+        }
+      }
+      let joinedNow = false;
+      let joinedTaskTitle = '';
+      setGroupTasks((prev) =>
+        prev.map((t) => {
+          if (String(t.taskId) !== String(taskId)) return t;
+          joinedTaskTitle = String(t.title ?? '');
+          const p = Array.isArray(t.participants) ? t.participants : [];
+          if (p.includes(currentUserId)) return t;
+          joinedNow = true;
+          return { ...t, participants: [...p, currentUserId] };
+        }),
+      );
+      if (!joinedNow) return;
+      try {
+        await apiClient.post(`/chat/groups/${activeConversationId}/tasks/${String(taskId)}/join`);
+      } catch (err) {
+        setGroupTasks((prev) =>
+          prev.map((t) => {
+            if (String(t.taskId) !== String(taskId)) return t;
+            const p = Array.isArray(t.participants) ? t.participants : [];
+            return { ...t, participants: p.filter((id) => String(id) !== String(currentUserId)) };
+          }),
+        );
+        const st = (err as any)?.response?.status;
+        const msg = String((err as any)?.response?.data?.message ?? '').trim();
+        toast.error(
+          st === 403 && msg
+            ? msg
+            : st === 403
+              ? 'Bạn không thể xác nhận tham gia công việc này'
+              : 'Không thể tham gia công việc',
+        );
+        return;
+      }
+      toast.success(
+        joinedTaskTitle
+          ? `Đã xác nhận tham gia: «${joinedTaskTitle}»`
+          : 'Đã xác nhận tham gia công việc',
+      );
+    },
+    [activeConversationId, currentUserId, groupTasks],
+  );
 
   const messageActions = useMemo(
     () => ({
@@ -1684,6 +2268,16 @@ export default function ChatPage() {
       setActionMenuMsgId: modalActions.setActionMenuMsgId,
     });
 
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  const [focusTaskNonce, setFocusTaskNonce] = useState(0);
+
+  const { cancelTaskReminders, snoozeTask } = useTaskReminderScheduler({
+    conversationId: activeConversationId,
+    tasks: groupTasks as any[],
+    members: groupMembers.map((m) => ({ userId: m.userId, displayName: m.displayName })),
+    currentUserId,
+  });
+
   return (
     <ChatPageProvider value={contextValue}>
       <div className="w-full h-full min-h-0 flex overflow-hidden bg-background">
@@ -1707,7 +2301,6 @@ export default function ChatPage() {
         onSelectConversation={handleSelectConversation}
         onPickSearchMessage={scrollToMessageBubble}
         onOpenCreateGroup={openCreateGroupModal}
-        onOpenMarkRead={() => modalActions.setShowMarkReadModal(true)}
         onOpenAddFriend={() => modalActions.setShowAddFriendModal(true)}
         onToggleConversationMute={handleToggleConversationMute}
       />
@@ -1779,25 +2372,89 @@ export default function ChatPage() {
               onReact={handleReactMessage}
               onJumpToLatest={handleJumpToLatest}
               groupTasks={groupTasks}
-              onTaskJoined={(taskId) => {
-                setGroupTasks((prev) =>
-                  prev.map((t) => {
-                    if (t.taskId !== taskId) return t;
-                    const p = Array.isArray(t.participants) ? t.participants : [];
-                    return p.includes(currentUserId) ? t : { ...t, participants: [...p, currentUserId] };
-                  }),
-                );
-              }}
+              groupMembers={groupMembers.map((m) => ({ userId: m.userId, displayName: m.displayName }))}
+              onTaskJoined={handleTaskJoined}
+              // Deprecated flows: completion/snooze are not part of current UX.
               onOpenPollVote={(pollId) => openPollVoteModal(pollId)}
               shareTargetConversations={conversations}
               onForwardMediaMessage={handleForwardMediaMessage}
+              onEditGroupTask={openEditTaskFromGroupTask}
+              onDeleteGroupTask={(id) => void handleDeleteGroupTask(id)}
             />
+
+            {chatFrameNotice && activeConversationId ? (
+              (() => {
+                const v = chatFrameNotice.variant ?? 'task_assigned';
+                const isClickable = Boolean(chatFrameNotice.onClick);
+                const theme =
+                  v === 'task_joined'
+                    ? {
+                        wrap: 'bg-emerald-50/90 dark:bg-emerald-900/20 border-emerald-200/70 dark:border-emerald-800/60',
+                        text: 'text-emerald-900 dark:text-emerald-50',
+                        sub: 'text-emerald-900/60 dark:text-emerald-50/70',
+                        icon: <CheckCircle2 className="w-4 h-4" />,
+                      }
+                    : v === 'poll'
+                      ? {
+                          wrap: 'bg-orange-50/90 dark:bg-orange-900/20 border-orange-200/70 dark:border-orange-800/60',
+                          text: 'text-orange-950 dark:text-orange-50',
+                          sub: 'text-orange-950/60 dark:text-orange-50/70',
+                          icon: <BarChart2 className="w-4 h-4" />,
+                        }
+                      : {
+                          wrap: 'bg-blue-50/90 dark:bg-blue-900/20 border-blue-200/70 dark:border-blue-800/60',
+                          text: 'text-blue-950 dark:text-blue-50',
+                          sub: 'text-blue-950/60 dark:text-blue-50/70',
+                          icon: <ClipboardList className="w-4 h-4" />,
+                        };
+
+                const timeLabel = (() => {
+                  const ms = new Date(chatFrameNotice.atIso).getTime();
+                  if (!Number.isFinite(ms)) return '';
+                  return new Date(ms).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                })();
+
+                return (
+                  <div
+                    className={`relative w-full shrink-0 border-t px-3 py-2 ${theme.wrap}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className={`mt-[1px] ${theme.text}`}>{theme.icon}</div>
+                      <button
+                        type="button"
+                        onClick={() => chatFrameNotice.onClick?.()}
+                        disabled={!isClickable}
+                        className={`min-w-0 flex-1 text-left text-[12px] font-semibold leading-[18px] ${theme.text} ${
+                          isClickable ? 'cursor-pointer hover:underline' : 'cursor-default'
+                        }`}
+                      >
+                        {chatFrameNotice.text}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setChatFrameNotice(null)}
+                        className={`shrink-0 rounded-md p-1 ${theme.sub} hover:bg-black/5 dark:hover:bg-white/10`}
+                        title="Đóng"
+                        aria-label="Đóng thông báo"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {timeLabel ? (
+                      <div className={`mt-0.5 pl-6 text-[11px] font-semibold ${theme.sub}`}>{timeLabel}</div>
+                    ) : null}
+                  </div>
+                );
+              })()
+            ) : null}
 
             <ChatComposer
               activeConversation={activeConversation}
               activeConversationId={activeConversationId}
               onOpenPoll={() => modalActions.setShowPollModal(true)}
-              onOpenTask={() => modalActions.setShowTaskModal(true)}
+              onOpenTask={openCreateTaskModal}
             />
           </>
         )}
@@ -1825,13 +2482,14 @@ export default function ChatPage() {
           onOpenPollVote={(pollId) => openPollVoteModal(pollId)}
           onAddPollOption={(pollId) => void handleAddPollOption(pollId)}
           onClosePoll={(pollId) => void handleClosePoll(pollId)}
-          onToggleTask={(taskId) => void handleToggleTaskStatus(taskId)}
+          onTaskJoined={handleTaskJoined}
           onOpenPollModalFromPanel={
             activeConversation?.type === 'group' ? () => modalActions.setShowPollModal(true) : undefined
           }
-          onOpenTaskModalFromPanel={
-            activeConversation?.type === 'group' ? () => modalActions.setShowTaskModal(true) : undefined
-          }
+          onOpenTaskModalFromPanel={activeConversation?.type === 'group' ? openCreateTaskModal : undefined}
+          onEditTaskFromBulletin={(t) => openEditTaskFromGroupTask(String(t.taskId))}
+          onDeleteTaskFromBulletin={(id) => void handleDeleteGroupTask(id)}
+          taskActionBusy={groupActionLoading.createTask || groupActionLoading.updateTask}
           polls={groupPolls}
           tasks={groupTasks}
           isJoinRequested={groupJoinRequested}
@@ -1866,6 +2524,8 @@ export default function ChatPage() {
           onJumpToMessage={scrollToMessageBubble}
           conversations={conversations}
           onSelectConversation={handleSelectConversation}
+          focusTaskId={focusTaskId}
+          focusTaskNonce={focusTaskNonce}
         />
       )}
 
@@ -1943,6 +2603,29 @@ export default function ChatPage() {
         }}
         onConfirm={() => void handleMessageConfirm()}
       />
+      <ConfirmModal
+        open={modalState.taskDeleteConfirm !== null}
+        title="Hủy công việc?"
+        description={
+          modalState.taskDeleteConfirm ? (
+            <>
+              Bạn sắp hủy công việc{' '}
+              <span className="font-bold text-foreground">«{modalState.taskDeleteConfirm.title}»</span>.
+              <br />
+              <br />
+              Thẻ giao việc sẽ được thu hồi cho toàn bộ nhóm (không còn hiển thị). Mọi người vẫn thấy dòng nhật ký hủy
+              việc trong khung chat.
+            </>
+          ) : undefined
+        }
+        confirmLabel="Hủy công việc"
+        variant="danger"
+        isConfirming={groupActionLoading.updateTask}
+        onClose={() => {
+          if (!groupActionLoading.updateTask) modalActions.setTaskDeleteConfirm(null);
+        }}
+        onConfirm={() => void handleConfirmDeleteTask()}
+      />
       <ProfileModal
         open={modalState.showProfileModal}
         onClose={() => modalActions.setShowProfileModal(false)}
@@ -2018,7 +2701,18 @@ export default function ChatPage() {
         onTaskNoteChange={modalActions.setTaskNote}
         taskAssignees={modalState.taskAssignees}
         onTaskAssigneesChange={modalActions.setTaskAssignees}
+        subtaskRows={taskSubtaskRows}
+        onSubtaskRowsChange={setTaskSubtaskRows}
         onSubmitTask={handleSubmitTask}
+        isEditing={Boolean(modalState.editingTaskId)}
+        submitBusy={groupActionLoading.createTask || groupActionLoading.updateTask}
+        onDeleteTask={
+          modalState.editingTaskId
+            ? () => {
+                void handleDeleteGroupTask(modalState.editingTaskId as string);
+              }
+            : undefined
+        }
       />
 
       <AddMembersModal
