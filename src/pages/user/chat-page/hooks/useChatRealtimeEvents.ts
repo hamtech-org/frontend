@@ -43,12 +43,15 @@ export function useChatRealtimeEvents({
   removeMessageFromCache,
 }: UseChatRealtimeEventsParams): void {
   const activeConversationIdRef = useRef<string | null>(activeConversationId);
+  const typingCleanupTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
 
   useEffect(() => {
+    if (!isConnected) return;
+
     const handleNewMessage = (msg: IMessage) => {
       dispatch(messageReceived(msg));
 
@@ -111,6 +114,16 @@ export function useChatRealtimeEvents({
         content: 'Tin nhắn đã được thu hồi',
         isPinned: false,
       });
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          if (!draft?.data) return;
+          const conv = draft.data.find((c) => c.conversationId === payload.conversationId);
+          const lm = conv?.lastMessage;
+          if (!conv || !lm || String(lm.messageId) !== String(payload.messageId)) return;
+          lm.content = 'Tin nhắn đã được thu hồi';
+        }),
+      );
+      dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
 
     const handleHiddenForMe = (payload: { messageId: string; conversationId: string }) => {
@@ -136,20 +149,22 @@ export function useChatRealtimeEvents({
     const handleTypingEvent = (payload: {
       conversationId: string;
       userId: string;
-      isTyping: boolean;
-      displayName?: string;
+      displayName?: string | null;
     }) => {
-      if (payload.isTyping) {
-        dispatch(
-          typingStarted({
-            conversationId: payload.conversationId,
-            userId: payload.userId,
-            displayName: payload.displayName,
-          }),
-        );
-      } else {
+      dispatch(
+        typingStarted({
+          conversationId: payload.conversationId,
+          userId: payload.userId,
+          displayName: payload.displayName ?? undefined,
+        }),
+      );
+      const timerKey = `${payload.conversationId}:${payload.userId}`;
+      const existingTimer = typingCleanupTimersRef.current[timerKey];
+      if (existingTimer) clearTimeout(existingTimer);
+      typingCleanupTimersRef.current[timerKey] = setTimeout(() => {
         dispatch(typingStopped({ conversationId: payload.conversationId, userId: payload.userId }));
-      }
+        delete typingCleanupTimersRef.current[timerKey];
+      }, 1000);
     };
 
     const handleGroupUpdated = (payload: GroupUpdatedPayload) => {
@@ -186,28 +201,32 @@ export function useChatRealtimeEvents({
         data as { messageId: string; conversationId: string; reactions: Record<string, string[]> },
       );
     const wrappedTyping = (data: unknown) =>
-      handleTypingEvent(
-        data as { conversationId: string; userId: string; isTyping: boolean; displayName?: string },
-      );
+      handleTypingEvent(data as { conversationId: string; userId: string; displayName?: string | null });
 
     socketService.on('message:new', wrappedNewMessage);
     socketService.on('group:updated', wrappedGroupUpdated);
     socketService.on('message:edited', wrappedEdited);
+    socketService.on('message:recall', wrappedRecalled);
     socketService.on('message:recalled', wrappedRecalled);
     socketService.on('message:hidden_for_me', wrappedHidden);
     socketService.on('message:pin_updated', wrappedPinUpdated);
+    socketService.on('message:reacted', wrappedReaction);
     socketService.on('message:reaction', wrappedReaction);
-    socketService.on('message:typing', wrappedTyping);
+    socketService.on('message:typing_indicator', wrappedTyping);
 
     return () => {
       socketService.off('message:new', wrappedNewMessage);
       socketService.off('group:updated', wrappedGroupUpdated);
       socketService.off('message:edited', wrappedEdited);
+      socketService.off('message:recall', wrappedRecalled);
       socketService.off('message:recalled', wrappedRecalled);
       socketService.off('message:hidden_for_me', wrappedHidden);
       socketService.off('message:pin_updated', wrappedPinUpdated);
+      socketService.off('message:reacted', wrappedReaction);
       socketService.off('message:reaction', wrappedReaction);
-      socketService.off('message:typing', wrappedTyping);
+      socketService.off('message:typing_indicator', wrappedTyping);
+      Object.values(typingCleanupTimersRef.current).forEach(clearTimeout);
+      typingCleanupTimersRef.current = {};
     };
   }, [
     dispatch,
