@@ -51,6 +51,9 @@ import {
   AlertDialogHeader,
 } from '@/components/ui';
 import { MessageCircle, Heart, Share2, MoreHorizontal, Trash2, Edit2 } from 'lucide-react';
+import { MuteChatListDemo } from '@/components/chat/demo/MuteChatListDemo';
+import { PinnedMutedChatListDemo } from '@/components/chat/demo/PinnedMutedChatListDemo';
+import { SubtaskGroupTaskDemo } from '@/components/chat/demo/SubtaskGroupTaskDemo';
 
 const ComponentsDemoPage: React.FC = () => {
   const [selectedRadio, setSelectedRadio] = useState('option1');
@@ -482,6 +485,43 @@ const ComponentsDemoPage: React.FC = () => {
                   </AlertDialogContent>
                 </AlertDialog>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Chat mute time demo */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Mute notifications (Zalo-style) — realtime demo</CardTitle>
+              <CardDescription>
+                Local state + setTimeout auto-unmute + countdown UI (không backend/socket)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MuteChatListDemo />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Pinned / Normal / Muted grouping — demo</CardTitle>
+              <CardDescription>
+                Quy tắc ưu tiên: muted luôn thắng pinned. Auto-unmute realtime.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PinnedMutedChatListDemo />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Group task with subtasks — realtime demo</CardTitle>
+              <CardDescription>
+                1 task chung + nhiều subtask giao từng người + nhắc hạn mention đúng phần việc chưa xong (local state)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SubtaskGroupTaskDemo />
             </CardContent>
           </Card>
         </div>
