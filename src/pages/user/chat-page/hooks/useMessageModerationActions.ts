@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { toast } from 'react-toastify';
 import { chatApi } from '@/store/api/chatApi';
 import { messageEdited, messageHiddenForViewer, messagePinUpdated, messageRecalled } from '@/store/slices/chatSlice';
 import type { AppDispatch } from '@/store/store';
@@ -132,8 +133,11 @@ export function useMessageModerationActions({
       }
       setMessageConfirm(null);
       setActionMenuMsgId(null);
-    } catch {
-      // ignore
+    } catch (e: unknown) {
+      const d = e && typeof e === 'object' && 'data' in e ? (e as { data: unknown }).data : null;
+      const body = d && typeof d === 'object' ? (d as { error?: { message?: string } }) : null;
+      const apiMsg = body?.error?.message?.trim();
+      toast.error(apiMsg || (messageConfirm?.kind === 'recall' ? 'Thu hồi tin nhắn thất bại' : 'Xóa tin nhắn thất bại'));
     } finally {
       setMessageConfirmSubmitting(false);
     }
