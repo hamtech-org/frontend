@@ -81,7 +81,7 @@ export const LoginForm = ({
 
       {error && (
         <div className="text-red-500 text-sm text-center">
-          {/* @ts-ignore */}
+          {/* @ts-expect-error RTK Query error shape is not strongly typed here */}
           {error?.data?.message || 'Đã có lỗi xảy ra'}
         </div>
       )}
