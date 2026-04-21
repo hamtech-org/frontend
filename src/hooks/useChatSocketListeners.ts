@@ -123,7 +123,17 @@ export function useChatSocketListeners(
       patchMessageInCache(payload.conversationId, payload.messageId, {
         isRecalled: true,
         content: 'Tin nhắn đã được thu hồi',
+        isPinned: false,
       });
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          if (!draft?.data) return;
+          const conv = draft.data.find((c) => c.conversationId === payload.conversationId);
+          const lm = conv?.lastMessage;
+          if (!conv || !lm || String(lm.messageId) !== String(payload.messageId)) return;
+          lm.content = 'Tin nhắn đã được thu hồi';
+        }),
+      );
       dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
 
@@ -256,6 +266,7 @@ export function useChatSocketListeners(
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:status', handleMessageStatus);
     socketService.on('message:recall', handleRecall);
+    socketService.on('message:recalled', handleRecall);
     socketService.on('message:edited', handleEdited);
     socketService.on('message:hidden_for_me', handleHiddenForMe);
     socketService.on('message:pin_updated', handlePinUpdated);
@@ -286,6 +297,7 @@ export function useChatSocketListeners(
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:status', handleMessageStatus);
       socketService.off('message:recall', handleRecall);
+      socketService.off('message:recalled', handleRecall);
       socketService.off('message:edited', handleEdited);
       socketService.off('message:hidden_for_me', handleHiddenForMe);
       socketService.off('message:pin_updated', handlePinUpdated);
