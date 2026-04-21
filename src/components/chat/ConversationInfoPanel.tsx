@@ -20,6 +20,7 @@ import {
   Users,
   User,
   X,
+  Trash2,
 } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
 import type { GroupMember, GroupMemberRole, GroupRequest } from '@/types/chat.group.types';
@@ -36,9 +37,11 @@ import {
   type MuteNotificationsApplyPayload,
 } from '@/components/chat/MuteNotificationsModal';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
+import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-toastify';
 import { MIN_GROUP_MEMBERS } from '@/constants/group.constants';
+import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
 
 type GroupPoll = {
   pollId: string;
@@ -58,6 +61,11 @@ type GroupTask = {
   createdAt?: string;
   creatorId?: string;
   creatorDisplayName?: string | null;
+  dueDate?: string | null;
+  assignToAll?: boolean;
+  broadcast?: boolean;
+  assignees?: string[];
+  participants?: string[];
 };
 
 /** Kiểu Zalo: 28/02/2026 lúc 16:24 */
@@ -140,21 +148,34 @@ type MessageGalleryItem = {
 type BulletinCardRowProps = {
   item: BulletinFeedRow;
   memberAvatarById: Map<string, string>;
+  currentUserId?: string;
   onVotePoll?: (pollId: string, optionIndex: number) => void;
   onOpenPollVote?: (pollId: string) => void;
   onAddPollOption?: (pollId: string) => void;
   onClosePoll?: (pollId: string) => void;
-  onToggleTask?: (taskId: string) => void;
+  /** Xác nhận tham gia task (đồng bộ với khung chat — gọi API join). */
+  onTaskJoined?: (taskId: string) => void | Promise<void>;
+  onEditTaskFromBulletin?: (task: GroupTask) => void;
+  onDeleteTaskFromBulletin?: (taskId: string) => void;
+  taskMutating?: boolean;
+  focusTaskId?: string | null;
+  focusFlashNonce?: number;
 };
 
 function BulletinCardRow({
   item,
   memberAvatarById,
+  currentUserId,
   onVotePoll,
   onOpenPollVote,
   onAddPollOption,
   onClosePoll,
-  onToggleTask,
+  onTaskJoined,
+  onEditTaskFromBulletin,
+  onDeleteTaskFromBulletin,
+  taskMutating,
+  focusTaskId,
+  focusFlashNonce,
 }: BulletinCardRowProps) {
   const avatarUrl = item.creatorId ? memberAvatarById.get(item.creatorId) : undefined;
   const footer = formatBulletinFooterTime(item.createdAt);
@@ -165,11 +186,16 @@ function BulletinCardRow({
     else onVotePoll?.(item.id, 0);
   };
 
+  const isFocusedTask =
+    item.kind === 'task' && item.task ? String(item.task.taskId) === String(focusTaskId ?? '') : false;
+  const domId = item.kind === 'task' && item.task ? `task-row-${item.task.taskId}` : undefined;
   return (
     <div
+      id={domId}
+      data-focus-flash={isFocusedTask ? focusFlashNonce ?? 0 : undefined}
       className={`rounded-2xl border border-black/[0.06] bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#242424] ${
         pollOpen ? 'cursor-pointer hover:border-blue-600/30' : ''
-      }`}
+      } ${isFocusedTask ? 'ring-2 ring-blue-500/50' : ''}`}
       role={pollOpen ? 'button' : undefined}
       tabIndex={pollOpen ? 0 : undefined}
       onClick={() => {
@@ -201,29 +227,94 @@ function BulletinCardRow({
       </div>
       <div className="mt-3 space-y-1">
         {item.kind === 'task' && item.task ? (
-          <div className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-4 w-4 shrink-0 accent-blue-600"
-              checked={item.task.status === 'done'}
-              onChange={(ev) => {
-                ev.stopPropagation();
-                onToggleTask?.(item.task!.taskId);
-              }}
-              onClick={(ev) => ev.stopPropagation()}
-            />
-            <p
-              className={`min-w-0 flex-1 text-[13px] font-semibold leading-snug ${
-                item.task.status === 'done' ? 'text-muted-foreground line-through' : ''
-              }`}
-            >
-              {item.title}
-            </p>
+          <div className="space-y-2">
+            <p className="pr-1 text-[13px] font-semibold leading-snug text-foreground">{item.title}</p>
+            {(() => {
+              const t = item.task as GroupTask;
+              const due = t.dueDate ? String(t.dueDate) : '';
+              const dueOk = due && !Number.isNaN(new Date(due).getTime());
+              const assignees = Array.isArray(t.assignees) ? t.assignees : [];
+              const participants = Array.isArray(t.participants) ? t.participants : [];
+              const assignToAll = Boolean(t.assignToAll) || Boolean(t.broadcast) || assignees.length === 0;
+              const uid = String(currentUserId ?? '');
+              const joined = uid ? participants.includes(uid) : false;
+              const canJoin = assignToAll || (uid ? assignees.includes(uid) : false);
+              const joinDeadlinePassed = dueOk && isTaskJoinDeadlinePassed(due);
+              const showJoinButton =
+                Boolean(onTaskJoined) && !joined && canJoin && !joinDeadlinePassed;
+              return (
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                  {dueOk ? <TaskDeadlineCalendar dateIso={due} size="sm" /> : null}
+                  <span className="inline-flex items-center gap-1 rounded-full bg-black/5 px-2 py-0.5 font-semibold dark:bg-white/10">
+                    <Users className="h-3 w-3 shrink-0" />
+                    {participants.length > 0 ? `${participants.length} đã tham gia` : 'Chưa ai tham gia'}
+                  </span>
+                  {joined ? (
+                    <span className="ml-auto rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                      Bạn đã tham gia
+                    </span>
+                  ) : joinDeadlinePassed ? (
+                    <span
+                      className="ml-auto rounded-full bg-black/5 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground dark:bg-white/10"
+                      title="Đã quá hạn công việc"
+                    >
+                      Chưa tham gia
+                    </span>
+                  ) : showJoinButton ? (
+                    <button
+                      type="button"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        void onTaskJoined?.(String(t.taskId));
+                      }}
+                      className="ml-auto rounded-full bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm hover:bg-emerald-700"
+                    >
+                      Xác nhận tham gia
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })()}
+            {item.subtitle ? (
+              <p className="line-clamp-2 text-[12px] leading-snug text-muted-foreground">{item.subtitle}</p>
+            ) : null}
+            {(() => {
+              const t = item.task;
+              if (!t) return null;
+              const uid = String(currentUserId ?? '');
+              const isCreator = Boolean(t.creatorId && uid && String(t.creatorId) === uid);
+              if (!isCreator || (!onEditTaskFromBulletin && !onDeleteTaskFromBulletin)) return null;
+              return (
+                <div className="flex flex-wrap gap-2 pt-1" onClick={(ev) => ev.stopPropagation()}>
+                  {onEditTaskFromBulletin ? (
+                    <button
+                      type="button"
+                      disabled={taskMutating}
+                      onClick={() => onEditTaskFromBulletin(t)}
+                      className="rounded-full bg-black/5 px-3 py-1 text-[11px] font-bold text-foreground hover:bg-black/10 disabled:opacity-40 dark:bg-white/10 dark:hover:bg-white/15"
+                    >
+                      Sửa
+                    </button>
+                  ) : null}
+                  {onDeleteTaskFromBulletin ? (
+                    <button
+                      type="button"
+                      disabled={taskMutating}
+                      onClick={() => onDeleteTaskFromBulletin(String(t.taskId))}
+                      className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-3 py-1 text-[11px] font-bold text-red-700 hover:bg-red-500/15 disabled:opacity-40 dark:text-red-300"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Hủy công việc
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <p className="pr-1 text-[13px] font-semibold leading-snug">{item.title}</p>
         )}
-        {item.subtitle ? (
+        {item.kind !== 'task' && item.subtitle ? (
           <p className="line-clamp-3 text-[12px] leading-snug text-muted-foreground">{item.subtitle}</p>
         ) : null}
       </div>
@@ -280,7 +371,7 @@ type ConversationInfoPanelProps = {
   onOpenCreateGroup?: () => void;
   /** Bật lại thông báo (xóa tắt tạm + tắt vĩnh viễn). */
   onToggleMuteNotifications?: () => void;
-  /** Tắt thông báo theo lựa chọn trong modal (1h / 4h / đến 8h / đến khi mở lại). */
+  /** Tắt thông báo theo lựa chọn trong modal (1p / 5p / 10p / đến khi mở lại). */
   onApplyMuteFromModal?: (payload: MuteNotificationsApplyPayload) => Promise<void>;
   onTogglePinConversation?: () => void;
   onRequestJoin?: () => void;
@@ -288,11 +379,15 @@ type ConversationInfoPanelProps = {
   onOpenPollVote?: (pollId: string) => void;
   onAddPollOption?: (pollId: string) => void;
   onClosePoll?: (pollId: string) => void;
-  onToggleTask?: (taskId: string) => void;
+  onTaskJoined?: (taskId: string) => void | Promise<void>;
   /** Mở modal tạo bình chọn (nút + trên bảng tin). */
   onOpenPollModalFromPanel?: () => void;
   /** Mở modal tạo công việc (nút + trên bảng tin). */
   onOpenTaskModalFromPanel?: () => void;
+  onEditTaskFromBulletin?: (task: GroupTask) => void;
+  onDeleteTaskFromBulletin?: (taskId: string) => void;
+  /** Khóa nút Sửa/Hủy khi đang gọi API tạo/sửa/xóa công việc. */
+  taskActionBusy?: boolean;
   polls?: GroupPoll[];
   tasks?: GroupTask[];
   isJoinRequested?: boolean;
@@ -327,6 +422,10 @@ type ConversationInfoPanelProps = {
   onJumpToMessage?: (messageId: string) => void;
   conversations?: IConversation[];
   onSelectConversation?: (conversationId: string) => void;
+  /** Khi set: tự mở tab công việc và cuộn tới task tương ứng. */
+  focusTaskId?: string | null;
+  /** Tăng để trigger lại hiệu ứng focus/scroll. */
+  focusTaskNonce?: number;
 };
 
 export function ConversationInfoPanel({
@@ -346,9 +445,12 @@ export function ConversationInfoPanel({
   onOpenPollVote,
   onAddPollOption,
   onClosePoll,
-  onToggleTask,
+  onTaskJoined,
   onOpenPollModalFromPanel,
   onOpenTaskModalFromPanel,
+  onEditTaskFromBulletin,
+  onDeleteTaskFromBulletin,
+  taskActionBusy = false,
   polls = [],
   tasks = [],
   isJoinRequested = false,
@@ -367,10 +469,22 @@ export function ConversationInfoPanel({
   onJumpToMessage,
   conversations = [],
   onSelectConversation,
+  focusTaskId = null,
+  focusTaskNonce = 0,
 }: ConversationInfoPanelProps) {
   const { core, groupActions } = useChatPageContext();
   const isMuted = !!activeConversation?.isMuted;
   const isConvPinned = !!activeConversation?.isPinnedToTop;
+  const scheduledMuteUntil =
+    typeof activeConversation?.notificationsMutedUntil === 'string'
+      ? activeConversation.notificationsMutedUntil.trim()
+      : '';
+  const scheduledMuteUntilMs = scheduledMuteUntil ? new Date(scheduledMuteUntil).getTime() : NaN;
+  const hasActiveScheduledMute = Boolean(
+    scheduledMuteUntil &&
+      !Number.isNaN(scheduledMuteUntilMs) &&
+      scheduledMuteUntilMs > Date.now(),
+  );
   const isOwner = currentUserRole === 'owner';
   const canModerateMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
   const canDisbandGroup = currentUserRole === 'owner' || currentUserRole === 'admin';
@@ -394,6 +508,7 @@ export function ConversationInfoPanel({
   const [showGroupManagement, setShowGroupManagement] = useState(false);
   const [showConversationSearch, setShowConversationSearch] = useState(false);
   const [showMuteDurationModal, setShowMuteDurationModal] = useState(false);
+  const [muteModalMode, setMuteModalMode] = useState<'create' | 'edit'>('create');
   const [muteModalSubmitting, setMuteModalSubmitting] = useState(false);
   const [leaveMemberModalOpen, setLeaveMemberModalOpen] = useState(false);
   const [leaveOwnerTransferOpen, setLeaveOwnerTransferOpen] = useState(false);
@@ -407,6 +522,20 @@ export function ConversationInfoPanel({
   const [galleryError, setGalleryError] = useState<string | null>(null);
   const [bulletinModalMode, setBulletinModalMode] = useState<null | 'reminders' | 'notesPolls'>(null);
   const [bulletinTab, setBulletinTab] = useState<BulletinTab>('all');
+  const [focusFlashNonce, setFocusFlashNonce] = useState(0);
+
+  useEffect(() => {
+    if (!focusTaskId) return;
+    // Mở “nhắc hẹn / công việc” để user thấy task ngay.
+    setBulletinModalMode('reminders');
+    // Trigger highlight again
+    setFocusFlashNonce((n) => n + 1);
+    // Scroll after paint
+    window.setTimeout(() => {
+      const el = document.getElementById(`task-row-${focusTaskId}`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
+  }, [focusTaskId, focusTaskNonce]);
   const [bulletinAddOpen, setBulletinAddOpen] = useState(false);
   const bulletinAddRef = useRef<HTMLDivElement>(null);
 
@@ -837,11 +966,17 @@ export function ConversationInfoPanel({
                       key={`${item.kind}-${item.id}`}
                       item={item}
                       memberAvatarById={memberAvatarById}
+                      currentUserId={currentUserId}
                       onVotePoll={onVotePoll}
                       onOpenPollVote={onOpenPollVote}
                       onAddPollOption={onAddPollOption}
                       onClosePoll={onClosePoll}
-                      onToggleTask={onToggleTask}
+                      onTaskJoined={onTaskJoined}
+                      onEditTaskFromBulletin={onEditTaskFromBulletin}
+                      onDeleteTaskFromBulletin={onDeleteTaskFromBulletin}
+                      taskMutating={taskActionBusy}
+                      focusTaskId={focusTaskId}
+                      focusFlashNonce={focusFlashNonce}
                     />
                   ))
                 )}
@@ -899,11 +1034,17 @@ export function ConversationInfoPanel({
                         key={`${item.kind}-${item.id}`}
                         item={item}
                         memberAvatarById={memberAvatarById}
+                        currentUserId={currentUserId}
                         onVotePoll={onVotePoll}
                         onOpenPollVote={onOpenPollVote}
                         onAddPollOption={onAddPollOption}
                         onClosePoll={onClosePoll}
-                        onToggleTask={onToggleTask}
+                        onTaskJoined={onTaskJoined}
+                        onEditTaskFromBulletin={onEditTaskFromBulletin}
+                        onDeleteTaskFromBulletin={onDeleteTaskFromBulletin}
+                        taskMutating={taskActionBusy}
+                        focusTaskId={focusTaskId}
+                        focusFlashNonce={focusFlashNonce}
                       />
                     ))
                   )}
@@ -979,6 +1120,7 @@ export function ConversationInfoPanel({
                 if (isMuted) {
                   onToggleMuteNotifications?.();
                 } else {
+                  setMuteModalMode('create');
                   setShowMuteDurationModal(true);
                 }
               }}
@@ -1097,6 +1239,46 @@ export function ConversationInfoPanel({
               </button>
             )}
             </div>
+            {hasActiveScheduledMute && onApplyMuteFromModal ? (
+              <div className="mt-3 w-full rounded-xl border border-blue-500/20 bg-blue-500/[0.07] px-3 py-3 dark:border-blue-400/25 dark:bg-blue-500/10">
+                <p className="text-[11px] font-semibold text-muted-foreground">Nhắc tắt thông báo đến</p>
+                <p className="mt-1 text-[13px] font-bold text-foreground">
+                  {new Date(scheduledMuteUntil).toLocaleString('vi-VN')}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={muteModalSubmitting}
+                    onClick={() => {
+                      setMuteModalMode('edit');
+                      setShowMuteDurationModal(true);
+                    }}
+                    className="rounded-lg bg-[#0068ff] px-3 py-1.5 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    Chỉnh sửa
+                  </button>
+                  <button
+                    type="button"
+                    disabled={muteModalSubmitting}
+                    onClick={() => {
+                      void (async () => {
+                        setMuteModalSubmitting(true);
+                        try {
+                          await onApplyMuteFromModal({ kind: 'clearScheduledMute' });
+                        } catch {
+                          /* toast ở ChatPage */
+                        } finally {
+                          setMuteModalSubmitting(false);
+                        }
+                      })();
+                    }}
+                    className="rounded-lg border border-red-500/35 bg-white px-3 py-1.5 text-[12px] font-bold text-red-600 hover:bg-red-500/10 disabled:opacity-50 dark:bg-zinc-900 dark:text-red-400"
+                  >
+                    Hủy lịch
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
         </div>
@@ -1488,7 +1670,14 @@ export function ConversationInfoPanel({
       />
       <MuteNotificationsModal
         open={showMuteDurationModal}
-        onClose={() => !muteModalSubmitting && setShowMuteDurationModal(false)}
+        mode={muteModalMode}
+        scheduledUntilIso={muteModalMode === 'edit' ? scheduledMuteUntil || null : null}
+        onClose={() => {
+          if (!muteModalSubmitting) {
+            setShowMuteDurationModal(false);
+            setMuteModalMode('create');
+          }
+        }}
         isSubmitting={muteModalSubmitting}
         onConfirm={async (payload) => {
           if (!onApplyMuteFromModal) return;
@@ -1496,6 +1685,7 @@ export function ConversationInfoPanel({
           try {
             await onApplyMuteFromModal(payload);
             setShowMuteDurationModal(false);
+            setMuteModalMode('create');
           } catch {
             /* lỗi API: giữ modal mở */
           } finally {
