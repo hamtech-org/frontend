@@ -49,7 +49,7 @@ export interface UpdateConversationPreferencesRequest {
   isMuted?: boolean;
   isPinnedToTop?: boolean;
   notificationsMutedUntil?: string | null;
-  muteFor?: '1h' | '4h' | '8h';
+  muteFor?: '1m' | '5m' | '10m';
 }
 
 export interface UpdateGroupSettingsRequest {
