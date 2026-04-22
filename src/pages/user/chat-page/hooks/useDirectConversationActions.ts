@@ -1,29 +1,15 @@
 import { useCallback, useMemo } from 'react';
 import { chatApi } from '@/store/api/chatApi';
+import { useCreateConversationMutation } from '@/store/api/chatApi';
 import { socketService } from '@/services/socket';
 import type { IConversation } from '@/types/chat.types';
 import type { AppDispatch } from '@/store/store';
-
-// ── Param types ──
-
-interface CreateConversationPayload {
-  type: 'direct' | 'group';
-  name?: string;
-  memberIds: string[];
-}
-
-interface CreateConversationResult {
-  data: IConversation;
-}
 
 interface UseDirectConversationActionsParams {
   conversations: IConversation[];
   activeConversation?: IConversation;
   dispatch: AppDispatch;
   navigate: (path: string) => void;
-  createConversation: (
-    payload: CreateConversationPayload,
-  ) => { unwrap: () => Promise<CreateConversationResult> };
   initiateCall: (userId: string, type: 'audio' | 'video') => void;
   initiateGroupCall: (type: 'audio' | 'video') => void;
   selectedGroupMembers: string[];
@@ -43,7 +29,6 @@ export function useDirectConversationActions({
   activeConversation,
   dispatch,
   navigate,
-  createConversation,
   initiateCall,
   initiateGroupCall,
   selectedGroupMembers,
@@ -53,6 +38,8 @@ export function useDirectConversationActions({
   setGroupName,
   setShowContactsManagement,
 }: UseDirectConversationActionsParams) {
+  const [createConversation] = useCreateConversationMutation();
+
   // Tạo nhóm mới
   const handleConfirmCreateGroup = useCallback(async () => {
     if (selectedGroupMembers.length < 2) return;
