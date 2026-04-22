@@ -14,7 +14,13 @@ import {
   X,
 } from 'lucide-react';
 import type { IConversation } from '@/types/chat.types';
+import type { GroupMemberRole } from '@/types/chat.group.types';
 import { useChatComposerController } from '@/pages/user/chat-page/hooks/useChatComposerController';
+import { toast } from 'react-toastify';
+import {
+  canUserCreatePollInGroup,
+  canUserCreateTaskInGroup,
+} from '@/utils/groupConversationPermissions';
 
 export type PendingAttachment = {
   localId: string;
@@ -31,6 +37,8 @@ function formatFileSize(bytes: number): string {
 type ChatComposerProps = {
   activeConversation: IConversation | undefined;
   activeConversationId: string | null;
+  /** Vai trò trong nhóm (để khớp quyền `groupSettings.memberPermissions`). */
+  currentUserRole?: GroupMemberRole;
   onOpenPoll: () => void;
   onOpenTask: () => void;
 };
@@ -38,6 +46,7 @@ type ChatComposerProps = {
 export function ChatComposer({
   activeConversation,
   activeConversationId,
+  currentUserRole,
   onOpenPoll,
   onOpenTask,
 }: ChatComposerProps) {
@@ -244,7 +253,18 @@ export function ChatComposer({
             <>
               <button
                 type="button"
-                onClick={onOpenPoll}
+                onClick={() => {
+                  if (
+                    !canUserCreatePollInGroup({
+                      conversation: activeConversation,
+                      userRole: currentUserRole,
+                    })
+                  ) {
+                    toast.error('Nhóm không cho phép thành viên tạo bình chọn.');
+                    return;
+                  }
+                  onOpenPoll();
+                }}
                 title="Tạo bình chọn (Poll)"
                 className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0"
               >
@@ -252,7 +272,18 @@ export function ChatComposer({
               </button>
               <button
                 type="button"
-                onClick={onOpenTask}
+                onClick={() => {
+                  if (
+                    !canUserCreateTaskInGroup({
+                      conversation: activeConversation,
+                      userRole: currentUserRole,
+                    })
+                  ) {
+                    toast.error('Nhóm không cho phép thành viên tạo công việc / nhắc hẹn.');
+                    return;
+                  }
+                  onOpenTask();
+                }}
                 title="Giao việc / Nhắc hẹn"
                 className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0 hidden sm:block"
               >

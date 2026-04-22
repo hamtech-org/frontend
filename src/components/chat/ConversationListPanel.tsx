@@ -143,6 +143,10 @@ export function ConversationListPanel({
     if (prev <= 0 && next > 0) setMutedExpanded(false);
   }, [mutedConversations.length]);
 
+  const totalMutedUnread = useMemo(() => {
+    return mutedConversations.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
+  }, [mutedConversations]);
+
   type MainRow =
     | { kind: 'header'; key: string; title: string; count?: number }
     | { kind: 'conversation'; key: string; conv: IConversation };
@@ -637,6 +641,11 @@ export function ConversationListPanel({
                               <span className="text-[11px] font-bold text-muted-foreground tabular-nums">
                                 {mutedConversations.length}
                               </span>
+                              {totalMutedUnread > 0 && (
+                                <span className="min-h-[16px] min-w-[16px] px-1 rounded-full bg-red-500 flex items-center justify-center text-[10px] font-bold text-white leading-none">
+                                  {formatUnreadBadge(totalMutedUnread)}
+                                </span>
+                              )}
                             </div>
                             <ChevronDown
                               className={`w-4 h-4 text-muted-foreground transition-transform ${

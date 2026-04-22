@@ -58,6 +58,10 @@ import { socketService } from '@/services/socket';
 import type { AppDispatch, RootState } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
 import { decodeJwtUserId } from '@/utils/chatUtils';
+import {
+  canUserPinMessageInGroup,
+  canUserCreateTaskInGroup,
+} from '@/utils/groupConversationPermissions';
 import type { TypingUserEntry } from '@/types/chat.types';
 import { FriendsListView } from '@/components/chat/FriendsListView';
 import { AddFriendModal } from '@/components/chat/AddFriendModal';
@@ -964,18 +968,20 @@ export default function ChatPage() {
     async (msg: IMessage) => {
       try {
         const cid = msg.conversationId;
+        const myRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
+        if (
+          activeConversation?.type === 'group' &&
+          !canUserPinMessageInGroup({ conversation: activeConversation, userRole: myRole })
+        ) {
+          toast.error(
+            msg.isPinned
+              ? 'Nhóm không cho phép thành viên bỏ/ghim tin nhắn.'
+              : 'Nhóm không cho phép thành viên ghim tin nhắn.',
+          );
+          modalActions.setActionMenuMsgId(null);
+          return;
+        }
         if (msg.isPinned) {
-          const myRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
-          if (
-            activeConversation?.type === 'group' &&
-            myRole === 'member' &&
-            activeConversation.groupSettings &&
-            !activeConversation.groupSettings.memberPermissions.pinMessages
-          ) {
-            toast.error('Nhóm không cho phép thành viên bỏ/ghim tin nhắn.');
-            modalActions.setActionMenuMsgId(null);
-            return;
-          }
           await unpinMessage({
             messageId: msg.messageId,
             conversationId: cid,
@@ -1009,17 +1015,6 @@ export default function ChatPage() {
               return;
             }
             toast.error(`Đã đủ ${MAX_PINNED_PER_CONVERSATION} tin ghim trong cuộc trò chuyện này.`);
-            modalActions.setActionMenuMsgId(null);
-            return;
-          }
-          const myRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
-          if (
-            activeConversation?.type === 'group' &&
-            myRole === 'member' &&
-            activeConversation.groupSettings &&
-            !activeConversation.groupSettings.memberPermissions.pinMessages
-          ) {
-            toast.error('Nhóm không cho phép thành viên ghim tin nhắn.');
             modalActions.setActionMenuMsgId(null);
             return;
           }
@@ -1429,6 +1424,18 @@ export default function ChatPage() {
       .filter((r) => r.assigneeId && r.content);
     const editingId = modalState.editingTaskId ? String(modalState.editingTaskId) : null;
 
+    if (!editingId) {
+      if (
+        !canUserCreateTaskInGroup({
+          conversation: activeConversation,
+          userRole: currentUserRole,
+        })
+      ) {
+        toast.error('Nhóm không cho phép thành viên tạo công việc / nhắc hẹn.');
+        return;
+      }
+    }
+
     if (editingId) {
       setActionBusy('updateTask', true);
       try {
@@ -1594,6 +1601,8 @@ export default function ChatPage() {
     }
   }, [
     activeConversationId,
+    activeConversation,
+    currentUserRole,
     modalState.taskTitle,
     modalState.taskNote,
     modalState.taskAssignees,
@@ -1611,6 +1620,15 @@ export default function ChatPage() {
   ]);
 
   const openCreateTaskModal = useCallback(() => {
+    if (
+      !canUserCreateTaskInGroup({
+        conversation: activeConversation,
+        userRole: currentUserRole,
+      })
+    ) {
+      toast.error('Nhóm không cho phép thành viên tạo công việc / nhắc hẹn.');
+      return;
+    }
     modalActions.setEditingTaskId(null);
     modalActions.setTaskTitle('');
     modalActions.setTaskNote('');
@@ -1620,7 +1638,7 @@ export default function ChatPage() {
     const first = groupMembers[0]?.userId ?? '';
     setTaskSubtaskRows(first ? [{ assigneeId: first, content: '' }] : []);
     modalActions.setShowTaskModal(true);
-  }, [groupMembers, modalActions]);
+  }, [activeConversation, currentUserRole, groupMembers, modalActions]);
 
   const openEditTaskFromGroupTask = useCallback(
     (taskId: string) => {
@@ -2113,6 +2131,57 @@ export default function ChatPage() {
     }
   }, [activeConversationId, groupMembers, setActionBusy]);
 
+  const handleTransferGroupOwner = useCallback(
+    async (newOwnerUserId: string) => {
+      if (!activeConversationId) return;
+      const currentRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
+      if (currentRole !== 'owner') {
+        toast.error('Chỉ trưởng nhóm mới có thể chuyển quyền');
+        return;
+      }
+      if (!newOwnerUserId?.trim()) return;
+      if (window.confirm('Chuyển quyền trưởng nhóm? Bạn sẽ trở thành phó nhóm sau khi chuyển.')) {
+        setActionBusy('changeRole', true);
+        const before = groupMembers;
+        // optimistic: new owner -> owner, current owner -> admin
+        setGroupMembers((prev) =>
+          prev.map((m) => {
+            if (m.userId === newOwnerUserId) return { ...m, role: 'owner' as const };
+            if (m.userId === currentUserId) return { ...m, role: 'admin' as const };
+            return m;
+          }),
+        );
+        try {
+          await apiClient.put(`/chat/groups/${activeConversationId}/members/${newOwnerUserId}/role`, {
+            role: 'owner',
+          });
+          await apiClient.put(`/chat/groups/${activeConversationId}/members/${currentUserId}/role`, {
+            role: 'admin',
+          });
+          toast.success('Trưởng nhóm mới đã được cập nhật');
+          void fetchGroupMembers(activeConversationId);
+          void refetchConversations();
+        } catch (err) {
+          setGroupMembers(before);
+          toast.error('Không thể chuyển quyền. Thử lại hoặc kiểm tra quyền trên máy chủ');
+          console.error('Failed to transfer group owner:', err);
+          throw err;
+        } finally {
+          setActionBusy('changeRole', false);
+        }
+      }
+    },
+    [
+      activeConversationId,
+      groupMembers,
+      currentUserId,
+      setActionBusy,
+      fetchGroupMembers,
+      refetchConversations,
+      setGroupMembers,
+    ],
+  );
+
   const handleVotePoll = useCallback(async (pollId: string, optionIndex: number) => {
     if (!activeConversationId) return;
     setActionBusy('votePoll', true);
@@ -2453,6 +2522,7 @@ export default function ChatPage() {
             <ChatComposer
               activeConversation={activeConversation}
               activeConversationId={activeConversationId}
+              currentUserRole={currentUserRole}
               onOpenPoll={() => modalActions.setShowPollModal(true)}
               onOpenTask={openCreateTaskModal}
             />
@@ -2503,6 +2573,7 @@ export default function ChatPage() {
             deleteGroup: groupActionLoading.deleteGroup,
           }}
           onLeaveGroup={handleLeaveGroup}
+          onTransferGroupOwner={handleTransferGroupOwner}
           onDeleteGroup={handleDeleteGroup}
           // Modal "Thành viên" đã render ngay trong panel, giữ callback cũ để tương thích nhưng không dùng nữa.
           onOpenMemberModal={() => {}}

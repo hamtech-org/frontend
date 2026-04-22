@@ -5,6 +5,7 @@ import { chatApi } from '@/store/api/chatApi';
 import { socketService } from '@/services/socket';
 import { groupApi } from '@/services/chat/groupApi';
 import type { IMessage, IConversation } from '@/types/chat.types';
+import { canUserCreatePollInGroup } from '@/utils/groupConversationPermissions';
 import type { AIRecap, GroupActionLoading, GroupPoll, GroupTask } from '@/types/chat.group.types';
 import type { AppDispatch } from '@/store/store';
 
@@ -392,6 +393,15 @@ export function useGroupConversationController({
 
   const handleCreatePoll = useCallback(async () => {
     if (!activeConversationId || !pollQuestion.trim()) return;
+    if (
+      !canUserCreatePollInGroup({
+        conversation: activeConversation,
+        userRole: currentUserRole,
+      })
+    ) {
+      toast.error('Nhóm không cho phép thành viên tạo bình chọn.');
+      return;
+    }
     setActionBusy('createPoll', true);
     const optimisticPoll: GroupPoll = {
       pollId: `tmp-${Date.now()}`,
@@ -422,7 +432,9 @@ export function useGroupConversationController({
       setActionBusy('createPoll', false);
     }
   }, [
+    activeConversation,
     activeConversationId,
+    currentUserRole,
     pollQuestion,
     pollOptions,
     pollMultipleChoice,

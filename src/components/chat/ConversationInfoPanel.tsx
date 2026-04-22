@@ -42,6 +42,10 @@ import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-toastify';
 import { MIN_GROUP_MEMBERS } from '@/constants/group.constants';
 import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
+import {
+  canUserCreatePollInGroup,
+  canUserCreateTaskInGroup,
+} from '@/utils/groupConversationPermissions';
 
 type GroupPoll = {
   pollId: string;
@@ -364,6 +368,8 @@ type ConversationInfoPanelProps = {
   // Legacy external modal trigger (giữ để tương thích)
   onOpenMemberModal?: (tab: 'list' | 'pending') => void;
   onLeaveGroup?: (opts?: { newOwnerUserId?: string }) => void | Promise<void>;
+  /** Chuyển quyền trưởng nhóm (không rời nhóm) — giống mobile. */
+  onTransferGroupOwner?: (newOwnerUserId: string) => void | Promise<void>;
   onDeleteGroup?: () => void;
   onEditGroup?: () => void;
   onAddMembers?: () => void;
@@ -433,6 +439,7 @@ export function ConversationInfoPanel({
   onOpenAISummaryFromPanel,
   onOpenMemberModal,
   onLeaveGroup,
+  onTransferGroupOwner,
   onDeleteGroup,
   onEditGroup,
   onAddMembers,
@@ -489,6 +496,15 @@ export function ConversationInfoPanel({
   const canModerateMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
   const canDisbandGroup = currentUserRole === 'owner' || currentUserRole === 'admin';
 
+  const canCreatePollFromBulletin = useMemo(
+    () => canUserCreatePollInGroup({ conversation: activeConversation ?? undefined, userRole: currentUserRole }),
+    [activeConversation, currentUserRole],
+  );
+  const canCreateTaskFromBulletin = useMemo(
+    () => canUserCreateTaskInGroup({ conversation: activeConversation ?? undefined, userRole: currentUserRole }),
+    [activeConversation, currentUserRole],
+  );
+
   const busyMemberActionsResolved = busyMemberActions ?? {
     approving: false,
     rejecting: false,
@@ -512,6 +528,7 @@ export function ConversationInfoPanel({
   const [muteModalSubmitting, setMuteModalSubmitting] = useState(false);
   const [leaveMemberModalOpen, setLeaveMemberModalOpen] = useState(false);
   const [leaveOwnerTransferOpen, setLeaveOwnerTransferOpen] = useState(false);
+  const [transferOwnerOpen, setTransferOwnerOpen] = useState(false);
   const [selectedSuccessorId, setSelectedSuccessorId] = useState<string | null>(null);
   const [successorSearchQuery, setSuccessorSearchQuery] = useState('');
   const [deleteGroupModalOpen, setDeleteGroupModalOpen] = useState(false);
@@ -521,6 +538,9 @@ export function ConversationInfoPanel({
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryError, setGalleryError] = useState<string | null>(null);
   const [bulletinModalMode, setBulletinModalMode] = useState<null | 'reminders' | 'notesPolls'>(null);
+  const showBulletinPollAdd = Boolean(onOpenPollModalFromPanel && canCreatePollFromBulletin);
+  const showBulletinTaskAdd = Boolean(onOpenTaskModalFromPanel && canCreateTaskFromBulletin);
+  const showBulletinAddMenu = bulletinModalMode === 'notesPolls' && (showBulletinPollAdd || showBulletinTaskAdd);
   const [bulletinTab, setBulletinTab] = useState<BulletinTab>('all');
   const [focusFlashNonce, setFocusFlashNonce] = useState(0);
 
@@ -601,6 +621,7 @@ export function ConversationInfoPanel({
   const canConfirmOwnerLeave =
     !!selectedSuccessorId &&
     filteredSuccessorCandidates.some((c) => c.userId === selectedSuccessorId);
+  const canConfirmOwnerTransfer = canConfirmOwnerLeave;
 
   const memberAvatarById = useMemo(() => {
     const m = new Map<string, string>();
@@ -899,7 +920,7 @@ export function ConversationInfoPanel({
                 </h3>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                {bulletinModalMode === 'notesPolls' && (onOpenPollModalFromPanel || onOpenTaskModalFromPanel) ? (
+                {showBulletinAddMenu ? (
                   <div className="relative flex justify-end" ref={bulletinAddRef}>
                     <button
                       type="button"
@@ -912,30 +933,30 @@ export function ConversationInfoPanel({
                     </button>
                     {bulletinAddOpen && (
                       <div className="absolute right-0 top-full z-20 mt-1 min-w-[168px] rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-[#2a2a2a]">
-                        {onOpenPollModalFromPanel && (
+                        {showBulletinPollAdd ? (
                           <button
                             type="button"
                             className="w-full px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
                             onClick={() => {
-                              onOpenPollModalFromPanel();
+                              onOpenPollModalFromPanel?.();
                               setBulletinAddOpen(false);
                             }}
                           >
                             Tạo bình chọn
                           </button>
-                        )}
-                        {onOpenTaskModalFromPanel && (
+                        ) : null}
+                        {showBulletinTaskAdd ? (
                           <button
                             type="button"
                             className="w-full px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
                             onClick={() => {
-                              onOpenTaskModalFromPanel();
+                              onOpenTaskModalFromPanel?.();
                               setBulletinAddOpen(false);
                             }}
                           >
                             Tạo công việc
                           </button>
-                        )}
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -1462,6 +1483,25 @@ export function ConversationInfoPanel({
 
         {activeConversation?.type === 'group' && !activeConversation.isDeleted && (
           <div className="p-4 bg-white dark:bg-transparent mt-2 flex flex-col gap-2 justify-center">
+            {isOwner && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (successorCandidates.length === 0) {
+                    toast.warning('Không còn thành viên khác để chuyển quyền. Hãy giải tán nhóm.');
+                    return;
+                  }
+                  setSuccessorSearchQuery('');
+                  setSelectedSuccessorId(successorCandidates[0]!.userId);
+                  setTransferOwnerOpen(true);
+                }}
+                disabled={!onTransferGroupOwner || busyMemberActionsResolved.changingRole}
+                className="flex items-center justify-center gap-2 text-sm font-bold text-[#0068ff] hover:bg-blue-500/10 px-4 py-2 rounded-xl transition-colors border border-[#0068ff]/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Chuyển quyền trưởng nhóm"
+              >
+                {busyMemberActionsResolved.changingRole ? 'Đang xử lý…' : 'Chuyển quyền trưởng nhóm'}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -1634,6 +1674,132 @@ export function ConversationInfoPanel({
                   className="rounded-lg bg-[#0068ff] px-6 py-2.5 text-[15px] font-bold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50"
                 >
                   {loading?.leaveGroup ? 'Đang xử lý…' : 'Chọn và tiếp tục'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {transferOwnerOpen && (
+          <div
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 backdrop-blur-[2px]"
+            role="presentation"
+            onClick={() => !busyMemberActionsResolved.changingRole && setTransferOwnerOpen(false)}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="transfer-owner-title"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              className="max-h-[min(520px,85vh)] w-full max-w-[440px] overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-[#1a1a1a]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-black/5 px-6 py-4 dark:border-white/5">
+                <h3 id="transfer-owner-title" className="text-[17px] font-bold text-foreground">
+                  Chuyển quyền trưởng nhóm
+                </h3>
+                <button
+                  type="button"
+                  disabled={busyMemberActionsResolved.changingRole}
+                  onClick={() => setTransferOwnerOpen(false)}
+                  className="text-muted-foreground transition-colors hover:text-black disabled:opacity-50 dark:hover:text-white"
+                >
+                  <X className="h-6 w-6 stroke-[1.5]" />
+                </button>
+              </div>
+              <div className="px-6 pt-3">
+                <p className="text-[13px] text-muted-foreground">
+                  Bạn sẽ trở thành <span className="font-bold text-foreground">phó nhóm</span> sau khi chuyển quyền.
+                </p>
+              </div>
+              <div className="px-6 pb-2 pt-3">
+                <div className="relative">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                  <input
+                    type="search"
+                    value={successorSearchQuery}
+                    onChange={(e) => setSuccessorSearchQuery(e.target.value)}
+                    placeholder="Tìm kiếm"
+                    disabled={busyMemberActionsResolved.changingRole}
+                    className="w-full rounded-xl border border-black/10 bg-black/[0.04] py-2.5 pl-10 pr-3 text-[15px] text-foreground outline-none transition-shadow placeholder:text-muted-foreground focus:border-[#0068ff]/40 focus:ring-2 focus:ring-[#0068ff]/25 disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.06]"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+              <div className="max-h-[min(340px,50vh)] overflow-y-auto px-6 py-2">
+                <fieldset className="space-y-1">
+                  <legend className="sr-only">Chọn thành viên nhận quyền trưởng nhóm</legend>
+                  {filteredSuccessorCandidates.length === 0 ? (
+                    <p className="py-6 text-center text-[14px] font-medium text-muted-foreground">
+                      Không tìm thấy thành viên
+                    </p>
+                  ) : (
+                    filteredSuccessorCandidates.map((c) => (
+                      <label
+                        key={c.userId}
+                        className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                      >
+                        <input
+                          type="radio"
+                          name="transfer-owner-successor"
+                          value={c.userId}
+                          checked={selectedSuccessorId === c.userId}
+                          onChange={() => setSelectedSuccessorId(c.userId)}
+                          disabled={busyMemberActionsResolved.changingRole}
+                          className="h-4 w-4 shrink-0 accent-[#0068ff]"
+                        />
+                        <SuccessorPickAvatar url={c.avatarUrl} label={c.label} />
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="truncate text-[15px] font-medium text-foreground">{c.label}</span>
+                          {c.role === 'admin' ? (
+                            <span className="text-xs font-medium text-muted-foreground">Phó nhóm</span>
+                          ) : null}
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </fieldset>
+              </div>
+              <div className="flex items-center justify-end gap-3 border-t border-black/5 px-6 py-4 dark:border-white/5">
+                <button
+                  type="button"
+                  disabled={busyMemberActionsResolved.changingRole}
+                  onClick={() => setTransferOwnerOpen(false)}
+                  className="rounded-lg bg-black/5 px-6 py-2.5 text-[15px] font-bold text-black transition-colors hover:bg-black/10 disabled:opacity-50 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    busyMemberActionsResolved.changingRole ||
+                    !canConfirmOwnerTransfer ||
+                    !onTransferGroupOwner ||
+                    !selectedSuccessorId
+                  }
+                  onClick={() => {
+                    void (async () => {
+                      if (!onTransferGroupOwner || !selectedSuccessorId) return;
+                      try {
+                        await onTransferGroupOwner(selectedSuccessorId);
+                        setTransferOwnerOpen(false);
+                      } catch {
+                        /* lỗi đã toast ở ChatPage */
+                      }
+                    })();
+                  }}
+                  className="rounded-lg bg-[#0068ff] px-6 py-2.5 text-[15px] font-bold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {busyMemberActionsResolved.changingRole ? 'Đang xử lý…' : 'Chuyển quyền'}
                 </button>
               </div>
             </motion.div>

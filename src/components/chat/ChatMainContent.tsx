@@ -206,6 +206,7 @@ export function ChatMainContent(props: ChatMainContentProps) {
           <ChatComposer
             activeConversation={core.activeConversation}
             activeConversationId={core.activeConversationId}
+            currentUserRole={core.currentUserRole}
             onOpenPoll={onOpenPoll}
             onOpenTask={onOpenTask}
           />
