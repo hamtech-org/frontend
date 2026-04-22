@@ -70,9 +70,7 @@ function OutgoingDeliveryTicks({
   const s = status ?? 'sent';
   if (!convIsDirect) {
     const mono = isMe ? 'text-white/75' : 'text-muted-foreground';
-    return (
-      <Check className={`w-3 h-3 shrink-0 ${mono}`} strokeWidth={2.5} aria-label="Đã gửi" />
-    );
+    return <Check className={`w-3 h-3 shrink-0 ${mono}`} strokeWidth={2.5} aria-label="Đã gửi" />;
   }
   if (s === 'sent') {
     return (
@@ -147,7 +145,10 @@ function replyQuotePreview(details: IReplyToDetails): string {
       /* không phải JSON hợp lệ — hiển thị đã làm sạch bên dưới */
     }
   }
-  s = s.replace(/[[\]{}]/g, '').replace(/\s+/g, ' ').trim();
+  s = s
+    .replace(/[[\]{}]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return s || 'Tin nhắn';
 }
 
@@ -191,7 +192,10 @@ function replyQuoteSecondaryLine(details: IReplyToDetails): string | null {
       /* */
     }
   }
-  const cleaned = c.replace(/[[\]{}]/g, '').replace(/\s+/g, ' ').trim();
+  const cleaned = c
+    .replace(/[[\]{}]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return cleaned || null;
 }
 
@@ -347,7 +351,11 @@ export type ChatMessageListProps = {
   onJumpToMessage?: (messageId: string) => void;
   /** Danh sách hội thoại để gửi tiếp ảnh/video sang chat khác. */
   shareTargetConversations: IConversation[];
-  onForwardMediaMessage: (targetConversationIds: string[], message: IMessage, caption: string) => Promise<void>;
+  onForwardMediaMessage: (
+    targetConversationIds: string[],
+    message: IMessage,
+    caption: string,
+  ) => Promise<void>;
 };
 
 export function ChatMessageList({
@@ -455,21 +463,24 @@ export function ChatMessageList({
   return (
     <div
       ref={messagesContainerRef}
-      className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-1 min-h-0 custom-scrollbar"
+      className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 flex flex-col gap-1 min-h-0 custom-scrollbar"
     >
       {!activeConversationId && (
-        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-          <MessageCircle className="w-16 h-16 mb-4 opacity-20" />
-          <p className="text-lg font-bold opacity-40">Chọn hội thoại để bắt đầu nhắn tin</p>
+        <div className="flex flex-col items-center justify-center h-full gap-5 select-none">
+          <div className="size-24 rounded-3xl bg-primary/5 flex items-center justify-center shadow-inner">
+            <MessageCircle className="size-12 text-primary/25" />
+          </div>
+          <div className="text-center">
+            <p className="text-base font-semibold text-foreground/40">Chọn hội thoại</p>
+            <p className="text-sm text-muted-foreground/50 mt-1">và bắt đầu nhắn tin</p>
+          </div>
         </div>
       )}
       {activeConversationId && (
         <>
           {allMessages.map((msg, index) => {
             // Centered system message for group events (e.g. name change, received, etc.)
-            if (
-              (msg as any).type === 'system' || (msg as any).position === 'center'
-            ) {
+            if ((msg as any).type === 'system' || (msg as any).position === 'center') {
               // Show date above bubble if first system message of the day or first message
               const prevMsg = index > 0 ? allMessages[index - 1] : undefined;
               const prevDate = prevMsg ? prevMsg.createdAt?.slice(0, 10) : null;
@@ -534,7 +545,10 @@ export function ChatMessageList({
               }
 
               return (
-                <div key={msg.messageId} className="w-full flex flex-col items-center my-3 select-none">
+                <div
+                  key={msg.messageId}
+                  className="w-full flex flex-col items-center my-3 select-none"
+                >
                   <span className="mb-2 bg-black/10 dark:bg-white/10 text-black/60 dark:text-white/60 text-xs px-3 py-1 rounded-full font-medium">
                     {showDate ? `${timeLabel} ${dateLabel}` : timeLabel}
                   </span>
@@ -545,16 +559,24 @@ export function ChatMessageList({
                     {taskCard ? (
                       <div className="w-full">
                         {(() => {
-                          const t = (groupTasks ?? []).find((x: any) => String(x?.taskId) === String(taskCard?.taskId));
-                          const participants = Array.isArray(t?.participants) ? (t.participants as string[]) : [];
+                          const t = (groupTasks ?? []).find(
+                            (x: any) => String(x?.taskId) === String(taskCard?.taskId),
+                          );
+                          const participants = Array.isArray(t?.participants)
+                            ? (t.participants as string[])
+                            : [];
                           const participantsCount = participants.length;
                           const joined = participants.includes(currentUserId);
-                          const assignees = Array.isArray(t?.assignees) ? (t.assignees as string[]) : [];
+                          const assignees = Array.isArray(t?.assignees)
+                            ? (t.assignees as string[])
+                            : [];
                           const canJoinThisTask = assignees.includes(currentUserId);
                           const onJoin = async (): Promise<void> => {
                             if (!activeConversationId || !taskCard?.taskId) return;
                             try {
-                              await apiClient.post(`/chat/groups/${activeConversationId}/tasks/${taskCard.taskId}/join`);
+                              await apiClient.post(
+                                `/chat/groups/${activeConversationId}/tasks/${taskCard.taskId}/join`,
+                              );
                               onTaskJoined?.(taskCard.taskId);
                               toast.success('Bạn đã tham gia công việc');
                             } catch (e) {
@@ -592,7 +614,8 @@ export function ChatMessageList({
                         </div>
                         <div className="rounded-xl bg-white/70 dark:bg-black/20 border border-black/5 dark:border-white/10 px-3 py-2">
                           <div className="text-[12px] font-semibold text-muted-foreground text-center mb-1">
-                            {msg.senderId === currentUserId ? 'Bạn' : taskCard.actorName} đã giao việc
+                            {msg.senderId === currentUserId ? 'Bạn' : taskCard.actorName} đã giao
+                            việc
                           </div>
                           <div className="text-[13px] font-extrabold text-foreground text-center">
                             {taskCard.title}
@@ -600,7 +623,8 @@ export function ChatMessageList({
                           <div className="mt-2 space-y-1.5 text-[12px] text-muted-foreground">
                             <div className="flex items-center justify-center gap-2">
                               <Users className="w-3.5 h-3.5" />
-                              <span className="font-semibold">Giao cho:</span> {taskCard.assigneeLabel}
+                              <span className="font-semibold">Giao cho:</span>{' '}
+                              {taskCard.assigneeLabel}
                             </div>
                             {taskCard.dueDate ? (
                               <div className="flex items-center justify-center gap-2">
@@ -621,8 +645,9 @@ export function ChatMessageList({
                       <div className="flex items-center justify-center gap-2">
                         <CheckCheck className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
                         <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                          {(msg.senderId === currentUserId ? 'Bạn' : taskJoinedLine.actorName) + ' đã tham gia công việc'}
-                          {taskJoinedLine.title ? ` \"${taskJoinedLine.title}\"` : ''}
+                          {(msg.senderId === currentUserId ? 'Bạn' : taskJoinedLine.actorName) +
+                            ' đã tham gia công việc'}
+                          {taskJoinedLine.title ? ` "${taskJoinedLine.title}"` : ''}
                         </span>
                       </div>
                     ) : typeof content === 'string' && content.trim().startsWith('{') ? (
@@ -630,14 +655,17 @@ export function ChatMessageList({
                         try {
                           const obj = JSON.parse(content) as any;
                           if (obj?.kind === 'poll_created') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const question = String(obj?.poll?.question ?? '').trim();
                             const pollId = String(obj?.poll?.pollId ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã tạo một bình chọn'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã tạo một bình chọn'}
                                   {question ? `: ${question}` : ''}
                                 </span>
                                 {pollId && onOpenPollVote ? (
@@ -653,65 +681,80 @@ export function ChatMessageList({
                             );
                           }
                           if (obj?.kind === 'poll_voted') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const optionText = String(obj?.poll?.optionText ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã bình chọn'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã bình chọn'}
                                   {optionText ? `: ${optionText}` : ''}
                                 </span>
                               </div>
                             );
                           }
                           if (obj?.kind === 'poll_vote_changed') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const optionText = String(obj?.poll?.optionText ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã thay đổi bình chọn'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã thay đổi bình chọn'}
                                   {optionText ? `: ${optionText}` : ''}
                                 </span>
                               </div>
                             );
                           }
                           if (obj?.kind === 'poll_unvoted') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const optionText = String(obj?.poll?.optionText ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã rút phiếu'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã rút phiếu'}
                                   {optionText ? `: ${optionText}` : ''}
                                 </span>
                               </div>
                             );
                           }
                           if (obj?.kind === 'poll_option_added') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const optionText = String(obj?.poll?.optionText ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã thêm lựa chọn'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã thêm lựa chọn'}
                                   {optionText ? `: ${optionText}` : ''}
                                 </span>
                               </div>
                             );
                           }
                           if (obj?.kind === 'poll_closed') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const question = String(obj?.poll?.question ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã đóng bình chọn'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã đóng bình chọn'}
                                   {question ? `: ${question}` : ''}
                                 </span>
                               </div>
@@ -795,11 +838,13 @@ export function ChatMessageList({
                   <div
                     className={`flex flex-col max-w-[55%] sm:max-w-[45%] ${isMeCall ? 'items-end' : 'items-start'}`}
                   >
-                    {!isMeCall && activeConversation?.type === 'group' && !isSameSenderAsPrevCall && (
-                      <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
-                        {msg.senderDisplayName ?? msg.senderId}
-                      </p>
-                    )}
+                    {!isMeCall &&
+                      activeConversation?.type === 'group' &&
+                      !isSameSenderAsPrevCall && (
+                        <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
+                          {msg.senderDisplayName ?? msg.senderId}
+                        </p>
+                      )}
 
                     <div
                       className={
@@ -820,7 +865,11 @@ export function ChatMessageList({
                             className={`w-4 h-4 shrink-0 ${isMeCall ? 'text-blue-100' : 'text-blue-600 dark:text-blue-400'}`}
                           />
                         )}
-                        <p className={`text-sm font-bold ${isMeCall ? 'text-white' : 'text-foreground'}`}>{title}</p>
+                        <p
+                          className={`text-sm font-bold ${isMeCall ? 'text-white' : 'text-foreground'}`}
+                        >
+                          {title}
+                        </p>
                       </div>
                       <p
                         className={`text-xs mt-1 ${isMeCall ? 'text-blue-100/90 text-right' : 'text-muted-foreground'}`}
@@ -884,7 +933,7 @@ export function ChatMessageList({
                   className={`relative z-[2] flex flex-col ${
                     isWideMediaBubble
                       ? 'w-full max-w-[min(96vw,44rem)] sm:max-w-[min(92%,42rem)]'
-                      : 'max-w-[55%] sm:max-w-[45%]'
+                      : 'max-w-[85%] md:max-w-[75%] lg:max-w-[65%]'
                   } ${isMe ? 'items-end' : 'items-start'}`}
                 >
                   {!isMe && activeConversation?.type === 'group' && !isSameSenderAsPrev && (
@@ -894,7 +943,7 @@ export function ChatMessageList({
                   )}
 
                   <div
-                    className={`relative flex items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.reactions && Object.keys(msg.reactions).length > 0 ? 'mb-3.5' : ''}`}
+                    className={`relative flex max-w-full min-w-0 items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.reactions && Object.keys(msg.reactions).length > 0 ? 'mb-3.5' : ''}`}
                   >
                     {msg.isDeleted ? (
                       <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
@@ -908,10 +957,10 @@ export function ChatMessageList({
                       <div
                         className={
                           isMediaMsg
-                            ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none wrap-break-word bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                            ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none break-words whitespace-pre-wrap bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
                                 isMe ? 'items-end' : 'items-start'
                               }`
-                            : `relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm wrap-break-word selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                            : `relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm min-w-0 break-words whitespace-pre-wrap selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
                                 isMe
                                   ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
                                   : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
@@ -1005,7 +1054,10 @@ export function ChatMessageList({
                                   className="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-lg bg-black/65 hover:bg-black/80 text-white text-[11px] font-semibold px-2.5 py-1.5 backdrop-blur-sm shadow-lg border border-white/15"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setMediaLightbox({ src: msg.mediaUrl as string, kind: 'video' });
+                                    setMediaLightbox({
+                                      src: msg.mediaUrl as string,
+                                      kind: 'video',
+                                    });
                                   }}
                                 >
                                   <Maximize2 className="w-3.5 h-3.5 shrink-0" />
@@ -1014,7 +1066,10 @@ export function ChatMessageList({
                               </div>
                               <div className="flex items-center gap-2.5 px-3 py-2.5 border-t border-black/5 dark:border-white/10 bg-white/90 dark:bg-zinc-950/80">
                                 <div className="shrink-0 rounded-lg bg-violet-100 dark:bg-violet-900/40 p-2">
-                                  <Video className="w-5 h-5 text-violet-600 dark:text-violet-400" aria-hidden />
+                                  <Video
+                                    className="w-5 h-5 text-violet-600 dark:text-violet-400"
+                                    aria-hidden
+                                  />
                                 </div>
                                 <div className="min-w-0 flex-1 text-left">
                                   <p className="text-[13px] font-semibold text-foreground truncate">
@@ -1078,7 +1133,10 @@ export function ChatMessageList({
                                 : 'bg-black/6 dark:bg-white/10 border border-black/8 dark:border-white/10'
                             }`}
                           >
-                            <FileText className="w-8 h-8 shrink-0 text-muted-foreground" aria-hidden />
+                            <FileText
+                              className="w-8 h-8 shrink-0 text-muted-foreground"
+                              aria-hidden
+                            />
                             <div className="min-w-0 flex-1">
                               <p
                                 className="text-xs font-semibold text-foreground truncate"
@@ -1130,7 +1188,7 @@ export function ChatMessageList({
                         )}
                         {isMediaMsg && showCaption && (
                           <div
-                            className={`mt-0.5 w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'} px-2.5 py-1.5 rounded-lg text-[13px] whitespace-pre-wrap wrap-break-word ${
+                            className={`mt-0.5 w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'} px-2.5 py-1.5 rounded-lg text-[13px] break-words whitespace-pre-wrap ${
                               isMe
                                 ? 'bg-black/6 dark:bg-white/10 text-foreground'
                                 : 'bg-black/5 dark:bg-white/10 text-foreground'
@@ -1140,7 +1198,7 @@ export function ChatMessageList({
                           </div>
                         )}
                         {!isMediaMsg && showCaption && (
-                          <span className="whitespace-pre-wrap wrap-break-word">{msg.content}</span>
+                          <span className="break-words whitespace-pre-wrap">{msg.content}</span>
                         )}
                         {msg.isEdited && (
                           <span
@@ -1230,7 +1288,7 @@ export function ChatMessageList({
                         {canPinMessage(msg) && (
                           <button
                             type="button"
-                            title={Boolean(msg.isPinned) ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'}
+                            title={msg.isPinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'}
                             onClick={(e) => {
                               e.stopPropagation();
                               void onTogglePin(msg);
@@ -1239,11 +1297,11 @@ export function ChatMessageList({
                           >
                             <Pin
                               className={`w-3.5 h-3.5 ${
-                                Boolean(msg.isPinned)
+                                msg.isPinned
                                   ? 'text-[#0068ff] dark:text-blue-400 fill-blue-500/25'
                                   : 'text-muted-foreground hover:text-[#0068ff] dark:hover:text-blue-400'
                               }`}
-                              strokeWidth={Boolean(msg.isPinned) ? 2.25 : 2}
+                              strokeWidth={msg.isPinned ? 2.25 : 2}
                             />
                           </button>
                         )}
@@ -1350,27 +1408,33 @@ export function ChatMessageList({
                           />
                         )}
                       </div>
-                      {isMe && !msg.isRecalled && !msg.isDeleted && msg.readBy && msg.readBy.length > 0 && (
-                        <div
-                          className="flex flex-wrap items-center justify-end gap-x-1 gap-y-0 max-w-[min(100%,280px)]"
-                          title={msg.readBy
-                            .map((r) => (r.displayName?.trim() ? r.displayName : 'Thành viên'))
-                            .join(', ')}
-                        >
-                          <span className="text-[10px] text-white/65 shrink-0">Đã xem</span>
-                          {msg.readBy.slice(0, 6).map((r) => (
-                            <span
-                              key={r.userId}
-                              className="text-[10px] font-semibold text-white/90 truncate max-w-[100px]"
-                            >
-                              {r.displayName?.trim() || 'Người dùng'}
-                            </span>
-                          ))}
-                          {msg.readBy.length > 6 ? (
-                            <span className="text-[10px] text-white/65">+{msg.readBy.length - 6}</span>
-                          ) : null}
-                        </div>
-                      )}
+                      {isMe &&
+                        !msg.isRecalled &&
+                        !msg.isDeleted &&
+                        msg.readBy &&
+                        msg.readBy.length > 0 && (
+                          <div
+                            className="flex flex-wrap items-center justify-end gap-x-1 gap-y-0 max-w-[min(100%,280px)]"
+                            title={msg.readBy
+                              .map((r) => (r.displayName?.trim() ? r.displayName : 'Thành viên'))
+                              .join(', ')}
+                          >
+                            <span className="text-[10px] text-white/65 shrink-0">Đã xem</span>
+                            {msg.readBy.slice(0, 6).map((r) => (
+                              <span
+                                key={r.userId}
+                                className="text-[10px] font-semibold text-white/90 truncate max-w-[100px]"
+                              >
+                                {r.displayName?.trim() || 'Người dùng'}
+                              </span>
+                            ))}
+                            {msg.readBy.length > 6 ? (
+                              <span className="text-[10px] text-white/65">
+                                +{msg.readBy.length - 6}
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
                     </div>
                   )}
                 </div>

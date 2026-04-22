@@ -67,6 +67,12 @@ interface ChatMainContentProps {
     message: IMessage,
     caption: string,
   ) => Promise<void>;
+
+  /**
+   * Callback quay lại danh sách hội thoại — chỉ dùng trên mobile.
+   * Khi được truyền, ChatHeader sẽ hiển thị nút back (ẩn trên md+).
+   */
+  onBack?: () => void;
 }
 
 export function ChatMainContent(props: ChatMainContentProps) {
@@ -96,6 +102,7 @@ export function ChatMainContent(props: ChatMainContentProps) {
     onFriendClick,
     shareTargetConversations = [],
     onForwardMediaMessage = async () => {},
+    onBack,
   } = props;
 
   return (
@@ -124,25 +131,19 @@ export function ChatMainContent(props: ChatMainContentProps) {
             currentUserRole={core.currentUserRole}
             resolvedMemberCount={resolvedMemberCount}
             onSearchMessages={onSearchMessages}
+            onBack={onBack}
           />
 
-          {core.activeConversationId &&
-            ((pinned.pinnedMessageCount ?? 0) > 0 || pinned.pinnedMessagesOrdered.length > 0) && (
-              <div className="w-full shrink-0">
-                {pinned.pinnedMessagesOrdered.length > 0 ? (
-                  <PinnedMessagesBar
-                    key={core.activeConversationId}
-                    pinnedMessages={pinned.pinnedMessagesOrdered}
-                    onScrollToMessage={pinned.onScrollToMessage}
-                    onTogglePin={pinned.onTogglePin}
-                  />
-                ) : (
-                  <div className="w-full shrink-0 border-b border-slate-200 dark:border-slate-700 bg-[#f5f6f8] dark:bg-zinc-800/50 px-3 py-2.5 text-center text-xs text-muted-foreground">
-                    Đang tải danh sách tin ghim…
-                  </div>
-                )}
-              </div>
-            )}
+          {core.activeConversationId && pinned.pinnedMessagesOrdered.length > 0 && (
+            <div className="w-full shrink-0">
+              <PinnedMessagesBar
+                key={core.activeConversationId}
+                pinnedMessages={pinned.pinnedMessagesOrdered}
+                onScrollToMessage={pinned.onScrollToMessage}
+                onTogglePin={pinned.onTogglePin}
+              />
+            </div>
+          )}
 
           <ChatMessageList
             messagesContainerRef={scroll.containerRef}
@@ -184,13 +185,13 @@ export function ChatMainContent(props: ChatMainContentProps) {
 
           {core.activeConversation?.type === 'group' &&
             activeGroupCall?.conversationId === core.activeConversationId && (
-              <div className="shrink-0 px-3 pb-2 pt-1 border-t border-black/5 dark:border-white/10 bg-background">
-                <div className="rounded-2xl border border-black/8 dark:border-white/10 bg-white dark:bg-white/5 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+              <div className="shrink-0 px-3 pb-2 pt-1 border-t border-border/40 bg-background">
+                <div className="rounded-2xl border border-border/40 bg-card px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
                   <div className="flex items-start gap-2 min-w-0">
                     {activeGroupCall.type === 'video' ? (
-                      <Video className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                      <Video className="size-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                     ) : (
-                      <Phone className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                      <Phone className="size-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                     )}
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-foreground">
