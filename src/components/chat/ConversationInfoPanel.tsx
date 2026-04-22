@@ -318,8 +318,15 @@ function BulletinCardRow({
         ) : (
           <p className="pr-1 text-[13px] font-semibold leading-snug">{item.title}</p>
         )}
+<<<<<<< HEAD
         {item.kind !== 'task' && item.subtitle ? (
           <p className="line-clamp-3 text-[12px] leading-snug text-muted-foreground">{item.subtitle}</p>
+=======
+        {item.subtitle ? (
+          <p className="line-clamp-3 text-[12px] leading-snug text-muted-foreground">
+            {item.subtitle}
+          </p>
+>>>>>>> 34ad0481ce5e1a017b620b52ee2a5ecf966e2b2d
         ) : null}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-muted-foreground">
@@ -568,18 +575,15 @@ export function ConversationInfoPanel({
     setShowConversationSearch(true);
   }, []);
 
-  const openMemberModalHere = useCallback(
-    (tab: 'list' | 'pending') => {
-      setMemberTab(tab);
-      setShowInlineMembers(true);
-      setShowGroupManagement(false);
-      setShowConversationSearch(false);
-      setGalleryKind(null);
-      setBulletinModalMode(null);
-      onOpenMemberModal?.(tab);
-    },
-    [],
-  );
+  const openMemberModalHere = useCallback((tab: 'list' | 'pending') => {
+    setMemberTab(tab);
+    setShowInlineMembers(true);
+    setShowGroupManagement(false);
+    setShowConversationSearch(false);
+    setGalleryKind(null);
+    setBulletinModalMode(null);
+    onOpenMemberModal?.(tab);
+  }, []);
 
   const memberNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -593,8 +597,15 @@ export function ConversationInfoPanel({
 
   /** Thành viên khác (không gồm bạn) — để chọn trưởng nhóm mới khi trưởng nhóm rời nhóm. */
   const successorCandidates = useMemo(() => {
-    if (!currentUserId) return [] as Array<{ userId: string; label: string; role?: string; avatarUrl?: string | null }>;
-    const out: Array<{ userId: string; label: string; role?: string; avatarUrl?: string | null }> = [];
+    if (!currentUserId)
+      return [] as Array<{
+        userId: string;
+        label: string;
+        role?: string;
+        avatarUrl?: string | null;
+      }>;
+    const out: Array<{ userId: string; label: string; role?: string; avatarUrl?: string | null }> =
+      [];
     for (const row of members as Array<{
       userId?: string;
       name?: string;
@@ -662,7 +673,12 @@ export function ConversationInfoPanel({
         atMs: Date.parse(at) || 0,
         createdAt: p.createdAt,
         creatorId: p.creatorId,
-        creatorName: resolveCreatorLabel(p.creatorId, p.creatorDisplayName, currentUserId, memberNameById),
+        creatorName: resolveCreatorLabel(
+          p.creatorId,
+          p.creatorDisplayName,
+          currentUserId,
+          memberNameById,
+        ),
         title: p.question,
         subtitle: preview,
         poll: p,
@@ -677,7 +693,12 @@ export function ConversationInfoPanel({
         atMs: Date.parse(at) || 0,
         createdAt: t.createdAt,
         creatorId: t.creatorId,
-        creatorName: resolveCreatorLabel(t.creatorId, t.creatorDisplayName, currentUserId, memberNameById),
+        creatorName: resolveCreatorLabel(
+          t.creatorId,
+          t.creatorDisplayName,
+          currentUserId,
+          memberNameById,
+        ),
         title: t.title,
         subtitle: desc,
         task: t,
@@ -763,7 +784,7 @@ export function ConversationInfoPanel({
   }, [galleryKind, activeConversation?.conversationId]);
 
   return (
-    <div className="w-[280px] lg:w-[340px] h-full min-h-0 border-l border-black/5 dark:border-white/5 flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all hidden md:flex">
+    <div className="w-full h-full min-h-0 flex flex-col shrink-0 bg-white dark:bg-[#1a1a1a] overflow-hidden transition-all lg:w-[340px] lg:border-l lg:border-black/5 lg:dark:border-white/5">
       <div className="h-20 px-6 flex items-center justify-center border-b border-black/5 dark:border-white/5 font-bold text-lg sticky top-0 bg-inherit z-10 shrink-0">
         Thông tin {activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}
       </div>
@@ -803,7 +824,11 @@ export function ConversationInfoPanel({
                   )}
                 </div>
                 <h3 className="truncate text-[17px] font-bold text-black dark:text-white">
-                  {galleryKind === 'media' ? 'Ảnh/Video' : galleryKind === 'file' ? 'File đã gửi' : 'Link đã gửi'}
+                  {galleryKind === 'media'
+                    ? 'Ảnh/Video'
+                    : galleryKind === 'file'
+                      ? 'File đã gửi'
+                      : 'Link đã gửi'}
                 </h3>
               </div>
               <button
@@ -821,7 +846,9 @@ export function ConversationInfoPanel({
               ) : galleryError ? (
                 <p className="py-8 text-center text-sm text-red-500">{galleryError}</p>
               ) : galleryItems.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">Chưa có mục nào trong lịch sử gần đây.</p>
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  Chưa có mục nào trong lịch sử gần đây.
+                </p>
               ) : (
                 galleryItems.map((item) => {
                   const who = item.senderDisplayName?.trim() || 'Thành viên';
@@ -836,7 +863,9 @@ export function ConversationInfoPanel({
                         rel="noopener noreferrer"
                         className="block rounded-xl border border-black/[0.06] bg-white p-3 shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
                       >
-                        <p className="line-clamp-2 break-all text-[13px] font-medium text-blue-600">{href}</p>
+                        <p className="line-clamp-2 break-all text-[13px] font-medium text-blue-600">
+                          {href}
+                        </p>
                         <p className="mt-2 text-[11px] text-muted-foreground">
                           {who} · {when || '—'}
                         </p>
@@ -867,7 +896,8 @@ export function ConversationInfoPanel({
                     );
                   }
                   const src = item.thumbnailUrl || item.mediaUrl;
-                  const isVideo = item.type === 'video' || (item.mediaType ?? '').startsWith('video/');
+                  const isVideo =
+                    item.type === 'video' || (item.mediaType ?? '').startsWith('video/');
                   return (
                     <a
                       key={item.messageId}
@@ -881,7 +911,11 @@ export function ConversationInfoPanel({
                           <img src={src} alt="" className="h-full w-full object-cover" />
                         ) : src && isVideo ? (
                           <>
-                            <img src={item.thumbnailUrl || src} alt="" className="h-full w-full object-cover" />
+                            <img
+                              src={item.thumbnailUrl || src}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
                             <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-[10px] font-bold text-white">
                               ▶
                             </span>
@@ -916,7 +950,9 @@ export function ConversationInfoPanel({
                   )}
                 </div>
                 <h3 className="truncate text-[17px] font-bold text-black dark:text-white">
-                  {bulletinModalMode === 'reminders' ? 'Danh sách nhắc hẹn' : 'Ghi chú, ghim, bình chọn'}
+                  {bulletinModalMode === 'reminders'
+                    ? 'Danh sách nhắc hẹn'
+                    : 'Ghi chú, ghim, bình chọn'}
                 </h3>
               </div>
               <div className="flex shrink-0 items-center gap-1">
@@ -980,7 +1016,9 @@ export function ConversationInfoPanel({
                 {loading?.tasks && reminderFeedItems.length === 0 ? (
                   <p className="py-6 text-center text-sm text-muted-foreground">Đang tải...</p>
                 ) : reminderFeedItems.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">Chưa có nhắc hẹn hay công việc.</p>
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    Chưa có nhắc hẹn hay công việc.
+                  </p>
                 ) : (
                   reminderFeedItems.map((item) => (
                     <BulletinCardRow
@@ -1036,10 +1074,14 @@ export function ConversationInfoPanel({
                       Chưa có tin ghim trong hội thoại.
                     </p>
                   ) : bulletinTab === 'polls' && loading?.polls ? (
-                    <p className="py-4 text-center text-xs text-muted-foreground">Đang tải bình chọn...</p>
+                    <p className="py-4 text-center text-xs text-muted-foreground">
+                      Đang tải bình chọn...
+                    </p>
                   ) : bulletinTab === 'notes' && loading?.tasks ? (
                     <p className="py-4 text-center text-xs text-muted-foreground">Đang tải...</p>
-                  ) : bulletinTab === 'all' && (loading?.polls || loading?.tasks) && bulletinFeedItems.length === 0 ? (
+                  ) : bulletinTab === 'all' &&
+                    (loading?.polls || loading?.tasks) &&
+                    bulletinFeedItems.length === 0 ? (
                     <p className="py-4 text-center text-xs text-muted-foreground">Đang tải...</p>
                   ) : filteredBulletinItems.length === 0 ? (
                     <p className="px-2 py-8 text-center text-[13px] text-muted-foreground">
@@ -1185,80 +1227,156 @@ export function ConversationInfoPanel({
                   } group-hover:opacity-100 group-hover:text-foreground`}
                   strokeWidth={isConvPinned ? 2 : 1.75}
                 />
-              </div>
-              <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
-                {isConvPinned ? (
-                  <>
-                    Bỏ ghim
-                    <br />
-                    hội thoại
-                  </>
-                ) : (
-                  <>
-                    Ghim hội
-                    <br />
-                    thoại
-                  </>
-                )}
-              </span>
-            </button>
-            {activeConversation?.type === 'group' ? (
+              ) : activeConversation?.type === 'group' ? (
+                <Users className="w-8 h-8 text-blue-600" />
+              ) : (
+                <User className="w-8 h-8 text-blue-600" />
+              )}
+            </div>
+            <h3 className="font-bold text-lg text-center leading-tight flex items-center gap-2">
+              {activeConversation?.name ?? 'Hội thoại'}
               <button
                 type="button"
-                onClick={onAddMembers}
-                disabled={!onAddMembers}
-                className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group disabled:opacity-40 disabled:pointer-events-none"
+                onClick={() => (onEditGroup ?? groupActions.openEditGroupModal)()}
+                disabled={!!loading?.updateGroup}
+                className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                title="Chỉnh sửa nhóm"
               >
-                <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
-                  <UserPlus className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
-                </div>
-                <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
-                  Thêm thành
-                  <br />
-                  viên
-                </span>
+                <Edit3 className="w-3 h-3 text-muted-foreground" />
               </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onOpenCreateGroup}
-                disabled={!onOpenCreateGroup}
-                className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group disabled:opacity-40 disabled:pointer-events-none"
-              >
-                <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
-                  <Users className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
-                </div>
-                <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
-                  Tạo nhóm
-                  <br />
-                  trò chuyện
-                </span>
-              </button>
-            )}
+            </h3>
             {activeConversation?.type === 'group' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowInlineMembers(false);
-                  setGalleryKind(null);
-                  setBulletinModalMode(null);
-                  setBulletinAddOpen(false);
-                  setShowConversationSearch(false);
-                  setShowGroupManagement(true);
-                }}
-                className="hidden min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group lg:flex"
-                title="Quản lý nhóm"
-              >
-                <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
-                  <Settings className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
-                </div>
-                <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
-                  Quản lý
-                  <br />
-                  nhóm
-                </span>
-              </button>
+              <p className="text-sm text-muted-foreground mt-1 text-center font-medium opacity-80">
+                {activeConversation.memberCount} thành viên
+              </p>
             )}
+
+            <div className="mt-4 w-full px-0.5">
+              <div className="flex w-full flex-nowrap items-start justify-center gap-0.5 sm:gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isMuted) {
+                      onToggleMuteNotifications?.();
+                    } else {
+                      setShowMuteDurationModal(true);
+                    }
+                  }}
+                  disabled={isMuted ? !onToggleMuteNotifications : !onApplyMuteFromModal}
+                  className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                    {isMuted ? (
+                      <BellOff className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                    ) : (
+                      <Bell className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                    )}
+                  </div>
+                  <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
+                    {isMuted ? (
+                      <>
+                        Bật thông
+                        <br />
+                        báo
+                      </>
+                    ) : (
+                      <>
+                        Tắt thông
+                        <br />
+                        báo
+                      </>
+                    )}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onTogglePinConversation}
+                  disabled={!onTogglePinConversation}
+                  title="Ghim hoặc bỏ ghim hội thoại lên đầu danh sách"
+                  className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                    <Pin
+                      className={`w-4 h-4 text-muted-foreground ${
+                        isConvPinned ? 'opacity-100' : 'opacity-55'
+                      } group-hover:opacity-100 group-hover:text-foreground`}
+                      strokeWidth={isConvPinned ? 2 : 1.75}
+                    />
+                  </div>
+                  <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
+                    {isConvPinned ? (
+                      <>
+                        Bỏ ghim
+                        <br />
+                        hội thoại
+                      </>
+                    ) : (
+                      <>
+                        Ghim hội
+                        <br />
+                        thoại
+                      </>
+                    )}
+                  </span>
+                </button>
+                {activeConversation?.type === 'group' ? (
+                  <button
+                    type="button"
+                    onClick={onAddMembers}
+                    disabled={!onAddMembers}
+                    className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                      <UserPlus className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                    </div>
+                    <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
+                      Thêm thành
+                      <br />
+                      viên
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onOpenCreateGroup}
+                    disabled={!onOpenCreateGroup}
+                    className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                      <Users className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                    </div>
+                    <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
+                      Tạo nhóm
+                      <br />
+                      trò chuyện
+                    </span>
+                  </button>
+                )}
+                {activeConversation?.type === 'group' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowInlineMembers(false);
+                      setGalleryKind(null);
+                      setBulletinModalMode(null);
+                      setBulletinAddOpen(false);
+                      setShowConversationSearch(false);
+                      setShowGroupManagement(true);
+                    }}
+                    className="hidden min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group lg:flex"
+                    title="Quản lý nhóm"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                      <Settings className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                    </div>
+                    <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
+                      Quản lý
+                      <br />
+                      nhóm
+                    </span>
+                  </button>
+                )}
+              </div>
             </div>
             {hasActiveScheduledMute && onApplyMuteFromModal ? (
               <div className="mt-3 w-full rounded-xl border border-blue-500/20 bg-blue-500/[0.07] px-3 py-3 dark:border-blue-400/25 dark:bg-blue-500/10">
@@ -1301,133 +1419,226 @@ export function ConversationInfoPanel({
               </div>
             ) : null}
           </div>
-
-        </div>
-        {activeConversation?.type === 'group' && (
-          <>
-
-            <div className="p-4 bg-gradient-to-r from-blue-600/5 to-purple-600/5 border-b border-black/5 dark:border-white/5 relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-4 opacity-10 blur-xl group-hover:opacity-30 transition-opacity">
-                <Sparkles className="w-16 h-16 text-purple-600" />
-              </div>
-              <button
-                type="button"
-                onClick={() => onOpenAISummaryFromPanel()}
-                className="w-full relative flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-[#0068ff] to-[#8c52ff] hover:from-blue-700 hover:to-purple-700 text-white font-bold text-[14px] shadow-lg shadow-purple-600/20 transition-all hover:shadow-purple-600/40 hover:-translate-y-0.5"
-              >
-                <Sparkles className="w-[18px] h-[18px]" />
-                AI tóm tắt toàn bộ tin nhắn
-              </button>
-              <p className="text-[11px] text-center mt-2 text-muted-foreground font-medium">
-                Báo cáo siêu tốc những nội dung bị trôi.
-              </p>
-            </div>
-
-            <div className="px-4 py-3 border-b border-black/5 dark:border-white/5 bg-white dark:bg-transparent">
-              <button
-                type="button"
-                onClick={() => {
-                  if (onRequestJoin) void onRequestJoin();
-                  else void groupActions.handleRequestJoin();
-                }}
-                disabled={isJoinRequested || !!loading?.requestJoin}
-                className="w-full rounded-xl py-2.5 text-sm font-bold bg-blue-600 text-white disabled:bg-blue-200 disabled:cursor-not-allowed"
-              >
-                {isJoinRequested ? 'Đã gửi yêu cầu' : loading?.requestJoin ? 'Đang gửi...' : 'Yêu cầu tham gia'}
-              </button>
-            </div>
-
-            <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5">
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => openMemberModalHere('list')}
-                onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('list')}
-                className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-              >
-                Quản lý thành viên ({activeConversation.memberCount})
-                <div className="flex items-center gap-2">
-                  {(numRequests ?? 0) > 0 && (
-                    <div className="w-[20px] h-[20px] rounded-full bg-red-500 flex items-center justify-center text-[10px] text-white font-bold">
-                      {numRequests}
-                    </div>
-                  )}
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          {activeConversation?.type === 'group' && (
+            <>
+              <div className="p-4 bg-gradient-to-r from-blue-600/5 to-purple-600/5 border-b border-black/5 dark:border-white/5 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-10 blur-xl group-hover:opacity-30 transition-opacity">
+                  <Sparkles className="w-16 h-16 text-purple-600" />
                 </div>
-              </div>
-              <div className="px-4 pb-4 space-y-1">
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openMemberModalHere('pending')}
-                  onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('pending')}
-                  className="flex items-center justify-between group/wait cursor-pointer p-2 -mx-2 rounded-lg hover:bg-blue-600/10 transition-colors"
+                <button
+                  type="button"
+                  onClick={() => onOpenAISummaryFromPanel()}
+                  className="w-full relative flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-[#0068ff] to-[#8c52ff] hover:from-blue-700 hover:to-purple-700 text-white font-bold text-[14px] shadow-lg shadow-purple-600/20 transition-all hover:shadow-purple-600/40 hover:-translate-y-0.5"
                 >
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground group-hover/wait:text-blue-600 font-medium transition-colors">
-                    <UserPlus className="w-4 h-4 opacity-70" /> Duyệt người vào nhóm
-                  </div>
-                  {(numRequests ?? 0) > 0 && (
-                    <div className="w-[22px] h-[22px] rounded-full bg-red-500 shadow-md shadow-red-500/20 flex items-center justify-center text-[10px] text-white font-bold">
-                      {numRequests}
-                    </div>
-                  )}
-                </div>
+                  <Sparkles className="w-[18px] h-[18px]" />
+                  AI tóm tắt toàn bộ tin nhắn
+                </button>
+                <p className="text-[11px] text-center mt-2 text-muted-foreground font-medium">
+                  Báo cáo siêu tốc những nội dung bị trôi.
+                </p>
+              </div>
+
+              <div className="px-4 py-3 border-b border-black/5 dark:border-white/5 bg-white dark:bg-transparent">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onRequestJoin) void onRequestJoin();
+                    else void groupActions.handleRequestJoin();
+                  }}
+                  disabled={isJoinRequested || !!loading?.requestJoin}
+                  className="w-full rounded-xl py-2.5 text-sm font-bold bg-blue-600 text-white disabled:bg-blue-200 disabled:cursor-not-allowed"
+                >
+                  {isJoinRequested
+                    ? 'Đã gửi yêu cầu'
+                    : loading?.requestJoin
+                      ? 'Đang gửi...'
+                      : 'Yêu cầu tham gia'}
+                </button>
+              </div>
+
+              <div className="bg-white dark:bg-transparent border-b border-black/5 dark:border-white/5">
                 <div
                   role="button"
                   tabIndex={0}
                   onClick={() => openMemberModalHere('list')}
                   onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('list')}
-                  className="flex items-center gap-3 text-sm text-muted-foreground hover:text-red-500 cursor-pointer hover:bg-red-500/10 p-2 -mx-2 rounded-lg transition-colors font-medium"
+                  className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                 >
-                  <Users className="w-4 h-4 opacity-70" /> Mời ra khỏi nhóm
+                  Quản lý thành viên ({activeConversation.memberCount})
+                  <div className="flex items-center gap-2">
+                    {(numRequests ?? 0) > 0 && (
+                      <div className="w-[20px] h-[20px] rounded-full bg-red-500 flex items-center justify-center text-[10px] text-white font-bold">
+                        {numRequests}
+                      </div>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                </div>
+                <div className="px-4 pb-4 space-y-1">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openMemberModalHere('pending')}
+                    onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('pending')}
+                    className="flex items-center justify-between group/wait cursor-pointer p-2 -mx-2 rounded-lg hover:bg-blue-600/10 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground group-hover/wait:text-blue-600 font-medium transition-colors">
+                      <UserPlus className="w-4 h-4 opacity-70" /> Duyệt người vào nhóm
+                    </div>
+                    {(numRequests ?? 0) > 0 && (
+                      <div className="w-[22px] h-[22px] rounded-full bg-red-500 shadow-md shadow-red-500/20 flex items-center justify-center text-[10px] text-white font-bold">
+                        {numRequests}
+                      </div>
+                    )}
+                  </div>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openMemberModalHere('list')}
+                    onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('list')}
+                    className="flex items-center gap-3 text-sm text-muted-foreground hover:text-red-500 cursor-pointer hover:bg-red-500/10 p-2 -mx-2 rounded-lg transition-colors font-medium"
+                  >
+                    <Users className="w-4 h-4 opacity-70" /> Mời ra khỏi nhóm
+                  </div>
                 </div>
               </div>
-            </div>
-          </>
-        )}
-        <div className="mt-2 border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
-          <button
-            type="button"
-            onClick={() => setBulletinAccordionOpen((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 dark:hover:bg-white/5"
-          >
-            <span className="flex min-w-0 flex-1 items-center gap-2">
-              <ChevronDown
-                className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${bulletinAccordionOpen ? '' : '-rotate-90'}`}
-                aria-hidden
-              />
-              Bảng tin nhóm
-            </span>
-          </button>
-          {bulletinAccordionOpen && (
-            <div className="pb-2">
+            </>
+          )}
+          <div className="mt-2 border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
+            <button
+              type="button"
+              onClick={() => setBulletinAccordionOpen((v) => !v)}
+              className="flex w-full items-center justify-between gap-2 p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${bulletinAccordionOpen ? '' : '-rotate-90'}`}
+                  aria-hidden
+                />
+                Bảng tin nhóm
+              </span>
+            </button>
+            {bulletinAccordionOpen && (
+              <div className="pb-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGalleryKind(null);
+                    setBulletinAddOpen(false);
+                    setShowConversationSearch(false);
+                    setBulletinModalMode('reminders');
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                >
+                  <Clock className="h-4 w-4 shrink-0 opacity-70" />
+                  Danh sách nhắc hẹn
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGalleryKind(null);
+                    setBulletinAddOpen(false);
+                    setShowConversationSearch(false);
+                    setBulletinTab('all');
+                    setBulletinModalMode('notesPolls');
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                >
+                  <FileText className="h-4 w-4 shrink-0 opacity-70" />
+                  Ghi chú, ghim, bình chọn
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-2 border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
+            <button
+              type="button"
+              disabled={!activeConversation?.conversationId}
+              onClick={() => {
+                setBulletinModalMode(null);
+                setBulletinAddOpen(false);
+                setShowConversationSearch(false);
+                setGalleryKind('media');
+              }}
+              className="flex w-full cursor-pointer items-center justify-between p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/5"
+            >
+              Ảnh/Video
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
+          <div className="border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
+            <button
+              type="button"
+              disabled={!activeConversation?.conversationId}
+              onClick={() => {
+                setBulletinModalMode(null);
+                setBulletinAddOpen(false);
+                setShowConversationSearch(false);
+                setGalleryKind('file');
+              }}
+              className="flex w-full cursor-pointer items-center justify-between p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/5"
+            >
+              File
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
+          <div className="border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
+            <button
+              type="button"
+              disabled={!activeConversation?.conversationId}
+              onClick={() => {
+                setBulletinModalMode(null);
+                setBulletinAddOpen(false);
+                setShowConversationSearch(false);
+                setGalleryKind('link');
+              }}
+              className="flex w-full cursor-pointer items-center justify-between p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/5"
+            >
+              Link
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
+
+          {activeConversation?.type === 'group' && !activeConversation.isDeleted && (
+            <div className="p-4 bg-white dark:bg-transparent mt-2 flex flex-col gap-2 justify-center">
               <button
                 type="button"
                 onClick={() => {
-                  setGalleryKind(null);
-                  setBulletinAddOpen(false);
-                  setShowConversationSearch(false);
-                  setBulletinModalMode('reminders');
+                  if (leaveBlockedByMinMembers) {
+                    toast.warning(leaveMinMembersHint);
+                    return;
+                  }
+                  if (isOwner) {
+                    if (successorCandidates.length === 0) {
+                      toast.warning(
+                        'Không còn thành viên khác để chuyển quyền. Hãy giải tán nhóm.',
+                      );
+                      return;
+                    }
+                    setSuccessorSearchQuery('');
+                    setSelectedSuccessorId(successorCandidates[0]!.userId);
+                    setLeaveOwnerTransferOpen(true);
+                    return;
+                  }
+                  setLeaveMemberModalOpen(true);
                 }}
-                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                disabled={!onLeaveGroup || loading?.leaveGroup}
+                className={`flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-2 rounded-xl transition-colors border border-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed ${leaveBlockedByMinMembers ? 'opacity-60' : ''}`}
+                title={leaveBlockedByMinMembers ? leaveMinMembersHint : 'Rời khỏi nhóm này'}
               >
-                <Clock className="h-4 w-4 shrink-0 opacity-70" />
-                Danh sách nhắc hẹn
+                {loading?.leaveGroup ? 'Đang xử lý…' : 'Rời nhóm'}
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setGalleryKind(null);
-                  setBulletinAddOpen(false);
-                  setShowConversationSearch(false);
-                  setBulletinTab('all');
-                  setBulletinModalMode('notesPolls');
-                }}
-                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-              >
-                <FileText className="h-4 w-4 shrink-0 opacity-70" />
-                Ghi chú, ghim, bình chọn
-              </button>
+              {canDisbandGroup && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteGroupModalOpen(true)}
+                  disabled={!onDeleteGroup || loading?.deleteGroup}
+                  className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading?.deleteGroup ? 'Đang xử lý…' : 'Giải tán nhóm'}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1584,7 +1795,10 @@ export function ConversationInfoPanel({
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-black/5 px-6 py-4 dark:border-white/5">
-                <h3 id="leave-owner-transfer-title" className="text-[17px] font-bold text-foreground">
+                <h3
+                  id="leave-owner-transfer-title"
+                  className="text-[17px] font-bold text-foreground"
+                >
                   Chọn trưởng nhóm mới trước khi rời
                 </h3>
                 <button
@@ -1638,9 +1852,13 @@ export function ConversationInfoPanel({
                         />
                         <SuccessorPickAvatar url={c.avatarUrl} label={c.label} />
                         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                          <span className="truncate text-[15px] font-medium text-foreground">{c.label}</span>
+                          <span className="truncate text-[15px] font-medium text-foreground">
+                            {c.label}
+                          </span>
                           {c.role === 'admin' ? (
-                            <span className="text-xs font-medium text-muted-foreground">Phó nhóm</span>
+                            <span className="text-xs font-medium text-muted-foreground">
+                              Phó nhóm
+                            </span>
                           ) : null}
                         </span>
                       </label>

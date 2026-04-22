@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import { toast } from 'react-toastify';
 import { chatApi } from '@/store/api/chatApi';
 import {
@@ -8,6 +9,7 @@ import {
   messageReacted,
   messageReceived,
   messageRecalled,
+  setActiveConversation,
   typingStarted,
   typingStopped,
 } from '@/store/slices/chatSlice';
@@ -28,8 +30,13 @@ interface UseChatRealtimeEventsParams {
   setActivePollId: (pollId: string) => void;
   setShowPollVoteModal: (open: boolean) => void;
   fetchGroupMembers: (groupId: string) => Promise<void>;
-  patchMessageInCache: (conversationId: string, messageId: string, patch: Partial<IMessage>) => void;
-  removeMessageFromCache: (conversationId: string, messageId: string) => void;
+  patchMessageInCache: (
+    conversationId: string,
+    messageId: string,
+    patch: Partial<IMessage>,
+  ) => void;
+  setPinnedMessageOrderByConv: Dispatch<SetStateAction<Record<string, string[]>>>;
+  navigate: (path: string, options?: { replace?: boolean }) => void;
 }
 
 export function useChatRealtimeEvents({
@@ -40,7 +47,8 @@ export function useChatRealtimeEvents({
   setShowPollVoteModal,
   fetchGroupMembers,
   patchMessageInCache,
-  removeMessageFromCache,
+  setPinnedMessageOrderByConv,
+  navigate,
 }: UseChatRealtimeEventsParams): void {
   const activeConversationIdRef = useRef<string | null>(activeConversationId);
   const typingCleanupTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -129,7 +137,11 @@ export function useChatRealtimeEvents({
       }
     };
 
-    const handleEditedMessage = (payload: { messageId: string; conversationId: string; content: string }) => {
+    const handleEditedMessage = (payload: {
+      messageId: string;
+      conversationId: string;
+      content: string;
+    }) => {
       dispatch(messageEdited(payload));
       patchMessageInCache(payload.conversationId, payload.messageId, {
         content: payload.content,
@@ -154,17 +166,52 @@ export function useChatRealtimeEvents({
         }),
       );
       dispatch(chatApi.util.invalidateTags(['Conversations']));
+
+      // Strip recalled message from pinned order
+      setPinnedMessageOrderByConv((prev) => {
+        const cid = payload.conversationId;
+        const cur = prev[cid] ?? [];
+        return { ...prev, [cid]: cur.filter((id) => id !== payload.messageId) };
+      });
     };
 
     const handleHiddenForMe = (payload: { messageId: string; conversationId: string }) => {
       dispatch(messageHiddenForViewer(payload));
-      removeMessageFromCache(payload.conversationId, payload.messageId);
+      dispatch(
+        chatApi.util.updateQueryData(
+          'getMessages',
+          { conversationId: payload.conversationId },
+          (draft) => {
+            if (!draft.data) return;
+            draft.data = draft.data.filter((x) => x.messageId !== payload.messageId);
+          },
+        ),
+      );
       dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
 
-    const handlePinUpdated = (payload: { messageId: string; conversationId: string; isPinned: boolean }) => {
+    const handlePinUpdated = (payload: {
+      messageId: string;
+      conversationId: string;
+      isPinned: boolean;
+    }) => {
       dispatch(messagePinUpdated(payload));
-      patchMessageInCache(payload.conversationId, payload.messageId, { isPinned: payload.isPinned });
+      patchMessageInCache(payload.conversationId, payload.messageId, {
+        isPinned: payload.isPinned,
+      });
+
+      // Update pinned MRU order
+      setPinnedMessageOrderByConv((prev) => {
+        const cid = payload.conversationId;
+        const cur = prev[cid] ?? [];
+        if (payload.isPinned) {
+          return {
+            ...prev,
+            [cid]: [payload.messageId, ...cur.filter((id) => id !== payload.messageId)],
+          };
+        }
+        return { ...prev, [cid]: cur.filter((id) => id !== payload.messageId) };
+      });
     };
 
     const handleReactionEvent = (payload: {
@@ -173,7 +220,9 @@ export function useChatRealtimeEvents({
       reactions: Record<string, string[]>;
     }) => {
       dispatch(messageReacted(payload));
-      patchMessageInCache(payload.conversationId, payload.messageId, { reactions: payload.reactions });
+      patchMessageInCache(payload.conversationId, payload.messageId, {
+        reactions: payload.reactions,
+      });
     };
 
     const handleTypingEvent = (payload: {
@@ -216,6 +265,16 @@ export function useChatRealtimeEvents({
       }
     };
 
+    const handleGroupDisbanded = (data: unknown) => {
+      const p = data as { conversationId?: string; groupId?: string };
+      const cid = p?.conversationId ?? p?.groupId;
+      if (!cid) return;
+      if (cid !== activeConversationIdRef.current) return;
+      toast.info('Nhóm đã được giải tán');
+      dispatch(setActiveConversation(null));
+      void navigate('/chat', { replace: true });
+    };
+
     const wrappedNewMessage = (data: unknown) => handleNewMessage(data as IMessage);
     const wrappedGroupUpdated = (data: unknown) => handleGroupUpdated(data as GroupUpdatedPayload);
     const wrappedEdited = (data: unknown) =>
@@ -231,10 +290,13 @@ export function useChatRealtimeEvents({
         data as { messageId: string; conversationId: string; reactions: Record<string, string[]> },
       );
     const wrappedTyping = (data: unknown) =>
-      handleTypingEvent(data as { conversationId: string; userId: string; displayName?: string | null });
+      handleTypingEvent(
+        data as { conversationId: string; userId: string; displayName?: string | null },
+      );
 
     socketService.on('message:new', wrappedNewMessage);
     socketService.on('group:updated', wrappedGroupUpdated);
+    socketService.on('group:disbanded', handleGroupDisbanded);
     socketService.on('message:edited', wrappedEdited);
     socketService.on('message:recall', wrappedRecalled);
     socketService.on('message:recalled', wrappedRecalled);
@@ -247,6 +309,7 @@ export function useChatRealtimeEvents({
     return () => {
       socketService.off('message:new', wrappedNewMessage);
       socketService.off('group:updated', wrappedGroupUpdated);
+      socketService.off('group:disbanded', handleGroupDisbanded);
       socketService.off('message:edited', wrappedEdited);
       socketService.off('message:recall', wrappedRecalled);
       socketService.off('message:recalled', wrappedRecalled);
@@ -261,10 +324,11 @@ export function useChatRealtimeEvents({
   }, [
     dispatch,
     patchMessageInCache,
-    removeMessageFromCache,
+    setPinnedMessageOrderByConv,
     fetchGroupMembers,
     isConnected,
     setActivePollId,
     setShowPollVoteModal,
+    navigate,
   ]);
 }

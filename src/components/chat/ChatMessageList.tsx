@@ -71,9 +71,7 @@ function OutgoingDeliveryTicks({
   const s = status ?? 'sent';
   if (!convIsDirect) {
     const mono = isMe ? 'text-white/75' : 'text-muted-foreground';
-    return (
-      <Check className={`w-3 h-3 shrink-0 ${mono}`} strokeWidth={2.5} aria-label="Đã gửi" />
-    );
+    return <Check className={`w-3 h-3 shrink-0 ${mono}`} strokeWidth={2.5} aria-label="Đã gửi" />;
   }
   if (s === 'sent') {
     return (
@@ -148,7 +146,10 @@ function replyQuotePreview(details: IReplyToDetails): string {
       /* không phải JSON hợp lệ — hiển thị đã làm sạch bên dưới */
     }
   }
-  s = s.replace(/[[\]{}]/g, '').replace(/\s+/g, ' ').trim();
+  s = s
+    .replace(/[[\]{}]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return s || 'Tin nhắn';
 }
 
@@ -192,7 +193,10 @@ function replyQuoteSecondaryLine(details: IReplyToDetails): string | null {
       /* */
     }
   }
-  const cleaned = c.replace(/[[\]{}]/g, '').replace(/\s+/g, ' ').trim();
+  const cleaned = c
+    .replace(/[[\]{}]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return cleaned || null;
 }
 
@@ -350,8 +354,6 @@ export type ChatMessageListProps = {
   /** Danh sách hội thoại để gửi tiếp ảnh/video sang chat khác. */
   shareTargetConversations: IConversation[];
   onForwardMediaMessage: (targetConversationIds: string[], message: IMessage, caption: string) => Promise<void>;
-  onEditGroupTask?: (taskId: string) => void;
-  onDeleteGroupTask?: (taskId: string) => void;
 };
 
 export function ChatMessageList({
@@ -514,12 +516,17 @@ export function ChatMessageList({
   return (
     <div
       ref={messagesContainerRef}
-      className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-1 min-h-0 custom-scrollbar"
+      className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 flex flex-col gap-1 min-h-0 custom-scrollbar"
     >
       {!activeConversationId && (
-        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-          <MessageCircle className="w-16 h-16 mb-4 opacity-20" />
-          <p className="text-lg font-bold opacity-40">Chọn hội thoại để bắt đầu nhắn tin</p>
+        <div className="flex flex-col items-center justify-center h-full gap-5 select-none">
+          <div className="size-24 rounded-3xl bg-primary/5 flex items-center justify-center shadow-inner">
+            <MessageCircle className="size-12 text-primary/25" />
+          </div>
+          <div className="text-center">
+            <p className="text-base font-semibold text-foreground/40">Chọn hội thoại</p>
+            <p className="text-sm text-muted-foreground/50 mt-1">và bắt đầu nhắn tin</p>
+          </div>
         </div>
       )}
       {activeConversationId && (
@@ -529,9 +536,6 @@ export function ChatMessageList({
             if (
               (msg as any).type === 'system' || (msg as any).position === 'center'
             ) {
-              if ((msg as any).isRecalled || (msg as any).isDeleted) {
-                return null;
-              }
               // Show date above bubble if first system message of the day or first message
               const prevMsg = index > 0 ? allMessages[index - 1] : undefined;
               const prevDate = prevMsg ? prevMsg.createdAt?.slice(0, 10) : null;
@@ -610,7 +614,10 @@ export function ChatMessageList({
               }
 
               return (
-                <div key={msg.messageId} className="w-full flex flex-col items-center my-3 select-none">
+                <div
+                  key={msg.messageId}
+                  className="w-full flex flex-col items-center my-3 select-none"
+                >
                   <span className="mb-2 bg-black/10 dark:bg-white/10 text-black/60 dark:text-white/60 text-xs px-3 py-1 rounded-full font-medium">
                     {showDate ? `${timeLabel} ${dateLabel}` : timeLabel}
                   </span>
@@ -621,258 +628,84 @@ export function ChatMessageList({
                     {taskCard ? (
                       <div className="w-full">
                         {(() => {
-                          const tBoard = (groupTasks ?? []).find(
-                            (x: any) => String(x?.taskId) === String(taskCard?.taskId),
-                          );
-                          const taskMissingFromBoard =
-                            Boolean(taskCard?.taskId) &&
-                            !String(taskCard.taskId).startsWith('tmp-') &&
-                            !tBoard;
-                          const creatorIdForTask = (tBoard as any)?.creatorId ?? taskCard.actorId;
-                          const isTaskCreator = Boolean(
-                            currentUserId && creatorIdForTask && String(creatorIdForTask) === String(currentUserId),
-                          );
-
-                          if (taskMissingFromBoard) {
-                            return (
-                              <div className="flex flex-col items-center gap-2 py-3 px-2 text-center">
-                                <AlarmClockOff
-                                  className="h-9 w-9 shrink-0 text-muted-foreground/75"
-                                  strokeWidth={1.75}
-                                  aria-hidden
-                                />
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                  Công việc đã hủy
-                                </p>
-                                <p className="text-[13px] font-bold text-foreground/60 line-through break-words">
-                                  {taskCard.title}
-                                </p>
-                              </div>
-                            );
-                          }
-
-                          const byId = new Map(
-                            (groupMembers ?? []).map((m) => [String(m.userId), String(m.displayName ?? '').trim()]),
-                          );
-                          const t = tBoard;
-                          const assignees = Array.isArray((t as any)?.assignees) ? ((t as any).assignees as string[]) : [];
-                          const labelRaw = String(taskCard.assigneeLabel ?? '');
-                          const labelNorm = labelRaw
-                            .toLowerCase()
-                            .normalize('NFD')
-                            // strip Vietnamese accents/diacritics
-                            .replace(/[\u0300-\u036f]/g, '');
-                          const labelLooksLikeGroup =
-                            labelNorm.includes('ca nhom') || labelNorm.includes('group') || labelNorm.includes('all');
-                          const assignToAll =
-                            Boolean((t as any)?.assignToAll) ||
-                            Boolean((t as any)?.broadcast) ||
-                            Boolean(taskCard.assignToAll) ||
-                            Boolean(taskCard.broadcast) ||
-                            assignees.length === 0 ||
-                            labelLooksLikeGroup;
-                          const participants = Array.isArray((t as any)?.participants)
-                            ? ((t as any).participants as string[])
-                            : [];
+                          const t = (groupTasks ?? []).find((x: any) => String(x?.taskId) === String(taskCard?.taskId));
+                          const participants = Array.isArray(t?.participants) ? (t.participants as string[]) : [];
+                          const participantsCount = participants.length;
                           const joined = participants.includes(currentUserId);
-                          const participantNames = participants
-                            .map((id) => byId.get(String(id)) ?? '')
-                            .filter((x) => Boolean(x && x.trim()));
-                          const canJoinThisTask = assignToAll || assignees.includes(currentUserId);
-                          const dueForJoin =
-                            (t as any)?.dueDate != null && String((t as any).dueDate).trim() !== ''
-                              ? String((t as any).dueDate)
-                              : taskCard.dueDate;
-                          const joinDeadlinePassed = isTaskJoinDeadlinePassed(dueForJoin ?? undefined);
-                          const showJoin = !joined;
+                          const assignees = Array.isArray(t?.assignees) ? (t.assignees as string[]) : [];
+                          const canJoinThisTask = assignees.includes(currentUserId);
+                          const onJoin = async (): Promise<void> => {
+                            if (!activeConversationId || !taskCard?.taskId) return;
+                            try {
+                              await apiClient.post(`/chat/groups/${activeConversationId}/tasks/${taskCard.taskId}/join`);
+                              onTaskJoined?.(taskCard.taskId);
+                              toast.success('Bạn đã tham gia công việc');
+                            } catch (e) {
+                              const status = (e as any)?.response?.status;
+                              if (status === 403) toast.error('Bạn không được giao công việc này');
+                              else toast.error('Không thể tham gia công việc');
+                              console.error('[joinTask]', e);
+                            }
+                          };
                           return (
-                            <>
-                              <div className="mb-2 flex items-center justify-between gap-2">
-                                <div className="min-w-0 flex items-center gap-2">
-                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/5 dark:bg-white/10 px-2.5 py-1 text-[12px] font-semibold text-muted-foreground">
-                                    <span aria-hidden>👥</span>
-                                    <span className="truncate">
-                                      {participants.length > 0
-                                        ? `${participants.length} đã tham gia`
-                                        : 'Chưa có ai tham gia'}
-                                    </span>
-                                  </span>
-                                  {participantNames.length > 0 ? (
-                                    <span className="hidden sm:inline text-[12px] text-muted-foreground truncate max-w-[220px]">
-                                      {participantNames.slice(0, 3).join(', ')}
-                                      {participantNames.length > 3
-                                        ? ` và ${participantNames.length - 3} người khác`
-                                        : ''}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                {joined ? (
-                                  <span className="px-3 py-1 rounded-full text-[12px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
-                                    Đã tham gia
-                                  </span>
-                                ) : joinDeadlinePassed ? (
-                                  <span
-                                    className="px-3 py-1 rounded-full text-[12px] font-semibold bg-black/5 text-muted-foreground dark:bg-white/10"
-                                    title="Đã quá hạn công việc"
-                                  >
-                                    Chưa tham gia
-                                  </span>
-                                ) : showJoin ? (
-                                  <button
-                                    type="button"
-                                    disabled={!canJoinThisTask}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (!canJoinThisTask) return;
-                                      onTaskJoined?.(taskCard.taskId);
-                                    }}
-                                    className={
-                                      !canJoinThisTask
-                                        ? 'px-3 py-1 rounded-full text-[12px] font-semibold bg-black/5 dark:bg-white/10 text-muted-foreground cursor-not-allowed'
-                                        : 'px-3 py-1 rounded-full text-[12px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
-                                    }
-                                  >
-                                    Xác nhận tham gia
-                                  </button>
-                                ) : null}
-                              </div>
-                              <div className="mb-2 flex items-center gap-2 text-[12px] font-bold text-foreground">
-                                <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
-                                  <ClipboardList className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                                  <span className="truncate">Giao việc</span>
-                                </div>
-                                {isTaskCreator && (onEditGroupTask || onDeleteGroupTask) ? (
-                                  <div className="flex shrink-0 items-center gap-1">
-                                    {onEditGroupTask ? (
-                                      <button
-                                        type="button"
-                                        className="rounded-md px-2 py-0.5 text-[11px] font-bold text-blue-600 hover:bg-black/5 dark:hover:bg-white/10"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onEditGroupTask(String(taskCard.taskId));
-                                        }}
-                                      >
-                                        Sửa
-                                      </button>
-                                    ) : null}
-                                    {onDeleteGroupTask ? (
-                                      <button
-                                        type="button"
-                                        className="rounded-md px-2 py-0.5 text-[11px] font-bold text-red-600 hover:bg-red-500/10"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onDeleteGroupTask(String(taskCard.taskId));
-                                        }}
-                                      >
-                                        Hủy
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                              </div>
+                            <div className="flex items-center justify-center gap-2 mb-2">
+                              <span className="text-[12px] font-semibold text-muted-foreground">
+                                {participantsCount} người đã tham gia
+                              </span>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  const tt = tBoard as any;
-                                  const subs = Array.isArray(tt?.subtasks) ? (tt.subtasks as any[]) : [];
-                                  const participantIds = Array.isArray(tt?.participants)
-                                    ? (tt.participants as unknown[]).map((x) => String(x))
-                                    : [];
-                                  setTaskDetailTaskId(String(taskCard.taskId));
-                                  setTaskDetail({
-                                    title: taskCard.title,
-                                    note: taskCard.note,
-                                    dueDate: taskCard.dueDate,
-                                    assigneeLabel: taskCard.assigneeLabel,
-                                    participantsCount: participantIds.length,
-                                    participantIds,
-                                    actorLabel:
-                                      (taskCard.actorId && taskCard.actorId === currentUserId
-                                        ? 'Bạn'
-                                        : taskCard.actorName) + ' đã giao việc',
-                                    subtasks: subs.map((s) => ({
-                                      assigneeName: String(s?.assigneeName ?? ''),
-                                      content: String(s?.content ?? ''),
-                                      done: Boolean(s?.done),
-                                    })),
-                                  });
-                                  setTaskDetailOpen(true);
-                                }}
-                                className="w-full text-left rounded-2xl bg-white/70 dark:bg-black/20 border border-black/5 dark:border-white/10 px-3.5 py-3 hover:bg-white/85 dark:hover:bg-black/25 transition-colors"
-                                title="Nhấn để xem chi tiết"
+                                onClick={onJoin}
+                                disabled={joined || !canJoinThisTask}
+                                className={
+                                  joined
+                                    ? 'px-3 py-1 rounded-full text-[12px] font-semibold bg-black/5 dark:bg-white/10 text-muted-foreground cursor-not-allowed'
+                                    : !canJoinThisTask
+                                      ? 'px-3 py-1 rounded-full text-[12px] font-semibold bg-blue-600/40 text-white/70 cursor-not-allowed'
+                                      : 'px-3 py-1 rounded-full text-[12px] font-semibold bg-blue-600 text-white hover:bg-blue-700'
+                                }
                               >
-                                <div className="text-[12px] font-semibold text-muted-foreground/90 mb-1">
-                                  {(taskCard.actorId && taskCard.actorId === currentUserId ? 'Bạn' : taskCard.actorName) +
-                                    ' đã giao việc'}
-                                </div>
-                                <div className="text-[14px] font-extrabold text-foreground break-words leading-[20px]">
-                                  {taskCard.title}
-                                </div>
-                                <div className="mt-2 space-y-1.5 text-[12px] text-muted-foreground">
-                                  <div className="flex items-center gap-2">
-                                    <Users className="w-3.5 h-3.5" />
-                                    <span className="font-semibold">Giao cho:</span>
-                                    <span className="min-w-0 truncate">{taskCard.assigneeLabel}</span>
-                                  </div>
-                                  {taskCard.dueDate ? (
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="text-[12px] font-semibold text-muted-foreground shrink-0">Hạn:</span>
-                                      <TaskDeadlineCalendar dateIso={taskCard.dueDate} size="md" />
-                                    </div>
-                                  ) : null}
-                                  {taskCard.note ? (
-                                    <div className="whitespace-pre-line break-words line-clamp-2">
-                                      <span className="font-semibold">Ghi chú:</span> {taskCard.note}
-                                    </div>
-                                  ) : null}
-                                </div>
-                                {(() => {
-                                  const subs = Array.isArray((tBoard as any)?.subtasks)
-                                    ? ((tBoard as any).subtasks as any[])
-                                    : [];
-                                  if (subs.length === 0) return null;
-                                  return (
-                                    <div className="mt-3 space-y-2">
-                                      {subs.map((s) => {
-                                        const done = Boolean(s?.done);
-                                        const line = `${done ? '✓' : '•'} ${String(s?.assigneeName ?? '')} — ${String(
-                                          s?.content ?? '',
-                                        )}`;
-                                        return (
-                                          <div
-                                            key={String(s?.id ?? line)}
-                                            className="flex items-center justify-between gap-2"
-                                          >
-                                            <div
-                                              className={`text-[13px] font-semibold break-words ${
-                                                done ? 'text-muted-foreground line-through' : 'text-foreground'
-                                              }`}
-                                              title={line}
-                                            >
-                                              {line}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  );
-                                })()}
-                                <div className="mt-2 rounded-md border border-muted-foreground/15 bg-muted/30 px-2 py-1.5 text-center text-[11px] font-semibold text-muted-foreground/80">
-                                  Nhấn để xem chi tiết
-                                </div>
+                                {joined ? 'Đã tham gia' : 'Tham gia'}
                               </button>
-                            </>
+                            </div>
                           );
                         })()}
+                        <div className="flex items-center justify-center gap-2 text-[12px] font-bold text-foreground mb-1.5">
+                          <ClipboardList className="w-4 h-4 text-green-600 dark:text-green-400" />
+                          Giao việc
+                        </div>
+                        <div className="rounded-xl bg-white/70 dark:bg-black/20 border border-black/5 dark:border-white/10 px-3 py-2">
+                          <div className="text-[12px] font-semibold text-muted-foreground text-center mb-1">
+                            {msg.senderId === currentUserId ? 'Bạn' : taskCard.actorName} đã giao việc
+                          </div>
+                          <div className="text-[13px] font-extrabold text-foreground text-center">
+                            {taskCard.title}
+                          </div>
+                          <div className="mt-2 space-y-1.5 text-[12px] text-muted-foreground">
+                            <div className="flex items-center justify-center gap-2">
+                              <Users className="w-3.5 h-3.5" />
+                              <span className="font-semibold">Giao cho:</span> {taskCard.assigneeLabel}
+                            </div>
+                            {taskCard.dueDate ? (
+                              <div className="flex items-center justify-center gap-2">
+                                <CalendarClock className="w-3.5 h-3.5" />
+                                <span className="font-semibold">Deadline:</span>{' '}
+                                {new Date(taskCard.dueDate).toLocaleString()}
+                              </div>
+                            ) : null}
+                            {taskCard.note ? (
+                              <div className="text-center whitespace-pre-line">
+                                <span className="font-semibold">Ghi chú:</span> {taskCard.note}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
                       </div>
                     ) : taskJoinedLine ? (
                       <div className="flex items-center justify-center gap-2">
                         <CheckCheck className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
                         <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                          {(taskJoinedLine.actorId && taskJoinedLine.actorId === currentUserId
-                            ? 'Bạn'
-                            : taskJoinedLine.actorName) + ' đã tham gia công việc'}
-                          {taskJoinedLine.title ? ` "${taskJoinedLine.title}"` : ''}
+                          {(msg.senderId === currentUserId ? 'Bạn' : taskJoinedLine.actorName) + ' đã tham gia công việc'}
+                          {taskJoinedLine.title ? ` \"${taskJoinedLine.title}\"` : ''}
                         </span>
                       </div>
                     ) : typeof content === 'string' && content.trim().startsWith('{') ? (
@@ -880,14 +713,17 @@ export function ChatMessageList({
                         try {
                           const obj = JSON.parse(content) as any;
                           if (obj?.kind === 'poll_created') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const question = String(obj?.poll?.question ?? '').trim();
                             const pollId = String(obj?.poll?.pollId ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã tạo một bình chọn'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã tạo một bình chọn'}
                                   {question ? `: ${question}` : ''}
                                 </span>
                                 {pollId && onOpenPollVote ? (
@@ -903,65 +739,80 @@ export function ChatMessageList({
                             );
                           }
                           if (obj?.kind === 'poll_voted') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const optionText = String(obj?.poll?.optionText ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã bình chọn'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã bình chọn'}
                                   {optionText ? `: ${optionText}` : ''}
                                 </span>
                               </div>
                             );
                           }
                           if (obj?.kind === 'poll_vote_changed') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const optionText = String(obj?.poll?.optionText ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã thay đổi bình chọn'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã thay đổi bình chọn'}
                                   {optionText ? `: ${optionText}` : ''}
                                 </span>
                               </div>
                             );
                           }
                           if (obj?.kind === 'poll_unvoted') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const optionText = String(obj?.poll?.optionText ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã rút phiếu'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã rút phiếu'}
                                   {optionText ? `: ${optionText}` : ''}
                                 </span>
                               </div>
                             );
                           }
                           if (obj?.kind === 'poll_option_added') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const optionText = String(obj?.poll?.optionText ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã thêm lựa chọn'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã thêm lựa chọn'}
                                   {optionText ? `: ${optionText}` : ''}
                                 </span>
                               </div>
                             );
                           }
                           if (obj?.kind === 'poll_closed') {
-                            const actorName = String(obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó');
+                            const actorName = String(
+                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                            );
                             const question = String(obj?.poll?.question ?? '').trim();
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) + ' đã đóng bình chọn'}
+                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                    ' đã đóng bình chọn'}
                                   {question ? `: ${question}` : ''}
                                 </span>
                               </div>
@@ -1075,11 +926,13 @@ export function ChatMessageList({
                   <div
                     className={`flex flex-col max-w-[55%] sm:max-w-[45%] ${isMeCall ? 'items-end' : 'items-start'}`}
                   >
-                    {!isMeCall && activeConversation?.type === 'group' && !isSameSenderAsPrevCall && (
-                      <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
-                        {msg.senderDisplayName ?? msg.senderId}
-                      </p>
-                    )}
+                    {!isMeCall &&
+                      activeConversation?.type === 'group' &&
+                      !isSameSenderAsPrevCall && (
+                        <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
+                          {msg.senderDisplayName ?? msg.senderId}
+                        </p>
+                      )}
 
                     <div
                       className={
@@ -1100,7 +953,11 @@ export function ChatMessageList({
                             className={`w-4 h-4 shrink-0 ${isMeCall ? 'text-blue-100' : 'text-blue-600 dark:text-blue-400'}`}
                           />
                         )}
-                        <p className={`text-sm font-bold ${isMeCall ? 'text-white' : 'text-foreground'}`}>{title}</p>
+                        <p
+                          className={`text-sm font-bold ${isMeCall ? 'text-white' : 'text-foreground'}`}
+                        >
+                          {title}
+                        </p>
                       </div>
                       <p
                         className={`text-xs mt-1 ${isMeCall ? 'text-blue-100/90 text-right' : 'text-muted-foreground'}`}
@@ -1164,7 +1021,7 @@ export function ChatMessageList({
                   className={`relative z-[2] flex flex-col ${
                     isWideMediaBubble
                       ? 'w-full max-w-[min(96vw,44rem)] sm:max-w-[min(92%,42rem)]'
-                      : 'max-w-[55%] sm:max-w-[45%]'
+                      : 'max-w-[85%] md:max-w-[75%] lg:max-w-[65%]'
                   } ${isMe ? 'items-end' : 'items-start'}`}
                 >
                   {!isMe && activeConversation?.type === 'group' && !isSameSenderAsPrev && (
@@ -1174,7 +1031,7 @@ export function ChatMessageList({
                   )}
 
                   <div
-                    className={`relative flex items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.reactions && Object.keys(msg.reactions).length > 0 ? 'mb-3.5' : ''}`}
+                    className={`relative flex max-w-full min-w-0 items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.reactions && Object.keys(msg.reactions).length > 0 ? 'mb-3.5' : ''}`}
                   >
                     {msg.isDeleted ? (
                       <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
@@ -1188,10 +1045,10 @@ export function ChatMessageList({
                       <div
                         className={
                           isMediaMsg
-                            ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none wrap-break-word bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                            ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none break-words whitespace-pre-wrap bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
                                 isMe ? 'items-end' : 'items-start'
                               }`
-                            : `relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm wrap-break-word selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                            : `relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm min-w-0 break-words whitespace-pre-wrap selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
                                 isMe
                                   ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
                                   : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
@@ -1285,7 +1142,10 @@ export function ChatMessageList({
                                   className="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-lg bg-black/65 hover:bg-black/80 text-white text-[11px] font-semibold px-2.5 py-1.5 backdrop-blur-sm shadow-lg border border-white/15"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setMediaLightbox({ src: msg.mediaUrl as string, kind: 'video' });
+                                    setMediaLightbox({
+                                      src: msg.mediaUrl as string,
+                                      kind: 'video',
+                                    });
                                   }}
                                 >
                                   <Maximize2 className="w-3.5 h-3.5 shrink-0" />
@@ -1294,7 +1154,10 @@ export function ChatMessageList({
                               </div>
                               <div className="flex items-center gap-2.5 px-3 py-2.5 border-t border-black/5 dark:border-white/10 bg-white/90 dark:bg-zinc-950/80">
                                 <div className="shrink-0 rounded-lg bg-violet-100 dark:bg-violet-900/40 p-2">
-                                  <Video className="w-5 h-5 text-violet-600 dark:text-violet-400" aria-hidden />
+                                  <Video
+                                    className="w-5 h-5 text-violet-600 dark:text-violet-400"
+                                    aria-hidden
+                                  />
                                 </div>
                                 <div className="min-w-0 flex-1 text-left">
                                   <p className="text-[13px] font-semibold text-foreground truncate">
@@ -1358,7 +1221,10 @@ export function ChatMessageList({
                                 : 'bg-black/6 dark:bg-white/10 border border-black/8 dark:border-white/10'
                             }`}
                           >
-                            <FileText className="w-8 h-8 shrink-0 text-muted-foreground" aria-hidden />
+                            <FileText
+                              className="w-8 h-8 shrink-0 text-muted-foreground"
+                              aria-hidden
+                            />
                             <div className="min-w-0 flex-1">
                               <p
                                 className="text-xs font-semibold text-foreground truncate"
@@ -1410,7 +1276,7 @@ export function ChatMessageList({
                         )}
                         {isMediaMsg && showCaption && (
                           <div
-                            className={`mt-0.5 w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'} px-2.5 py-1.5 rounded-lg text-[13px] whitespace-pre-wrap wrap-break-word ${
+                            className={`mt-0.5 w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'} px-2.5 py-1.5 rounded-lg text-[13px] break-words whitespace-pre-wrap ${
                               isMe
                                 ? 'bg-black/6 dark:bg-white/10 text-foreground'
                                 : 'bg-black/5 dark:bg-white/10 text-foreground'
@@ -1420,7 +1286,7 @@ export function ChatMessageList({
                           </div>
                         )}
                         {!isMediaMsg && showCaption && (
-                          <span className="whitespace-pre-wrap wrap-break-word">{msg.content}</span>
+                          <span className="break-words whitespace-pre-wrap">{msg.content}</span>
                         )}
                         {msg.isEdited && (
                           <span
@@ -1630,27 +1496,33 @@ export function ChatMessageList({
                           />
                         )}
                       </div>
-                      {isMe && !msg.isRecalled && !msg.isDeleted && msg.readBy && msg.readBy.length > 0 && (
-                        <div
-                          className="flex flex-wrap items-center justify-end gap-x-1 gap-y-0 max-w-[min(100%,280px)]"
-                          title={msg.readBy
-                            .map((r) => (r.displayName?.trim() ? r.displayName : 'Thành viên'))
-                            .join(', ')}
-                        >
-                          <span className="text-[10px] text-white/65 shrink-0">Đã xem</span>
-                          {msg.readBy.slice(0, 6).map((r) => (
-                            <span
-                              key={r.userId}
-                              className="text-[10px] font-semibold text-white/90 truncate max-w-[100px]"
-                            >
-                              {r.displayName?.trim() || 'Người dùng'}
-                            </span>
-                          ))}
-                          {msg.readBy.length > 6 ? (
-                            <span className="text-[10px] text-white/65">+{msg.readBy.length - 6}</span>
-                          ) : null}
-                        </div>
-                      )}
+                      {isMe &&
+                        !msg.isRecalled &&
+                        !msg.isDeleted &&
+                        msg.readBy &&
+                        msg.readBy.length > 0 && (
+                          <div
+                            className="flex flex-wrap items-center justify-end gap-x-1 gap-y-0 max-w-[min(100%,280px)]"
+                            title={msg.readBy
+                              .map((r) => (r.displayName?.trim() ? r.displayName : 'Thành viên'))
+                              .join(', ')}
+                          >
+                            <span className="text-[10px] text-white/65 shrink-0">Đã xem</span>
+                            {msg.readBy.slice(0, 6).map((r) => (
+                              <span
+                                key={r.userId}
+                                className="text-[10px] font-semibold text-white/90 truncate max-w-[100px]"
+                              >
+                                {r.displayName?.trim() || 'Người dùng'}
+                              </span>
+                            ))}
+                            {msg.readBy.length > 6 ? (
+                              <span className="text-[10px] text-white/65">
+                                +{msg.readBy.length - 6}
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
                     </div>
                   )}
                 </div>

@@ -1,20 +1,20 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { BarChart2, CheckCircle2, ClipboardList, X } from 'lucide-react';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
 import { ConversationListPanel } from '@/components/chat/ConversationListPanel';
+import { ChatMainContent } from '@/components/chat/ChatMainContent';
+import { ChatSideInfoRail } from '@/components/chat/ChatSideInfoRail';
+import { ConversationInfoPanel } from '@/components/chat/ConversationInfoPanel';
+import { ChatModalsHost } from '@/components/chat/ChatModalsHost';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useCallContext } from '@/contexts/CallContext';
 import { useSocketContext } from '@/contexts/SocketContext';
 import { ChatPageProvider, useChatPageContextValue } from '@/pages/user/chat-page/ChatPageContext';
 import { useChatModalController } from '@/pages/user/chat-page/hooks/useChatModalController';
+import { useChatMessageData } from '@/pages/user/chat-page/hooks/useChatMessageData';
 import { useChatScrollBehavior } from '@/pages/user/chat-page/hooks/useChatScrollBehavior';
 import { useTaskReminderScheduler } from '@/pages/user/chat-page/hooks/useTaskReminderScheduler';
 import { useConversationRealtimeLifecycle } from '@/pages/user/chat-page/hooks/useConversationRealtimeLifecycle';
@@ -22,23 +22,19 @@ import { useConversationRoutingSync } from '@/pages/user/chat-page/hooks/useConv
 import { useDirectConversationActions } from '@/pages/user/chat-page/hooks/useDirectConversationActions';
 import { useGroupConversationController } from '@/pages/user/chat-page/hooks/useGroupConversationController';
 import { useGroupData } from '@/pages/user/chat-page/hooks/useGroupData';
+import { useMessageModerationActions } from '@/pages/user/chat-page/hooks/useMessageModerationActions';
+import { useChatMobileLayout } from '@/pages/user/chat-page/hooks/useChatMobileLayout';
+import { useMessageJumpNavigation } from '@/pages/user/chat-page/hooks/useMessageJumpNavigation';
+import { useConversationPreferences } from '@/pages/user/chat-page/hooks/useConversationPreferences';
+import { useMessagePinController } from '@/pages/user/chat-page/hooks/useMessagePinController';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
-  chatApi,
-  patchMessageInGetMessagesCache,
   useGetConversationsQuery,
-  useGetMessagesQuery,
   useSendMessageMutation,
-  useCreateConversationMutation,
-  useDeleteMessageMutation,
   useEditMessageMutation,
-  useMarkAsReadMutation,
-  useUpdateConversationPreferencesMutation,
-  usePinMessageMutation,
+  useDeleteMessageMutation,
   useRecallMessageMutation,
-  useUnpinMessageMutation,
-  useReactMessageMutation,
-  useLeaveGroupMutation,
-  useDeleteGroupMutation,
+  useMarkAsReadMutation,
 } from '@/store/api/chatApi';
 import { useUploadMediaMutation } from '@/store/api/mediaApi';
 import {
@@ -158,7 +154,10 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
   const dispatch = useDispatch<AppDispatch>();
-  const activeConversationIdRef = useRef<string | null>(null);
+
+  // ── Responsive breakpoint ─────────────────────────────────────────────
+  const isTabletOrDesktop = useBreakpoint('md');
+  const isDesktop = useBreakpoint('lg');
 
   // ── Auth ──────────────────────────────────────────────────────────────
   const currentUser = useSelector((state: RootState) => state.auth.user);
@@ -175,7 +174,7 @@ export default function ChatPage() {
     isFetching: convsFetching,
     refetch: refetchConversations,
   } = useGetConversationsQuery();
-  const conversations = conversationsData?.data ?? [];
+  const conversations = useMemo(() => conversationsData?.data ?? [], [conversationsData?.data]);
   const conversationsPinnedToTop = useMemo(
     () => conversations.filter((c) => c.isPinnedToTop),
     [conversations],
@@ -189,125 +188,16 @@ export default function ChatPage() {
     return state.chat.typingUsers[activeConversationId] ?? EMPTY_TYPING_USERS;
   });
 
-  useEffect(() => {
-    activeConversationIdRef.current = activeConversationId;
-  }, [activeConversationId]);
+  // ── Message data (merged API + socket, pinned MRU) ───────────────────
+  const messageData = useChatMessageData(activeConversationId);
 
-  const EMPTY_MESSAGE_ARRAY: ReadonlyArray<IMessage> = EMPTY_ARRAY;
-
-  const { data: messagesData } = useGetMessagesQuery(
-    { conversationId: activeConversationId! },
-    { skip: !activeConversationId },
-  );
-
-  const socketMessages = useSelector((state: RootState) => {
-    if (!activeConversationId) return EMPTY_MESSAGE_ARRAY;
-    return state.chat.messages[activeConversationId] ?? EMPTY_MESSAGE_ARRAY;
-  });
-
-  const allMessages = useMemo(() => {
-    const apiMessages = messagesData?.data ?? [];
-    const statusRank = (x?: string) => (x === 'read' ? 3 : x === 'delivered' ? 2 : x === 'sent' ? 1 : 0);
-    const RECALL_TEXT = 'Tin nhắn đã được thu hồi';
-    // Ghép isPinned / status / thu hồi từ buffer socket: khi patch RTK chậm hoặc refetch chưa về, Redux/socket vẫn phải thắng.
-    const merged: IMessage[] = apiMessages.map((m) => {
-      const mid = String(m.messageId);
-      const sm = socketMessages.find((s) => String(s.messageId) === mid);
-      if (!sm) return m;
-      const isRecalled = Boolean(m.isRecalled) || Boolean(sm.isRecalled);
-      const isDeleted = Boolean(m.isDeleted) || Boolean(sm.isDeleted);
-      const pin = (Boolean(m.isPinned) || Boolean(sm.isPinned)) && !isRecalled && !isDeleted;
-      const bestStatus =
-        statusRank(sm.status) > statusRank(m.status) ? sm.status : m.status ?? sm.status;
-      const readBy = (m.readBy?.length ?? 0) >= (sm.readBy?.length ?? 0) ? m.readBy : sm.readBy;
-      const pinChanged = pin !== Boolean(m.isPinned);
-      const statusChanged = bestStatus !== m.status;
-      const readByChanged = JSON.stringify(readBy ?? []) !== JSON.stringify(m.readBy ?? []);
-      const recallChanged = isRecalled !== Boolean(m.isRecalled);
-      const deleteChanged = isDeleted !== Boolean(m.isDeleted);
-      const recallContentPending = isRecalled && String(m.content ?? '').trim() !== RECALL_TEXT;
-      if (!pinChanged && !statusChanged && !readByChanged && !recallChanged && !deleteChanged && !recallContentPending) {
-        return m;
-      }
-      const content = isRecalled ? RECALL_TEXT : m.content;
-      return {
-        ...m,
-        isRecalled,
-        isDeleted,
-        content,
-        isPinned: pin,
-        ...(bestStatus ? { status: bestStatus } : {}),
-        ...(readBy?.length ? { readBy } : {}),
-      };
-    });
-    socketMessages.forEach((sm) => {
-      const sid = String(sm.messageId);
-      if (!merged.some((m) => String(m.messageId) === sid)) {
-        merged.push(sm);
-      }
-    });
-    merged.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    return merged;
-  }, [messagesData, socketMessages]);
-
-  /**
-   * Thứ tự ghim MRU: tin vừa ghim lên đầu thanh / modal (khớp `pinnedMessagesOrdered`).
-   * Giới hạn số tin ghim: `MAX_PINNED_PER_CONVERSATION` (đồng bộ backend).
-   */
-  const [pinnedMessageOrderByConv, setPinnedMessageOrderByConv] = useState<Record<string, string[]>>({});
-
-  const { primaryPinnedMessage, otherPinnedMessages } = useMemo(() => {
-    if (!activeConversationId) {
-      return { primaryPinnedMessage: null as IMessage | null, otherPinnedMessages: [] as IMessage[] };
-    }
-    const pinned = allMessages.filter(
-      (m) => m.isPinned && !m.isRecalled && !m.isDeleted,
-    );
-    if (pinned.length === 0) {
-      return { primaryPinnedMessage: null, otherPinnedMessages: [] };
-    }
-
-    const order = pinnedMessageOrderByConv[activeConversationId] ?? [];
-    const byId = new Map(pinned.map((m) => [m.messageId, m]));
-    const pinnedIds = new Set(pinned.map((m) => m.messageId));
-
-    const fromOrder = order.filter((id) => pinnedIds.has(id));
-    const notInOrder = pinned
-      .filter((m) => !fromOrder.includes(m.messageId))
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .map((m) => m.messageId);
-    const mergedIds = [...fromOrder, ...notInOrder];
-
-    const primaryId = mergedIds[0];
-    const primary = (primaryId ? byId.get(primaryId) : null) ?? pinned[pinned.length - 1]!;
-    const other = mergedIds
-      .slice(1)
-      .map((id) => byId.get(id))
-      .filter((m): m is IMessage => m != null);
-    return { primaryPinnedMessage: primary, otherPinnedMessages: other };
-  }, [allMessages, activeConversationId, pinnedMessageOrderByConv]);
-
-  const pinnedMessagesOrdered = useMemo(() => {
-    if (!primaryPinnedMessage) return [];
-    return [primaryPinnedMessage, ...otherPinnedMessages];
-  }, [primaryPinnedMessage, otherPinnedMessages]);
-
-  const latestMessageIdForRead =
-    allMessages.length > 0 ? allMessages[allMessages.length - 1].messageId : undefined;
-
+  // ── RTK Mutations (for message moderation) ───────────────────────────
   const [sendMessage] = useSendMessageMutation();
   const [uploadMedia] = useUploadMediaMutation();
-  const [createConversation] = useCreateConversationMutation();
   const [editMessage, { isLoading: isEditing }] = useEditMessageMutation();
   const [deleteMessage] = useDeleteMessageMutation();
   const [recallMessage] = useRecallMessageMutation();
   const [markAsRead] = useMarkAsReadMutation();
-  const [updateConversationPreferences] = useUpdateConversationPreferencesMutation();
-  const [pinMessage] = usePinMessageMutation();
-  const [unpinMessage] = useUnpinMessageMutation();
-  const [reactMessage] = useReactMessageMutation();
-  const [leaveGroupMutation] = useLeaveGroupMutation();
-  const [deleteGroupMutation] = useDeleteGroupMutation();
 
   // ── Group data ───────────────────────────────────────────────────────
   const {
@@ -343,48 +233,38 @@ export default function ChatPage() {
 
   // ── Modal state ──────────────────────────────────────────────────────
   const { state: modalState, actions: modalActions } = useChatModalController();
+  const {
+    mobileView,
+    mobileListOpen,
+    setMobileListOpen,
+    handleSelectConversation,
+    handleBackToList,
+  } = useChatMobileLayout({
+    isTabletOrDesktop,
+    activeConversationId: activeConversationId ?? undefined,
+    routeConversationId,
+    navigate,
+  });
 
-  const handleAudioCall = useCallback(() => {
-    if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
-    initiateCall(activeConversation.otherUserId, 'audio');
-  }, [activeConversation, initiateCall]);
+  // ── Conversation preferences (mute/pin) ──────────────────────────────
+  const convPrefs = useConversationPreferences({
+    activeConversationId,
+    conversations,
+  });
 
-  const handleVideoCall = useCallback(() => {
-    if (activeConversation?.type !== 'direct' || !activeConversation.otherUserId) return;
-    // CallContext sẽ lưu returnTo = location.pathname (đang là /chat/:conversationId)
-    initiateCall(activeConversation.otherUserId, 'video');
-  }, [activeConversation, initiateCall]);
-
-  const [pinLimitModalMsg, setPinLimitModalMsg] = useState<IMessage | null>(null);
-  const [pinReplaceIndex, setPinReplaceIndex] = useState<number | null>(null);
-  const [pinLimitSubmitting, setPinLimitSubmitting] = useState(false);
-  const [convPinLimitPendingId, setConvPinLimitPendingId] = useState<string | null>(null);
-  const [convPinLimitConfirmBusy, setConvPinLimitConfirmBusy] = useState(false);
-  const [convPinLimitUnpinningId, setConvPinLimitUnpinningId] = useState<string | null>(null);
-  const [conversationSearchRequestTick, setConversationSearchRequestTick] = useState(0);
-
-  const patchMessageInCache = useCallback(
-    (conversationId: string, messageId: string, patch: Partial<IMessage>) => {
-      patchMessageInGetMessagesCache(dispatch, conversationId, messageId, patch);
-    },
-    [dispatch],
-  );
-
-  const handleReactMessage = useCallback(
-    async (msg: IMessage, emoji: string) => {
-      try {
-        await reactMessage({
-          messageId: msg.messageId,
-          conversationId: msg.conversationId,
-          createdAt: msg.createdAt,
-          emoji,
-        }).unwrap();
-      } catch {
-        /* ignore */
-      }
-    },
-    [reactMessage],
-  );
+  // ── Message pin controller ───────────────────────────────────────────
+  const pinController = useMessagePinController({
+    dispatch,
+    activeConversationId,
+    activeConversation,
+    currentUserId,
+    groupMembers,
+    pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
+    allMessages: messageData.allMessages,
+    patchMessageInCache: messageData.patchMessageInCache,
+    setPinnedMessageOrderByConv: messageData.setPinnedMessageOrderByConv,
+    setActionMenuMsgId: modalActions.setActionMenuMsgId,
+  });
 
   // ── Direct conversation actions ──────────────────────────────────────
   const directActions = useDirectConversationActions({
@@ -392,7 +272,6 @@ export default function ChatPage() {
     activeConversation,
     dispatch,
     navigate,
-    createConversation,
     initiateCall,
     initiateGroupCall,
     selectedGroupMembers: modalState.selectedGroupMembers,
@@ -408,6 +287,7 @@ export default function ChatPage() {
     [uploadMedia],
   );
 
+  // ── Group controller ─────────────────────────────────────────────────
   const groupController = useGroupConversationController({
     activeConversationId,
     activeConversation,
@@ -476,9 +356,24 @@ export default function ChatPage() {
     navigate,
   });
 
-  useEffect(() => {
-    void refetchConversations();
-  }, [activeConversationId, refetchConversations]);
+  // ── Message moderation actions ───────────────────────────────────────
+  const { handleSaveEdit, handleRecallMsg, handleDeleteMsg, handleMessageConfirm } =
+    useMessageModerationActions({
+      dispatch,
+      editingMessage: modalState.editingMessage,
+      editDraft: modalState.editDraft,
+      setEditingMessage: modalActions.setEditingMessage,
+      setActionMenuMsgId: modalActions.setActionMenuMsgId,
+      messageConfirm: modalState.messageConfirm,
+      setMessageConfirm: modalActions.setMessageConfirm,
+      setMessageConfirmSubmitting: modalActions.setMessageConfirmSubmitting,
+      patchMessageInCache: messageData.patchMessageInCache,
+      removeMessageFromCache: (conversationId, messageId) =>
+        applyMessageHiddenForMe(dispatch, conversationId, messageId),
+      editMessage,
+      recallMessage,
+      deleteMessage,
+    });
 
   useConversationRoutingSync({
     dispatch,
@@ -855,44 +750,11 @@ export default function ChatPage() {
     [navigate],
   );
 
-  const handleSaveEdit = useCallback(async () => {
-    if (!modalState.editingMessage || !modalState.editDraft.trim()) return;
-    if (modalState.editingMessage.type !== 'text') return;
-    try {
-      await editMessage({
-        messageId: modalState.editingMessage.messageId,
-        content: modalState.editDraft.trim(),
-        conversationId: modalState.editingMessage.conversationId,
-        createdAt: modalState.editingMessage.createdAt,
-      }).unwrap();
-      dispatch(
-        messageEdited({
-          messageId: modalState.editingMessage.messageId,
-          conversationId: modalState.editingMessage.conversationId,
-          content: modalState.editDraft.trim(),
-        }),
-      );
-      patchMessageInCache(
-        modalState.editingMessage.conversationId,
-        modalState.editingMessage.messageId,
-        {
-          content: modalState.editDraft.trim(),
-          isEdited: true,
-        },
-      );
-      modalActions.setEditingMessage(null);
-    } catch {
-      /* giữ modal */
-    }
-  }, [modalState.editingMessage, modalState.editDraft, editMessage, dispatch, patchMessageInCache, modalActions]);
-
+  // ── Forward media ────────────────────────────────────────────────────
   const handleForwardMediaMessage = useCallback(
     async (targetConversationIds: string[], msg: IMessage, caption: string) => {
       if (targetConversationIds.length === 0) return;
-      if (
-        !msg.mediaUrl ||
-        (msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'file')
-      ) {
+      if (!msg.mediaUrl || (msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'file')) {
         toast.error('Không chia sẻ được tin này');
         throw new Error('invalid');
       }
@@ -1118,21 +980,55 @@ export default function ChatPage() {
     unpinMessage,
     pinMessage,
     dispatch,
-    patchMessageInCache,
-  ]);
+    routeConversationId,
+    conversations,
+    convsLoading,
+    convsFetching,
+    navigate,
+  });
 
-  const scrollToMessageBubble = useCallback((messageId: string) => {
-    if (jumpHighlightClearRef.current) {
-      clearTimeout(jumpHighlightClearRef.current);
-      jumpHighlightClearRef.current = null;
-    }
-    setJumpFlashNonce((n) => n + 1);
-    setJumpHighlightMessageId(messageId);
-    requestAnimationFrame(() => {
-      document.getElementById(`chat-msg-${messageId}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
+  useConversationRealtimeLifecycle({
+    activeConversationId,
+    latestMessageIdForRead: messageData.latestMessageIdForRead,
+    dispatch,
+    markAsRead,
+  });
+
+  // ── Realtime events ──────────────────────────────────────────────────
+  useChatRealtimeEvents({
+    dispatch,
+    isConnected,
+    activeConversationId,
+    setActivePollId: modalActions.setActivePollId,
+    setShowPollVoteModal: modalActions.setShowPollVoteModal,
+    fetchGroupMembers,
+    patchMessageInCache: messageData.patchMessageInCache,
+    setPinnedMessageOrderByConv: messageData.setPinnedMessageOrderByConv,
+    navigate,
+  });
+
+  const {
+    jumpHighlightMessageId,
+    jumpFlashNonce,
+    conversationSearchRequestTick,
+    scrollToMessageBubble,
+    requestOpenConversationSearch,
+  } = useMessageJumpNavigation({
+    activeConversationId: activeConversationId ?? undefined,
+    onRequestOpenSearchPanel: () => {
+      modalActions.setShowInfo(true);
+    },
+  });
+
+  // ── Scroll behavior ──────────────────────────────────────────────────
+  const { messagesContainerRef, messagesEndRef, unreadIncomingCount, handleJumpToLatest } =
+    useChatScrollBehavior({
+      allMessages: messageData.allMessages,
+      activeConversationId,
+      currentUserId,
+      typingUsers,
+      actionMenuMsgId: modalState.actionMenuMsgId,
+      setActionMenuMsgId: modalActions.setActionMenuMsgId,
     });
     jumpHighlightClearRef.current = setTimeout(() => {
       setJumpHighlightMessageId(null);
@@ -1174,17 +1070,13 @@ export default function ChatPage() {
     modalActions.setGroupName('');
   }, [modalState.selectedGroupMembers, modalState.groupName, createConversation, navigate, dispatch, modalActions]);
 
+  // ── Friend click (for contacts management) ──────────────────────────
   const handleFriendClick = useCallback(
     async (friendId: string, friendName: string) => {
       try {
-        console.log('👤 handleFriendClick - friendId:', friendId, 'friendName:', friendName);
-
-        // Check if conversation already exists with this friend
-        let existingConversation = conversations.find(
+        const existingConversation = conversations.find(
           (c) => c.type === 'direct' && (c.otherUserId === friendId || c.name === friendName),
         );
-
-        // If not found, create a new direct conversation
         if (!existingConversation) {
           console.log('🆕 Creating new direct conversation...');
           const result = await createConversation({
@@ -1906,70 +1798,17 @@ export default function ChatPage() {
           setConvPinLimitPendingId(conversationId);
           return;
         }
-      }
-      try {
-        await updateConversationPreferences({ conversationId, isPinnedToTop: next }).unwrap();
-        toast.success(next ? 'Đã ghim hội thoại' : 'Đã bỏ ghim hội thoại');
-      } catch (e: unknown) {
-        const err = e as { status?: number; data?: { error?: { message?: string } } };
-        const msg = err?.data?.error?.message ?? '';
-        if (
-          next &&
-          (msg.includes('Chỉ ghim được tối đa') || err.status === 403)
-        ) {
-          setConvPinLimitPendingId(conversationId);
-        } else {
-          toast.error(msg || 'Không thể cập nhật ghim hội thoại');
-        }
+        modalActions.setShowContactsManagement(false);
+        void navigate(`/chat/${existingConversation.conversationId}`);
+      } catch {
+        void directActions.handleFriendClick(friendId, friendName);
       }
     },
-    [conversations, updateConversationPreferences],
+    [conversations, navigate, modalActions, directActions],
   );
 
-  const handleUnpinFromConvPinModal = useCallback(
-    async (targetConversationId: string) => {
-      setConvPinLimitUnpinningId(targetConversationId);
-      try {
-        await updateConversationPreferences({
-          conversationId: targetConversationId,
-          isPinnedToTop: false,
-        }).unwrap();
-        toast.success('Đã bỏ ghim hội thoại');
-      } catch (err: unknown) {
-        const msg = (err as { data?: { error?: { message?: string } } })?.data?.error?.message;
-        toast.error(msg ?? 'Không thể bỏ ghim');
-      } finally {
-        setConvPinLimitUnpinningId(null);
-      }
-    },
-    [updateConversationPreferences],
-  );
-
-  const handleConfirmPendingConvPin = useCallback(async () => {
-    if (!convPinLimitPendingId) return;
-    const pinnedTopCount = conversations.filter((x) => x.isPinnedToTop).length;
-    if (pinnedTopCount >= MAX_PINNED_CHATS_TO_TOP) {
-      toast.info('Vui lòng bỏ ghim ít nhất một hội thoại trước.');
-      return;
-    }
-    const pendingId = convPinLimitPendingId;
-    setConvPinLimitConfirmBusy(true);
-    try {
-      await updateConversationPreferences({ conversationId: pendingId, isPinnedToTop: true }).unwrap();
-      toast.success('Đã ghim hội thoại');
-      setConvPinLimitPendingId(null);
-    } catch (err: unknown) {
-      const msg = (err as { data?: { error?: { message?: string } } })?.data?.error?.message;
-      toast.error(msg ?? 'Không thể ghim hội thoại');
-    } finally {
-      setConvPinLimitConfirmBusy(false);
-    }
-  }, [convPinLimitPendingId, conversations, updateConversationPreferences]);
-
-  const handleToggleAddMember = useCallback((userId: string, checked: boolean) => {
-    modalActions.setSelectedAddMembers((prev) =>
-      checked ? [...prev, userId] : prev.filter((id) => id !== userId),
-    );
+  const handleOpenProfile = useCallback(() => {
+    modalActions.setShowProfileModal(true);
   }, [modalActions]);
 
   const handleRequestJoin = useCallback(async () => {
@@ -2290,25 +2129,36 @@ export default function ChatPage() {
     [activeConversationId, currentUserId, groupTasks],
   );
 
-  const messageActions = useMemo(
-    () => ({
-      handleSaveEdit,
-      handleRecallMsg,
-      handleDeleteMsg,
-      handleMessageConfirm,
-      handleTogglePinMsg,
-      handleReactMessage,
-    }),
-    [
-      handleSaveEdit,
-      handleRecallMsg,
-      handleDeleteMsg,
-      handleMessageConfirm,
-      handleTogglePinMsg,
-      handleReactMessage,
-    ],
+  const handleOpenAddFriend = useCallback(() => {
+    modalActions.setShowAddFriendModal(true);
+  }, [modalActions]);
+
+  const handleToggleShowInfo = useCallback(() => {
+    modalActions.setShowInfo((v) => !v);
+  }, [modalActions]);
+
+  const handleCloseInfo = useCallback(() => {
+    modalActions.setShowInfo(false);
+  }, [modalActions]);
+
+  useEffect(() => {
+    if (!isDesktop && modalState.showInfo) {
+      modalActions.setShowInfo(false);
+    }
+  }, [isDesktop, modalState.showInfo, modalActions]);
+
+  const handleStartEdit = useCallback(
+    (msg: IMessage) => {
+      if (msg.type !== 'text') return;
+      modalActions.setEditingMessage(msg);
+      modalActions.setEditDraft(msg.content);
+    },
+    [modalActions],
   );
 
+  const openCreateGroupModal = modalActions.openCreateGroupModal;
+
+  // ── Context value ────────────────────────────────────────────────────
   const contextValue = useChatPageContextValue({
     currentUserId,
     currentUserRole,
@@ -2327,15 +2177,91 @@ export default function ChatPage() {
     messageActions,
   });
 
-  const { messagesContainerRef, messagesEndRef, unreadIncomingCount, handleJumpToLatest } =
-    useChatScrollBehavior({
-      allMessages,
-      activeConversationId,
-      currentUserId,
-      typingUsers,
-      actionMenuMsgId: modalState.actionMenuMsgId,
-      setActionMenuMsgId: modalActions.setActionMenuMsgId,
-    });
+  // ── Render ───────────────────────────────────────────────────────────
+
+  /** Props chung cho ConversationListPanel (tránh lặp code). */
+  const convListPanelProps = {
+    conversations,
+    convsLoading,
+    activeMessages: messageData.allMessages,
+    showContactsManagement: modalState.showContactsManagement,
+    contactsTab: modalState.contactsTab,
+    onContactsTabChange: modalActions.setContactsTab,
+    onSelectConversation: handleSelectConversation,
+    onPickSearchMessage: scrollToMessageBubble,
+    onOpenCreateGroup: openCreateGroupModal,
+    onOpenMarkRead: handleOpenMarkRead,
+    onOpenAddFriend: handleOpenAddFriend,
+    onToggleConversationMute: convPrefs.handleToggleConversationMute,
+  };
+
+  /** ConversationInfoPanel — dùng chung cho cả desktop sidebar và mobile Sheet. */
+  const conversationInfoPanel = (
+    <ConversationInfoPanel
+      numRequests={groupRequests.length}
+      activeConversation={activeConversation}
+      onOpenAISummaryFromPanel={groupController.openAISummaryFromPanel}
+      onEditGroup={groupController.openEditGroupModal}
+      onAddMembers={groupController.openAddMembersModal}
+      onOpenCreateGroup={openCreateGroupModal}
+      onToggleMuteNotifications={
+        activeConversationId
+          ? () => void convPrefs.handleToggleConversationMute(activeConversationId)
+          : undefined
+      }
+      onApplyMuteFromModal={activeConversationId ? convPrefs.handleApplyMuteFromModal : undefined}
+      onTogglePinConversation={
+        activeConversationId
+          ? () => void convPrefs.handleToggleConversationPin(activeConversationId)
+          : undefined
+      }
+      onRequestJoin={() => void groupController.handleRequestJoin()}
+      onVotePoll={(pollId, optionIndex) => void groupController.handleVotePoll(pollId, optionIndex)}
+      onOpenPollVote={(pollId) => groupController.openPollVoteModal(pollId)}
+      onAddPollOption={(pollId) => void groupController.handleAddPollOption(pollId)}
+      onClosePoll={(pollId) => void groupController.handleClosePoll(pollId)}
+      onToggleTask={(taskId) => void groupController.handleToggleTaskStatus(taskId)}
+      onOpenPollModalFromPanel={
+        activeConversation?.type === 'group' ? () => modalActions.setShowPollModal(true) : undefined
+      }
+      onOpenTaskModalFromPanel={
+        activeConversation?.type === 'group' ? () => modalActions.setShowTaskModal(true) : undefined
+      }
+      polls={groupPolls}
+      tasks={groupTasks}
+      isJoinRequested={groupJoinRequested}
+      loading={{
+        polls: groupLoading.polls || groupActionLoading.votePoll,
+        tasks: groupLoading.tasks || groupActionLoading.updateTask,
+        recap: groupLoading.recap || groupActionLoading.generateRecap,
+        requestJoin: groupActionLoading.requestJoin,
+        updateGroup: groupActionLoading.updateGroup,
+        leaveGroup: groupActionLoading.leaveGroup,
+        deleteGroup: groupActionLoading.deleteGroup,
+      }}
+      onLeaveGroup={groupController.handleLeaveGroup}
+      onDeleteGroup={groupController.handleDeleteGroup}
+      onOpenMemberModal={() => {}}
+      currentUserRole={currentUserRole}
+      currentUserId={currentUserId}
+      members={groupMembers}
+      requests={groupRequests}
+      onApproveMember={groupController.handleApproveRequest}
+      onRejectMember={groupController.handleRejectRequest}
+      onKickMember={groupController.handleKickMember}
+      busyMemberActions={{
+        approving: groupActionLoading.approveRequest,
+        rejecting: groupActionLoading.rejectRequest,
+        removing: groupActionLoading.removeMember,
+        changingRole: groupActionLoading.changeRole,
+      }}
+      conversationMessages={messageData.allMessages}
+      conversationSearchRequestTick={conversationSearchRequestTick}
+      onJumpToMessage={scrollToMessageBubble}
+      conversations={conversations}
+      onSelectConversation={handleSelectConversation}
+    />
+  );
 
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [focusTaskNonce, setFocusTaskNonce] = useState(0);
@@ -2349,15 +2275,18 @@ export default function ChatPage() {
 
   return (
     <ChatPageProvider value={contextValue}>
+      {/*
+       * Layout wrapper:
+       *  - Mobile (< md): flex-col, padding-bottom 64px untuk bottom tab bar
+       *  - Tablet/Desktop (md+): flex-row như cũ
+       */}
       <div className="w-full h-full min-h-0 flex overflow-hidden bg-background">
+        {/* ── Nav Rail (desktop/tablet) + Bottom Tab (mobile) ─────────── */}
         <ChatNavRail
           navigate={navigate}
-          onOpenProfile={() => modalActions.setShowProfileModal(true)}
+          onOpenProfile={handleOpenProfile}
           showContactsManagement={modalState.showContactsManagement}
-          onToggleContacts={() => {
-            modalActions.setShowContactsManagement((v) => !v);
-            modalActions.setContactsTab('friends');
-          }}
+          onToggleContacts={handleToggleContacts}
         />
 
       <ConversationListPanel
@@ -2528,6 +2457,94 @@ export default function ChatPage() {
             />
           </>
         )}
+
+        {/* Sheet ConversationList trên mobile khi đang xem chat */}
+        {!isTabletOrDesktop && (
+          <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
+            <SheetContent side="left" className="w-80 p-0 overflow-y-auto">
+              <SheetTitle className="sr-only">Danh sách hội thoại</SheetTitle>
+              <ConversationListPanel {...convListPanelProps} />
+            </SheetContent>
+          </Sheet>
+        )}
+
+        {/* ── Chat Main Content ─────────────────────────────────────────
+             Mobile: ẩn khi đang ở 'list' view (chưa chọn conversation)
+             Desktop: luôn hiện                                           */}
+        {(isTabletOrDesktop || mobileView === 'chat') && (
+          <ChatMainContent
+            showContactsManagement={modalState.showContactsManagement}
+            showInfo={modalState.showInfo}
+            onToggleShowInfo={handleToggleShowInfo}
+            typingUsers={typingUsers}
+            pinned={{
+              pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
+              pinnedMessageCount: activeConversation?.pinnedMessageCount ?? 0,
+              onScrollToMessage: scrollToMessageBubble,
+              onTogglePin: pinController.handleTogglePinMsg,
+            }}
+            scroll={{
+              containerRef: messagesContainerRef,
+              endRef: messagesEndRef,
+              allMessages: messageData.allMessages,
+              unreadIncomingCount,
+              onJumpToLatest: handleJumpToLatest,
+            }}
+            jumpHighlightMessageId={jumpHighlightMessageId}
+            jumpFlashNonce={jumpFlashNonce}
+            onJumpToMessage={scrollToMessageBubble}
+            actionMenuMsgId={modalState.actionMenuMsgId}
+            onActionMenuMsgIdChange={modalActions.setActionMenuMsgId}
+            onStartEdit={handleStartEdit}
+            onOpenPoll={() => modalActions.setShowPollModal(true)}
+            onOpenTask={() => modalActions.setShowTaskModal(true)}
+            onSearchMessages={activeConversationId ? requestOpenConversationSearch : undefined}
+            resolvedMemberCount={
+              activeConversation?.type === 'group' && groupMembers.length > 0
+                ? groupMembers.length
+                : undefined
+            }
+            onFriendClick={handleFriendClick}
+            shareTargetConversations={conversations}
+            onForwardMediaMessage={handleForwardMediaMessage}
+            onBack={!isTabletOrDesktop ? handleBackToList : undefined}
+          />
+        )}
+
+        {/* ── Side Info Rail ───────────────────────────────────────────
+             Desktop: animated sidebar; Mobile/Tablet: Sheet overlay     */}
+        <ChatSideInfoRail
+          showInfo={modalState.showInfo}
+          showContactsManagement={modalState.showContactsManagement}
+          onClose={handleCloseInfo}
+        >
+          {conversationInfoPanel}
+        </ChatSideInfoRail>
+
+        <ChatModalsHost
+          state={modalState}
+          actions={modalActions}
+          isEditing={isEditing}
+          pinLimit={{
+            pinLimitModalMsg: pinController.pinLimitModalMsg,
+            setPinLimitModalMsg: pinController.setPinLimitModalMsg,
+            pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
+            pinReplaceIndex: pinController.pinReplaceIndex,
+            setPinReplaceIndex: pinController.setPinReplaceIndex,
+            pinLimitSubmitting: pinController.pinLimitSubmitting,
+            onConfirmPinReplace: pinController.handleConfirmPinReplace,
+          }}
+          convPinLimit={{
+            convPinLimitPendingId: convPrefs.convPinLimitPendingId,
+            setConvPinLimitPendingId: convPrefs.setConvPinLimitPendingId,
+            convPinLimitConfirmBusy: convPrefs.convPinLimitConfirmBusy,
+            convPinLimitUnpinningId: convPrefs.convPinLimitUnpinningId,
+            conversationsPinnedToTop,
+            conversations,
+            onUnpinConversation: convPrefs.handleUnpinFromConvPinModal,
+            onConfirmPinPending: convPrefs.handleConfirmPendingConvPin,
+          }}
+        />
       </div>
 
       {modalState.showInfo && !modalState.showContactsManagement && (
