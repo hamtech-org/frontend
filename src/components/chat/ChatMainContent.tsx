@@ -134,26 +134,16 @@ export function ChatMainContent(props: ChatMainContentProps) {
             onBack={onBack}
           />
 
-          {core.activeConversationId &&
-            ((pinned.pinnedMessageCount ?? 0) > 0 || pinned.pinnedMessagesOrdered.length > 0) && (
-              <div className="w-full shrink-0">
-                {pinned.pinnedMessagesOrdered.length > 0 ? (
-                  <PinnedMessagesBar
-                    key={core.activeConversationId}
-                    pinnedMessages={pinned.pinnedMessagesOrdered}
-                    onScrollToMessage={pinned.onScrollToMessage}
-                    onTogglePin={pinned.onTogglePin}
-                  />
-                ) : (
-                  <div className="w-full shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="size-4 rounded bg-muted-foreground/10 animate-pulse shrink-0" />
-                      <div className="h-3 w-32 rounded-full bg-muted-foreground/10 animate-pulse" />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+          {core.activeConversationId && pinned.pinnedMessagesOrdered.length > 0 && (
+            <div className="w-full shrink-0">
+              <PinnedMessagesBar
+                key={core.activeConversationId}
+                pinnedMessages={pinned.pinnedMessagesOrdered}
+                onScrollToMessage={pinned.onScrollToMessage}
+                onTogglePin={pinned.onTogglePin}
+              />
+            </div>
+          )}
 
           <ChatMessageList
             messagesContainerRef={scroll.containerRef}
