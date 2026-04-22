@@ -59,6 +59,7 @@ export function ChatComposer({
     handleTyping,
     clearReply,
     mediaUploading,
+    composerStatusMessage,
   } = useChatComposerController(activeConversationId);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -203,6 +204,7 @@ export function ChatComposer({
           <button
             type="button"
             onClick={clearReply}
+            aria-label="Hủy trả lời tin nhắn"
             className="p-1 rounded-full hover:bg-muted transition-colors text-muted-foreground"
           >
             <X className="size-4" />
@@ -265,6 +267,7 @@ export function ChatComposer({
                 <button
                   type="button"
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  aria-label="Mở bảng chọn emoji"
                   className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600"
                 >
                   <Smile className="size-5" />
@@ -304,6 +307,7 @@ export function ChatComposer({
                 type="button"
                 disabled={actionDisabled}
                 onClick={() => galleryInputRef.current?.click()}
+                aria-label="Thêm ảnh hoặc video"
                 className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 disabled:pointer-events-none disabled:opacity-40"
               >
                 <Image className="size-5" />
@@ -317,6 +321,7 @@ export function ChatComposer({
                 type="button"
                 disabled={actionDisabled}
                 onClick={() => fileInputRef.current?.click()}
+                aria-label="Thêm tệp tài liệu"
                 className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 disabled:pointer-events-none disabled:opacity-40"
               >
                 <Paperclip className="size-5" />
@@ -367,6 +372,7 @@ export function ChatComposer({
                   <button
                     type="button"
                     onClick={onOpenPoll}
+                    aria-label="Tạo bình chọn"
                     className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600"
                   >
                     <BarChart2 className="size-5" />
@@ -379,6 +385,7 @@ export function ChatComposer({
                   <button
                     type="button"
                     onClick={onOpenTask}
+                    aria-label="Tạo công việc"
                     className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600"
                   >
                     <CheckSquare className="size-5" />
@@ -460,6 +467,7 @@ export function ChatComposer({
             }}
             onKeyDown={(e) => handleKeyDown(e)}
             disabled={!activeConversationId}
+            aria-label="Soạn tin nhắn"
             className="max-h-32 min-h-10 w-full resize-none bg-transparent px-3.5 py-2.5 text-sm font-medium leading-5 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>
@@ -492,6 +500,9 @@ export function ChatComposer({
           )}
         </div>
       </div>
+      <p aria-live="polite" className="sr-only">
+        {composerStatusMessage}
+      </p>
     </div>
   );
 }

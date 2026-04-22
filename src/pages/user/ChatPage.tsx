@@ -394,10 +394,16 @@ export default function ChatPage() {
     [sendMessage],
   );
 
+  const handleSelectConversation = useCallback(
+    (conversationId: string) => {
+      navigate(`/chat/${conversationId}`);
+      setMobileView('chat');
+      setMobileListOpen(false);
+    },
+    [navigate],
+  );
+
   // ── Routing sync ─────────────────────────────────────────────────────
-  useEffect(() => {
-    void refetchConversations();
-  }, [activeConversationId, refetchConversations]);
 
   // ── Mobile: auto-switch sang 'chat' khi chọn hội thoại ──────────────
   useEffect(() => {
@@ -406,6 +412,15 @@ export default function ChatPage() {
       setMobileListOpen(false);
     }
   }, [activeConversationId, isTabletOrDesktop]);
+
+  // ── Mobile: vào /chat (không conversationId) thì luôn hiện danh sách ─
+  useEffect(() => {
+    if (isTabletOrDesktop) return;
+    if (routeConversationId) return;
+    if (activeConversationId) return;
+    setMobileView('list');
+    setMobileListOpen(false);
+  }, [isTabletOrDesktop, routeConversationId, activeConversationId]);
 
   useConversationRoutingSync({
     dispatch,
@@ -449,11 +464,20 @@ export default function ChatPage() {
     }
     setJumpFlashNonce((n) => n + 1);
     setJumpHighlightMessageId(messageId);
+    const tryScrollIntoView = (remainingAttempts: number) => {
+      const node = document.getElementById(`chat-msg-${messageId}`);
+      if (node) {
+        node.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+        return;
+      }
+      if (remainingAttempts <= 0) return;
+      window.setTimeout(() => tryScrollIntoView(remainingAttempts - 1), 120);
+    };
     requestAnimationFrame(() => {
-      document.getElementById(`chat-msg-${messageId}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
+      tryScrollIntoView(8);
     });
     jumpHighlightClearRef.current = setTimeout(() => {
       setJumpHighlightMessageId(null);
@@ -536,14 +560,7 @@ export default function ChatPage() {
     showContactsManagement: modalState.showContactsManagement,
     contactsTab: modalState.contactsTab,
     onContactsTabChange: modalActions.setContactsTab,
-    onSelectConversation: useCallback(
-      (conversationId: string) => {
-        navigate(`/chat/${conversationId}`);
-        setMobileView('chat');
-        setMobileListOpen(false);
-      },
-      [navigate],
-    ),
+    onSelectConversation: handleSelectConversation,
     onPickSearchMessage: scrollToMessageBubble,
     onOpenCreateGroup: useCallback(() => {
       modalActions.setShowCreateGroupModal(true);
@@ -623,14 +640,7 @@ export default function ChatPage() {
       conversationSearchRequestTick={conversationSearchRequestTick}
       onJumpToMessage={scrollToMessageBubble}
       conversations={conversations}
-      onSelectConversation={useCallback(
-        (conversationId: string) => {
-          navigate(`/chat/${conversationId}`);
-          setMobileView('chat');
-          setMobileListOpen(false);
-        },
-        [navigate],
-      )}
+      onSelectConversation={handleSelectConversation}
     />
   );
 
