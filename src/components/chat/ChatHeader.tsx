@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Edit3,
   PanelRight,
   PanelRightClose,
@@ -9,6 +10,7 @@ import {
   Users,
   Video,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/utils/cn';
@@ -30,6 +32,8 @@ type ChatHeaderProps = {
   resolvedMemberCount?: number;
   /** Mở tìm kiếm trong đoạn hội thoại hiện tại. */
   onSearchMessages?: () => void;
+  /** Quay lại danh sách hội thoại — chỉ hiển thị trên mobile (< md). */
+  onBack?: () => void;
 };
 
 /** Nút icon trong header — bọc sẵn Tooltip theo chuẩn Hamtech. */
@@ -83,6 +87,7 @@ export function ChatHeader({
   currentUserRole,
   resolvedMemberCount,
   onSearchMessages,
+  onBack,
 }: ChatHeaderProps) {
   const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
   // `currentUserRole` có thể chưa có ngay (đợi fetch members) nên không disable click theo role ở header.
@@ -99,9 +104,21 @@ export function ChatHeader({
   return (
     <TooltipProvider delayDuration={300}>
       {/* h-16 (64px) thay h-20 — chuẩn Zalo/Telegram; border dùng semantic token */}
-      <div className="h-16 px-6 flex items-center justify-between border-b border-border/60 bg-background/80 backdrop-blur-md sticky top-0 z-10">
+      <div className="h-16 px-3 md:px-6 flex items-center justify-between border-b border-border/60 bg-background/80 backdrop-blur-md sticky top-0 z-10">
         {/* Thông tin hội thoại */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* Back button — chỉ hiện trên mobile (< md) */}
+          {onBack && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onBack}
+              className="md:hidden shrink-0 -ml-1 rounded-full"
+              aria-label="Quay lại danh sách"
+            >
+              <ArrowLeft className="size-5" />
+            </Button>
+          )}
           {/* Avatar — size-10 thay w-10 h-10 (Rule 8) */}
           <div className="size-10 rounded-full overflow-hidden border-2 border-blue-600/20 bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
             {activeConversation?.avatar ? (

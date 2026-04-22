@@ -171,7 +171,7 @@ export function ConversationListPanel({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="w-[340px] border-r border-border flex flex-col shrink-0 min-h-0 bg-card text-card-foreground">
+      <div className="w-full md:w-[340px] md:border-r border-border flex flex-col shrink-0 min-h-0 h-full bg-card text-card-foreground">
         <div className="pt-5 px-4 flex flex-col gap-4 shrink-0 border-b border-border mb-2">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
@@ -412,7 +412,7 @@ export function ConversationListPanel({
                     }}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.98 }}
-                    className={`w-full p-3 rounded-2xl flex items-center gap-2 transition-colors group ${isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
+                    className={`w-full p-3 rounded-2xl flex items-center gap-2 transition-colors group ${isActive ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
                   >
                     <button
                       type="button"
@@ -447,7 +447,7 @@ export function ConversationListPanel({
                         <p
                           className={`text-[13px] mt-0.5 flex items-center gap-1 min-w-0 ${
                             isActive
-                              ? 'text-white/80'
+                              ? 'font-medium text-blue-700/80 dark:text-blue-300/80'
                               : hasUnread
                                 ? 'font-semibold text-foreground'
                                 : 'text-black/50 dark:text-white/50'
@@ -462,19 +462,19 @@ export function ConversationListPanel({
                               ) : null}
                               {lastMsgType === 'image' && (
                                 <Image
-                                  className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white/90' : 'text-blue-500'}`}
+                                  className={`w-3.5 h-3.5 shrink-0 text-blue-500`}
                                   aria-hidden
                                 />
                               )}
                               {lastMsgType === 'video' && (
                                 <Video
-                                  className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white/90' : 'text-violet-500'}`}
+                                  className={`w-3.5 h-3.5 shrink-0 text-violet-500`}
                                   aria-hidden
                                 />
                               )}
                               {lastMsgType === 'file' && (
                                 <Paperclip
-                                  className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white/90' : 'text-slate-600 dark:text-slate-400'}`}
+                                  className={`w-3.5 h-3.5 shrink-0 text-slate-600 dark:text-slate-400`}
                                   aria-hidden
                                 />
                               )}
@@ -501,14 +501,14 @@ export function ConversationListPanel({
                             className={`p-0.5 rounded-md shrink-0 transition-colors ${isActive ? 'hover:bg-white/15' : 'hover:bg-black/10 dark:hover:bg-white/10'}`}
                           >
                             <BellOff
-                              className={`w-3.5 h-3.5 ${isActive ? 'text-white/70' : 'text-zinc-500 dark:text-zinc-400'}`}
+                              className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600/70 dark:text-blue-400/70' : 'text-zinc-500 dark:text-zinc-400'}`}
                               strokeWidth={1.75}
                               aria-hidden
                             />
                           </button>
                         )}
                         <p
-                          className={`text-[11px] font-medium tabular-nums shrink-0 ${isActive ? 'text-white/70' : 'text-muted-foreground'}`}
+                          className={`text-[11px] font-medium tabular-nums shrink-0 ${isActive ? 'text-blue-600/80 dark:text-blue-400/80' : 'text-muted-foreground'}`}
                         >
                           {lastMsgTime}
                         </p>
@@ -527,7 +527,7 @@ export function ConversationListPanel({
                             aria-hidden
                           >
                             <Pin
-                              className={`w-3.5 h-3.5 ${isActive ? 'text-white/85' : 'text-zinc-600 dark:text-zinc-400'}`}
+                              className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-600 dark:text-zinc-400'}`}
                               strokeWidth={1.75}
                             />
                           </span>

@@ -67,6 +67,12 @@ interface ChatMainContentProps {
     message: IMessage,
     caption: string,
   ) => Promise<void>;
+
+  /**
+   * Callback quay lại danh sách hội thoại — chỉ dùng trên mobile.
+   * Khi được truyền, ChatHeader sẽ hiển thị nút back (ẩn trên md+).
+   */
+  onBack?: () => void;
 }
 
 export function ChatMainContent(props: ChatMainContentProps) {
@@ -96,6 +102,7 @@ export function ChatMainContent(props: ChatMainContentProps) {
     onFriendClick,
     shareTargetConversations = [],
     onForwardMediaMessage = async () => {},
+    onBack,
   } = props;
 
   return (
@@ -124,6 +131,7 @@ export function ChatMainContent(props: ChatMainContentProps) {
             currentUserRole={core.currentUserRole}
             resolvedMemberCount={resolvedMemberCount}
             onSearchMessages={onSearchMessages}
+            onBack={onBack}
           />
 
           {core.activeConversationId &&

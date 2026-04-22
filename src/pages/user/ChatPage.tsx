@@ -8,6 +8,7 @@ import { ChatMainContent } from '@/components/chat/ChatMainContent';
 import { ChatSideInfoRail } from '@/components/chat/ChatSideInfoRail';
 import { ConversationInfoPanel } from '@/components/chat/ConversationInfoPanel';
 import { ChatModalsHost } from '@/components/chat/ChatModalsHost';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useCallContext } from '@/contexts/CallContext';
 import { useSocketContext } from '@/contexts/SocketContext';
 import { ChatPageProvider, useChatPageContextValue } from '@/pages/user/chat-page/ChatPageContext';
@@ -22,6 +23,7 @@ import { useGroupConversationController } from '@/pages/user/chat-page/hooks/use
 import { useGroupData } from '@/pages/user/chat-page/hooks/useGroupData';
 import { useConversationPreferences } from '@/pages/user/chat-page/hooks/useConversationPreferences';
 import { useMessagePinController } from '@/pages/user/chat-page/hooks/useMessagePinController';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   useGetConversationsQuery,
   useSendMessageMutation,
@@ -40,10 +42,22 @@ import type { TypingUserEntry } from '@/types/chat.types';
 
 const EMPTY_TYPING_USERS: readonly TypingUserEntry[] = [];
 
+/** Màn hình hiển thị trên mobile (< md). Desktop dùng layout cột song song. */
+type MobileView = 'list' | 'chat';
+
 export default function ChatPage() {
   const navigate = useNavigate();
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
   const dispatch = useDispatch<AppDispatch>();
+
+  // ── Responsive breakpoint ─────────────────────────────────────────────
+  const isTabletOrDesktop = useBreakpoint('md');
+
+  // ── Mobile navigation state ───────────────────────────────────────────
+  /** Trên mobile, chỉ 1 view active tại 1 thời điểm. */
+  const [mobileView, setMobileView] = useState<MobileView>('list');
+  /** Sheet ConversationList trên mobile khi đang xem chat. */
+  const [mobileListOpen, setMobileListOpen] = useState(false);
 
   // ── Auth ──────────────────────────────────────────────────────────────
   const currentUser = useSelector((state: RootState) => state.auth.user);
@@ -385,6 +399,14 @@ export default function ChatPage() {
     void refetchConversations();
   }, [activeConversationId, refetchConversations]);
 
+  // ── Mobile: auto-switch sang 'chat' khi chọn hội thoại ──────────────
+  useEffect(() => {
+    if (activeConversationId && !isTabletOrDesktop) {
+      setMobileView('chat');
+      setMobileListOpen(false);
+    }
+  }, [activeConversationId, isTabletOrDesktop]);
+
   useConversationRoutingSync({
     dispatch,
     routeConversationId,
@@ -505,9 +527,122 @@ export default function ChatPage() {
   });
 
   // ── Render ───────────────────────────────────────────────────────────
+
+  /** Props chung cho ConversationListPanel (tránh lặp code). */
+  const convListPanelProps = {
+    conversations,
+    convsLoading,
+    activeMessages: messageData.allMessages,
+    showContactsManagement: modalState.showContactsManagement,
+    contactsTab: modalState.contactsTab,
+    onContactsTabChange: modalActions.setContactsTab,
+    onSelectConversation: useCallback(
+      (conversationId: string) => {
+        navigate(`/chat/${conversationId}`);
+        setMobileView('chat');
+        setMobileListOpen(false);
+      },
+      [navigate],
+    ),
+    onPickSearchMessage: scrollToMessageBubble,
+    onOpenCreateGroup: useCallback(() => {
+      modalActions.setShowCreateGroupModal(true);
+      modalActions.setSelectedGroupMembers([]);
+      modalActions.setGroupName('');
+    }, [modalActions]),
+    onOpenMarkRead: () => modalActions.setShowMarkReadModal(true),
+    onOpenAddFriend: () => modalActions.setShowAddFriendModal(true),
+    onToggleConversationMute: convPrefs.handleToggleConversationMute,
+  };
+
+  /** ConversationInfoPanel — dùng chung cho cả desktop sidebar và mobile Sheet. */
+  const conversationInfoPanel = (
+    <ConversationInfoPanel
+      numRequests={groupRequests.length}
+      activeConversation={activeConversation}
+      onOpenAISummaryFromPanel={groupController.openAISummaryFromPanel}
+      onEditGroup={groupController.openEditGroupModal}
+      onAddMembers={groupController.openAddMembersModal}
+      onOpenCreateGroup={useCallback(() => {
+        modalActions.setShowCreateGroupModal(true);
+        modalActions.setSelectedGroupMembers([]);
+        modalActions.setGroupName('');
+      }, [modalActions])}
+      onToggleMuteNotifications={
+        activeConversationId
+          ? () => void convPrefs.handleToggleConversationMute(activeConversationId)
+          : undefined
+      }
+      onApplyMuteFromModal={activeConversationId ? convPrefs.handleApplyMuteFromModal : undefined}
+      onTogglePinConversation={
+        activeConversationId
+          ? () => void convPrefs.handleToggleConversationPin(activeConversationId)
+          : undefined
+      }
+      onRequestJoin={() => void groupController.handleRequestJoin()}
+      onVotePoll={(pollId, optionIndex) => void groupController.handleVotePoll(pollId, optionIndex)}
+      onOpenPollVote={(pollId) => groupController.openPollVoteModal(pollId)}
+      onAddPollOption={(pollId) => void groupController.handleAddPollOption(pollId)}
+      onClosePoll={(pollId) => void groupController.handleClosePoll(pollId)}
+      onToggleTask={(taskId) => void groupController.handleToggleTaskStatus(taskId)}
+      onOpenPollModalFromPanel={
+        activeConversation?.type === 'group' ? () => modalActions.setShowPollModal(true) : undefined
+      }
+      onOpenTaskModalFromPanel={
+        activeConversation?.type === 'group' ? () => modalActions.setShowTaskModal(true) : undefined
+      }
+      polls={groupPolls}
+      tasks={groupTasks}
+      isJoinRequested={groupJoinRequested}
+      loading={{
+        polls: groupLoading.polls || groupActionLoading.votePoll,
+        tasks: groupLoading.tasks || groupActionLoading.updateTask,
+        recap: groupLoading.recap || groupActionLoading.generateRecap,
+        requestJoin: groupActionLoading.requestJoin,
+        updateGroup: groupActionLoading.updateGroup,
+        leaveGroup: groupActionLoading.leaveGroup,
+        deleteGroup: groupActionLoading.deleteGroup,
+      }}
+      onLeaveGroup={groupController.handleLeaveGroup}
+      onDeleteGroup={groupController.handleDeleteGroup}
+      onOpenMemberModal={() => {}}
+      currentUserRole={currentUserRole}
+      currentUserId={currentUserId}
+      members={groupMembers}
+      requests={groupRequests}
+      onApproveMember={groupController.handleApproveRequest}
+      onRejectMember={groupController.handleRejectRequest}
+      onKickMember={groupController.handleKickMember}
+      busyMemberActions={{
+        approving: groupActionLoading.approveRequest,
+        rejecting: groupActionLoading.rejectRequest,
+        removing: groupActionLoading.removeMember,
+        changingRole: groupActionLoading.changeRole,
+      }}
+      conversationMessages={messageData.allMessages}
+      conversationSearchRequestTick={conversationSearchRequestTick}
+      onJumpToMessage={scrollToMessageBubble}
+      conversations={conversations}
+      onSelectConversation={useCallback(
+        (conversationId: string) => {
+          navigate(`/chat/${conversationId}`);
+          setMobileView('chat');
+          setMobileListOpen(false);
+        },
+        [navigate],
+      )}
+    />
+  );
+
   return (
     <ChatPageProvider value={contextValue}>
+      {/*
+       * Layout wrapper:
+       *  - Mobile (< md): flex-col, padding-bottom 64px untuk bottom tab bar
+       *  - Tablet/Desktop (md+): flex-row như cũ
+       */}
       <div className="w-full h-full min-h-0 flex overflow-hidden bg-background">
+        {/* ── Nav Rail (desktop/tablet) + Bottom Tab (mobile) ─────────── */}
         <ChatNavRail
           navigate={navigate}
           onOpenProfile={() => modalActions.setShowProfileModal(true)}
@@ -518,152 +653,84 @@ export default function ChatPage() {
           }}
         />
 
-        <ConversationListPanel
-          conversations={conversations}
-          convsLoading={convsLoading}
-          activeMessages={messageData.allMessages}
-          showContactsManagement={modalState.showContactsManagement}
-          contactsTab={modalState.contactsTab}
-          onContactsTabChange={modalActions.setContactsTab}
-          onSelectConversation={useCallback(
-            (conversationId: string) => void navigate(`/chat/${conversationId}`),
-            [navigate],
-          )}
-          onPickSearchMessage={scrollToMessageBubble}
-          onOpenCreateGroup={useCallback(() => {
-            modalActions.setShowCreateGroupModal(true);
-            modalActions.setSelectedGroupMembers([]);
-            modalActions.setGroupName('');
-          }, [modalActions])}
-          onOpenMarkRead={() => modalActions.setShowMarkReadModal(true)}
-          onOpenAddFriend={() => modalActions.setShowAddFriendModal(true)}
-          onToggleConversationMute={convPrefs.handleToggleConversationMute}
-        />
+        {/* ── Conversation List: Desktop/Tablet — sidebar cố định ──────── */}
+        <div className="hidden md:flex md:shrink-0">
+          <ConversationListPanel {...convListPanelProps} />
+        </div>
 
-        <ChatMainContent
-          showContactsManagement={modalState.showContactsManagement}
-          showInfo={modalState.showInfo}
-          onToggleShowInfo={() => modalActions.setShowInfo(!modalState.showInfo)}
-          typingUsers={typingUsers}
-          pinned={{
-            pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
-            pinnedMessageCount: activeConversation?.pinnedMessageCount ?? 0,
-            onScrollToMessage: scrollToMessageBubble,
-            onTogglePin: pinController.handleTogglePinMsg,
-          }}
-          scroll={{
-            containerRef: messagesContainerRef,
-            endRef: messagesEndRef,
-            allMessages: messageData.allMessages,
-            unreadIncomingCount,
-            onJumpToLatest: handleJumpToLatest,
-          }}
-          jumpHighlightMessageId={jumpHighlightMessageId}
-          jumpFlashNonce={jumpFlashNonce}
-          onJumpToMessage={scrollToMessageBubble}
-          actionMenuMsgId={modalState.actionMenuMsgId}
-          onActionMenuMsgIdChange={modalActions.setActionMenuMsgId}
-          onStartEdit={(msg) => {
-            if (msg.type !== 'text') return;
-            modalActions.setEditingMessage(msg);
-            modalActions.setEditDraft(msg.content);
-          }}
-          onOpenPoll={() => modalActions.setShowPollModal(true)}
-          onOpenTask={() => modalActions.setShowTaskModal(true)}
-          onSearchMessages={activeConversationId ? requestOpenConversationSearch : undefined}
-          resolvedMemberCount={
-            activeConversation?.type === 'group' && groupMembers.length > 0
-              ? groupMembers.length
-              : undefined
-          }
-          onFriendClick={handleFriendClick}
-          shareTargetConversations={conversations}
-          onForwardMediaMessage={handleForwardMediaMessage}
-        />
+        {/* ── Conversation List: Mobile — Sheet từ trái ─────────────────
+             Chỉ hiện khi mobileView === 'list' hoặc user mở sheet thủ công  */}
+        {!isTabletOrDesktop && mobileView === 'list' && (
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
+            <ConversationListPanel {...convListPanelProps} />
+          </div>
+        )}
 
+        {/* Sheet ConversationList trên mobile khi đang xem chat */}
+        {!isTabletOrDesktop && (
+          <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
+            <SheetContent side="left" className="w-80 p-0 overflow-y-auto">
+              <SheetTitle className="sr-only">Danh sách hội thoại</SheetTitle>
+              <ConversationListPanel {...convListPanelProps} />
+            </SheetContent>
+          </Sheet>
+        )}
+
+        {/* ── Chat Main Content ─────────────────────────────────────────
+             Mobile: ẩn khi đang ở 'list' view (chưa chọn conversation)
+             Desktop: luôn hiện                                           */}
+        {(isTabletOrDesktop || mobileView === 'chat') && (
+          <ChatMainContent
+            showContactsManagement={modalState.showContactsManagement}
+            showInfo={modalState.showInfo}
+            onToggleShowInfo={() => modalActions.setShowInfo(!modalState.showInfo)}
+            typingUsers={typingUsers}
+            pinned={{
+              pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
+              pinnedMessageCount: activeConversation?.pinnedMessageCount ?? 0,
+              onScrollToMessage: scrollToMessageBubble,
+              onTogglePin: pinController.handleTogglePinMsg,
+            }}
+            scroll={{
+              containerRef: messagesContainerRef,
+              endRef: messagesEndRef,
+              allMessages: messageData.allMessages,
+              unreadIncomingCount,
+              onJumpToLatest: handleJumpToLatest,
+            }}
+            jumpHighlightMessageId={jumpHighlightMessageId}
+            jumpFlashNonce={jumpFlashNonce}
+            onJumpToMessage={scrollToMessageBubble}
+            actionMenuMsgId={modalState.actionMenuMsgId}
+            onActionMenuMsgIdChange={modalActions.setActionMenuMsgId}
+            onStartEdit={(msg) => {
+              if (msg.type !== 'text') return;
+              modalActions.setEditingMessage(msg);
+              modalActions.setEditDraft(msg.content);
+            }}
+            onOpenPoll={() => modalActions.setShowPollModal(true)}
+            onOpenTask={() => modalActions.setShowTaskModal(true)}
+            onSearchMessages={activeConversationId ? requestOpenConversationSearch : undefined}
+            resolvedMemberCount={
+              activeConversation?.type === 'group' && groupMembers.length > 0
+                ? groupMembers.length
+                : undefined
+            }
+            onFriendClick={handleFriendClick}
+            shareTargetConversations={conversations}
+            onForwardMediaMessage={handleForwardMediaMessage}
+            onBack={!isTabletOrDesktop ? () => setMobileView('list') : undefined}
+          />
+        )}
+
+        {/* ── Side Info Rail ───────────────────────────────────────────
+             Desktop: animated sidebar; Mobile/Tablet: Sheet overlay     */}
         <ChatSideInfoRail
           showInfo={modalState.showInfo}
           showContactsManagement={modalState.showContactsManagement}
+          onClose={() => modalActions.setShowInfo(false)}
         >
-          <ConversationInfoPanel
-            numRequests={groupRequests.length}
-            activeConversation={activeConversation}
-            onOpenAISummaryFromPanel={groupController.openAISummaryFromPanel}
-            onEditGroup={groupController.openEditGroupModal}
-            onAddMembers={groupController.openAddMembersModal}
-            onOpenCreateGroup={useCallback(() => {
-              modalActions.setShowCreateGroupModal(true);
-              modalActions.setSelectedGroupMembers([]);
-              modalActions.setGroupName('');
-            }, [modalActions])}
-            onToggleMuteNotifications={
-              activeConversationId
-                ? () => void convPrefs.handleToggleConversationMute(activeConversationId)
-                : undefined
-            }
-            onApplyMuteFromModal={
-              activeConversationId ? convPrefs.handleApplyMuteFromModal : undefined
-            }
-            onTogglePinConversation={
-              activeConversationId
-                ? () => void convPrefs.handleToggleConversationPin(activeConversationId)
-                : undefined
-            }
-            onRequestJoin={() => void groupController.handleRequestJoin()}
-            onVotePoll={(pollId, optionIndex) =>
-              void groupController.handleVotePoll(pollId, optionIndex)
-            }
-            onOpenPollVote={(pollId) => groupController.openPollVoteModal(pollId)}
-            onAddPollOption={(pollId) => void groupController.handleAddPollOption(pollId)}
-            onClosePoll={(pollId) => void groupController.handleClosePoll(pollId)}
-            onToggleTask={(taskId) => void groupController.handleToggleTaskStatus(taskId)}
-            onOpenPollModalFromPanel={
-              activeConversation?.type === 'group'
-                ? () => modalActions.setShowPollModal(true)
-                : undefined
-            }
-            onOpenTaskModalFromPanel={
-              activeConversation?.type === 'group'
-                ? () => modalActions.setShowTaskModal(true)
-                : undefined
-            }
-            polls={groupPolls}
-            tasks={groupTasks}
-            isJoinRequested={groupJoinRequested}
-            loading={{
-              polls: groupLoading.polls || groupActionLoading.votePoll,
-              tasks: groupLoading.tasks || groupActionLoading.updateTask,
-              recap: groupLoading.recap || groupActionLoading.generateRecap,
-              requestJoin: groupActionLoading.requestJoin,
-              updateGroup: groupActionLoading.updateGroup,
-              leaveGroup: groupActionLoading.leaveGroup,
-              deleteGroup: groupActionLoading.deleteGroup,
-            }}
-            onLeaveGroup={groupController.handleLeaveGroup}
-            onDeleteGroup={groupController.handleDeleteGroup}
-            onOpenMemberModal={() => {}}
-            currentUserRole={currentUserRole}
-            currentUserId={currentUserId}
-            members={groupMembers}
-            requests={groupRequests}
-            onApproveMember={groupController.handleApproveRequest}
-            onRejectMember={groupController.handleRejectRequest}
-            onKickMember={groupController.handleKickMember}
-            busyMemberActions={{
-              approving: groupActionLoading.approveRequest,
-              rejecting: groupActionLoading.rejectRequest,
-              removing: groupActionLoading.removeMember,
-              changingRole: groupActionLoading.changeRole,
-            }}
-            conversationMessages={messageData.allMessages}
-            conversationSearchRequestTick={conversationSearchRequestTick}
-            onJumpToMessage={scrollToMessageBubble}
-            conversations={conversations}
-            onSelectConversation={useCallback(
-              (conversationId: string) => void navigate(`/chat/${conversationId}`),
-              [navigate],
-            )}
-          />
+          {conversationInfoPanel}
         </ChatSideInfoRail>
 
         <ChatModalsHost

@@ -933,7 +933,7 @@ export function ChatMessageList({
                   className={`relative z-[2] flex flex-col ${
                     isWideMediaBubble
                       ? 'w-full max-w-[min(96vw,44rem)] sm:max-w-[min(92%,42rem)]'
-                      : 'max-w-[55%] sm:max-w-[45%]'
+                      : 'max-w-[85%] md:max-w-[75%] lg:max-w-[65%]'
                   } ${isMe ? 'items-end' : 'items-start'}`}
                 >
                   {!isMe && activeConversation?.type === 'group' && !isSameSenderAsPrev && (
@@ -943,7 +943,7 @@ export function ChatMessageList({
                   )}
 
                   <div
-                    className={`relative flex items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.reactions && Object.keys(msg.reactions).length > 0 ? 'mb-3.5' : ''}`}
+                    className={`relative flex max-w-full min-w-0 items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.reactions && Object.keys(msg.reactions).length > 0 ? 'mb-3.5' : ''}`}
                   >
                     {msg.isDeleted ? (
                       <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
@@ -957,10 +957,10 @@ export function ChatMessageList({
                       <div
                         className={
                           isMediaMsg
-                            ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none wrap-break-word bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                            ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none break-words whitespace-pre-wrap bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
                                 isMe ? 'items-end' : 'items-start'
                               }`
-                            : `relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm wrap-break-word selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                            : `relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm min-w-0 break-words whitespace-pre-wrap selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
                                 isMe
                                   ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
                                   : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
@@ -1188,7 +1188,7 @@ export function ChatMessageList({
                         )}
                         {isMediaMsg && showCaption && (
                           <div
-                            className={`mt-0.5 w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'} px-2.5 py-1.5 rounded-lg text-[13px] whitespace-pre-wrap wrap-break-word ${
+                            className={`mt-0.5 w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'} px-2.5 py-1.5 rounded-lg text-[13px] break-words whitespace-pre-wrap ${
                               isMe
                                 ? 'bg-black/6 dark:bg-white/10 text-foreground'
                                 : 'bg-black/5 dark:bg-white/10 text-foreground'
@@ -1198,7 +1198,7 @@ export function ChatMessageList({
                           </div>
                         )}
                         {!isMediaMsg && showCaption && (
-                          <span className="whitespace-pre-wrap wrap-break-word">{msg.content}</span>
+                          <span className="break-words whitespace-pre-wrap">{msg.content}</span>
                         )}
                         {msg.isEdited && (
                           <span

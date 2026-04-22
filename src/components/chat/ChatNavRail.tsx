@@ -73,7 +73,8 @@ export function ChatNavRail({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="w-16 bg-primary text-primary-foreground flex flex-col items-center py-6 shrink-0 z-20">
+      {/* ── Left vertical rail (always visible) ───────────────── */}
+      <div className="flex w-16 bg-primary text-primary-foreground flex-col items-center py-6 shrink-0 z-20">
         {/* Avatar người dùng — dùng shadcn Avatar + AvatarFallback (Rule 1) */}
         <Tooltip>
           <TooltipTrigger asChild>
