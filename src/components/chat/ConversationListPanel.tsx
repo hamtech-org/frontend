@@ -322,13 +322,7 @@ export function ConversationListPanel({
                 type="button"
                 className="text-sm font-bold text-primary border-b-[3px] border-primary pb-2.5 transition-colors"
               >
-                Ưu tiên
-              </button>
-              <button
-                type="button"
-                className="text-sm font-bold text-muted-foreground hover:text-foreground border-b-[3px] border-transparent pb-2.5 transition-colors"
-              >
-                Khác
+                Tất cả
               </button>
             </div>
             <div className="flex items-center gap-3 pb-2.5">
