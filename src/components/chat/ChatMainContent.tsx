@@ -1,16 +1,12 @@
 import type { RefObject, SetStateAction, Dispatch } from 'react';
-import { useMemo } from 'react';
 import { Phone, Video } from 'lucide-react';
 import { useSelector } from 'react-redux';
-import { PendingFriendsPanel } from '@/components/chat/PendingFriendsPanel';
 import { FriendsListView } from '@/components/chat/FriendsListView';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import { PinnedMessagesBar } from '@/components/chat/PinnedMessagesBar';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
 import { ChatComposer } from '@/components/chat/ChatComposer';
-import { ShellSurface } from '@/components/layout/ShellPrimitives';
 import type { IConversation, IMessage, TypingUserEntry } from '@/types/chat.types';
-import type { ContactsTabId } from '@/components/chat/ConversationListPanel';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 import { useDispatch } from 'react-redux';
 import type { AppDispatch, RootState } from '@/store/store';
@@ -20,7 +16,6 @@ import { useCallContext } from '@/contexts/CallContext';
 interface ChatMainContentProps {
   // UI visibility (from modalState)
   showContactsManagement: boolean;
-  contactsTab: ContactsTabId;
   showInfo: boolean;
   onToggleShowInfo: () => void;
 
@@ -29,15 +24,11 @@ interface ChatMainContentProps {
 
   // Pinned messages (grouped)
   pinned: {
-    primaryMessage: IMessage | null;
-    otherMessages: IMessage[];
-    showOtherPanel: boolean;
-    onToggleOtherPanel: () => void;
+    pinnedMessagesOrdered: IMessage[];
+    pinnedMessageCount: number;
     onScrollToMessage: (messageId: string) => void;
+    onTogglePin: (msg: IMessage) => Promise<void>;
   };
-
-  // Format helper
-  formatMessageTime: (value: string) => string;
 
   // Scroll refs & state (grouped)
   scroll: {
@@ -48,6 +39,11 @@ interface ChatMainContentProps {
     onJumpToLatest: () => void;
   };
 
+  // Jump highlight
+  jumpHighlightMessageId: string | null;
+  jumpFlashNonce: number;
+  onJumpToMessage: (messageId: string) => void;
+
   // Action menu (from modalState)
   actionMenuMsgId: string | null;
   onActionMenuMsgIdChange: Dispatch<SetStateAction<string | null>>;
@@ -56,6 +52,13 @@ interface ChatMainContentProps {
   // Modal openers
   onOpenPoll: () => void;
   onOpenTask: () => void;
+
+  // Search
+  onSearchMessages?: () => void;
+  resolvedMemberCount?: number;
+
+  // Friend click for contacts view
+  onFriendClick?: (friendId: string, friendName: string) => Promise<void>;
 
   /** Khi không truyền (layout tối giản), chuyển tiếp media bị tắt. */
   shareTargetConversations?: IConversation[];
@@ -75,37 +78,30 @@ export function ChatMainContent(props: ChatMainContentProps) {
 
   const {
     showContactsManagement,
-    contactsTab,
     showInfo,
     onToggleShowInfo,
     typingUsers,
     pinned,
     scroll,
+    jumpHighlightMessageId,
+    jumpFlashNonce,
+    onJumpToMessage,
     actionMenuMsgId,
     onActionMenuMsgIdChange,
     onStartEdit,
     onOpenPoll,
     onOpenTask,
+    onSearchMessages,
+    resolvedMemberCount,
+    onFriendClick,
     shareTargetConversations = [],
     onForwardMediaMessage = async () => {},
   } = props;
 
-  const pinnedMessagesList = useMemo(() => {
-    const primary = pinned.primaryMessage;
-    const others = pinned.otherMessages;
-    if (!primary) return others;
-    const rest = others.filter((m) => m.messageId !== primary.messageId);
-    return [primary, ...rest];
-  }, [pinned.primaryMessage, pinned.otherMessages]);
-
   return (
-    <ShellSurface className="flex-1 flex flex-col min-w-0 min-h-0 relative border-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
       {showContactsManagement ? (
-        contactsTab === 'friendRequests' ? (
-          <PendingFriendsPanel onFriendRequestAccepted={directActions.handleFriendRequestAccepted} />
-        ) : (
-          <FriendsListView onFriendClick={directActions.handleFriendClick} />
-        )
+        <FriendsListView onFriendClick={onFriendClick ?? directActions.handleFriendClick} />
       ) : (
         <>
           <ChatHeader
@@ -126,15 +122,27 @@ export function ChatMainContent(props: ChatMainContentProps) {
                 : directActions.handleVideoCall
             }
             currentUserRole={core.currentUserRole}
+            resolvedMemberCount={resolvedMemberCount}
+            onSearchMessages={onSearchMessages}
           />
 
-          {core.activeConversationId && pinnedMessagesList.length > 0 && (
-            <PinnedMessagesBar
-              pinnedMessages={pinnedMessagesList}
-              onScrollToMessage={pinned.onScrollToMessage}
-              onTogglePin={messageActions.handleTogglePinMsg}
-            />
-          )}
+          {core.activeConversationId &&
+            ((pinned.pinnedMessageCount ?? 0) > 0 || pinned.pinnedMessagesOrdered.length > 0) && (
+              <div className="w-full shrink-0">
+                {pinned.pinnedMessagesOrdered.length > 0 ? (
+                  <PinnedMessagesBar
+                    key={core.activeConversationId}
+                    pinnedMessages={pinned.pinnedMessagesOrdered}
+                    onScrollToMessage={pinned.onScrollToMessage}
+                    onTogglePin={pinned.onTogglePin}
+                  />
+                ) : (
+                  <div className="w-full shrink-0 border-b border-slate-200 dark:border-slate-700 bg-[#f5f6f8] dark:bg-zinc-800/50 px-3 py-2.5 text-center text-xs text-muted-foreground">
+                    Đang tải danh sách tin ghim…
+                  </div>
+                )}
+              </div>
+            )}
 
           <ChatMessageList
             messagesContainerRef={scroll.containerRef}
@@ -145,10 +153,13 @@ export function ChatMainContent(props: ChatMainContentProps) {
             currentUserId={core.currentUserId}
             typingUsers={[...typingUsers]}
             unreadIncomingCount={scroll.unreadIncomingCount}
+            jumpHighlightMessageId={jumpHighlightMessageId}
+            jumpFlashNonce={jumpFlashNonce}
+            onJumpToMessage={onJumpToMessage}
             actionMenuMsgId={actionMenuMsgId}
             onActionMenuMsgIdChange={onActionMenuMsgIdChange}
             onStartEdit={onStartEdit}
-            onTogglePin={messageActions.handleTogglePinMsg}
+            onTogglePin={pinned.onTogglePin}
             onRecall={messageActions.handleRecallMsg}
             onDelete={messageActions.handleDeleteMsg}
             onReply={(msg) => dispatch(setReplyingTo(msg))}
@@ -183,7 +194,9 @@ export function ChatMainContent(props: ChatMainContentProps) {
                     )}
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-foreground">
-                        {activeGroupCall.type === 'video' ? 'Cuộc gọi video nhóm' : 'Cuộc gọi thoại nhóm'}{' '}
+                        {activeGroupCall.type === 'video'
+                          ? 'Cuộc gọi video nhóm'
+                          : 'Cuộc gọi thoại nhóm'}{' '}
                         <span className="font-normal text-muted-foreground">đang diễn ra</span>
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -211,6 +224,6 @@ export function ChatMainContent(props: ChatMainContentProps) {
           />
         </>
       )}
-    </ShellSurface>
+    </div>
   );
 }

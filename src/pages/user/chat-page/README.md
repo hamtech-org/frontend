@@ -5,15 +5,17 @@
 `ChatPage.tsx` đóng vai trò **pure composition root** — chỉ wire hooks, context, và render components. Không chứa business logic.
 
 ```
-ChatPage.tsx (composition root)
+ChatPage.tsx (composition root — ~625 dòng)
 ├── ChatPageContext.tsx          ← shared data/actions qua context
 ├── hooks/                      ← domain logic
-│   ├── useChatMessageData.ts
+│   ├── useChatMessageData.ts         ← merge API+socket, pinned MRU ordering
+│   ├── useChatRealtimeEvents.ts      ← all socket subscriptions
+│   ├── useConversationPreferences.ts ← mute/pin conversation + limit modal
+│   ├── useMessagePinController.ts    ← pin msg + permission + limit replace
 │   ├── useDirectConversationActions.ts
 │   ├── useGroupConversationController.ts
 │   ├── useGroupData.ts
 │   ├── useMessageModerationActions.ts
-│   ├── useChatRealtimeEvents.ts
 │   ├── useConversationRealtimeLifecycle.ts
 │   ├── useConversationRoutingSync.ts
 │   ├── useChatScrollBehavior.ts
@@ -24,11 +26,11 @@ ChatPage.tsx (composition root)
 └── Components (src/components/chat/)
     ├── ChatNavRail.tsx
     ├── ConversationListPanel.tsx  ← dùng context (core)
-    ├── ChatMainContent.tsx       ← dùng context
+    ├── ChatMainContent.tsx       ← dùng context + jump highlight + pinned bar
     ├── ChatComposer.tsx          ← tự gọi useChatComposerController (4 props)
     ├── ChatSideInfoRail.tsx      ← animation wrapper only
-    ├── ConversationInfoPanel.tsx  ← dùng context (0 props)
-    └── ChatModalsHost.tsx        ← dùng context
+    ├── ConversationInfoPanel.tsx  ← nhận props từ ChatPage
+    └── ChatModalsHost.tsx        ← dùng context + PinLimitModal + ConvPinLimitModal
 ```
 
 ## ChatPageContext
@@ -141,19 +143,18 @@ pinned: {
 
 ## Metrics
 
-| Metric | Ban đầu | Sau hooks | Sau context v1 | Sau context v2 | Hiện tại |
+| Metric | Ban đầu | Sau hooks | Sau context v1 | Monolith regression | Hiện tại |
 |---|---|---|---|---|---|
-| `ChatPage.tsx` lines | ~1294 | ~310 | ~340 | ~340 | ~330 |
-| Inline business logic | ~25 | 0 | 0 | 0 | 0 |
-| Code trùng lặp | ~600 | 0 | 0 | 0 | 0 |
-| `any` usages (chat) | — | — | — | 5 | **0** |
-| Tổng props (7 components) | — | 128+ | 49 | 37 | **33** |
-| `ConversationInfoPanel` | 27 | 27 | 27 | 0 | **0** |
-| `ChatSideInfoRail` | — | 30 | 2 | 2 | **2** |
-| `ChatModalsHost` | — | 26 | 3 | 3 | **3** |
-| `ChatMainContent` | — | 53 | 25 | 15 | **10** |
-| `ChatComposer` | — | 15 | 15 | 15 | **4** |
-| `ConversationListPanel` | — | 15 | 15 | 13 | **13** |
+| `ChatPage.tsx` lines | ~1294 | ~310 | ~340 | ~2060 | **~625** |
+| Inline business logic | ~25 | 0 | 0 | ~1700 | **~100** (message moderation) |
+| Code trùng lặp | ~600 | 0 | 0 | ~500 | **0** |
+| `any` usages (chat) | — | — | — | — | **0** |
+| Socket useEffect inline | — | — | — | 6 | **0** |
+| Components rendered trực tiếp | — | 7 | 7 | 15+ | **5** |
+| `ChatModalsHost` props | — | 3 | 3 | — | **5** (+ pinLimit, convPinLimit) |
+| `ChatMainContent` props | — | 10 | 10 | — | **~18** |
+| `ChatComposer` | — | 4 | 4 | 4 | **4** |
+| `ChatSideInfoRail` | — | 2 | 2 | — | **2** |
 
 ## Quy tắc phát triển
 
