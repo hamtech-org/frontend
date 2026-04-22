@@ -5,12 +5,14 @@ import {
   CheckSquare,
   FileText,
   Image,
+  Loader2,
   Mic,
   Paperclip,
   Palette,
   Send,
   Smile,
   Sparkles,
+  ThumbsUp,
   X,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -42,6 +44,8 @@ export function ChatComposer({
   onOpenPoll,
   onOpenTask,
 }: ChatComposerProps) {
+  type VoiceUiState = 'idle' | 'active-ui' | 'cancelled-ui';
+
   const {
     inputText,
     isSending,
@@ -59,10 +63,33 @@ export function ChatComposer({
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const emojiPanelRef = useRef<HTMLDivElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [emojiTranslateX, setEmojiTranslateX] = useState(0);
+  const [voiceUiState, setVoiceUiState] = useState<VoiceUiState>('idle');
   const busy = isSending || mediaUploading;
-  const hasSendable = inputText.trim().length > 0 || pendingAttachments.length > 0;
+  const hasTypedMessage = inputText.trim().length > 0;
+  const hasSendable = hasTypedMessage || pendingAttachments.length > 0;
+  const sendDisabled = !activeConversationId || busy;
+  const actionDisabled = !activeConversationId;
+  const voiceDisabled = !activeConversationId;
+
+  useEffect(() => {
+    if (voiceUiState !== 'active-ui') return;
+    const timer = window.setTimeout(() => {
+      setVoiceUiState('cancelled-ui');
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [voiceUiState]);
+
+  useEffect(() => {
+    if (voiceUiState !== 'cancelled-ui') return;
+    const timer = window.setTimeout(() => {
+      setVoiceUiState('idle');
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [voiceUiState]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -78,13 +105,56 @@ export function ChatComposer({
     };
   }, [showEmojiPicker]);
 
+  useEffect(() => {
+    if (!showEmojiPicker) {
+      setEmojiTranslateX(0);
+      return;
+    }
+
+    const updateEmojiPopoverPosition = () => {
+      const triggerEl = emojiPickerRef.current;
+      const panelEl = emojiPanelRef.current;
+      if (!triggerEl || !panelEl) return;
+
+      const viewportPadding = 8;
+      const triggerRect = triggerEl.getBoundingClientRect();
+      const panelWidth = panelEl.getBoundingClientRect().width;
+
+      let nextTranslateX = 0;
+      const overflowRight = triggerRect.left + panelWidth + viewportPadding - window.innerWidth;
+      if (overflowRight > 0) {
+        nextTranslateX -= overflowRight;
+      }
+
+      const leftEdgeAfterTranslate = triggerRect.left + nextTranslateX;
+      if (leftEdgeAfterTranslate < viewportPadding) {
+        nextTranslateX += viewportPadding - leftEdgeAfterTranslate;
+      }
+
+      setEmojiTranslateX(nextTranslateX);
+    };
+
+    const rafId = window.requestAnimationFrame(updateEmojiPopoverPosition);
+    window.addEventListener('resize', updateEmojiPopoverPosition);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', updateEmojiPopoverPosition);
+    };
+  }, [showEmojiPicker]);
+
   const onEmojiClick = (emojiObject: { emoji: string }) => {
     setInputText(inputText + emojiObject.emoji);
   };
 
   const handleLikeClick = () => {
-    if (busy || !activeConversationId) return;
+    if (sendDisabled) return;
     void handleSendMessage('👍');
+  };
+
+  const handleVoiceUiClick = () => {
+    if (voiceDisabled) return;
+    setVoiceUiState((prev) => (prev === 'active-ui' ? 'idle' : 'active-ui'));
   };
 
   const appendFromFileList = (list: FileList | null) => {
@@ -141,11 +211,11 @@ export function ChatComposer({
       )}
 
       {pendingAttachments.length > 0 && (
-        <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.04] p-2">
+        <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto rounded-xl border border-black/10 dark:border-white/10 bg-black/3 dark:bg-white/4 p-2">
           {pendingAttachments.map((p) => (
             <div
               key={p.localId}
-              className="relative group/at shrink-0 w-[4.5rem] rounded-lg border border-black/10 dark:border-white/10 bg-white/80 dark:bg-zinc-900/80 overflow-hidden"
+              className="relative group/at shrink-0 w-18 rounded-lg border border-black/10 dark:border-white/10 bg-white/80 dark:bg-zinc-900/80 overflow-hidden"
             >
               {p.previewUrl ? (
                 p.file.type.startsWith('video/') ? (
@@ -177,7 +247,7 @@ export function ChatComposer({
                 type="button"
                 title="Bỏ file"
                 onClick={() => removePendingAttachment(p.localId)}
-                disabled={busy}
+                disabled={mediaUploading}
                 className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white opacity-90 hover:opacity-100 disabled:opacity-40"
               >
                 <X className="w-3 h-3" />
@@ -188,127 +258,174 @@ export function ChatComposer({
       )}
 
       <TooltipProvider delayDuration={300}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 sm:gap-2">
-            <div className="relative" ref={emojiPickerRef}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    className="p-2 rounded-lg hover:bg-muted transition-all text-muted-foreground hover:text-blue-600 shrink-0"
-                  >
-                    <Smile className="size-5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Emoji / Nhãn dán</TooltipContent>
-              </Tooltip>
-              {showEmojiPicker && (
-                <div className="absolute bottom-full left-0 mb-2 z-50 animate-in fade-in zoom-in-95 duration-150 shadow-2xl rounded-2xl overflow-hidden border border-border/40 bg-card">
-                  <EmojiPicker onEmojiClick={onEmojiClick} theme={'auto' as any} />
-                </div>
-              )}
-            </div>
-            <input
-              ref={galleryInputRef}
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              className="hidden"
-              onChange={handleGalleryChange}
-            />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,audio/*"
-              multiple
-              className="hidden"
-              onChange={handleFileChange}
-            />
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
+          <div className="relative" ref={emojiPickerRef}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  disabled={!activeConversationId || busy}
-                  onClick={() => galleryInputRef.current?.click()}
-                  className="p-2 rounded-lg hover:bg-muted transition-all text-muted-foreground hover:text-blue-600 shrink-0 disabled:opacity-40 disabled:pointer-events-none"
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600"
                 >
-                  <Image className="size-5" />
+                  <Smile className="size-5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top">Thêm ảnh/video</TooltipContent>
+              <TooltipContent side="top">Emoji / Nhãn dán</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  disabled={!activeConversationId || busy}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-2 rounded-lg hover:bg-muted transition-all text-muted-foreground hover:text-blue-600 shrink-0 disabled:opacity-40 disabled:pointer-events-none"
-                >
-                  <Paperclip className="size-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Thêm tài liệu</TooltipContent>
-            </Tooltip>
-
-            <div className="w-px h-5 bg-border mx-1" />
-
-            {activeConversation?.type === 'group' && (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={onOpenPoll}
-                      className="p-2 rounded-lg hover:bg-muted transition-all text-muted-foreground hover:text-blue-600 shrink-0"
-                    >
-                      <BarChart2 className="size-5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Tạo bình chọn (Poll)</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={onOpenTask}
-                      className="p-2 rounded-lg hover:bg-muted transition-all text-muted-foreground hover:text-blue-600 shrink-0 hidden sm:block"
-                    >
-                      <CheckSquare className="size-5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Giao việc / Nhắc hẹn</TooltipContent>
-                </Tooltip>
-                <button
-                  type="button"
-                  title="AI Tóm tắt nhóm"
-                  className="p-2 rounded-lg hover:bg-blue-600/10 transition-all text-blue-600 hover:text-blue-700 shrink-0 hidden sm:flex items-center gap-2 font-bold text-xs bg-blue-600/5 ml-2 border border-blue-600/20"
-                >
-                  <Sparkles className="size-4" />
-                  Tóm tắt cuộc gọi / tin nhắn
-                </button>
-              </>
-            )}
-
-            {activeConversation?.type === 'direct' && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="p-2 rounded-lg hover:bg-muted transition-all text-muted-foreground hover:text-blue-600 shrink-0 hidden sm:block"
-                  >
-                    <Palette className="size-5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Bảng trắng tương tác</TooltipContent>
-              </Tooltip>
+            {showEmojiPicker && (
+              <div
+                ref={emojiPanelRef}
+                className="absolute bottom-full left-0 z-50 mb-2 animate-in overflow-hidden rounded-2xl border border-border/40 bg-card shadow-2xl fade-in zoom-in-95 duration-150"
+                style={{ transform: `translateX(${emojiTranslateX}px)` }}
+              >
+                <EmojiPicker onEmojiClick={onEmojiClick} theme={'auto' as any} />
+              </div>
             )}
           </div>
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            className="hidden"
+            onChange={handleGalleryChange}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,audio/*"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                disabled={actionDisabled}
+                onClick={() => galleryInputRef.current?.click()}
+                className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 disabled:pointer-events-none disabled:opacity-40"
+              >
+                <Image className="size-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Thêm ảnh/video</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                disabled={actionDisabled}
+                onClick={() => fileInputRef.current?.click()}
+                className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 disabled:pointer-events-none disabled:opacity-40"
+              >
+                <Paperclip className="size-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Thêm tài liệu</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleVoiceUiClick}
+                disabled={voiceDisabled}
+                aria-label="Nút voice bản xem trước UI"
+                aria-pressed={voiceUiState === 'active-ui'}
+                title={
+                  voiceUiState === 'active-ui'
+                    ? 'Đang mô phỏng ghi âm'
+                    : voiceUiState === 'cancelled-ui'
+                      ? 'Đã hủy mô phỏng ghi âm'
+                      : 'Voice UI preview (chưa ghi âm thật)'
+                }
+                className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 disabled:pointer-events-none disabled:opacity-40"
+              >
+                {voiceUiState === 'active-ui' ? (
+                  <Loader2 className="size-5 animate-spin text-blue-600" />
+                ) : (
+                  <Mic
+                    className={
+                      voiceUiState === 'cancelled-ui'
+                        ? 'size-5 text-orange-500'
+                        : 'size-5 text-inherit'
+                    }
+                  />
+                )}
+                <span className="sr-only">Voice UI placeholder</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Voice (preview)</TooltipContent>
+          </Tooltip>
+
+          <div className="mx-0.5 h-5 w-px bg-border sm:mx-1" />
+
+          {activeConversation?.type === 'group' && (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={onOpenPoll}
+                    className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600"
+                  >
+                    <BarChart2 className="size-5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Tạo bình chọn (Poll)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={onOpenTask}
+                    className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600"
+                  >
+                    <CheckSquare className="size-5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Giao việc / Nhắc hẹn</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    title="AI Tóm tắt nhóm"
+                    className="flex shrink-0 items-center gap-2 rounded-lg border border-blue-600/20 bg-blue-600/5 p-2 text-blue-600 transition-all hover:bg-blue-600/10 hover:text-blue-700 sm:hidden"
+                  >
+                    <Sparkles className="size-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">AI tóm tắt nhóm</TooltipContent>
+              </Tooltip>
+              <button
+                type="button"
+                title="AI Tóm tắt nhóm"
+                className="ml-2 hidden shrink-0 items-center gap-2 rounded-lg border border-blue-600/20 bg-blue-600/5 p-2 text-xs font-bold text-blue-600 transition-all hover:bg-blue-600/10 hover:text-blue-700 sm:flex"
+              >
+                <Sparkles className="size-4" />
+                Tóm tắt cuộc gọi / tin nhắn
+              </button>
+            </>
+          )}
+
+          {activeConversation?.type === 'direct' && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="hidden shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 sm:block"
+                >
+                  <Palette className="size-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Bảng trắng tương tác</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </TooltipProvider>
 
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+      <div className="hidden items-center gap-2 overflow-x-auto pb-1 no-scrollbar sm:flex">
         <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
           <Sparkles className="w-3 h-3 text-blue-600" />
           Dạ, em hiểu rồi ạ.
@@ -328,7 +445,7 @@ export function ChatComposer({
       </div>
 
       <div className="relative flex items-end gap-2">
-        <div className="flex-1 relative flex flex-col bg-black/5 dark:bg-white/5 rounded-2xl border border-transparent focus-within:border-blue-600/30 focus-within:bg-white dark:focus-within:bg-black/40 transition-all">
+        <div className="relative flex flex-1 flex-col rounded-xl border border-border/45 bg-muted/35 transition-all focus-within:border-border focus-within:bg-background/90">
           <textarea
             placeholder={
               activeConversation
@@ -341,45 +458,36 @@ export function ChatComposer({
               setInputText(e.target.value);
               handleTyping();
             }}
-            onKeyDown={(e) => {
-              handleKeyDown(e);
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                // Clear input after sending
-                setTimeout(() => setInputText(''), 0);
-              }
-            }}
+            onKeyDown={(e) => handleKeyDown(e)}
             disabled={!activeConversationId}
-            className="w-full bg-transparent px-4 py-3 outline-none text-sm font-medium resize-none max-h-32 min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="max-h-32 min-h-10 w-full resize-none bg-transparent px-3.5 py-2.5 text-sm font-medium leading-5 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>
 
-        <div className="flex items-center gap-2 pb-1 shrink-0">
-          <button
-            type="button"
-            title="Ghi âm giọng nói"
-            className="p-3 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-all text-muted-foreground hover:text-blue-600"
-          >
-            <Mic className="w-5 h-5" />
-          </button>
+        <div className="flex shrink-0 items-center gap-2">
           {hasSendable ? (
             <button
               type="button"
               onClick={() => void handleSendMessage()}
-              disabled={!activeConversationId || busy}
-              className="p-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 transition-all group disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600 animate-in fade-in zoom-in"
+              disabled={sendDisabled}
+              aria-label={busy ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'}
+              className="group animate-in flex size-10 items-center justify-center rounded-lg bg-linear-to-br from-blue-600 to-blue-700 text-white shadow-md shadow-blue-600/20 transition-all fade-in zoom-in hover:-translate-y-0.5 hover:from-blue-600 hover:to-blue-800 hover:shadow-lg hover:shadow-blue-600/25 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:from-blue-600 disabled:hover:to-blue-700"
             >
-              <Send className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              {busy ? (
+                <Loader2 className="size-5 animate-spin" />
+              ) : (
+                <Send className="size-5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+              )}
             </button>
           ) : (
             <button
               type="button"
               onClick={handleLikeClick}
-              disabled={!activeConversationId || busy}
-              className="p-3 rounded-xl bg-black/5 hover:bg-blue-600 dark:bg-white/5 dark:hover:bg-blue-600 text-blue-600 hover:text-white transition-all animate-in fade-in zoom-in group"
+              disabled={sendDisabled}
+              aria-label="Gửi like nhanh"
+              className="group animate-in flex size-10 items-center justify-center rounded-lg border border-border/60 bg-muted/45 text-blue-600 shadow-sm transition-all fade-in zoom-in hover:-translate-y-0.5 hover:border-blue-600/30 hover:bg-blue-600 hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
             >
-              <span className="text-xl leading-none group-hover:scale-125 transition-transform inline-block">
-                👍
-              </span>
+              <ThumbsUp className="size-5 transition-transform group-hover:scale-110" />
             </button>
           )}
         </div>
