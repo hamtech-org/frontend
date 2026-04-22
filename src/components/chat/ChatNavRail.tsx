@@ -3,13 +3,17 @@ import {
   Cloud,
   Contact,
   FolderOpen,
-  Frame,
   Home,
   MessageCircle,
   Settings,
+  Sticker,
 } from 'lucide-react';
+import { useSelector } from 'react-redux';
 import type { NavigateFunction } from 'react-router-dom';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/utils/cn';
+import type { RootState } from '@/store/store';
 
 type ChatNavRailProps = {
   navigate: NavigateFunction;
@@ -18,96 +22,134 @@ type ChatNavRailProps = {
   onToggleContacts: () => void;
 };
 
+/** Nút icon trong nav rail — bọc sẵn Tooltip. */
+function NavRailButton({
+  title,
+  onClick,
+  isActive,
+  children,
+  className,
+}: {
+  title: string;
+  onClick?: () => void;
+  isActive?: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          className={cn(
+            'size-12 shrink-0 rounded-2xl flex items-center justify-center transition-colors',
+            isActive
+              ? 'bg-primary-foreground/20 text-primary-foreground'
+              : 'text-primary-foreground/80 hover:bg-primary-foreground/10',
+            className,
+          )}
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right">{title}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function ChatNavRail({
   navigate,
   onOpenProfile,
   showContactsManagement,
   onToggleContacts,
 }: ChatNavRailProps) {
-  const toggleButtonClassName = (isActive: boolean) =>
-    cn(
-      'size-12 shrink-0 rounded-2xl flex items-center justify-center transition-colors',
-      isActive ? 'bg-primary-foreground/20 text-primary-foreground' : 'text-primary-foreground/80 hover:bg-primary-foreground/10',
-    );
+  // Lấy avatar user từ Redux store thay vì hardcode Unsplash
+  const currentUser = useSelector((state: RootState) => state.auth.user);
+  const avatarUrl = currentUser?.avatar ?? null;
+  const displayName = currentUser?.displayName ?? 'U';
+  // Ký tự đầu tên dùng làm AvatarFallback
+  const initials = displayName.trim().charAt(0).toUpperCase();
 
   return (
-    <div className="w-16 bg-primary text-primary-foreground flex flex-col items-center py-6 shrink-0 z-20">
-      <div
-        className="size-12 shrink-0 rounded-full overflow-hidden mb-6 border border-primary-foreground/20 shadow-sm hover:opacity-90 transition-opacity"
-        onClick={onOpenProfile}
-        onKeyDown={(e) => e.key === 'Enter' && onOpenProfile()}
-        role="button"
-        tabIndex={0}
-        title="Thông tin tài khoản"
-      >
-        <img
-          src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop"
-          className="w-full h-full object-cover"
-          alt="My Profile"
-        />
-      </div>
-      <div className="flex-1 w-full flex flex-col items-center gap-2">
-        <button
-          type="button"
-          onClick={onToggleContacts}
-          title="Trở lại chat"
-          className={toggleButtonClassName(!showContactsManagement)}
-        >
-          <MessageCircle className="size-6 fill-primary-foreground" />
-        </button>
-        <button
-          type="button"
-          onClick={onToggleContacts}
-          title="Quản lý bạn bè"
-          className={toggleButtonClassName(showContactsManagement)}
-        >
-          <Contact className="size-6" />
-        </button>
+    <TooltipProvider delayDuration={300}>
+      <div className="w-16 bg-primary text-primary-foreground flex flex-col items-center py-6 shrink-0 z-20">
+        {/* Avatar người dùng — dùng shadcn Avatar + AvatarFallback (Rule 1) */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              className="size-12 shrink-0 rounded-full overflow-hidden mb-6 border border-primary-foreground/20 shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
+              onClick={onOpenProfile}
+              onKeyDown={(e) => e.key === 'Enter' && onOpenProfile()}
+              role="button"
+              tabIndex={0}
+            >
+              <Avatar className="size-12">
+                <AvatarImage
+                  src={avatarUrl ?? undefined}
+                  alt={displayName}
+                  referrerPolicy="no-referrer"
+                />
+                <AvatarFallback className="bg-primary-foreground/20 text-primary-foreground font-bold text-lg">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right">Thông tin tài khoản</TooltipContent>
+        </Tooltip>
 
-        <div className="w-8 h-px shrink-0 bg-primary-foreground/20 my-2" />
+        {/* Navigation buttons */}
+        <div className="flex-1 w-full flex flex-col items-center gap-2">
+          {/* Chat — active khi đang ở màn hình chat (không quản lý bạn bè) */}
+          <NavRailButton
+            title="Tin nhắn"
+            onClick={onToggleContacts}
+            isActive={!showContactsManagement}
+          >
+            <MessageCircle className="size-6 fill-primary-foreground" />
+          </NavRailButton>
 
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          title="Về Bảng Tin"
-          className="size-12 shrink-0 rounded-2xl flex items-center justify-center text-primary-foreground/80 hover:bg-primary-foreground/10 transition-colors mt-1"
-        >
-          <Home className="size-6" />
-        </button>
+          {/* Danh bạ */}
+          <NavRailButton
+            title="Quản lý bạn bè"
+            onClick={onToggleContacts}
+            isActive={showContactsManagement}
+          >
+            <Contact className="size-6" />
+          </NavRailButton>
 
-        <button
-          type="button"
-          className="size-12 shrink-0 rounded-2xl flex items-center justify-center text-primary-foreground/80 hover:bg-primary-foreground/10 transition-colors"
-        >
-          <Cloud className="size-6" />
-        </button>
-        <button
-          type="button"
-          className="size-12 shrink-0 rounded-2xl flex items-center justify-center text-primary-foreground/80 hover:bg-primary-foreground/10 transition-colors"
-        >
-          <FolderOpen className="size-[22px] stroke-2" />
-        </button>
-        <button
-          type="button"
-          className="size-12 shrink-0 rounded-2xl flex items-center justify-center text-primary-foreground/80 hover:bg-primary-foreground/10 transition-colors"
-        >
-          <Frame className="size-[22px] border-dashed border-2 stroke-0 rounded border-current" />
-        </button>
-        <button
-          type="button"
-          className="size-12 shrink-0 rounded-2xl flex items-center justify-center text-primary-foreground/80 hover:bg-primary-foreground/10 transition-colors"
-        >
-          <Briefcase className="size-[22px]" />
-        </button>
+          {/* Separator */}
+          <div className="w-8 h-px shrink-0 bg-primary-foreground/20 my-1" />
+
+          <NavRailButton title="Về Bảng Tin" onClick={() => navigate('/')}>
+            <Home className="size-6" />
+          </NavRailButton>
+
+          <NavRailButton title="Kho lưu trữ đám mây">
+            <Cloud className="size-6" />
+          </NavRailButton>
+
+          <NavRailButton title="Tệp & Tài liệu">
+            <FolderOpen className="size-[22px]" />
+          </NavRailButton>
+
+          <NavRailButton title="Nhãn dán">
+            <Sticker className="size-[22px]" />
+          </NavRailButton>
+
+          <NavRailButton title="Công việc">
+            <Briefcase className="size-[22px]" />
+          </NavRailButton>
+        </div>
+
+        {/* Settings ở cuối */}
+        <div className="mt-auto w-full flex justify-center pb-2">
+          <NavRailButton title="Cài đặt">
+            <Settings className="size-6" />
+          </NavRailButton>
+        </div>
       </div>
-      <div className="mt-auto w-full flex justify-center pb-2">
-        <button
-          type="button"
-          className="size-12 shrink-0 rounded-2xl flex items-center justify-center text-primary-foreground/80 hover:bg-primary-foreground/10 transition-colors"
-        >
-          <Settings className="size-6" />
-        </button>
-      </div>
-    </div>
+    </TooltipProvider>
   );
 }
