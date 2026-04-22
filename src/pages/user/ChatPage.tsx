@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
@@ -51,6 +51,7 @@ export default function ChatPage() {
 
   // ── Responsive breakpoint ─────────────────────────────────────────────
   const isTabletOrDesktop = useBreakpoint('md');
+  const isDesktop = useBreakpoint('lg');
 
   // ── Auth ──────────────────────────────────────────────────────────────
   const currentUser = useSelector((state: RootState) => state.auth.user);
@@ -414,6 +415,12 @@ export default function ChatPage() {
   const handleCloseInfo = useCallback(() => {
     modalActions.setShowInfo(false);
   }, [modalActions]);
+
+  useEffect(() => {
+    if (!isDesktop && modalState.showInfo) {
+      modalActions.setShowInfo(false);
+    }
+  }, [isDesktop, modalState.showInfo, modalActions]);
 
   const handleStartEdit = useCallback(
     (msg: IMessage) => {
