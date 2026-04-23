@@ -44,6 +44,11 @@ class SocketService {
       });
 
       this.socket!.on('disconnect', (reason) => {
+        if (reason === 'io client disconnect') {
+          // Client chủ động disconnect (unmount/đổi token) — không phải lỗi.
+          console.info('Socket.io ngắt kết nối (client):', reason);
+          return;
+        }
         console.warn('Socket.io ngắt kết nối:', reason);
       });
 

@@ -30,6 +30,8 @@ export interface ChatModalState {
   taskNote: string;
   taskAssignees: string[];
   taskAssignToAll: boolean;
+  /** Khi có giá trị: modal công việc ở chế độ chỉnh sửa (PATCH). */
+  editingTaskId: string | null;
   aiSummaryLoading: boolean;
   aiSummaryResult: string;
   showContactsManagement: boolean;
@@ -41,6 +43,10 @@ export interface ChatModalState {
   actionMenuMsgId: string | null;
   messageConfirm: MessageConfirmState;
   messageConfirmSubmitting: boolean;
+  /** Xác nhận hủy công việc nhóm (thay window.confirm). */
+  taskDeleteConfirm: { taskId: string; title: string } | null;
+  /** Hàng subtask trong TaskModal (assigneeId + nội dung). */
+  taskSubtaskRows: Array<{ assigneeId: string; content: string }>;
 }
 
 export function useChatModalController() {
@@ -72,6 +78,7 @@ export function useChatModalController() {
   const [taskNote, setTaskNote] = useState('');
   const [taskAssignees, setTaskAssignees] = useState<string[]>([]);
   const [taskAssignToAll, setTaskAssignToAll] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryResult, setAiSummaryResult] = useState('');
   const [showContactsManagement, setShowContactsManagement] = useState(false);
@@ -83,6 +90,13 @@ export function useChatModalController() {
   const [actionMenuMsgId, setActionMenuMsgId] = useState<string | null>(null);
   const [messageConfirm, setMessageConfirm] = useState<MessageConfirmState>(null);
   const [messageConfirmSubmitting, setMessageConfirmSubmitting] = useState(false);
+  const [taskDeleteConfirm, setTaskDeleteConfirm] = useState<{
+    taskId: string;
+    title: string;
+  } | null>(null);
+  const [taskSubtaskRows, setTaskSubtaskRows] = useState<
+    Array<{ assigneeId: string; content: string }>
+  >([]);
 
   const openCreateGroupModal = useCallback(() => {
     setShowCreateGroupModal(true);
@@ -96,7 +110,10 @@ export function useChatModalController() {
     setTaskDeadline('');
     setTaskNote('');
     setTaskAssignees([]);
+    setTaskSubtaskRows([]);
     setTaskAssignToAll(false);
+    setEditingTaskId(null);
+    setTaskDeleteConfirm(null);
   }, []);
 
   const state: ChatModalState = {
@@ -126,6 +143,7 @@ export function useChatModalController() {
     taskNote,
     taskAssignees,
     taskAssignToAll,
+    editingTaskId,
     aiSummaryLoading,
     aiSummaryResult,
     showContactsManagement,
@@ -135,8 +153,10 @@ export function useChatModalController() {
     editingMessage,
     editDraft,
     actionMenuMsgId,
+    taskSubtaskRows,
     messageConfirm,
     messageConfirmSubmitting,
+    taskDeleteConfirm,
   };
 
   const actions = useMemo(
@@ -167,6 +187,7 @@ export function useChatModalController() {
       setTaskNote,
       setTaskAssignees,
       setTaskAssignToAll,
+      setEditingTaskId,
       setAiSummaryLoading,
       setAiSummaryResult,
       setShowContactsManagement,
@@ -176,8 +197,10 @@ export function useChatModalController() {
       setEditingMessage,
       setEditDraft,
       setActionMenuMsgId,
+      setTaskSubtaskRows,
       setMessageConfirm,
       setMessageConfirmSubmitting,
+      setTaskDeleteConfirm,
       openCreateGroupModal,
       closeTaskModal,
     }),

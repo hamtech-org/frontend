@@ -18,12 +18,7 @@ interface LoginFormProps {
   onRegisterClick: () => void;
 }
 
-export const LoginForm = ({
-  onSubmit,
-  isLoading,
-  error,
-  onRegisterClick,
-}: LoginFormProps) => {
+export const LoginForm = ({ onSubmit, isLoading, error, onRegisterClick }: LoginFormProps) => {
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -34,12 +29,13 @@ export const LoginForm = ({
     resolver: zodResolver(loginSchema),
   });
 
-
-
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div>
-        <label htmlFor="email" className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300">
+        <label
+          htmlFor="email"
+          className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300"
+        >
           <Mail className="w-5 h-5" />
           <div>
             <div>Email</div>
@@ -55,7 +51,10 @@ export const LoginForm = ({
       </div>
 
       <div>
-        <label htmlFor="password" className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300">
+        <label
+          htmlFor="password"
+          className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300"
+        >
           <Lock className="w-5 h-5" />
           <div>
             <div>Mật khẩu</div>
@@ -81,8 +80,7 @@ export const LoginForm = ({
 
       {error && (
         <div className="text-red-500 text-sm text-center">
-          {/* @ts-ignore */}
-          {error?.data?.message || 'Đã có lỗi xảy ra'}
+          {(error as any)?.data?.message || 'Đã có lỗi xảy ra'}
         </div>
       )}
 
@@ -102,7 +100,11 @@ export const LoginForm = ({
       </button>
 
       <div className="text-center">
-        <button type="button" onClick={onRegisterClick} className="text-sm text-blue-600 hover:underline">
+        <button
+          type="button"
+          onClick={onRegisterClick}
+          className="text-sm text-blue-600 hover:underline"
+        >
           Chưa có tài khoản? Đăng ký
         </button>
       </div>

@@ -21,6 +21,14 @@ export function typingInitial(entry: TypingUserEntry): string {
   return ch || '?';
 }
 
+/** Có hạn và đã qua mốc → không cho xác nhận tham gia nữa. */
+export function isTaskJoinDeadlinePassed(dueDate: string | null | undefined): boolean {
+  if (dueDate == null || String(dueDate).trim() === '') return false;
+  const ms = new Date(String(dueDate)).getTime();
+  if (!Number.isFinite(ms)) return false;
+  return Date.now() > ms;
+}
+
 /** Tin hệ thống / thông báo nhóm (dòng giữa) — không đưa vào tìm kiếm trong trò chuyện. */
 export function isSystemChatNotificationMessage(msg: IMessage): boolean {
   if ((msg as { type?: string }).type === 'system') return true;
@@ -28,11 +36,91 @@ export function isSystemChatNotificationMessage(msg: IMessage): boolean {
   return false;
 }
 
+type SystemJsonPreviewCtx = {
+  currentUserId?: string;
+  senderId?: string;
+  senderDisplayName?: string | null;
+};
+
+/** Một dòng tiếng Việt cho sidebar / lastMessage từ `content` JSON (task, poll, …). */
+export function lastMessageLineFromSystemJson(raw: string, ctx: SystemJsonPreviewCtx): string | null {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    const obj = JSON.parse(trimmed) as Record<string, unknown> & {
+      kind?: string;
+      actor?: { userId?: string; name?: string };
+      task?: { title?: string };
+      poll?: { question?: string; optionText?: string };
+    };
+    const kind = String(obj?.kind ?? '');
+    const actorId = String(obj?.actor?.userId ?? ctx.senderId ?? '');
+    const actorName = String(obj?.actor?.name ?? ctx.senderDisplayName ?? 'Ai đó').trim() || 'Ai đó';
+    const who =
+      ctx.currentUserId && actorId && actorId === ctx.currentUserId ? 'Bạn' : actorName;
+
+    if (kind === 'task_joined') {
+      const title = String(obj?.task?.title ?? '').trim();
+      return title ? `${who} đã tham gia công việc "${title}"` : `${who} đã tham gia công việc`;
+    }
+    if (kind === 'task_assigned') {
+      const title = String(obj?.task?.title ?? '').trim();
+      return title ? `${who} đã giao việc "${title}"` : `${who} đã giao việc`;
+    }
+    if (kind === 'task_updated') {
+      const title = String(obj?.task?.title ?? '').trim();
+      return title ? `${who} đã cập nhật công việc «${title}»` : `${who} đã cập nhật một công việc`;
+    }
+    if (kind === 'task_deleted') {
+      const title = String(obj?.task?.title ?? '').trim();
+      return title ? `${who} đã hủy công việc «${title}»` : `${who} đã hủy một công việc`;
+    }
+    if (kind === 'poll_created') {
+      const question = String(obj?.poll?.question ?? '').trim();
+      return question ? `${who} đã tạo một bình chọn: ${question}` : `${who} đã tạo một bình chọn`;
+    }
+    if (kind === 'poll_voted') {
+      const optionText = String(obj?.poll?.optionText ?? '').trim();
+      return optionText ? `${who} đã bình chọn: ${optionText}` : `${who} đã bình chọn`;
+    }
+    if (kind === 'poll_vote_changed') {
+      const optionText = String(obj?.poll?.optionText ?? '').trim();
+      return optionText ? `${who} đã thay đổi bình chọn: ${optionText}` : `${who} đã thay đổi bình chọn`;
+    }
+    if (kind === 'poll_unvoted') {
+      const optionText = String(obj?.poll?.optionText ?? '').trim();
+      return optionText ? `${who} đã rút phiếu: ${optionText}` : `${who} đã rút phiếu`;
+    }
+    if (kind === 'poll_option_added') {
+      const optionText = String(obj?.poll?.optionText ?? '').trim();
+      return optionText ? `${who} đã thêm lựa chọn: ${optionText}` : `${who} đã thêm lựa chọn`;
+    }
+    if (kind === 'poll_closed') {
+      const question = String(obj?.poll?.question ?? '').trim();
+      return question ? `${who} đã đóng bình chọn: ${question}` : `${who} đã đóng bình chọn`;
+    }
+    return 'Thông báo nhóm';
+  } catch {
+    return null;
+  }
+}
+
 /** Dòng `content` hiển thị trên sidebar / lastMessage (tin đầy đủ từ socket hoặc API). */
-export function lastMessagePreviewContentFromMessage(msg: Pick<IMessage, 'content' | 'type' | 'isRecalled' | 'isDeleted' | 'mediaOriginalName'>): string {
+export function lastMessagePreviewContentFromMessage(
+  msg: Pick<IMessage, 'content' | 'type' | 'isRecalled' | 'isDeleted' | 'mediaOriginalName' | 'senderId' | 'senderDisplayName'>,
+  viewerUserId?: string,
+): string {
   if (msg.isRecalled) return 'Tin nhắn đã được thu hồi';
   if (msg.isDeleted) return 'Tin nhắn đã xóa';
   const c = (msg.content ?? '').trim();
+  if ((msg as { type?: string }).type === 'system' && c.startsWith('{')) {
+    const line = lastMessageLineFromSystemJson(c, {
+      currentUserId: viewerUserId,
+      senderId: String((msg as { senderId?: string }).senderId ?? ''),
+      senderDisplayName: (msg as { senderDisplayName?: string | null }).senderDisplayName ?? null,
+    });
+    if (line) return line;
+  }
   if (c !== '') return msg.content ?? '';
   if (msg.type === 'image') return 'Hình ảnh';
   if (msg.type === 'video') return 'Video';
@@ -166,49 +254,11 @@ export function formatConversationListLastPreview(conv: IConversation, currentUs
     if (typeof content !== 'string') return null;
     const raw = content.trim();
     if (!raw.startsWith('{')) return null;
-    try {
-      const obj = JSON.parse(raw) as any;
-      const kind = String(obj?.kind ?? '');
-      const actorId = String(obj?.actor?.userId ?? lm.senderId ?? '');
-      const actorName = String(obj?.actor?.name ?? lm.senderDisplayName ?? 'Ai đó').trim() || 'Ai đó';
-      const who = currentUserId && actorId && actorId === currentUserId ? 'Bạn' : actorName;
-
-      if (kind === 'task_joined') {
-        const title = String(obj?.task?.title ?? '').trim();
-        return title ? `${who} đã tham gia công việc "${title}"` : `${who} đã tham gia công việc`;
-      }
-      if (kind === 'task_assigned') {
-        const title = String(obj?.task?.title ?? '').trim();
-        return title ? `${who} đã giao việc "${title}"` : `${who} đã giao việc`;
-      }
-      if (kind === 'poll_created') {
-        const question = String(obj?.poll?.question ?? '').trim();
-        return question ? `${who} đã tạo một bình chọn: ${question}` : `${who} đã tạo một bình chọn`;
-      }
-      if (kind === 'poll_voted') {
-        const optionText = String(obj?.poll?.optionText ?? '').trim();
-        return optionText ? `${who} đã bình chọn: ${optionText}` : `${who} đã bình chọn`;
-      }
-      if (kind === 'poll_vote_changed') {
-        const optionText = String(obj?.poll?.optionText ?? '').trim();
-        return optionText ? `${who} đã thay đổi bình chọn: ${optionText}` : `${who} đã thay đổi bình chọn`;
-      }
-      if (kind === 'poll_unvoted') {
-        const optionText = String(obj?.poll?.optionText ?? '').trim();
-        return optionText ? `${who} đã rút phiếu: ${optionText}` : `${who} đã rút phiếu`;
-      }
-      if (kind === 'poll_option_added') {
-        const optionText = String(obj?.poll?.optionText ?? '').trim();
-        return optionText ? `${who} đã thêm lựa chọn: ${optionText}` : `${who} đã thêm lựa chọn`;
-      }
-      if (kind === 'poll_closed') {
-        const question = String(obj?.poll?.question ?? '').trim();
-        return question ? `${who} đã đóng bình chọn: ${question}` : `${who} đã đóng bình chọn`;
-      }
-      return null;
-    } catch {
-      return null;
-    }
+    return lastMessageLineFromSystemJson(raw, {
+      currentUserId: currentUserId,
+      senderId: lm.senderId,
+      senderDisplayName: lm.senderDisplayName ?? null,
+    });
   };
 
   const systemPreview = formatSystemPreview();

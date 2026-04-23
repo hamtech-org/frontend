@@ -50,6 +50,9 @@ interface ChatModalsHostProps {
     editDraft: string;
     messageConfirm: MessageConfirmState;
     messageConfirmSubmitting: boolean;
+    taskDeleteConfirm: { taskId: string; title: string } | null;
+    taskSubtaskRows: Array<{ assigneeId: string; content: string }>;
+    editingTaskId: string | null;
   };
   actions: {
     setShowPollVoteModal: (value: boolean) => void;
@@ -77,6 +80,10 @@ interface ChatModalsHostProps {
     setEditGroupName: (value: string) => void;
     setEditingMessage: (value: IMessage | null) => void;
     setEditDraft: (value: string) => void;
+    setMessageConfirmSubmitting: (value: boolean) => void;
+    setTaskDeleteConfirm: (value: { taskId: string; title: string } | null) => void;
+    setTaskSubtaskRows: (rows: Array<{ assigneeId: string; content: string }>) => void;
+    closeTaskModal: () => void;
   };
   isEditing: boolean;
   /** Pin limit modal props (message-level) */
@@ -143,6 +150,9 @@ export function ChatModalsHost({
     editDraft,
     messageConfirm,
     messageConfirmSubmitting,
+    taskDeleteConfirm,
+    taskSubtaskRows,
+    editingTaskId,
   } = state;
 
   return (
@@ -221,7 +231,7 @@ export function ChatModalsHost({
       />
       <TaskModal
         open={showTaskModal}
-        onClose={actions.setShowTaskModal.bind(null, false)}
+        onClose={actions.closeTaskModal}
         currentUserId={core.currentUserId}
         assignToAll={taskAssignToAll}
         onAssignToAllChange={(value) => {
@@ -237,7 +247,41 @@ export function ChatModalsHost({
         onTaskNoteChange={actions.setTaskNote}
         taskAssignees={taskAssignees}
         onTaskAssigneesChange={actions.setTaskAssignees}
-        onSubmitTask={groupActions.handleSubmitTask}
+        subtaskRows={taskSubtaskRows}
+        onSubtaskRowsChange={actions.setTaskSubtaskRows}
+        onSubmitTask={() => void groupActions.handleSubmitTask()}
+        isEditing={Boolean(editingTaskId)}
+        onDeleteTask={
+          editingTaskId
+            ? () => {
+                void groupActions.handleDeleteGroupTask(editingTaskId);
+              }
+            : undefined
+        }
+        submitBusy={group.actionLoading.createTask || group.actionLoading.updateTask}
+      />
+      <ConfirmModal
+        open={taskDeleteConfirm !== null}
+        title="Hủy công việc?"
+        description={
+          taskDeleteConfirm ? (
+            <>
+              Bạn sắp hủy công việc{' '}
+              <span className="font-bold text-foreground">«{taskDeleteConfirm.title}»</span>.
+              <br />
+              <br />
+              Thẻ giao việc sẽ được thu hồi cho toàn bộ nhóm (không còn hiển thị). Mọi người vẫn
+              thấy dòng nhật ký hủy việc trong khung chat.
+            </>
+          ) : undefined
+        }
+        confirmLabel="Hủy công việc"
+        variant="danger"
+        isConfirming={group.actionLoading.updateTask}
+        onClose={() => {
+          if (!group.actionLoading.updateTask) actions.setTaskDeleteConfirm(null);
+        }}
+        onConfirm={() => void groupActions.handleConfirmDeleteTask()}
       />
       <AddMembersModal
         open={showAddMembersModal}

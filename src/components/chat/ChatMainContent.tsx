@@ -1,4 +1,4 @@
-import type { RefObject, SetStateAction, Dispatch } from 'react';
+import type { RefObject, SetStateAction, Dispatch, ReactNode } from 'react';
 import { Phone, Video } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { FriendsListView } from '@/components/chat/FriendsListView';
@@ -68,11 +68,17 @@ interface ChatMainContentProps {
     caption: string,
   ) => Promise<void>;
 
+  onEditGroupTask?: (taskId: string) => void;
+  onDeleteGroupTask?: (taskId: string) => void;
+
   /**
    * Callback quay lại danh sách hội thoại — chỉ dùng trên mobile.
    * Khi được truyền, ChatHeader sẽ hiển thị nút back (ẩn trên md+).
    */
   onBack?: () => void;
+
+  /** Vùng tùy chọn ngay dưới danh sách tin (vd. banner realtime nhóm). */
+  postMessageListSlot?: ReactNode;
 }
 
 export function ChatMainContent(props: ChatMainContentProps) {
@@ -103,6 +109,9 @@ export function ChatMainContent(props: ChatMainContentProps) {
     shareTargetConversations = [],
     onForwardMediaMessage = async () => {},
     onBack,
+    postMessageListSlot,
+    onEditGroupTask,
+    onDeleteGroupTask,
   } = props;
 
   return (
@@ -181,7 +190,11 @@ export function ChatMainContent(props: ChatMainContentProps) {
             onOpenPollVote={groupActions.openPollVoteModal}
             shareTargetConversations={shareTargetConversations}
             onForwardMediaMessage={onForwardMediaMessage}
+            onEditGroupTask={onEditGroupTask}
+            onDeleteGroupTask={onDeleteGroupTask}
           />
+
+          {postMessageListSlot}
 
           {core.activeConversation?.type === 'group' &&
             activeGroupCall?.conversationId === core.activeConversationId && (
@@ -220,6 +233,7 @@ export function ChatMainContent(props: ChatMainContentProps) {
           <ChatComposer
             activeConversation={core.activeConversation}
             activeConversationId={core.activeConversationId}
+            currentUserRole={core.currentUserRole}
             onOpenPoll={onOpenPoll}
             onOpenTask={onOpenTask}
           />

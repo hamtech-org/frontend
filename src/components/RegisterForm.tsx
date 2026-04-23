@@ -7,12 +7,18 @@ import { ArrowRight, Eye, EyeOff, Loader2, User, Mail, Lock } from 'lucide-react
 
 const registerSchema = z
   .object({
-    displayName: z.string().min(2, 'Tên hiển thị phải có ít nhất 2 ký tự').max(50, 'Tên hiển thị không quá 50 ký tự'),
+    displayName: z
+      .string()
+      .min(2, 'Tên hiển thị phải có ít nhất 2 ký tự')
+      .max(50, 'Tên hiển thị không quá 50 ký tự'),
     email: z.string().email('Email không hợp lệ'),
     password: z
       .string()
       .min(8, 'Mật khẩu phải có ít nhất 8 ký tự')
-      .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/, 'Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt'),
+      .regex(
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+        'Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt',
+      ),
     confirmPassword: z.string().min(1, 'Vui lòng xác nhận mật khẩu'),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -61,11 +67,18 @@ const Step = ({
     <div className="space-y-6">
       {fields.map((field) => (
         <div key={field.name} className="space-y-2">
-          <label htmlFor={field.name} className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300">
+          <label
+            htmlFor={field.name}
+            className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300"
+          >
             {field.icon}
             <div>
               <div>{field.title}</div>
-              {field.subtitle && <div className="text-sm text-gray-500 dark:text-gray-400 font-normal">{field.subtitle}</div>}
+              {field.subtitle && (
+                <div className="text-sm text-gray-500 dark:text-gray-400 font-normal">
+                  {field.subtitle}
+                </div>
+              )}
             </div>
           </label>
           <div className="relative">
@@ -91,7 +104,12 @@ const Step = ({
           </div>
           <AnimatePresence>
             {errors?.[field.name] && (
-              <motion.p initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="mt-1 text-sm text-red-500">
+              <motion.p
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="mt-1 text-sm text-red-500"
+              >
                 {errors[field.name]?.message}
               </motion.p>
             )}
@@ -102,12 +120,7 @@ const Step = ({
   );
 };
 
-export const RegisterForm = ({
-  onSubmit,
-  isLoading,
-  error,
-  onLoginClick,
-}: RegisterFormProps) => {
+export const RegisterForm = ({ onSubmit, isLoading, error, onLoginClick }: RegisterFormProps) => {
   const [regStep, setRegStep] = useState(0);
   const [[page, direction], setPage] = useState([0, 0]);
   const [showPassword, setShowPassword] = useState(false);
@@ -124,9 +137,18 @@ export const RegisterForm = ({
   });
 
   const handleNextStep = async () => {
-    const fieldsPerStep: (keyof RegisterFormValues)[][] = [['displayName'], ['email'], ['password', 'confirmPassword']];
+    const fieldsPerStep: (keyof RegisterFormValues)[][] = [
+      ['displayName'],
+      ['email'],
+      ['password', 'confirmPassword'],
+    ];
     const currentFields = fieldsPerStep[regStep];
-    console.log('📝 [DEBUG] RegisterForm - validating fields:', currentFields, 'for step:', regStep);
+    console.log(
+      '📝 [DEBUG] RegisterForm - validating fields:',
+      currentFields,
+      'for step:',
+      regStep,
+    );
     const isValid = await trigger(currentFields);
 
     if (isValid) {
@@ -215,7 +237,12 @@ export const RegisterForm = ({
               opacity: { duration: 0.2 },
             }}
           >
-            <Step {...registrationSteps[regStep]} register={register} errors={errors} trigger={trigger} />
+            <Step
+              {...registrationSteps[regStep]}
+              register={register}
+              errors={errors}
+              trigger={trigger}
+            />
           </motion.div>
         </AnimatePresence>
       </form>
@@ -226,8 +253,7 @@ export const RegisterForm = ({
             console.log('📝 [DEBUG] RegisterForm - error:', error);
             return null;
           })()}
-          {/* @ts-ignore */}
-          {error?.data?.message || 'Đã có lỗi xảy ra'}
+          {(error as any)?.data?.message || 'Đã có lỗi xảy ra'}
         </div>
       )}
 

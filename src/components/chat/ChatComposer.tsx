@@ -17,7 +17,13 @@ import {
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { IConversation } from '@/types/chat.types';
+import type { GroupMemberRole } from '@/types/chat.group.types';
 import { useChatComposerController } from '@/pages/user/chat-page/hooks/useChatComposerController';
+import { toast } from 'react-toastify';
+import {
+  canUserCreatePollInGroup,
+  canUserCreateTaskInGroup,
+} from '@/utils/groupConversationPermissions';
 
 export type PendingAttachment = {
   localId: string;
@@ -34,6 +40,8 @@ function formatFileSize(bytes: number): string {
 type ChatComposerProps = {
   activeConversation: IConversation | undefined;
   activeConversationId: string | null;
+  /** Vai trò trong nhóm (để khớp quyền `groupSettings.memberPermissions`). */
+  currentUserRole?: GroupMemberRole;
   onOpenPoll: () => void;
   onOpenTask: () => void;
 };
@@ -41,6 +49,7 @@ type ChatComposerProps = {
 export function ChatComposer({
   activeConversation,
   activeConversationId,
+  currentUserRole,
   onOpenPoll,
   onOpenTask,
 }: ChatComposerProps) {
@@ -367,44 +376,44 @@ export function ChatComposer({
 
           {activeConversation?.type === 'group' && (
             <>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={onOpenPoll}
-                    aria-label="Tạo bình chọn"
-                    className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600"
-                  >
-                    <BarChart2 className="size-5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Tạo bình chọn (Poll)</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={onOpenTask}
-                    aria-label="Tạo công việc"
-                    className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600"
-                  >
-                    <CheckSquare className="size-5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Giao việc / Nhắc hẹn</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    title="AI Tóm tắt nhóm"
-                    className="flex shrink-0 items-center gap-2 rounded-lg border border-blue-600/20 bg-blue-600/5 p-2 text-blue-600 transition-all hover:bg-blue-600/10 hover:text-blue-700 sm:hidden"
-                  >
-                    <Sparkles className="size-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">AI tóm tắt nhóm</TooltipContent>
-              </Tooltip>
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    !canUserCreatePollInGroup({
+                      conversation: activeConversation,
+                      userRole: currentUserRole,
+                    })
+                  ) {
+                    toast.error('Nhóm không cho phép thành viên tạo bình chọn.');
+                    return;
+                  }
+                  onOpenPoll();
+                }}
+                title="Tạo bình chọn (Poll)"
+                className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0"
+              >
+                <BarChart2 className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    !canUserCreateTaskInGroup({
+                      conversation: activeConversation,
+                      userRole: currentUserRole,
+                    })
+                  ) {
+                    toast.error('Nhóm không cho phép thành viên tạo công việc / nhắc hẹn.');
+                    return;
+                  }
+                  onOpenTask();
+                }}
+                title="Giao việc / Nhắc hẹn"
+                className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0 hidden sm:block"
+              >
+                <CheckSquare className="w-5 h-5" />
+              </button>
               <button
                 type="button"
                 title="AI Tóm tắt nhóm"

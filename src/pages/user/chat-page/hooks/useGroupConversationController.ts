@@ -5,8 +5,39 @@ import { chatApi } from '@/store/api/chatApi';
 import { socketService } from '@/services/socket';
 import { groupApi } from '@/services/chat/groupApi';
 import type { IMessage, IConversation } from '@/types/chat.types';
-import type { AIRecap, GroupActionLoading, GroupPoll, GroupTask } from '@/types/chat.group.types';
+import {
+  canUserCreatePollInGroup,
+  canUserCreateTaskInGroup,
+} from '@/utils/groupConversationPermissions';
+import type {
+  AIRecap,
+  GroupActionLoading,
+  GroupMember,
+  GroupPoll,
+  GroupTask,
+} from '@/types/chat.group.types';
 import type { AppDispatch } from '@/store/store';
+import { messageReceived } from '@/store/slices/chatSlice';
+import {
+  applyMessageHiddenForMe,
+  patchTaskAssignedSystemMessages,
+  hideTaskAssignedCardsForTaskId,
+} from '@/store/applyMessageHiddenForMe';
+import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
+
+function isoToDatetimeLocalValue(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function deadlineLocalInputToJsonValue(input: string | null | undefined): string | null {
+  if (!input?.trim()) return null;
+  const d = new Date(input);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
 
 interface UseGroupConversationControllerParams {
   activeConversationId: string | null;
@@ -15,9 +46,11 @@ interface UseGroupConversationControllerParams {
   currentUserDisplayName?: string;
   currentUserRole?: 'owner' | 'admin' | 'member';
   dispatch: AppDispatch;
-  uploadMedia: (payload: { file: File; mediaType: 'image' }) => { unwrap: () => Promise<{ data: { url?: string } }> };
+  uploadMedia: (payload: { file: File; mediaType: 'image' }) => {
+    unwrap: () => Promise<{ data: { url?: string } }>;
+  };
   groupState: {
-    groupMembers: Array<{ userId: string; name?: string; avatar?: string; role: 'owner' | 'admin' | 'member'; joinedAt?: string }>;
+    groupMembers: GroupMember[];
     groupRequests: Array<{ userId: string; avatar?: string; name?: string; requestedAt?: string }>;
     groupPolls: GroupPoll[];
     groupTasks: GroupTask[];
@@ -25,8 +58,10 @@ interface UseGroupConversationControllerParams {
     latestRecap: AIRecap | null;
   };
   groupSetters: {
-    setGroupMembers: Dispatch<SetStateAction<UseGroupConversationControllerParams['groupState']['groupMembers']>>;
-    setGroupRequests: Dispatch<SetStateAction<UseGroupConversationControllerParams['groupState']['groupRequests']>>;
+    setGroupMembers: Dispatch<SetStateAction<GroupMember[]>>;
+    setGroupRequests: Dispatch<
+      SetStateAction<UseGroupConversationControllerParams['groupState']['groupRequests']>
+    >;
     setGroupPolls: Dispatch<SetStateAction<GroupPoll[]>>;
     setGroupTasks: Dispatch<SetStateAction<GroupTask[]>>;
     setGroupJoinRequested: Dispatch<SetStateAction<boolean>>;
@@ -38,6 +73,7 @@ interface UseGroupConversationControllerParams {
     fetchGroupPolls: (groupId: string) => Promise<void>;
     fetchGroupTasks: (groupId: string) => Promise<void>;
   };
+  refetchConversations?: () => void;
   modalState: {
     editGroupAvatarPreview: string | null;
     editGroupName: string;
@@ -51,6 +87,9 @@ interface UseGroupConversationControllerParams {
     pollOptions: string[];
     pollMultipleChoice: boolean;
     selectedAddMembers: string[];
+    editingTaskId: string | null;
+    taskSubtaskRows: Array<{ assigneeId: string; content: string }>;
+    taskDeleteConfirm: { taskId: string; title: string } | null;
   };
   modalActions: {
     setEditGroupName: (value: string) => void;
@@ -71,6 +110,13 @@ interface UseGroupConversationControllerParams {
     setTaskAssignees: (value: string[]) => void;
     setActivePollId: (value: string) => void;
     setShowPollVoteModal: (value: boolean) => void;
+    setShowTaskModal: (value: boolean) => void;
+    setTaskTitle: (value: string) => void;
+    setTaskNote: (value: string) => void;
+    setTaskDeadline: (value: string) => void;
+    setEditingTaskId: (value: string | null) => void;
+    setTaskDeleteConfirm: (value: { taskId: string; title: string } | null) => void;
+    setTaskSubtaskRows: (rows: Array<{ assigneeId: string; content: string }>) => void;
   };
   setActionBusy: (key: keyof GroupActionLoading, value: boolean) => void;
   navigate: (path: string, options?: { replace?: boolean }) => void;
@@ -87,20 +133,22 @@ export function useGroupConversationController({
   groupState,
   groupSetters,
   groupFetchers,
+  refetchConversations,
   modalState,
   modalActions,
   setActionBusy,
   navigate,
 }: UseGroupConversationControllerParams) {
+  const { groupMembers, groupRequests, groupPolls, groupTasks, groupJoinRequested, latestRecap } =
+    groupState;
   const {
-    groupMembers,
-    groupRequests,
-    groupPolls,
-    groupTasks,
-    groupJoinRequested,
-    latestRecap,
-  } = groupState;
-  const { setGroupMembers, setGroupRequests, setGroupPolls, setGroupTasks, setGroupJoinRequested, setLatestRecap } = groupSetters;
+    setGroupMembers,
+    setGroupRequests,
+    setGroupPolls,
+    setGroupTasks,
+    setGroupJoinRequested,
+    setLatestRecap,
+  } = groupSetters;
   const { fetchGroupMembers, fetchGroupRequests, fetchGroupPolls, fetchGroupTasks } = groupFetchers;
   const {
     editGroupAvatarPreview,
@@ -114,6 +162,9 @@ export function useGroupConversationController({
     pollQuestion,
     pollOptions,
     pollMultipleChoice,
+    editingTaskId,
+    taskSubtaskRows,
+    taskDeleteConfirm,
   } = modalState;
 
   useEffect(() => {
@@ -135,17 +186,20 @@ export function useGroupConversationController({
     modalActions.setShowEditGroupModal(true);
   }, [activeConversation, editGroupAvatarPreview, modalActions]);
 
-  const handleEditGroupAvatarFileChange = useCallback((file: File | null) => {
-    modalActions.setEditGroupAvatarFile(file);
-    if (editGroupAvatarPreview?.startsWith('blob:')) {
-      URL.revokeObjectURL(editGroupAvatarPreview);
-    }
-    if (file) {
-      modalActions.setEditGroupAvatarPreview(URL.createObjectURL(file));
-      return;
-    }
-    modalActions.setEditGroupAvatarPreview(activeConversation?.avatar ?? null);
-  }, [activeConversation?.avatar, editGroupAvatarPreview, modalActions]);
+  const handleEditGroupAvatarFileChange = useCallback(
+    (file: File | null) => {
+      modalActions.setEditGroupAvatarFile(file);
+      if (editGroupAvatarPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(editGroupAvatarPreview);
+      }
+      if (file) {
+        modalActions.setEditGroupAvatarPreview(URL.createObjectURL(file));
+        return;
+      }
+      modalActions.setEditGroupAvatarPreview(activeConversation?.avatar ?? null);
+    },
+    [activeConversation?.avatar, editGroupAvatarPreview, modalActions],
+  );
 
   const handleUpdateGroup = useCallback(async () => {
     if (!activeConversationId || activeConversation?.type !== 'group') return;
@@ -162,7 +216,10 @@ export function useGroupConversationController({
 
     if (editGroupAvatarFile) {
       try {
-        const uploadResult = await uploadMedia({ file: editGroupAvatarFile, mediaType: 'image' }).unwrap();
+        const uploadResult = await uploadMedia({
+          file: editGroupAvatarFile,
+          mediaType: 'image',
+        }).unwrap();
         nextAvatar = uploadResult.data.url ?? previousAvatar;
       } catch (err) {
         console.error('Avatar upload failed:', err);
@@ -180,14 +237,18 @@ export function useGroupConversationController({
     );
 
     try {
-      await groupApi.updateGroup(activeConversationId, { name: nextName, avatar: nextAvatar ?? undefined });
+      await groupApi.updateGroup(activeConversationId, {
+        name: nextName,
+        avatar: nextAvatar ?? undefined,
+      });
       modalActions.setShowEditGroupModal(false);
       modalActions.setEditGroupAvatarFile(null);
       toast.success('Cập nhật nhóm thành công');
       const now = new Date();
-      const content = previousName && previousName !== nextName
-        ? `Tên nhóm đã đổi từ '${previousName}' thành '${nextName}'`
-        : `${currentUserDisplayName || 'Bạn'} đã đổi tên nhóm thành '${nextName}'`;
+      const content =
+        previousName && previousName !== nextName
+          ? `Tên nhóm đã đổi từ '${previousName}' thành '${nextName}'`
+          : `${currentUserDisplayName || 'Bạn'} đã đổi tên nhóm thành '${nextName}'`;
       const systemMsg: IMessage = {
         messageId: `system-${Date.now()}`,
         conversationId: activeConversationId,
@@ -208,10 +269,14 @@ export function useGroupConversationController({
         createdAt: now.toISOString(),
       };
       dispatch(
-        chatApi.util.updateQueryData('getMessages', { conversationId: activeConversationId }, (draft) => {
-          if (!draft.data) draft.data = [];
-          draft.data.push(systemMsg);
-        }),
+        chatApi.util.updateQueryData(
+          'getMessages',
+          { conversationId: activeConversationId },
+          (draft) => {
+            if (!draft.data) draft.data = [];
+            draft.data.push(systemMsg);
+          },
+        ),
       );
       socketService.emit('message:new', systemMsg);
     } catch (error) {
@@ -282,54 +347,224 @@ export function useGroupConversationController({
     modalActions.setShowAddMembersModal(true);
   }, [activeConversationId, fetchGroupMembers, modalActions]);
 
-  const handleToggleAddMember = useCallback((userId: string, checked: boolean) => {
-    modalActions.setSelectedAddMembers((prev) => (checked ? [...prev, userId] : prev.filter((id) => id !== userId)));
-  }, [modalActions]);
+  const handleToggleAddMember = useCallback(
+    (userId: string, checked: boolean) => {
+      modalActions.setSelectedAddMembers((prev) =>
+        checked ? [...prev, userId] : prev.filter((id) => id !== userId),
+      );
+    },
+    [modalActions],
+  );
 
-  const handleAddMembers = useCallback(async (memberIds: string[]) => {
-    if (!activeConversationId || memberIds.length === 0) return;
-    setActionBusy('addMembers', true);
-    try {
-      await groupApi.addMembers(activeConversationId, memberIds);
-      toast.success('Đã gửi lời mời vào nhóm');
-      await fetchGroupRequests(activeConversationId);
-      modalActions.setSelectedAddMembers([]);
-      modalActions.setShowAddMembersModal(false);
-    } catch (error) {
-      const status = (error as Record<string, unknown> & { response?: { status?: number } })?.response?.status;
-      if (status === 403) {
-        toast.error('Bạn không có quyền mời thành viên');
-      } else {
-        toast.error('Không thể gửi lời mời');
+  const handleAddMembers = useCallback(
+    async (memberIds: string[]) => {
+      if (!activeConversationId || memberIds.length === 0) return;
+      setActionBusy('addMembers', true);
+      try {
+        await groupApi.addMembers(activeConversationId, memberIds);
+        toast.success('Đã gửi lời mời vào nhóm');
+        await fetchGroupRequests(activeConversationId);
+        modalActions.setSelectedAddMembers([]);
+        modalActions.setShowAddMembersModal(false);
+      } catch (error) {
+        const status = (error as Record<string, unknown> & { response?: { status?: number } })
+          ?.response?.status;
+        if (status === 403) {
+          toast.error('Bạn không có quyền mời thành viên');
+        } else {
+          toast.error('Không thể gửi lời mời');
+        }
+        console.error('Failed to add members:', error);
+      } finally {
+        setActionBusy('addMembers', false);
       }
-      console.error('Failed to add members:', error);
-    } finally {
-      setActionBusy('addMembers', false);
-    }
-  }, [activeConversationId, fetchGroupRequests, modalActions, setActionBusy]);
+    },
+    [activeConversationId, fetchGroupRequests, modalActions, setActionBusy],
+  );
 
   const handleSubmitTask = useCallback(async () => {
     if (!activeConversationId || !taskTitle.trim()) return;
+    const isGroupOptIn = Boolean(taskAssignToAll);
+    const cleanSubtaskRows = taskSubtaskRows
+      .map((r) => ({
+        assigneeId: String(r.assigneeId ?? ''),
+        content: String(r.content ?? '').trim(),
+      }))
+      .filter((r) => r.assigneeId && r.content);
+    const editingId = editingTaskId ? String(editingTaskId) : null;
+
+    if (!editingId) {
+      if (
+        !canUserCreateTaskInGroup({
+          conversation: activeConversation,
+          userRole: currentUserRole,
+        })
+      ) {
+        toast.error('Nhóm không cho phép thành viên tạo công việc / nhắc hẹn.');
+        return;
+      }
+    }
+
+    if (editingId) {
+      setActionBusy('updateTask', true);
+      try {
+        await groupApi.patchTask(activeConversationId, editingId, {
+          title: taskTitle.trim(),
+          description: taskNote.trim(),
+          assignees: isGroupOptIn ? [] : taskAssignees,
+          assignToAll: isGroupOptIn,
+          dueDate: taskDeadline || undefined,
+          subtasks: cleanSubtaskRows,
+        });
+        await fetchGroupTasks(activeConversationId);
+        const byId = new Map(
+          groupMembers.map((m) => [m.userId, m.displayName ?? m.name ?? m.userId]),
+        );
+        const assigneeLabel =
+          cleanSubtaskRows.length > 0
+            ? cleanSubtaskRows.map((r) => String(byId.get(r.assigneeId) ?? r.assigneeId)).join(', ')
+            : isGroupOptIn
+              ? 'Cả nhóm'
+              : taskAssignees.map((id) => String(byId.get(id) ?? id)).join(', ') || 'cả nhóm';
+        patchTaskAssignedSystemMessages(dispatch, activeConversationId, editingId, {
+          title: taskTitle.trim(),
+          dueDate: deadlineLocalInputToJsonValue(taskDeadline),
+          note: taskNote.trim() ? taskNote.trim() : null,
+          assigneeLabel,
+          assignToAll: isGroupOptIn,
+          broadcast: isGroupOptIn,
+        });
+        toast.success('Đã lưu thay đổi');
+        modalActions.closeTaskModal();
+      } catch (err) {
+        const st = (err as Record<string, unknown> & { response?: { status?: number } })?.response
+          ?.status;
+        toast.error(
+          st === 403 ? 'Bạn không có quyền sửa công việc này' : 'Không thể lưu công việc',
+        );
+        console.error('Failed to patch task:', err);
+      } finally {
+        setActionBusy('updateTask', false);
+      }
+      return;
+    }
+
     setActionBusy('createTask', true);
     const optimisticTask: GroupTask = {
       taskId: `tmp-${Date.now()}`,
       title: taskTitle.trim(),
       description: taskNote.trim(),
-      assignees: taskAssignees,
+      assignees: isGroupOptIn ? [] : taskAssignees,
+      participants: [],
+      assignToAll: isGroupOptIn,
+      broadcast: isGroupOptIn,
+      subtasks:
+        cleanSubtaskRows.length > 0
+          ? cleanSubtaskRows.map((r) => ({
+              id: `sub-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+              assigneeId: r.assigneeId,
+              assigneeName:
+                groupMembers.find((m) => m.userId === r.assigneeId)?.displayName ??
+                groupMembers.find((m) => m.userId === r.assigneeId)?.name ??
+                r.assigneeId,
+              content: r.content,
+              done: false,
+              completedAt: null,
+            }))
+          : undefined,
       status: 'todo',
       dueDate: taskDeadline || undefined,
+      createdAt: new Date().toISOString(),
+      creatorId: currentUserId,
+      creatorDisplayName: currentUserDisplayName?.trim() ?? null,
     };
     setGroupTasks((prev) => [optimisticTask, ...prev]);
     try {
-      await groupApi.createTask(activeConversationId, {
+      const createRes = await groupApi.createTask(activeConversationId, {
         title: taskTitle.trim(),
         description: taskNote.trim(),
-        assignees: taskAssignees,
-        assignToAll: taskAssignToAll,
+        assignees: isGroupOptIn ? [] : taskAssignees,
+        assignToAll: isGroupOptIn,
         dueDate: taskDeadline || undefined,
+        subtasks: cleanSubtaskRows.length > 0 ? cleanSubtaskRows : undefined,
       });
+      const ax = createRes as { data?: { data?: { taskId?: string }; taskId?: string } };
+      const createdTaskId = ax?.data?.data?.taskId ?? ax?.data?.taskId ?? null;
       toast.success('Đã tạo công việc');
       await fetchGroupTasks(activeConversationId);
+      applyMessageHiddenForMe(
+        dispatch,
+        activeConversationId,
+        `local-task-card:${activeConversationId}:${optimisticTask.taskId}`,
+      );
+
+      const byId = new Map(
+        groupMembers.map((m) => [m.userId, m.displayName ?? m.name ?? m.userId]),
+      );
+      const subtasks =
+        optimisticTask.subtasks?.map((s) => ({
+          id: s.id,
+          assigneeId: s.assigneeId,
+          assigneeName: String(byId.get(s.assigneeId) ?? s.assigneeId),
+          content: s.content,
+          done: false,
+          completedAt: null,
+        })) ?? [];
+      const assigneeLabel =
+        subtasks.length > 0
+          ? subtasks.map((s) => s.assigneeName).join(', ')
+          : isGroupOptIn
+            ? 'Cả nhóm'
+            : taskAssignees.map((id) => String(byId.get(id) ?? id)).join(', ') || 'cả nhóm';
+      const content = JSON.stringify({
+        kind: 'task_assigned',
+        actor: { userId: currentUserId, name: currentUserDisplayName?.trim() ?? 'Bạn' },
+        task: {
+          taskId: createdTaskId ? String(createdTaskId) : optimisticTask.taskId,
+          title: optimisticTask.title,
+          dueDate: optimisticTask.dueDate ?? null,
+          note: optimisticTask.description?.trim() ? optimisticTask.description.trim() : null,
+          assigneeLabel,
+          assignToAll: isGroupOptIn,
+          broadcast: isGroupOptIn,
+          subtasks: subtasks.length > 0 ? subtasks : undefined,
+        },
+      });
+      const taskIdForCard = createdTaskId ? String(createdTaskId) : optimisticTask.taskId;
+      const systemMsg: IMessage = {
+        messageId: `local-task-card:${activeConversationId}:${taskIdForCard}`,
+        conversationId: activeConversationId,
+        senderId: 'system',
+        senderDisplayName: 'Hệ thống',
+        type: 'system',
+        content,
+        mediaUrl: null,
+        thumbnailUrl: null,
+        replyTo: null,
+        replyToDetails: null,
+        isPinned: false,
+        isEdited: false,
+        isRecalled: false,
+        isDeleted: false,
+        reactions: {},
+        status: 'sent',
+        createdAt: new Date().toISOString(),
+      };
+      dispatch(
+        chatApi.util.updateQueryData(
+          'getMessages',
+          { conversationId: activeConversationId },
+          (draft) => {
+            if (!draft.data) draft.data = [];
+            if (!draft.data.some((m) => String(m.messageId) === String(systemMsg.messageId))) {
+              draft.data.push(systemMsg);
+            }
+          },
+        ),
+      );
+      dispatch(messageReceived(systemMsg));
+      socketService.emit('message:new', systemMsg);
+
       modalActions.closeTaskModal();
     } catch (err) {
       setGroupTasks((prev) => prev.filter((task) => task.taskId !== optimisticTask.taskId));
@@ -340,16 +575,251 @@ export function useGroupConversationController({
     }
   }, [
     activeConversationId,
+    activeConversation,
+    currentUserRole,
     taskTitle,
     taskNote,
     taskAssignees,
     taskAssignToAll,
     taskDeadline,
-    fetchGroupTasks,
+    editingTaskId,
     modalActions,
+    fetchGroupTasks,
     setActionBusy,
+    dispatch,
+    currentUserId,
+    currentUserDisplayName,
+    groupMembers,
+    taskSubtaskRows,
     setGroupTasks,
   ]);
+
+  const handleDeleteGroupTask = useCallback(
+    async (taskId: string, opts?: { skipConfirm?: boolean }) => {
+      if (!activeConversationId) return;
+      const tid = String(taskId);
+      const titleFromBoard = String(
+        groupTasks.find((t) => String(t.taskId) === tid)?.title ?? '',
+      ).trim();
+      const titleFromEditor =
+        editingTaskId && String(editingTaskId) === tid ? taskTitle.trim() : '';
+      const displayTitle = (titleFromEditor || titleFromBoard || 'Công việc').trim();
+
+      if (!opts?.skipConfirm) {
+        modalActions.setTaskDeleteConfirm({ taskId: tid, title: displayTitle });
+        return;
+      }
+
+      setActionBusy('updateTask', true);
+      try {
+        await groupApi.deleteTask(activeConversationId, tid);
+        setGroupTasks((prev) => prev.filter((t) => String(t.taskId) !== tid));
+        modalActions.setTaskDeleteConfirm(null);
+        if (editingTaskId && String(editingTaskId) === tid) {
+          modalActions.closeTaskModal();
+        }
+        hideTaskAssignedCardsForTaskId(dispatch, activeConversationId, tid);
+        toast.success(
+          titleFromBoard || titleFromEditor
+            ? `Đã hủy công việc "${(titleFromBoard || titleFromEditor).trim()}"`
+            : 'Đã hủy công việc',
+        );
+        await fetchGroupTasks(activeConversationId);
+      } catch (err) {
+        const st = (err as Record<string, unknown> & { response?: { status?: number } })?.response
+          ?.status;
+        toast.error(
+          st === 403 ? 'Bạn không có quyền hủy công việc này' : 'Không thể hủy công việc',
+        );
+        console.error('Failed to delete task:', err);
+        await fetchGroupTasks(activeConversationId);
+      } finally {
+        setActionBusy('updateTask', false);
+      }
+    },
+    [
+      activeConversationId,
+      fetchGroupTasks,
+      groupTasks,
+      modalActions,
+      editingTaskId,
+      taskTitle,
+      setActionBusy,
+      setGroupTasks,
+      dispatch,
+    ],
+  );
+
+  const handleConfirmDeleteTask = useCallback(() => {
+    const c = taskDeleteConfirm;
+    if (!c?.taskId) return;
+    void handleDeleteGroupTask(c.taskId, { skipConfirm: true });
+  }, [handleDeleteGroupTask, taskDeleteConfirm]);
+
+  const openCreateTaskModal = useCallback(() => {
+    if (
+      !canUserCreateTaskInGroup({
+        conversation: activeConversation,
+        userRole: currentUserRole,
+      })
+    ) {
+      toast.error('Nhóm không cho phép thành viên tạo công việc / nhắc hẹn.');
+      return;
+    }
+    modalActions.setEditingTaskId(null);
+    modalActions.setTaskTitle('');
+    modalActions.setTaskNote('');
+    modalActions.setTaskDeadline('');
+    modalActions.setTaskAssignToAll(false);
+    modalActions.setTaskAssignees([]);
+    const first = groupMembers[0]?.userId ?? '';
+    modalActions.setTaskSubtaskRows(first ? [{ assigneeId: first, content: '' }] : []);
+    modalActions.setShowTaskModal(true);
+  }, [activeConversation, currentUserRole, groupMembers, modalActions]);
+
+  const openEditTaskFromGroupTask = useCallback(
+    (taskId: string) => {
+      const task = groupTasks.find((t) => String(t.taskId) === String(taskId));
+      if (!task) {
+        toast.error('Không tìm thấy công việc');
+        return;
+      }
+      if (String(task.creatorId ?? '') !== String(currentUserId)) {
+        toast.error('Chỉ người tạo mới chỉnh sửa được');
+        return;
+      }
+      modalActions.setEditingTaskId(String(task.taskId));
+      modalActions.setTaskTitle(String(task.title ?? ''));
+      modalActions.setTaskNote(String(task.description ?? ''));
+      modalActions.setTaskDeadline(isoToDatetimeLocalValue(task.dueDate ?? null));
+      const assignToAll = Boolean(
+        task.assignToAll ||
+        task.broadcast ||
+        !(Array.isArray(task.assignees) && task.assignees.length > 0),
+      );
+      modalActions.setTaskAssignToAll(assignToAll);
+      modalActions.setTaskAssignees(
+        Array.isArray(task.assignees) ? task.assignees.map(String) : [],
+      );
+      const subs = Array.isArray(task.subtasks) ? task.subtasks : [];
+      const first = groupMembers[0]?.userId ?? '';
+      if (subs.length > 0) {
+        modalActions.setTaskSubtaskRows(
+          subs.map((s) => ({
+            assigneeId: String(s.assigneeId ?? first),
+            content: String(s.content ?? ''),
+          })),
+        );
+      } else {
+        modalActions.setTaskSubtaskRows(first ? [{ assigneeId: first, content: '' }] : []);
+      }
+      modalActions.setShowTaskModal(true);
+    },
+    [currentUserId, groupMembers, groupTasks, modalActions],
+  );
+
+  const handleTaskJoined = useCallback(
+    async (taskId: string) => {
+      if (!activeConversationId) return;
+      const tid = String(taskId);
+      const taskRow = groupTasks.find((t) => String(t.taskId) === tid);
+      if (taskRow?.dueDate != null && String(taskRow.dueDate).trim() !== '') {
+        if (isTaskJoinDeadlinePassed(String(taskRow.dueDate))) {
+          toast.error('Đã quá hạn, không thể xác nhận tham gia');
+          return;
+        }
+      }
+      let joinedNow = false;
+      let joinedTaskTitle = '';
+      setGroupTasks((prev) =>
+        prev.map((t) => {
+          if (String(t.taskId) !== String(taskId)) return t;
+          joinedTaskTitle = String(t.title ?? '');
+          const p = Array.isArray(t.participants) ? t.participants : [];
+          if (p.includes(currentUserId)) return t;
+          joinedNow = true;
+          return { ...t, participants: [...p, currentUserId] };
+        }),
+      );
+      if (!joinedNow) return;
+      try {
+        await groupApi.joinTask(activeConversationId, String(taskId));
+      } catch (err) {
+        setGroupTasks((prev) =>
+          prev.map((t) => {
+            if (String(t.taskId) !== String(taskId)) return t;
+            const p = Array.isArray(t.participants) ? t.participants : [];
+            return { ...t, participants: p.filter((id) => String(id) !== String(currentUserId)) };
+          }),
+        );
+        const st = (err as Record<string, unknown> & { response?: { status?: number } })?.response
+          ?.status;
+        const msg = String(
+          (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? '',
+        ).trim();
+        toast.error(
+          st === 403 && msg
+            ? msg
+            : st === 403
+              ? 'Bạn không thể xác nhận tham gia công việc này'
+              : 'Không thể tham gia công việc',
+        );
+        return;
+      }
+      toast.success(
+        joinedTaskTitle
+          ? `Đã xác nhận tham gia: «${joinedTaskTitle}»`
+          : 'Đã xác nhận tham gia công việc',
+      );
+    },
+    [activeConversationId, currentUserId, groupTasks, setGroupTasks],
+  );
+
+  const handleTransferGroupOwner = useCallback(
+    async (newOwnerUserId: string) => {
+      if (!activeConversationId) return;
+      const currentRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
+      if (currentRole !== 'owner') {
+        toast.error('Chỉ trưởng nhóm mới có thể chuyển quyền');
+        return;
+      }
+      if (!newOwnerUserId?.trim()) return;
+      if (!window.confirm('Chuyển quyền trưởng nhóm? Bạn sẽ trở thành phó nhóm sau khi chuyển.')) {
+        return;
+      }
+      setActionBusy('changeRole', true);
+      const before = groupMembers;
+      setGroupMembers((prev) =>
+        prev.map((m) => {
+          if (m.userId === newOwnerUserId) return { ...m, role: 'owner' as const };
+          if (m.userId === currentUserId) return { ...m, role: 'admin' as const };
+          return m;
+        }),
+      );
+      try {
+        await groupApi.transferGroupOwnership(activeConversationId, newOwnerUserId, currentUserId);
+        toast.success('Trưởng nhóm mới đã được cập nhật');
+        void fetchGroupMembers(activeConversationId);
+        void refetchConversations?.();
+      } catch (err) {
+        setGroupMembers(before);
+        toast.error('Không thể chuyển quyền. Thử lại hoặc kiểm tra quyền trên máy chủ');
+        console.error('Failed to transfer group owner:', err);
+        throw err;
+      } finally {
+        setActionBusy('changeRole', false);
+      }
+    },
+    [
+      activeConversationId,
+      groupMembers,
+      currentUserId,
+      setActionBusy,
+      fetchGroupMembers,
+      refetchConversations,
+      setGroupMembers,
+    ],
+  );
 
   const openAISummaryFromPanel = useCallback(async () => {
     modalActions.setShowAISummaryModal(true);
@@ -392,6 +862,15 @@ export function useGroupConversationController({
 
   const handleCreatePoll = useCallback(async () => {
     if (!activeConversationId || !pollQuestion.trim()) return;
+    if (
+      !canUserCreatePollInGroup({
+        conversation: activeConversation,
+        userRole: currentUserRole,
+      })
+    ) {
+      toast.error('Nhóm không cho phép thành viên tạo bình chọn.');
+      return;
+    }
     setActionBusy('createPoll', true);
     const optimisticPoll: GroupPoll = {
       pollId: `tmp-${Date.now()}`,
@@ -422,7 +901,9 @@ export function useGroupConversationController({
       setActionBusy('createPoll', false);
     }
   }, [
+    activeConversation,
     activeConversationId,
+    currentUserRole,
     pollQuestion,
     pollOptions,
     pollMultipleChoice,
@@ -448,233 +929,296 @@ export function useGroupConversationController({
     }
   }, [activeConversationId, groupJoinRequested, setActionBusy, setGroupJoinRequested]);
 
-  const handleAddPollOption = useCallback(async (pollId: string) => {
-    if (!activeConversationId) return;
-    const optionText = window.prompt('Nhập lựa chọn mới');
-    if (!optionText?.trim()) return;
-    setActionBusy('addPollOption', true);
-    const before = groupPolls;
-    setGroupPolls((prev) =>
-      prev.map((poll) =>
-        poll.pollId === pollId ? { ...poll, options: [...poll.options, { text: optionText.trim(), voters: [] }] } : poll,
-      ),
-    );
-    try {
-      await groupApi.addPollOption(activeConversationId, pollId, optionText.trim());
-      toast.success('Đã thêm lựa chọn');
-      await fetchGroupPolls(activeConversationId);
-    } catch (error) {
-      setGroupPolls(before);
-      toast.error('Không thể thêm lựa chọn');
-      console.error('Failed to add poll option:', error);
-    } finally {
-      setActionBusy('addPollOption', false);
-    }
-  }, [activeConversationId, groupPolls, fetchGroupPolls, setActionBusy, setGroupPolls]);
+  const handleAddPollOption = useCallback(
+    async (pollId: string) => {
+      if (!activeConversationId) return;
+      const optionText = window.prompt('Nhập lựa chọn mới');
+      if (!optionText?.trim()) return;
+      setActionBusy('addPollOption', true);
+      const before = groupPolls;
+      setGroupPolls((prev) =>
+        prev.map((poll) =>
+          poll.pollId === pollId
+            ? { ...poll, options: [...poll.options, { text: optionText.trim(), voters: [] }] }
+            : poll,
+        ),
+      );
+      try {
+        await groupApi.addPollOption(activeConversationId, pollId, optionText.trim());
+        toast.success('Đã thêm lựa chọn');
+        await fetchGroupPolls(activeConversationId);
+      } catch (error) {
+        setGroupPolls(before);
+        toast.error('Không thể thêm lựa chọn');
+        console.error('Failed to add poll option:', error);
+      } finally {
+        setActionBusy('addPollOption', false);
+      }
+    },
+    [activeConversationId, groupPolls, fetchGroupPolls, setActionBusy, setGroupPolls],
+  );
 
-  const handleClosePoll = useCallback(async (pollId: string) => {
-    if (!activeConversationId) return;
-    setActionBusy('closePoll', true);
-    const before = groupPolls;
-    setGroupPolls((prev) => prev.map((poll) => (poll.pollId === pollId ? { ...poll, isClosed: true } : poll)));
-    try {
-      await groupApi.closePoll(activeConversationId, pollId);
-      toast.success('Đã đóng bình chọn');
-    } catch (error) {
-      setGroupPolls(before);
-      toast.error('Không thể đóng bình chọn');
-      console.error('Failed to close poll:', error);
-    } finally {
-      setActionBusy('closePoll', false);
-    }
-  }, [activeConversationId, groupPolls, setActionBusy, setGroupPolls]);
+  const handleClosePoll = useCallback(
+    async (pollId: string) => {
+      if (!activeConversationId) return;
+      setActionBusy('closePoll', true);
+      const before = groupPolls;
+      setGroupPolls((prev) =>
+        prev.map((poll) => (poll.pollId === pollId ? { ...poll, isClosed: true } : poll)),
+      );
+      try {
+        await groupApi.closePoll(activeConversationId, pollId);
+        toast.success('Đã đóng bình chọn');
+      } catch (error) {
+        setGroupPolls(before);
+        toast.error('Không thể đóng bình chọn');
+        console.error('Failed to close poll:', error);
+      } finally {
+        setActionBusy('closePoll', false);
+      }
+    },
+    [activeConversationId, groupPolls, setActionBusy, setGroupPolls],
+  );
 
-  const handleApproveRequest = useCallback(async (userId: string) => {
-    if (!activeConversationId) return;
-    const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
-    if (!isAdminOrOwner) {
-      toast.error('Bạn không có quyền duyệt yêu cầu tham gia');
-      return;
-    }
-    setActionBusy('approveRequest', true);
-    const targetRequest = groupRequests.find((item) => item.userId === userId);
-    const beforeRequests = groupRequests;
-    const beforeMembers = groupMembers;
-    setGroupRequests((prev) => prev.filter((item) => item.userId !== userId));
-    if (targetRequest) {
-      setGroupMembers((prev) => [...prev, { userId: targetRequest.userId, name: targetRequest.name, avatar: targetRequest.avatar, role: 'member', joinedAt: new Date().toISOString() }]);
-    }
-    try {
-      await groupApi.approveRequest(activeConversationId, userId);
-      toast.success('Đã duyệt yêu cầu');
-    } catch (err) {
-      setGroupRequests(beforeRequests);
-      setGroupMembers(beforeMembers);
-      toast.error('Không thể duyệt yêu cầu');
-      console.error('Failed to approve request:', err);
-    } finally {
-      setActionBusy('approveRequest', false);
-    }
-  }, [activeConversationId, currentUserRole, groupRequests, groupMembers, setActionBusy, setGroupMembers, setGroupRequests]);
+  const handleApproveRequest = useCallback(
+    async (userId: string) => {
+      if (!activeConversationId) return;
+      const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+      if (!isAdminOrOwner) {
+        toast.error('Bạn không có quyền duyệt yêu cầu tham gia');
+        return;
+      }
+      setActionBusy('approveRequest', true);
+      const targetRequest = groupRequests.find((item) => item.userId === userId);
+      const beforeRequests = groupRequests;
+      const beforeMembers = groupMembers;
+      setGroupRequests((prev) => prev.filter((item) => item.userId !== userId));
+      if (targetRequest) {
+        setGroupMembers((prev) => [
+          ...prev,
+          {
+            userId: targetRequest.userId,
+            name: targetRequest.name,
+            avatar: targetRequest.avatar,
+            role: 'member',
+            joinedAt: new Date().toISOString(),
+          },
+        ]);
+      }
+      try {
+        await groupApi.approveRequest(activeConversationId, userId);
+        toast.success('Đã duyệt yêu cầu');
+      } catch (err) {
+        setGroupRequests(beforeRequests);
+        setGroupMembers(beforeMembers);
+        toast.error('Không thể duyệt yêu cầu');
+        console.error('Failed to approve request:', err);
+      } finally {
+        setActionBusy('approveRequest', false);
+      }
+    },
+    [
+      activeConversationId,
+      currentUserRole,
+      groupRequests,
+      groupMembers,
+      setActionBusy,
+      setGroupMembers,
+      setGroupRequests,
+    ],
+  );
 
-  const handleRejectRequest = useCallback(async (userId: string) => {
-    if (!activeConversationId) return;
-    const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
-    if (!isAdminOrOwner) {
-      toast.error('Bạn không có quyền từ chối yêu cầu tham gia');
-      return;
-    }
-    setActionBusy('rejectRequest', true);
-    const before = groupRequests;
-    setGroupRequests((prev) => prev.filter((item) => item.userId !== userId));
-    try {
-      await groupApi.rejectRequest(activeConversationId, userId);
-      toast.success('Đã từ chối yêu cầu');
-    } catch (err) {
-      setGroupRequests(before);
-      toast.error('Không thể từ chối yêu cầu');
-      console.error('Failed to reject request:', err);
-    } finally {
-      setActionBusy('rejectRequest', false);
-    }
-  }, [activeConversationId, currentUserRole, groupRequests, setActionBusy, setGroupRequests]);
+  const handleRejectRequest = useCallback(
+    async (userId: string) => {
+      if (!activeConversationId) return;
+      const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+      if (!isAdminOrOwner) {
+        toast.error('Bạn không có quyền từ chối yêu cầu tham gia');
+        return;
+      }
+      setActionBusy('rejectRequest', true);
+      const before = groupRequests;
+      setGroupRequests((prev) => prev.filter((item) => item.userId !== userId));
+      try {
+        await groupApi.rejectRequest(activeConversationId, userId);
+        toast.success('Đã từ chối yêu cầu');
+      } catch (err) {
+        setGroupRequests(before);
+        toast.error('Không thể từ chối yêu cầu');
+        console.error('Failed to reject request:', err);
+      } finally {
+        setActionBusy('rejectRequest', false);
+      }
+    },
+    [activeConversationId, currentUserRole, groupRequests, setActionBusy, setGroupRequests],
+  );
 
-  const handleKickMember = useCallback(async (userId: string) => {
-    if (!activeConversationId) return;
-    const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
-    if (!isAdminOrOwner) {
-      toast.error('Bạn không có quyền mời thành viên ra khỏi nhóm');
-      return;
-    }
-    if (!window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) return;
-    setActionBusy('removeMember', true);
-    const before = groupMembers;
-    setGroupMembers((prev) => prev.filter((m) => m.userId !== userId));
-    try {
-      await groupApi.removeMember(activeConversationId, userId);
-      toast.success('Đã xóa thành viên');
-    } catch (err) {
-      setGroupMembers(before);
-      toast.error('Không thể xóa thành viên');
-      console.error('Failed to kick member:', err);
-    } finally {
-      setActionBusy('removeMember', false);
-    }
-  }, [activeConversationId, currentUserRole, groupMembers, setActionBusy, setGroupMembers]);
+  const handleKickMember = useCallback(
+    async (userId: string) => {
+      if (!activeConversationId) return;
+      const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+      if (!isAdminOrOwner) {
+        toast.error('Bạn không có quyền mời thành viên ra khỏi nhóm');
+        return;
+      }
+      if (!window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) return;
+      setActionBusy('removeMember', true);
+      const before = groupMembers;
+      setGroupMembers((prev) => prev.filter((m) => m.userId !== userId));
+      try {
+        await groupApi.removeMember(activeConversationId, userId);
+        toast.success('Đã xóa thành viên');
+      } catch (err) {
+        setGroupMembers(before);
+        toast.error('Không thể xóa thành viên');
+        console.error('Failed to kick member:', err);
+      } finally {
+        setActionBusy('removeMember', false);
+      }
+    },
+    [activeConversationId, currentUserRole, groupMembers, setActionBusy, setGroupMembers],
+  );
 
-  const handleVotePoll = useCallback(async (pollId: string, optionIndex: number) => {
-    if (!activeConversationId) return;
-    setActionBusy('votePoll', true);
-    const before = groupPolls;
-    const pollBefore = groupPolls.find((p) => p.pollId === pollId);
-    const hadVotedHereBefore = !!pollBefore?.options?.[optionIndex]?.voters?.includes(currentUserId);
-    setGroupPolls((prev) =>
-      prev.map((poll) => {
-        if (poll.pollId !== pollId) return poll;
-        const isMultiple = poll.isMultipleChoice === true;
-        const nextOptions = poll.options.map((option, index) => {
-          const currentVoters = option.voters ?? [];
-          const hasVotedHere = currentVoters.includes(currentUserId);
-          if (!isMultiple) {
+  const handleVotePoll = useCallback(
+    async (pollId: string, optionIndex: number) => {
+      if (!activeConversationId) return;
+      setActionBusy('votePoll', true);
+      const before = groupPolls;
+      const pollBefore = groupPolls.find((p) => p.pollId === pollId);
+      const hadVotedHereBefore =
+        !!pollBefore?.options?.[optionIndex]?.voters?.includes(currentUserId);
+      setGroupPolls((prev) =>
+        prev.map((poll) => {
+          if (poll.pollId !== pollId) return poll;
+          const isMultiple = poll.isMultipleChoice === true;
+          const nextOptions = poll.options.map((option, index) => {
+            const currentVoters = option.voters ?? [];
+            const hasVotedHere = currentVoters.includes(currentUserId);
+            if (!isMultiple) {
+              if (index === optionIndex) {
+                return hasVotedHere
+                  ? { ...option, voters: currentVoters.filter((id) => id !== currentUserId) }
+                  : { ...option, voters: [...currentVoters, currentUserId] };
+              }
+              return { ...option, voters: currentVoters.filter((id) => id !== currentUserId) };
+            }
             if (index === optionIndex) {
               return hasVotedHere
                 ? { ...option, voters: currentVoters.filter((id) => id !== currentUserId) }
                 : { ...option, voters: [...currentVoters, currentUserId] };
             }
-            return { ...option, voters: currentVoters.filter((id) => id !== currentUserId) };
-          }
-          if (index === optionIndex) {
-            return hasVotedHere
-              ? { ...option, voters: currentVoters.filter((id) => id !== currentUserId) }
-              : { ...option, voters: [...currentVoters, currentUserId] };
-          }
-          return option;
-        });
-        return { ...poll, options: nextOptions };
-      }),
-    );
-    try {
-      if (hadVotedHereBefore) {
-        await groupApi.unvotePoll(activeConversationId, pollId, optionIndex);
-      } else {
-        await groupApi.votePoll(activeConversationId, pollId, optionIndex);
+            return option;
+          });
+          return { ...poll, options: nextOptions };
+        }),
+      );
+      try {
+        if (hadVotedHereBefore) {
+          await groupApi.unvotePoll(activeConversationId, pollId, optionIndex);
+        } else {
+          await groupApi.votePoll(activeConversationId, pollId, optionIndex);
+        }
+      } catch (error) {
+        setGroupPolls(before);
+        toast.error('Không thể bình chọn');
+        console.error('Failed to vote poll:', error);
+      } finally {
+        setActionBusy('votePoll', false);
       }
-    } catch (error) {
-      setGroupPolls(before);
-      toast.error('Không thể bình chọn');
-      console.error('Failed to vote poll:', error);
-    } finally {
-      setActionBusy('votePoll', false);
-    }
-  }, [activeConversationId, groupPolls, currentUserId, setActionBusy, setGroupPolls]);
+    },
+    [activeConversationId, groupPolls, currentUserId, setActionBusy, setGroupPolls],
+  );
 
-  const openPollVoteModal = useCallback((pollId: string) => {
-    modalActions.setActivePollId(pollId);
-    modalActions.setShowPollVoteModal(true);
-  }, [modalActions]);
+  const openPollVoteModal = useCallback(
+    (pollId: string) => {
+      modalActions.setActivePollId(pollId);
+      modalActions.setShowPollVoteModal(true);
+    },
+    [modalActions],
+  );
 
-  const handleToggleTaskStatus = useCallback(async (taskId: string) => {
-    if (!activeConversationId) return;
-    setActionBusy('updateTask', true);
-    const before = groupTasks;
-    const currentTask = groupTasks.find((task) => task.taskId === taskId);
-    if (!currentTask) return;
-    const nextStatus: GroupTask['status'] = currentTask.status === 'done' ? 'todo' : 'done';
-    setGroupTasks((prev) => prev.map((task) => (task.taskId === taskId ? { ...task, status: nextStatus } : task)));
-    try {
-      await groupApi.updateTaskStatus(activeConversationId, taskId, nextStatus);
-    } catch (error) {
-      setGroupTasks(before);
-      toast.error('Không thể cập nhật công việc');
-      console.error('Failed to update task:', error);
-    } finally {
-      setActionBusy('updateTask', false);
-    }
-  }, [activeConversationId, groupTasks, setActionBusy, setGroupTasks]);
+  const handleToggleTaskStatus = useCallback(
+    async (taskId: string) => {
+      if (!activeConversationId) return;
+      setActionBusy('updateTask', true);
+      const before = groupTasks;
+      const currentTask = groupTasks.find((task) => task.taskId === taskId);
+      if (!currentTask) return;
+      const nextStatus: GroupTask['status'] = currentTask.status === 'done' ? 'todo' : 'done';
+      setGroupTasks((prev) =>
+        prev.map((task) => (task.taskId === taskId ? { ...task, status: nextStatus } : task)),
+      );
+      try {
+        await groupApi.updateTaskStatus(activeConversationId, taskId, nextStatus);
+      } catch (error) {
+        setGroupTasks(before);
+        toast.error('Không thể cập nhật công việc');
+        console.error('Failed to update task:', error);
+      } finally {
+        setActionBusy('updateTask', false);
+      }
+    },
+    [activeConversationId, groupTasks, setActionBusy, setGroupTasks],
+  );
 
-  return useMemo(() => ({
-    openEditGroupModal,
-    handleEditGroupAvatarFileChange,
-    handleUpdateGroup,
-    handleDeleteGroup,
-    handleLeaveGroup,
-    openAddMembersModal,
-    handleToggleAddMember,
-    handleAddMembers,
-    handleSubmitTask,
-    openAISummaryFromPanel,
-    handleRerunAISummary,
-    handleCreatePoll,
-    handleRequestJoin,
-    handleAddPollOption,
-    handleClosePoll,
-    handleApproveRequest,
-    handleRejectRequest,
-    handleKickMember,
-    handleVotePoll,
-    openPollVoteModal,
-    handleToggleTaskStatus,
-  }), [
-    openEditGroupModal,
-    handleEditGroupAvatarFileChange,
-    handleUpdateGroup,
-    handleDeleteGroup,
-    handleLeaveGroup,
-    openAddMembersModal,
-    handleToggleAddMember,
-    handleAddMembers,
-    handleSubmitTask,
-    openAISummaryFromPanel,
-    handleRerunAISummary,
-    handleCreatePoll,
-    handleRequestJoin,
-    handleAddPollOption,
-    handleClosePoll,
-    handleApproveRequest,
-    handleRejectRequest,
-    handleKickMember,
-    handleVotePoll,
-    openPollVoteModal,
-    handleToggleTaskStatus,
-  ]);
+  return useMemo(
+    () => ({
+      openEditGroupModal,
+      handleEditGroupAvatarFileChange,
+      handleUpdateGroup,
+      handleDeleteGroup,
+      handleLeaveGroup,
+      openAddMembersModal,
+      handleToggleAddMember,
+      handleAddMembers,
+      handleSubmitTask,
+      handleDeleteGroupTask,
+      handleConfirmDeleteTask,
+      openCreateTaskModal,
+      openEditTaskFromGroupTask,
+      handleTaskJoined,
+      handleTransferGroupOwner,
+      openAISummaryFromPanel,
+      handleRerunAISummary,
+      handleCreatePoll,
+      handleRequestJoin,
+      handleAddPollOption,
+      handleClosePoll,
+      handleApproveRequest,
+      handleRejectRequest,
+      handleKickMember,
+      handleVotePoll,
+      openPollVoteModal,
+      handleToggleTaskStatus,
+    }),
+    [
+      openEditGroupModal,
+      handleEditGroupAvatarFileChange,
+      handleUpdateGroup,
+      handleDeleteGroup,
+      handleLeaveGroup,
+      openAddMembersModal,
+      handleToggleAddMember,
+      handleAddMembers,
+      handleSubmitTask,
+      handleDeleteGroupTask,
+      handleConfirmDeleteTask,
+      openCreateTaskModal,
+      openEditTaskFromGroupTask,
+      handleTaskJoined,
+      handleTransferGroupOwner,
+      openAISummaryFromPanel,
+      handleRerunAISummary,
+      handleCreatePoll,
+      handleRequestJoin,
+      handleAddPollOption,
+      handleClosePoll,
+      handleApproveRequest,
+      handleRejectRequest,
+      handleKickMember,
+      handleVotePoll,
+      openPollVoteModal,
+      handleToggleTaskStatus,
+    ],
+  );
 }

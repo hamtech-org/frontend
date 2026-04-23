@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { CheckCheck, CheckSquare, Users, X } from 'lucide-react';
+import { CheckCheck, CheckSquare, Trash2, Users, X } from 'lucide-react';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 
 type TaskModalProps = {
@@ -17,7 +17,13 @@ type TaskModalProps = {
   onTaskNoteChange: (value: string) => void;
   taskAssignees: string[];
   onTaskAssigneesChange: (ids: string[]) => void;
+  subtaskRows?: Array<{ assigneeId: string; content: string }>;
+  onSubtaskRowsChange?: (rows: Array<{ assigneeId: string; content: string }>) => void;
   onSubmitTask: () => void;
+  /** true: đang sửa công việc có sẵn (nút Lưu + tùy chọn hủy công việc). */
+  isEditing?: boolean;
+  onDeleteTask?: () => void;
+  submitBusy?: boolean;
 };
 
 export function TaskModal({
@@ -35,14 +41,22 @@ export function TaskModal({
   onTaskNoteChange,
   taskAssignees,
   onTaskAssigneesChange,
+  subtaskRows = [],
+  onSubtaskRowsChange,
   onSubmitTask,
+  isEditing = false,
+  onDeleteTask,
+  submitBusy = false,
 }: TaskModalProps) {
   const labelFor = (id: string, name: string) => {
     if (currentUserId && id === currentUserId) return 'Bạn';
     return name;
   };
 
-  const canSubmit = taskTitle.trim().length > 0 && (assignToAll || taskAssignees.length > 0);
+  const hasSubtasks = subtaskRows.some((r) => r.assigneeId && r.content.trim());
+  const canSubmit =
+    taskTitle.trim().length > 0 &&
+    (hasSubtasks || assignToAll || taskAssignees.length > 0);
 
   const resetAndClose = () => {
     onClose();
@@ -64,15 +78,31 @@ export function TaskModal({
                 <div className="w-8 h-8 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
                   <CheckSquare className="w-4 h-4 text-green-600 dark:text-green-400" />
                 </div>
-                <h3 className="font-bold text-[17px] text-black dark:text-white">Giao việc / Nhắc hẹn</h3>
+                <h3 className="font-bold text-[17px] text-black dark:text-white">
+                  {isEditing ? 'Chỉnh sửa công việc' : 'Giao việc & Nhắc hẹn'}
+                </h3>
               </div>
-              <button
-                type="button"
-                onClick={resetAndClose}
-                className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1">
+                {isEditing && onDeleteTask ? (
+                  <button
+                    type="button"
+                    onClick={() => void onDeleteTask()}
+                    disabled={submitBusy}
+                    className="w-8 h-8 rounded-full bg-red-500/10 dark:bg-red-500/15 flex items-center justify-center hover:bg-red-500/20 transition-colors disabled:opacity-40"
+                    title="Hủy công việc"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={resetAndClose}
+                  disabled={submitBusy}
+                  className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors disabled:opacity-40"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-5 custom-scrollbar space-y-5">
               <div>
@@ -89,7 +119,7 @@ export function TaskModal({
               </div>
               <div>
                 <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
-                  Thời hạn (Deadline)
+                  Thời hạn
                 </label>
                 <input
                   type="datetime-local"
@@ -188,26 +218,87 @@ export function TaskModal({
                   className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-green-500/50 resize-none text-[14px] font-medium transition-all"
                 />
               </div>
+
+              <div>
+                <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
+                  Công việc cụ thể theo từng người
+                </label>
+                <div className="border border-black/5 dark:border-white/10 rounded-2xl overflow-hidden divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-black/20">
+                  {(subtaskRows.length > 0 ? subtaskRows : [{ assigneeId: members[0]?.id ?? '', content: '' }]).map(
+                    (row, idx) => (
+                      <div key={idx} className="flex gap-2 px-4 py-3 items-center">
+                        <select
+                          value={row.assigneeId}
+                          onChange={(e) => {
+                            const next = [...subtaskRows];
+                            next[idx] = { ...next[idx], assigneeId: e.target.value };
+                            onSubtaskRowsChange?.(next);
+                          }}
+                          className="w-[180px] px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-500/40 outline-none text-sm"
+                        >
+                          {members.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {labelFor(m.id, m.name)}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={row.content}
+                          onChange={(e) => {
+                            const next = [...subtaskRows];
+                            next[idx] = { ...next[idx], content: e.target.value };
+                            onSubtaskRowsChange?.(next);
+                          }}
+                          placeholder="Nội dung công việc (ví dụ: Thiết kế UI)"
+                          className="flex-1 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-500/40 outline-none text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => onSubtaskRowsChange?.(subtaskRows.filter((_, i) => i !== idx))}
+                          className="w-9 h-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 transition-colors flex items-center justify-center"
+                          title="Xóa dòng"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ),
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onSubtaskRowsChange?.([
+                      ...subtaskRows,
+                      { assigneeId: members[0]?.id ?? '', content: '' },
+                    ])
+                  }
+                  className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 transition-colors text-sm font-semibold"
+                >
+                  + Thêm công việc
+                </button>
+              </div>
             </div>
             <div className="px-5 py-4 border-t border-black/5 dark:border-white/5 shrink-0 flex gap-2.5">
               <button
                 type="button"
                 onClick={resetAndClose}
-                className="px-4 py-2.5 rounded-xl font-bold text-[14px] bg-black/5 dark:bg-white/10 text-black dark:text-white hover:bg-black/10 transition-colors"
+                disabled={submitBusy}
+                className="px-4 py-2.5 rounded-xl font-bold text-[14px] bg-black/5 dark:bg-white/10 text-black dark:text-white hover:bg-black/10 transition-colors disabled:opacity-40"
               >
-                Hủy
+                Đóng
               </button>
               <button
                 type="button"
-                disabled={!canSubmit}
+                disabled={!canSubmit || submitBusy}
                 onClick={() => void onSubmitTask()}
                 className={`flex-1 py-2.5 rounded-xl font-bold text-[14px] text-white transition-all flex items-center justify-center gap-2 ${
-                  canSubmit
+                  canSubmit && !submitBusy
                     ? 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-500/20 hover:-translate-y-0.5'
                     : 'bg-black/10 dark:bg-white/10 text-black/40 dark:text-white/40 cursor-not-allowed'
                 }`}
               >
-                <CheckSquare className="w-4 h-4" /> Giao việc
+                <CheckSquare className="w-4 h-4" /> {isEditing ? 'Lưu thay đổi' : 'Giao việc'}
               </button>
             </div>
           </motion.div>

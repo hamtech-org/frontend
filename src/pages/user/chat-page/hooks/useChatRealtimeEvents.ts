@@ -79,32 +79,62 @@ export function useChatRealtimeEvents({
       );
 
       try {
-        if (
-          msg.conversationId !== activeConversationIdRef.current ||
-          (msg as { type?: string }).type !== 'system'
-        ) {
-          return;
-        }
+        if ((msg as { type?: string }).type !== 'system') return;
         const raw = String(msg.content ?? '').trim();
         if (!raw.startsWith('{')) return;
         const parsed = JSON.parse(raw) as {
           kind?: string;
           poll?: { pollId?: string; question?: string };
+          task?: { taskId?: string; title?: string };
+          actor?: { name?: string };
         };
-        if (parsed.kind !== 'poll_created' || !parsed.poll?.pollId) return;
-        const pollId = String(parsed.poll.pollId);
-        const question = String(parsed.poll.question ?? '').trim();
-        const toastId = `poll-created-${pollId}`;
-        if (toast.isActive(toastId)) return;
+        const kind = String(parsed.kind ?? '');
 
-        toast.info(question ? `Có bình chọn mới: ${question}` : 'Có bình chọn mới', {
-          toastId,
-          autoClose: 7000,
-          onClick: () => {
-            setActivePollId(pollId);
-            setShowPollVoteModal(true);
-          },
-        });
+        if (kind === 'poll_created' && parsed.poll?.pollId) {
+          // Trong đúng hội thoại: ChatPage hiển thị banner trong khung chat (useChatGroupFrameNotices).
+          if (msg.conversationId === activeConversationIdRef.current) return;
+          const pollId = String(parsed.poll.pollId);
+          const question = String(parsed.poll.question ?? '').trim();
+          const toastId = `poll-created-${pollId}`;
+          if (toast.isActive(toastId)) return;
+          toast.info(question ? `Có bình chọn mới: ${question}` : 'Có bình chọn mới', {
+            toastId,
+            autoClose: 7000,
+            onClick: () => {
+              if (msg.conversationId !== activeConversationIdRef.current) return;
+              setActivePollId(pollId);
+              setShowPollVoteModal(true);
+            },
+          });
+          return;
+        }
+
+        if (kind === 'task_assigned') {
+          if (msg.conversationId === activeConversationIdRef.current) return;
+          const title = String(parsed.task?.title ?? '').trim();
+          const toastId = `task-assigned-${msg.messageId}`;
+          if (toast.isActive(toastId)) return;
+          toast.info(title ? `Có công việc mới: ${title}` : 'Có công việc mới', {
+            toastId,
+            autoClose: 6500,
+          });
+          return;
+        }
+
+        if (kind === 'task_joined') {
+          if (msg.conversationId === activeConversationIdRef.current) return;
+          const title = String(parsed.task?.title ?? '').trim();
+          const actor = String(parsed.actor?.name ?? '').trim();
+          const toastId = `task-joined-${msg.messageId}`;
+          if (toast.isActive(toastId)) return;
+          toast.info(
+            title
+              ? `${actor || 'Một thành viên'} đã tham gia công việc: ${title}`
+              : `${actor || 'Một thành viên'} đã tham gia công việc`,
+            { toastId, autoClose: 5500 },
+          );
+          return;
+        }
       } catch {
         // ignore parse errors for non-json system messages
       }

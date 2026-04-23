@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { toast } from 'react-toastify';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
 import { ConversationListPanel } from '@/components/chat/ConversationListPanel';
 import { ChatMainContent } from '@/components/chat/ChatMainContent';
@@ -12,10 +11,13 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useCallContext } from '@/contexts/CallContext';
 import { useSocketContext } from '@/contexts/SocketContext';
 import { ChatPageProvider, useChatPageContextValue } from '@/pages/user/chat-page/ChatPageContext';
+import { ChatGroupFrameNoticeBar } from '@/pages/user/chat-page/ChatGroupFrameNoticeBar';
 import { useChatModalController } from '@/pages/user/chat-page/hooks/useChatModalController';
 import { useChatMessageData } from '@/pages/user/chat-page/hooks/useChatMessageData';
 import { useChatScrollBehavior } from '@/pages/user/chat-page/hooks/useChatScrollBehavior';
+import { useTaskReminderScheduler } from '@/pages/user/chat-page/hooks/useTaskReminderScheduler';
 import { useChatRealtimeEvents } from '@/pages/user/chat-page/hooks/useChatRealtimeEvents';
+import { useChatGroupFrameNotices } from '@/pages/user/chat-page/hooks/useChatGroupFrameNotices';
 import { useConversationRealtimeLifecycle } from '@/pages/user/chat-page/hooks/useConversationRealtimeLifecycle';
 import { useConversationRoutingSync } from '@/pages/user/chat-page/hooks/useConversationRoutingSync';
 import { useDirectConversationActions } from '@/pages/user/chat-page/hooks/useDirectConversationActions';
@@ -49,11 +51,9 @@ export default function ChatPage() {
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
   const dispatch = useDispatch<AppDispatch>();
 
-  // ── Responsive breakpoint ─────────────────────────────────────────────
   const isTabletOrDesktop = useBreakpoint('md');
   const isDesktop = useBreakpoint('lg');
 
-  // ── Auth ──────────────────────────────────────────────────────────────
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const accessToken = useSelector((state: RootState) => state.auth.accessToken);
   const currentUserId = useMemo(
@@ -61,7 +61,6 @@ export default function ChatPage() {
     [currentUser?.userId, accessToken],
   );
 
-  // ── Conversations query ──────────────────────────────────────────────
   const {
     data: conversationsData,
     isLoading: convsLoading,
@@ -82,10 +81,8 @@ export default function ChatPage() {
     return state.chat.typingUsers[activeConversationId] ?? EMPTY_TYPING_USERS;
   });
 
-  // ── Message data (merged API + socket, pinned MRU) ───────────────────
   const messageData = useChatMessageData(activeConversationId);
 
-  // ── RTK Mutations (for message moderation) ───────────────────────────
   const [sendMessage] = useSendMessageMutation();
   const [uploadMedia] = useUploadMediaMutation();
   const [editMessage, { isLoading: isEditing }] = useEditMessageMutation();
@@ -93,7 +90,6 @@ export default function ChatPage() {
   const [recallMessage] = useRecallMessageMutation();
   const [markAsRead] = useMarkAsReadMutation();
 
-  // ── Group data ───────────────────────────────────────────────────────
   const {
     groupMembers,
     setGroupMembers,
@@ -121,11 +117,9 @@ export default function ChatPage() {
   });
   const currentUserRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
 
-  // ── Contexts ─────────────────────────────────────────────────────────
   const { initiateCall, initiateGroupCall } = useCallContext();
   const { isConnected } = useSocketContext();
 
-  // ── Modal state ──────────────────────────────────────────────────────
   const { state: modalState, actions: modalActions } = useChatModalController();
   const {
     mobileView,
@@ -140,13 +134,11 @@ export default function ChatPage() {
     navigate,
   });
 
-  // ── Conversation preferences (mute/pin) ──────────────────────────────
   const convPrefs = useConversationPreferences({
     activeConversationId,
     conversations,
   });
 
-  // ── Message pin controller ───────────────────────────────────────────
   const pinController = useMessagePinController({
     dispatch,
     activeConversationId,
@@ -160,7 +152,6 @@ export default function ChatPage() {
     setActionMenuMsgId: modalActions.setActionMenuMsgId,
   });
 
-  // ── Direct conversation actions ──────────────────────────────────────
   const directActions = useDirectConversationActions({
     conversations,
     activeConversation,
@@ -181,7 +172,6 @@ export default function ChatPage() {
     [uploadMedia],
   );
 
-  // ── Group controller ─────────────────────────────────────────────────
   const groupController = useGroupConversationController({
     activeConversationId,
     activeConversation,
@@ -212,6 +202,7 @@ export default function ChatPage() {
       fetchGroupPolls,
       fetchGroupTasks,
     },
+    refetchConversations,
     modalState: {
       editGroupAvatarPreview: modalState.editGroupAvatarPreview,
       editGroupName: modalState.editGroupName,
@@ -225,6 +216,9 @@ export default function ChatPage() {
       pollOptions: modalState.pollOptions,
       pollMultipleChoice: modalState.pollMultipleChoice,
       selectedAddMembers: modalState.selectedAddMembers,
+      editingTaskId: modalState.editingTaskId,
+      taskSubtaskRows: modalState.taskSubtaskRows,
+      taskDeleteConfirm: modalState.taskDeleteConfirm,
     },
     modalActions: {
       setEditGroupName: modalActions.setEditGroupName,
@@ -245,12 +239,18 @@ export default function ChatPage() {
       setTaskAssignees: modalActions.setTaskAssignees,
       setActivePollId: modalActions.setActivePollId,
       setShowPollVoteModal: modalActions.setShowPollVoteModal,
+      setShowTaskModal: modalActions.setShowTaskModal,
+      setTaskTitle: modalActions.setTaskTitle,
+      setTaskNote: modalActions.setTaskNote,
+      setTaskDeadline: modalActions.setTaskDeadline,
+      setEditingTaskId: modalActions.setEditingTaskId,
+      setTaskDeleteConfirm: modalActions.setTaskDeleteConfirm,
+      setTaskSubtaskRows: modalActions.setTaskSubtaskRows,
     },
     setActionBusy,
     navigate,
   });
 
-  // ── Message moderation actions ───────────────────────────────────────
   const { handleSaveEdit, handleRecallMsg, handleDeleteMsg, handleMessageConfirm } =
     useMessageModerationActions({
       dispatch,
@@ -288,36 +288,6 @@ export default function ChatPage() {
     ],
   );
 
-  // ── Forward media ────────────────────────────────────────────────────
-  const handleForwardMediaMessage = useCallback(
-    async (targetConversationIds: string[], msg: IMessage, caption: string) => {
-      if (targetConversationIds.length === 0) return;
-      if (!msg.mediaUrl || (msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'file')) {
-        toast.error('Không chia sẻ được tin này');
-        throw new Error('invalid');
-      }
-      const text = caption.trim();
-      const content = text.length > 0 ? text : ' ';
-      try {
-        for (const targetConversationId of targetConversationIds) {
-          await sendMessage({
-            conversationId: targetConversationId,
-            type: msg.type,
-            content,
-            mediaUrl: msg.mediaUrl,
-          }).unwrap();
-        }
-        const n = targetConversationIds.length;
-        toast.success(n === 1 ? 'Đã chia sẻ tới 1 hội thoại' : `Đã chia sẻ tới ${n} hội thoại`);
-      } catch {
-        toast.error('Chia sẻ thất bại');
-        throw new Error('send failed');
-      }
-    },
-    [sendMessage],
-  );
-
-  // ── Routing sync ─────────────────────────────────────────────────────
   useConversationRoutingSync({
     dispatch,
     routeConversationId,
@@ -334,7 +304,6 @@ export default function ChatPage() {
     markAsRead,
   });
 
-  // ── Realtime events ──────────────────────────────────────────────────
   useChatRealtimeEvents({
     dispatch,
     isConnected,
@@ -345,6 +314,17 @@ export default function ChatPage() {
     patchMessageInCache: messageData.patchMessageInCache,
     setPinnedMessageOrderByConv: messageData.setPinnedMessageOrderByConv,
     navigate,
+  });
+
+  const { chatFrameNotice, setChatFrameNotice } = useChatGroupFrameNotices({
+    isConnected,
+    activeConversationId,
+    fetchGroupMembers,
+    fetchGroupRequests,
+    fetchGroupPolls,
+    fetchGroupTasks,
+    setActivePollId: modalActions.setActivePollId,
+    setShowPollVoteModal: modalActions.setShowPollVoteModal,
   });
 
   const {
@@ -360,7 +340,6 @@ export default function ChatPage() {
     },
   });
 
-  // ── Scroll behavior ──────────────────────────────────────────────────
   const { messagesContainerRef, messagesEndRef, unreadIncomingCount, handleJumpToLatest } =
     useChatScrollBehavior({
       allMessages: messageData.allMessages,
@@ -371,33 +350,44 @@ export default function ChatPage() {
       setActionMenuMsgId: modalActions.setActionMenuMsgId,
     });
 
-  // ── Friend click (for contacts management) ──────────────────────────
-  const handleFriendClick = useCallback(
-    async (friendId: string, friendName: string) => {
-      try {
-        const existingConversation = conversations.find(
-          (c) => c.type === 'direct' && (c.otherUserId === friendId || c.name === friendName),
-        );
-        if (!existingConversation) {
-          void directActions.handleFriendClick(friendId, friendName);
-          return;
-        }
-        modalActions.setShowContactsManagement(false);
-        void navigate(`/chat/${existingConversation.conversationId}`);
-      } catch {
-        void directActions.handleFriendClick(friendId, friendName);
+  useEffect(() => {
+    modalActions.setMessageConfirm(null);
+  }, [activeConversationId, modalActions]);
+
+  const handleForwardMediaMessage = useCallback(
+    async (targetConversationIds: string[], msg: IMessage, caption: string) => {
+      if (targetConversationIds.length === 0) return;
+      if (!msg.mediaUrl || (msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'file')) {
+        throw new Error('invalid');
+      }
+      const text = caption.trim();
+      const content = text.length > 0 ? text : ' ';
+      for (const targetConversationId of targetConversationIds) {
+        await sendMessage({
+          conversationId: targetConversationId,
+          type: msg.type,
+          content,
+          mediaUrl: msg.mediaUrl,
+        }).unwrap();
       }
     },
-    [conversations, navigate, modalActions, directActions],
+    [sendMessage],
   );
 
-  const handleOpenProfile = useCallback(() => {
-    modalActions.setShowProfileModal(true);
-  }, [modalActions]);
+  const handleFriendClick = useCallback(
+    async (friendId: string, friendName: string) => {
+      await directActions.handleFriendClick(friendId, friendName);
+    },
+    [directActions],
+  );
 
   const handleToggleContacts = useCallback(() => {
     modalActions.setShowContactsManagement((v) => !v);
     modalActions.setContactsTab('friends');
+  }, [modalActions]);
+
+  const handleOpenProfile = useCallback(() => {
+    modalActions.setShowProfileModal(true);
   }, [modalActions]);
 
   const handleOpenMarkRead = useCallback(() => {
@@ -433,7 +423,6 @@ export default function ChatPage() {
 
   const openCreateGroupModal = modalActions.openCreateGroupModal;
 
-  // ── Context value ────────────────────────────────────────────────────
   const contextValue = useChatPageContextValue({
     currentUserId,
     currentUserRole,
@@ -452,9 +441,13 @@ export default function ChatPage() {
     messageActions,
   });
 
-  // ── Render ───────────────────────────────────────────────────────────
+  useTaskReminderScheduler({
+    conversationId: activeConversationId,
+    tasks: groupTasks,
+    members: groupMembers.map((m) => ({ userId: m.userId, displayName: m.displayName })),
+    currentUserId,
+  });
 
-  /** Props chung cho ConversationListPanel (tránh lặp code). */
   const convListPanelProps = {
     conversations,
     convsLoading,
@@ -470,7 +463,6 @@ export default function ChatPage() {
     onToggleConversationMute: convPrefs.handleToggleConversationMute,
   };
 
-  /** ConversationInfoPanel — dùng chung cho cả desktop sidebar và mobile Sheet. */
   const conversationInfoPanel = (
     <ConversationInfoPanel
       numRequests={groupRequests.length}
@@ -495,12 +487,11 @@ export default function ChatPage() {
       onOpenPollVote={(pollId) => groupController.openPollVoteModal(pollId)}
       onAddPollOption={(pollId) => void groupController.handleAddPollOption(pollId)}
       onClosePoll={(pollId) => void groupController.handleClosePoll(pollId)}
-      onToggleTask={(taskId) => void groupController.handleToggleTaskStatus(taskId)}
       onOpenPollModalFromPanel={
         activeConversation?.type === 'group' ? () => modalActions.setShowPollModal(true) : undefined
       }
       onOpenTaskModalFromPanel={
-        activeConversation?.type === 'group' ? () => modalActions.setShowTaskModal(true) : undefined
+        activeConversation?.type === 'group' ? groupController.openCreateTaskModal : undefined
       }
       polls={groupPolls}
       tasks={groupTasks}
@@ -516,6 +507,7 @@ export default function ChatPage() {
       }}
       onLeaveGroup={groupController.handleLeaveGroup}
       onDeleteGroup={groupController.handleDeleteGroup}
+      onTransferGroupOwner={(userId) => void groupController.handleTransferGroupOwner(userId)}
       onOpenMemberModal={() => {}}
       currentUserRole={currentUserRole}
       currentUserId={currentUserId}
@@ -535,18 +527,16 @@ export default function ChatPage() {
       onJumpToMessage={scrollToMessageBubble}
       conversations={conversations}
       onSelectConversation={handleSelectConversation}
+      onTaskJoined={(taskId) => void groupController.handleTaskJoined(taskId)}
+      onEditTaskFromBulletin={(t) => groupController.openEditTaskFromGroupTask(String(t.taskId))}
+      onDeleteTaskFromBulletin={(id) => void groupController.handleDeleteGroupTask(id)}
+      taskActionBusy={groupActionLoading.createTask || groupActionLoading.updateTask}
     />
   );
 
   return (
     <ChatPageProvider value={contextValue}>
-      {/*
-       * Layout wrapper:
-       *  - Mobile (< md): flex-col, padding-bottom 64px untuk bottom tab bar
-       *  - Tablet/Desktop (md+): flex-row như cũ
-       */}
       <div className="w-full h-full min-h-0 flex overflow-hidden bg-background">
-        {/* ── Nav Rail (desktop/tablet) + Bottom Tab (mobile) ─────────── */}
         <ChatNavRail
           navigate={navigate}
           onOpenProfile={handleOpenProfile}
@@ -554,20 +544,16 @@ export default function ChatPage() {
           onToggleContacts={handleToggleContacts}
         />
 
-        {/* ── Conversation List: Desktop/Tablet — sidebar cố định ──────── */}
         <div className="hidden md:flex md:shrink-0">
           <ConversationListPanel {...convListPanelProps} />
         </div>
 
-        {/* ── Conversation List: Mobile — Sheet từ trái ─────────────────
-             Chỉ hiện khi mobileView === 'list' hoặc user mở sheet thủ công  */}
         {!isTabletOrDesktop && mobileView === 'list' && (
           <div className="flex-1 flex flex-col min-w-0 min-h-0">
             <ConversationListPanel {...convListPanelProps} />
           </div>
         )}
 
-        {/* Sheet ConversationList trên mobile khi đang xem chat */}
         {!isTabletOrDesktop && (
           <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
             <SheetContent side="left" className="w-80 p-0 overflow-y-auto">
@@ -577,9 +563,6 @@ export default function ChatPage() {
           </Sheet>
         )}
 
-        {/* ── Chat Main Content ─────────────────────────────────────────
-             Mobile: ẩn khi đang ở 'list' view (chưa chọn conversation)
-             Desktop: luôn hiện                                           */}
         {(isTabletOrDesktop || mobileView === 'chat') && (
           <ChatMainContent
             showContactsManagement={modalState.showContactsManagement}
@@ -606,7 +589,7 @@ export default function ChatPage() {
             onActionMenuMsgIdChange={modalActions.setActionMenuMsgId}
             onStartEdit={handleStartEdit}
             onOpenPoll={() => modalActions.setShowPollModal(true)}
-            onOpenTask={() => modalActions.setShowTaskModal(true)}
+            onOpenTask={groupController.openCreateTaskModal}
             onSearchMessages={activeConversationId ? requestOpenConversationSearch : undefined}
             resolvedMemberCount={
               activeConversation?.type === 'group' && groupMembers.length > 0
@@ -617,11 +600,19 @@ export default function ChatPage() {
             shareTargetConversations={conversations}
             onForwardMediaMessage={handleForwardMediaMessage}
             onBack={!isTabletOrDesktop ? handleBackToList : undefined}
+            onEditGroupTask={(id) => groupController.openEditTaskFromGroupTask(id)}
+            onDeleteGroupTask={(id) => void groupController.handleDeleteGroupTask(id)}
+            postMessageListSlot={
+              chatFrameNotice && activeConversationId ? (
+                <ChatGroupFrameNoticeBar
+                  notice={chatFrameNotice}
+                  onDismiss={() => setChatFrameNotice(null)}
+                />
+              ) : null
+            }
           />
         )}
 
-        {/* ── Side Info Rail ───────────────────────────────────────────
-             Desktop: animated sidebar; Mobile/Tablet: Sheet overlay     */}
         <ChatSideInfoRail
           showInfo={modalState.showInfo}
           showContactsManagement={modalState.showContactsManagement}
