@@ -45,6 +45,8 @@ export interface ChatModalState {
   messageConfirmSubmitting: boolean;
   /** Xác nhận hủy công việc nhóm (thay window.confirm). */
   taskDeleteConfirm: { taskId: string; title: string } | null;
+  /** Hàng subtask trong TaskModal (assigneeId + nội dung). */
+  taskSubtaskRows: Array<{ assigneeId: string; content: string }>;
 }
 
 export function useChatModalController() {
@@ -92,6 +94,9 @@ export function useChatModalController() {
     taskId: string;
     title: string;
   } | null>(null);
+  const [taskSubtaskRows, setTaskSubtaskRows] = useState<
+    Array<{ assigneeId: string; content: string }>
+  >([]);
 
   const openCreateGroupModal = useCallback(() => {
     setShowCreateGroupModal(true);
@@ -105,6 +110,7 @@ export function useChatModalController() {
     setTaskDeadline('');
     setTaskNote('');
     setTaskAssignees([]);
+    setTaskSubtaskRows([]);
     setTaskAssignToAll(false);
     setEditingTaskId(null);
     setTaskDeleteConfirm(null);
@@ -147,6 +153,7 @@ export function useChatModalController() {
     editingMessage,
     editDraft,
     actionMenuMsgId,
+    taskSubtaskRows,
     messageConfirm,
     messageConfirmSubmitting,
     taskDeleteConfirm,
@@ -190,6 +197,7 @@ export function useChatModalController() {
       setEditingMessage,
       setEditDraft,
       setActionMenuMsgId,
+      setTaskSubtaskRows,
       setMessageConfirm,
       setMessageConfirmSubmitting,
       setTaskDeleteConfirm,

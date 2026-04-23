@@ -14,7 +14,7 @@ type GroupTaskLike = {
   assignToAll?: boolean;
   broadcast?: boolean;
   subtasks?: Array<{
-    id: string;
+    id?: string;
     assigneeId: string;
     assigneeName?: string;
     content: string;
@@ -89,14 +89,12 @@ function buildReminderPayload({
     const subs = Array.isArray(task.subtasks) ? task.subtasks : [];
     if (subs.length > 0) {
       const pending = subs.filter((s) => !s?.done);
-      const ids = Array.from(new Set(pending.map((s) => String(s.assigneeId ?? '')).filter(Boolean)));
+      const ids = Array.from(
+        new Set(pending.map((s) => String(s.assigneeId ?? '')).filter(Boolean)),
+      );
       return ids;
     }
-    return assignToAll
-      ? Array.isArray(task.participants)
-        ? task.participants
-        : []
-      : assignees;
+    return assignToAll ? (Array.isArray(task.participants) ? task.participants : []) : assignees;
   })();
 
   const names = recipients
@@ -112,7 +110,8 @@ function buildReminderPayload({
 
   const dueDate = task.dueDate ?? null;
   const { emoji, title } = stageTitle(stage);
-  const header = broadcast && stage === 'due' ? { emoji: '⏰', title: 'Nhắc cả nhóm' } : { emoji, title };
+  const header =
+    broadcast && stage === 'due' ? { emoji: '⏰', title: 'Nhắc cả nhóm' } : { emoji, title };
 
   return JSON.stringify({
     kind: 'task_reminder',
@@ -188,9 +187,10 @@ export function useTaskReminderScheduler({
     return m;
   }, [members]);
 
-  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  /** `window.setTimeout` trả về `number` trên DOM; tránh lệch với kiểu NodeJS.Timeout. */
+  const timersRef = useRef<Map<string, number>>(new Map());
   const sentRef = useRef<Set<string>>(new Set());
-  const snoozeRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const snoozeRef = useRef<Map<string, number>>(new Map());
   const createdRef = useRef<Set<string>>(new Set());
 
   const cancelTaskReminders = useCallback(
@@ -243,7 +243,9 @@ export function useTaskReminderScheduler({
         });
         const messageId = taskCardMessageId(conversationId, taskId);
         // Ensure the card exists before editing (no spam: messageId is stable).
-        dispatch(messageReceived(buildSystemMessage({ conversationId, messageId, content: payload })));
+        dispatch(
+          messageReceived(buildSystemMessage({ conversationId, messageId, content: payload })),
+        );
         dispatch(messageEdited({ conversationId, messageId, content: payload }));
       }, delay);
       snoozeRef.current.set(snoozeKey, t);
@@ -266,8 +268,9 @@ export function useTaskReminderScheduler({
 
     // Remove deadline reminders: only keep the "task_assigned" card.
     // Clear any existing reminder timers.
-    timersRef.current.forEach((t) => clearTimeout(t));
-    timersRef.current.clear();
+    const timers = timersRef.current;
+    timers.forEach((t) => clearTimeout(t));
+    timers.clear();
 
     for (const task of tasks) {
       if (!task?.taskId) continue;
@@ -276,17 +279,18 @@ export function useTaskReminderScheduler({
       if (!createdRef.current.has(task.taskId)) {
         const payload = buildTaskAssignedPayload({ task, memberNameById });
         const messageId = taskCardMessageId(conversationId, task.taskId);
-        dispatch(messageReceived(buildSystemMessage({ conversationId, messageId, content: payload })));
+        dispatch(
+          messageReceived(buildSystemMessage({ conversationId, messageId, content: payload })),
+        );
         createdRef.current.add(task.taskId);
       }
     }
 
     return () => {
-      timersRef.current.forEach((t) => clearTimeout(t));
-      timersRef.current.clear();
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
     };
   }, [conversationId, currentUserId, dispatch, memberNameById, tasks]);
 
   return { cancelTaskReminders, snoozeTask };
 }
-
