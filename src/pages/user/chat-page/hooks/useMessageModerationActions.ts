@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { chatApi } from '@/store/api/chatApi';
-import { messageEdited, messageHiddenForViewer, messagePinUpdated, messageRecalled } from '@/store/slices/chatSlice';
+import { messageEdited, messageHiddenForViewer, messageRecalled } from '@/store/slices/chatSlice';
 import type { AppDispatch } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
 import type { MessageConfirmState } from '@/types/chat.group.types';
@@ -15,7 +15,11 @@ interface UseMessageModerationActionsParams {
   messageConfirm: MessageConfirmState;
   setMessageConfirm: (value: MessageConfirmState) => void;
   setMessageConfirmSubmitting: (value: boolean) => void;
-  patchMessageInCache: (conversationId: string, messageId: string, patch: Partial<IMessage>) => void;
+  patchMessageInCache: (
+    conversationId: string,
+    messageId: string,
+    patch: Partial<IMessage>,
+  ) => void;
   removeMessageFromCache: (conversationId: string, messageId: string) => void;
   editMessage: (payload: {
     messageId: string;
@@ -23,26 +27,12 @@ interface UseMessageModerationActionsParams {
     conversationId: string;
     createdAt: string;
   }) => { unwrap: () => Promise<unknown> };
-  recallMessage: (payload: {
-    messageId: string;
-    conversationId: string;
-    createdAt: string;
-  }) => { unwrap: () => Promise<unknown> };
-  deleteMessage: (payload: {
-    messageId: string;
-    conversationId: string;
-    createdAt: string;
-  }) => { unwrap: () => Promise<unknown> };
-  pinMessage: (payload: {
-    messageId: string;
-    conversationId: string;
-    createdAt: string;
-  }) => { unwrap: () => Promise<unknown> };
-  unpinMessage: (payload: {
-    messageId: string;
-    conversationId: string;
-    createdAt: string;
-  }) => { unwrap: () => Promise<unknown> };
+  recallMessage: (payload: { messageId: string; conversationId: string; createdAt: string }) => {
+    unwrap: () => Promise<unknown>;
+  };
+  deleteMessage: (payload: { messageId: string; conversationId: string; createdAt: string }) => {
+    unwrap: () => Promise<unknown>;
+  };
 }
 
 export function useMessageModerationActions({
@@ -59,8 +49,6 @@ export function useMessageModerationActions({
   editMessage,
   recallMessage,
   deleteMessage,
-  pinMessage,
-  unpinMessage,
 }: UseMessageModerationActionsParams) {
   const handleSaveEdit = useCallback(async () => {
     if (!editingMessage || !editDraft.trim()) return;
@@ -127,7 +115,9 @@ export function useMessageModerationActions({
           conversationId: msg.conversationId,
           createdAt: msg.createdAt,
         }).unwrap();
-        dispatch(messageHiddenForViewer({ messageId: msg.messageId, conversationId: msg.conversationId }));
+        dispatch(
+          messageHiddenForViewer({ messageId: msg.messageId, conversationId: msg.conversationId }),
+        );
         removeMessageFromCache(msg.conversationId, msg.messageId);
         dispatch(chatApi.util.invalidateTags(['Conversations']));
       }
@@ -137,7 +127,12 @@ export function useMessageModerationActions({
       const d = e && typeof e === 'object' && 'data' in e ? (e as { data: unknown }).data : null;
       const body = d && typeof d === 'object' ? (d as { error?: { message?: string } }) : null;
       const apiMsg = body?.error?.message?.trim();
-      toast.error(apiMsg || (messageConfirm?.kind === 'recall' ? 'Thu hồi tin nhắn thất bại' : 'Xóa tin nhắn thất bại'));
+      toast.error(
+        apiMsg ||
+          (messageConfirm?.kind === 'recall'
+            ? 'Thu hồi tin nhắn thất bại'
+            : 'Xóa tin nhắn thất bại'),
+      );
     } finally {
       setMessageConfirmSubmitting(false);
     }
@@ -153,51 +148,10 @@ export function useMessageModerationActions({
     setMessageConfirmSubmitting,
   ]);
 
-  const handleTogglePinMsg = useCallback(
-    async (msg: IMessage) => {
-      try {
-        if (msg.isPinned) {
-          await unpinMessage({
-            messageId: msg.messageId,
-            conversationId: msg.conversationId,
-            createdAt: msg.createdAt,
-          }).unwrap();
-          dispatch(
-            messagePinUpdated({
-              messageId: msg.messageId,
-              conversationId: msg.conversationId,
-              isPinned: false,
-            }),
-          );
-          patchMessageInCache(msg.conversationId, msg.messageId, { isPinned: false });
-        } else {
-          await pinMessage({
-            messageId: msg.messageId,
-            conversationId: msg.conversationId,
-            createdAt: msg.createdAt,
-          }).unwrap();
-          dispatch(
-            messagePinUpdated({
-              messageId: msg.messageId,
-              conversationId: msg.conversationId,
-              isPinned: true,
-            }),
-          );
-          patchMessageInCache(msg.conversationId, msg.messageId, { isPinned: true });
-        }
-        setActionMenuMsgId(null);
-      } catch {
-        // ignore
-      }
-    },
-    [pinMessage, unpinMessage, dispatch, patchMessageInCache, setActionMenuMsgId],
-  );
-
   return {
     handleSaveEdit,
     handleRecallMsg,
     handleDeleteMsg,
     handleMessageConfirm,
-    handleTogglePinMsg,
   };
 }

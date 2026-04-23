@@ -48,7 +48,9 @@ export interface ChatModalState {
 }
 
 export function useChatModalController() {
-  const [showInfo, setShowInfo] = useState(true);
+  const [showInfo, setShowInfo] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth >= 1024,
+  );
   const [showOtherPinnedPanel, setShowOtherPinnedPanel] = useState(false);
   const [showMarkReadModal, setShowMarkReadModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -86,7 +88,10 @@ export function useChatModalController() {
   const [actionMenuMsgId, setActionMenuMsgId] = useState<string | null>(null);
   const [messageConfirm, setMessageConfirm] = useState<MessageConfirmState>(null);
   const [messageConfirmSubmitting, setMessageConfirmSubmitting] = useState(false);
-  const [taskDeleteConfirm, setTaskDeleteConfirm] = useState<{ taskId: string; title: string } | null>(null);
+  const [taskDeleteConfirm, setTaskDeleteConfirm] = useState<{
+    taskId: string;
+    title: string;
+  } | null>(null);
 
   const openCreateGroupModal = useCallback(() => {
     setShowCreateGroupModal(true);

@@ -10,7 +10,9 @@ import { AddMembersModal } from '@/components/chat/AddMembersModal';
 import { EditGroupModal } from '@/components/chat/EditGroupModal';
 import { EditMessageDialog } from '@/components/chat/EditMessageDialog';
 import { PollVoteModal } from '@/components/chat/PollVoteModal';
-import type { IMessage } from '@/types/chat.types';
+import { PinLimitModal } from '@/components/chat/PinLimitModal';
+import { ConversationPinLimitModal } from '@/components/chat/ConversationPinLimitModal';
+import type { IConversation, IMessage } from '@/types/chat.types';
 import type { MessageConfirmState } from '@/types/chat.group.types';
 import { toTaskModalMembers } from '@/pages/user/chat-page/adapters/groupAdapters';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
@@ -77,9 +79,36 @@ interface ChatModalsHostProps {
     setEditDraft: (value: string) => void;
   };
   isEditing: boolean;
+  /** Pin limit modal props (message-level) */
+  pinLimit?: {
+    pinLimitModalMsg: IMessage | null;
+    setPinLimitModalMsg: (msg: IMessage | null) => void;
+    pinnedMessagesOrdered: IMessage[];
+    pinReplaceIndex: number | null;
+    setPinReplaceIndex: (index: number | null) => void;
+    pinLimitSubmitting: boolean;
+    onConfirmPinReplace: () => Promise<void>;
+  };
+  /** Conversation pin limit modal props */
+  convPinLimit?: {
+    convPinLimitPendingId: string | null;
+    setConvPinLimitPendingId: (id: string | null) => void;
+    convPinLimitConfirmBusy: boolean;
+    convPinLimitUnpinningId: string | null;
+    conversationsPinnedToTop: IConversation[];
+    conversations: IConversation[];
+    onUnpinConversation: (id: string) => Promise<void>;
+    onConfirmPinPending: () => Promise<void>;
+  };
 }
 
-export function ChatModalsHost({ state, actions, isEditing }: ChatModalsHostProps) {
+export function ChatModalsHost({
+  state,
+  actions,
+  isEditing,
+  pinLimit,
+  convPinLimit,
+}: ChatModalsHostProps) {
   const { core, group, groupActions, directActions, messageActions } = useChatPageContext();
 
   const {
@@ -121,7 +150,7 @@ export function ChatModalsHost({ state, actions, isEditing }: ChatModalsHostProp
       <PollVoteModal
         open={showPollVoteModal}
         onClose={() => actions.setShowPollVoteModal(false)}
-        poll={activePollId ? group.polls.find((p) => p.pollId === activePollId) ?? null : null}
+        poll={activePollId ? (group.polls.find((p) => p.pollId === activePollId) ?? null) : null}
         currentUserId={core.currentUserId}
         onToggleVote={(pollId, optionIndex) =>
           void groupActions.handleVotePoll(pollId, optionIndex)
@@ -139,12 +168,18 @@ export function ChatModalsHost({ state, actions, isEditing }: ChatModalsHostProp
       />
       <ConfirmModal
         open={messageConfirm !== null}
-        title={messageConfirm?.kind === 'delete' ? 'Xóa tin nhắn' : messageConfirm?.kind === 'recall' ? 'Thu hồi tin nhắn' : ''}
+        title={
+          messageConfirm?.kind === 'delete'
+            ? 'Xóa tin nhắn'
+            : messageConfirm?.kind === 'recall'
+              ? 'Thu hồi tin nhắn'
+              : ''
+        }
         description={
           messageConfirm?.kind === 'delete'
-            ? 'Tin nhắn sẽ chỉ biến mất ở phía bạn; người khác vẫn thấy.'
+            ? 'Chỉ xóa trên thiết bị của bạn; người khác trong cuộc trò chuyện vẫn thấy tin nhắn.'
             : messageConfirm?.kind === 'recall'
-              ? 'Thu hồi tin nhắn này cho mọi người?'
+              ? 'Thu hồi cho mọi người — không ai còn xem được nội dung tin này.'
               : undefined
         }
         confirmLabel={messageConfirm?.kind === 'delete' ? 'Xóa' : 'Thu hồi'}
@@ -234,6 +269,44 @@ export function ChatModalsHost({ state, actions, isEditing }: ChatModalsHostProp
         onSave={messageActions.handleSaveEdit}
         isEditing={isEditing}
       />
+
+      {/* Pin Limit Modal (message-level) */}
+      {pinLimit && (
+        <PinLimitModal
+          open={pinLimit.pinLimitModalMsg !== null}
+          currentPinned={pinLimit.pinnedMessagesOrdered}
+          pendingPin={pinLimit.pinLimitModalMsg}
+          replaceIndex={pinLimit.pinReplaceIndex}
+          onReplaceIndexChange={pinLimit.setPinReplaceIndex}
+          isSubmitting={pinLimit.pinLimitSubmitting}
+          onClose={() => {
+            if (!pinLimit.pinLimitSubmitting) pinLimit.setPinLimitModalMsg(null);
+          }}
+          onConfirm={pinLimit.onConfirmPinReplace}
+        />
+      )}
+
+      {/* Conversation Pin Limit Modal */}
+      {convPinLimit && (
+        <ConversationPinLimitModal
+          open={convPinLimit.convPinLimitPendingId !== null}
+          pendingConversationId={convPinLimit.convPinLimitPendingId}
+          pendingName={
+            convPinLimit.conversations.find(
+              (x) => x.conversationId === convPinLimit.convPinLimitPendingId,
+            )?.name ?? 'Hội thoại'
+          }
+          pinnedConversations={convPinLimit.conversationsPinnedToTop}
+          isConfirming={convPinLimit.convPinLimitConfirmBusy}
+          unpinningConversationId={convPinLimit.convPinLimitUnpinningId}
+          onClose={() => {
+            if (!convPinLimit.convPinLimitConfirmBusy && !convPinLimit.convPinLimitUnpinningId)
+              convPinLimit.setConvPinLimitPendingId(null);
+          }}
+          onUnpinConversation={(id) => void convPinLimit.onUnpinConversation(id)}
+          onConfirmPinPending={() => void convPinLimit.onConfirmPinPending()}
+        />
+      )}
     </>
   );
 }
