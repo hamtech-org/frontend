@@ -36,11 +36,16 @@ export const OtpVerificationForm = ({
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div>
-        <label htmlFor="otp" className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300">
+        <label
+          htmlFor="otp"
+          className="flex items-center gap-3 text-lg font-medium text-gray-700 dark:text-gray-300"
+        >
           <ShieldCheck className="w-5 h-5" />
           <div>
             <div>Nhập mã OTP</div>
-            <div className="text-sm text-gray-500 dark:text-gray-400 font-normal">Mã xác thực đã được gửi đến {email}</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400 font-normal">
+              Mã xác thực đã được gửi đến {email}
+            </div>
           </div>
         </label>
         <input
@@ -56,8 +61,7 @@ export const OtpVerificationForm = ({
 
       {error && (
         <div className="text-red-500 text-sm text-center">
-          {/* @ts-expect-error RTK Query error shape is not strongly typed here */}
-          {error?.data?.message || 'Đã có lỗi xảy ra'}
+          {(error as any)?.data?.message || 'Đã có lỗi xảy ra'}
         </div>
       )}
 

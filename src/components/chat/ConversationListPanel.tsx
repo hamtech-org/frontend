@@ -21,7 +21,10 @@ import {
   sortConversationsForSidebar,
 } from '@/utils/chatUtils';
 import { formatZaloConversationTime } from '@/utils/formatDate';
-import { ContactsManagementPanel, type ContactsTabId } from '@/components/chat/ContactsManagementPanel';
+import {
+  ContactsManagementPanel,
+  type ContactsTabId,
+} from '@/components/chat/ContactsManagementPanel';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -154,11 +157,23 @@ export function ConversationListPanel({
   const mainRows = useMemo<MainRow[]>(() => {
     const rows: MainRow[] = [];
     if (pinnedConversations.length > 0) {
-      rows.push({ kind: 'header', key: 'h:pinned', title: 'Ghim', count: pinnedConversations.length });
-      for (const c of pinnedConversations) rows.push({ kind: 'conversation', key: `c:${c.conversationId}`, conv: c });
+      rows.push({
+        kind: 'header',
+        key: 'h:pinned',
+        title: 'Ghim',
+        count: pinnedConversations.length,
+      });
+      for (const c of pinnedConversations)
+        rows.push({ kind: 'conversation', key: `c:${c.conversationId}`, conv: c });
     }
-    rows.push({ kind: 'header', key: 'h:chats', title: 'Tin nhắn', count: normalConversations.length });
-    for (const c of normalConversations) rows.push({ kind: 'conversation', key: `c:${c.conversationId}`, conv: c });
+    rows.push({
+      kind: 'header',
+      key: 'h:chats',
+      title: 'Tin nhắn',
+      count: normalConversations.length,
+    });
+    for (const c of normalConversations)
+      rows.push({ kind: 'conversation', key: `c:${c.conversationId}`, conv: c });
     return rows;
   }, [normalConversations, pinnedConversations]);
 
@@ -167,11 +182,7 @@ export function ConversationListPanel({
     const hit = listableConversations.filter((c) => {
       const name = (c.name ?? '').toLowerCase();
       const preview = formatConversationListLastPreview(c, currentUserId).toLowerCase();
-      return (
-        name.includes(q) ||
-        preview.includes(q) ||
-        c.conversationId.toLowerCase().includes(q)
-      );
+      return name.includes(q) || preview.includes(q) || c.conversationId.toLowerCase().includes(q);
     });
     return sortConversationsForSidebar(hit);
   }, [listableConversations, q, currentUserId]);
@@ -289,7 +300,9 @@ export function ConversationListPanel({
                               <p className="text-[13px] font-semibold text-foreground truncate">
                                 {displayName}
                               </p>
-                              <p className="text-[11px] text-muted-foreground truncate">{preview}</p>
+                              <p className="text-[11px] text-muted-foreground truncate">
+                                {preview}
+                              </p>
                             </div>
                             {contact.type === 'group' && (
                               <Users className="size-3.5 text-primary shrink-0" />
@@ -329,7 +342,9 @@ export function ConversationListPanel({
                   {filteredConversations.length === 0 && filteredMessages.length === 0 && (
                     <div className="px-4 py-8 flex flex-col items-center justify-center">
                       <Search className="w-8 h-8 text-muted-foreground/30 mb-2" />
-                      <p className="text-sm font-medium text-muted-foreground">Không tìm thấy kết quả</p>
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Không tìm thấy kết quả
+                      </p>
                       <p className="text-[12px] text-muted-foreground/70 text-center mt-1">
                         Thử tên hội thoại, nội dung tin (trong chat đang mở)
                       </p>
@@ -356,11 +371,13 @@ export function ConversationListPanel({
             <Users className="w-[18px] h-[18px]" />
           </button>
         </div>
-        
       </div>
 
       {showContactsManagement ? (
-        <ContactsManagementPanel contactsTab={contactsTab} onContactsTabChange={onContactsTabChange} />
+        <ContactsManagementPanel
+          contactsTab={contactsTab}
+          onContactsTabChange={onContactsTabChange}
+        />
       ) : (
         <div className="flex-1 min-h-0 pl-0 pr-2 pb-4 flex flex-col gap-2">
           {/* pl-0: bỏ padding trái (trước đây px-4 làm list lệch quá sang phải) */}
@@ -372,15 +389,11 @@ export function ConversationListPanel({
           {!convsLoading && (
             <TooltipProvider delayDuration={150}>
               {(() => {
-                type ConversationRowContext = 'main' | 'mutedSection';
-
                 const renderConversationCard = (
                   conv: IConversation,
                   key: string,
                   style: React.CSSProperties,
-                  rowContext: ConversationRowContext = 'main',
                 ) => {
-                  const inMutedSection = rowContext === 'mutedSection';
                   const isActive = activeConversationId === conv.conversationId;
                   const hasUnread = (conv.unreadCount ?? 0) > 0;
                   const isGroup = conv.type === 'group';
@@ -398,7 +411,7 @@ export function ConversationListPanel({
                       : { prefix: '', suffix: '' };
                   const lastMsgTime = conv.lastMessage?.createdAt
                     ? (formatMessageTimeProp?.(conv.lastMessage.createdAt) ??
-                        formatZaloConversationTime(conv.lastMessage.createdAt, listTimeNow))
+                      formatZaloConversationTime(conv.lastMessage.createdAt, listTimeNow))
                     : '';
 
                   const baseIdle = 'hover:bg-black/5 dark:hover:bg-white/5';
@@ -460,7 +473,9 @@ export function ConversationListPanel({
                                     : 'text-black/50 dark:text-white/50'
                               }`}
                             >
-                              {lastMsgType === 'image' || lastMsgType === 'video' || lastMsgType === 'file' ? (
+                              {lastMsgType === 'image' ||
+                              lastMsgType === 'video' ||
+                              lastMsgType === 'file' ? (
                                 <>
                                   {lastPreviewParts.prefix ? (
                                     <span className="shrink-0">{lastPreviewParts.prefix}</span>
@@ -482,13 +497,17 @@ export function ConversationListPanel({
                                   {lastMsgType === 'file' && (
                                     <Paperclip
                                       className={`w-3.5 h-3.5 shrink-0 ${
-                                        isActive ? 'text-white/90' : 'text-slate-600 dark:text-slate-400'
+                                        isActive
+                                          ? 'text-white/90'
+                                          : 'text-slate-600 dark:text-slate-400'
                                       }`}
                                       aria-hidden
                                     />
                                   )}
                                   {lastPreviewParts.suffix ? (
-                                    <span className="truncate min-w-0">{lastPreviewParts.suffix}</span>
+                                    <span className="truncate min-w-0">
+                                      {lastPreviewParts.suffix}
+                                    </span>
                                   ) : null}
                                 </>
                               ) : (
@@ -511,19 +530,25 @@ export function ConversationListPanel({
                                       onToggleConversationMute(conv.conversationId);
                                     }}
                                     className={`shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-full ${
-                                      isActive ? 'hover:bg-white/15' : 'hover:bg-black/10 dark:hover:bg-white/10'
+                                      isActive
+                                        ? 'hover:bg-white/15'
+                                        : 'hover:bg-black/10 dark:hover:bg-white/10'
                                     }`}
                                     aria-label="Bật thông báo"
                                   >
                                     <BellOff
                                       className={`w-3.5 h-3.5 shrink-0 ${
-                                        isActive ? 'text-white/90' : 'text-red-500 dark:text-red-400'
+                                        isActive
+                                          ? 'text-white/90'
+                                          : 'text-red-500 dark:text-red-400'
                                       }`}
                                       aria-hidden
                                     />
                                   </button>
                                 </TooltipTrigger>
-                                <TooltipContent sideOffset={6}>Đang tắt thông báo. Nhấn để bật.</TooltipContent>
+                                <TooltipContent sideOffset={6}>
+                                  Đang tắt thông báo. Nhấn để bật.
+                                </TooltipContent>
                               </Tooltip>
                             ) : null}
                             <p
@@ -543,7 +568,10 @@ export function ConversationListPanel({
                                   : 'Ghim hội thoại lên đầu danh sách'
                               }
                             >
-                              <span className="p-0.5 rounded-md shrink-0 pointer-events-none" aria-hidden>
+                              <span
+                                className="p-0.5 rounded-md shrink-0 pointer-events-none"
+                                aria-hidden
+                              >
                                 <Pin
                                   className={`w-3.5 h-3.5 ${
                                     isActive ? 'text-white/85' : 'text-zinc-600 dark:text-zinc-400'
@@ -576,7 +604,9 @@ export function ConversationListPanel({
                         <div className="px-3 flex items-center justify-between">
                           <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                             {isPinnedHeader ? <Pin className="size-3.5" aria-hidden /> : null}
-                            {isChatsHeader ? <MessageCircle className="size-3.5" aria-hidden /> : null}
+                            {isChatsHeader ? (
+                              <MessageCircle className="size-3.5" aria-hidden />
+                            ) : null}
                             <span>{row.title}</span>
                           </p>
                           {typeof row.count === 'number' ? (
@@ -597,7 +627,7 @@ export function ConversationListPanel({
                   ({ index, key, style }) => {
                     const conv = list[index];
                     if (!conv) return null;
-                    return renderConversationCard(conv, key, style, 'mutedSection');
+                    return renderConversationCard(conv, key, style);
                   };
 
                 return (
@@ -610,7 +640,9 @@ export function ConversationListPanel({
                             height={height}
                             rowCount={mainRows.length}
                             rowRenderer={renderMainRow}
-                            rowHeight={({ index }) => (mainRows[index]?.kind === 'header' ? 34 : 96)}
+                            rowHeight={({ index }) =>
+                              mainRows[index]?.kind === 'header' ? 34 : 96
+                            }
                             overscanRowCount={10}
                             className="custom-scrollbar"
                           />

@@ -1,5 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Card, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Button,
+  Card,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui';
 
 type Member = { userId: string; displayName: string };
 
@@ -39,7 +49,10 @@ function fmtTime(iso: string) {
   }
 }
 
-function deadlineTone(nowMs: number, dueIso: string | null): {
+function deadlineTone(
+  nowMs: number,
+  dueIso: string | null,
+): {
   label: string;
   icon: string;
   toneClass: string;
@@ -47,20 +60,50 @@ function deadlineTone(nowMs: number, dueIso: string | null): {
   isOverdue: boolean;
 } {
   if (!dueIso) {
-    return { label: 'Chưa đặt deadline', icon: '🕒', toneClass: 'text-muted-foreground', cardBorderClass: 'border-black/5 dark:border-white/10', isOverdue: false };
+    return {
+      label: 'Chưa đặt deadline',
+      icon: '🕒',
+      toneClass: 'text-muted-foreground',
+      cardBorderClass: 'border-black/5 dark:border-white/10',
+      isOverdue: false,
+    };
   }
   const dueMs = new Date(dueIso).getTime();
   if (!Number.isFinite(dueMs)) {
-    return { label: 'Deadline', icon: '🕒', toneClass: 'text-muted-foreground', cardBorderClass: 'border-black/5 dark:border-white/10', isOverdue: false };
+    return {
+      label: 'Deadline',
+      icon: '🕒',
+      toneClass: 'text-muted-foreground',
+      cardBorderClass: 'border-black/5 dark:border-white/10',
+      isOverdue: false,
+    };
   }
   const msLeft = dueMs - nowMs;
   if (msLeft < 0) {
-    return { label: 'Quá hạn', icon: '🔴', toneClass: 'text-red-700 dark:text-red-300', cardBorderClass: 'border-red-500/35', isOverdue: true };
+    return {
+      label: 'Quá hạn',
+      icon: '🔴',
+      toneClass: 'text-red-700 dark:text-red-300',
+      cardBorderClass: 'border-red-500/35',
+      isOverdue: true,
+    };
   }
   if (msLeft <= 10 * 60_000) {
-    return { label: 'Sắp đến hạn', icon: '🟠', toneClass: 'text-orange-700 dark:text-orange-300', cardBorderClass: 'border-orange-500/25', isOverdue: false };
+    return {
+      label: 'Sắp đến hạn',
+      icon: '🟠',
+      toneClass: 'text-orange-700 dark:text-orange-300',
+      cardBorderClass: 'border-orange-500/25',
+      isOverdue: false,
+    };
   }
-  return { label: 'Deadline', icon: '🕒', toneClass: 'text-muted-foreground', cardBorderClass: 'border-black/5 dark:border-white/10', isOverdue: false };
+  return {
+    label: 'Deadline',
+    icon: '🕒',
+    toneClass: 'text-muted-foreground',
+    cardBorderClass: 'border-black/5 dark:border-white/10',
+    isOverdue: false,
+  };
 }
 
 function CreateTaskForm({
@@ -87,7 +130,8 @@ function CreateTaskForm({
     { assigneeId: members[2]?.userId ?? 'u3', content: 'Viết document' },
   ]);
 
-  const addRow = () => setDrafts((p) => [...p, { assigneeId: members[0]?.userId ?? 'u1', content: '' }]);
+  const addRow = () =>
+    setDrafts((p) => [...p, { assigneeId: members[0]?.userId ?? 'u1', content: '' }]);
   const updateRow = (idx: number, next: Partial<DraftSubtask>) =>
     setDrafts((p) => p.map((x, i) => (i === idx ? { ...x, ...next } : x)));
   const removeRow = (idx: number) => setDrafts((p) => p.filter((_, i) => i !== idx));
@@ -142,7 +186,10 @@ function CreateTaskForm({
           {drafts.map((d, idx) => (
             <div key={idx} className="flex gap-2">
               <div className="w-[180px]">
-                <Select value={d.assigneeId} onValueChange={(v) => updateRow(idx, { assigneeId: v })}>
+                <Select
+                  value={d.assigneeId}
+                  onValueChange={(v) => updateRow(idx, { assigneeId: v })}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Chọn member" />
                   </SelectTrigger>
@@ -191,11 +238,15 @@ function SubTaskItem({
   return (
     <div className="flex items-center justify-between gap-2">
       <div className="min-w-0">
-        <div className={`text-[13px] font-semibold ${sub.done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+        <div
+          className={`text-[13px] font-semibold ${sub.done ? 'text-muted-foreground line-through' : 'text-foreground'}`}
+        >
           {sub.done ? '✓' : '•'} {sub.assigneeName} — {sub.content}
         </div>
         {sub.done && sub.completedAt ? (
-          <div className="text-[11px] text-muted-foreground">Hoàn thành lúc {fmtTime(sub.completedAt)}</div>
+          <div className="text-[11px] text-muted-foreground">
+            Hoàn thành lúc {fmtTime(sub.completedAt)}
+          </div>
         ) : null}
       </div>
       {canComplete ? (
@@ -225,7 +276,9 @@ function TaskCard({
 
   return (
     <div className="w-full max-w-[520px] mx-auto">
-      <div className="text-center text-[11px] font-semibold text-muted-foreground mb-2">{new Date().toLocaleTimeString('vi-VN')}</div>
+      <div className="text-center text-[11px] font-semibold text-muted-foreground mb-2">
+        {new Date().toLocaleTimeString('vi-VN')}
+      </div>
       <div className="rounded-2xl bg-muted/60 border border-border/40 px-4 py-3">
         <div className="text-center text-[12px] font-bold text-foreground mb-1.5">Giao việc</div>
         <div className={`rounded-xl bg-background/70 border px-3 py-2 ${tone.cardBorderClass}`}>
@@ -234,7 +287,9 @@ function TaskCard({
             <span aria-hidden>{tone.icon}</span> {tone.label}:{' '}
             {task.dueDate ? fmtTime(task.dueDate) : '—'}
           </div>
-          {task.note ? <div className="mt-2 text-center text-[12px] text-muted-foreground">{task.note}</div> : null}
+          {task.note ? (
+            <div className="mt-2 text-center text-[12px] text-muted-foreground">{task.note}</div>
+          ) : null}
 
           <div className="mt-3 space-y-2">
             {task.subtasks.map((s) => (
@@ -258,9 +313,15 @@ function TaskCard({
         {task.reminderStage ? (
           <div className="mt-3 rounded-xl bg-background/70 border border-border/40 px-3 py-2">
             <div className="text-center text-[12px] font-bold text-foreground">
-              {task.reminderStage === 'due' ? '⏰ Nhắc việc' : task.reminderStage === 'soon' ? '⏰ Sắp đến hạn' : '🔴 Quá hạn'}
+              {task.reminderStage === 'due'
+                ? '⏰ Nhắc việc'
+                : task.reminderStage === 'soon'
+                  ? '⏰ Sắp đến hạn'
+                  : '🔴 Quá hạn'}
             </div>
-            <div className="mt-1 text-center text-[13px] font-extrabold text-foreground">{task.title}</div>
+            <div className="mt-1 text-center text-[13px] font-extrabold text-foreground">
+              {task.title}
+            </div>
             {mentionLines.length > 0 ? (
               <div className="mt-2 text-center text-[12px] font-semibold text-foreground whitespace-pre-line">
                 {mentionLines.join('\n')}
@@ -294,7 +355,10 @@ export function SubtaskGroupTaskDemo() {
   );
 
   const [viewerId, setViewerId] = useState(members[0].userId);
-  const viewer = useMemo(() => members.find((m) => m.userId === viewerId) ?? members[0], [members, viewerId]);
+  const viewer = useMemo(
+    () => members.find((m) => m.userId === viewerId) ?? members[0],
+    [members, viewerId],
+  );
 
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -304,7 +368,7 @@ export function SubtaskGroupTaskDemo() {
 
   const [tasks, setTasks] = useState<Task[]>([]);
 
-  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const timersRef = useRef<Map<string, number>>(new Map());
   const clearTimersForTask = useCallback((taskId: string) => {
     const keys = Array.from(timersRef.current.keys()).filter((k) => k.startsWith(`${taskId}:`));
     for (const k of keys) {
@@ -327,7 +391,11 @@ export function SubtaskGroupTaskDemo() {
         const key = `${task.id}:${stage}`;
         const t = window.setTimeout(() => {
           setTasks((prev) =>
-            prev.map((x) => (x.id === task.id && x.status !== 'done' ? { ...x, reminderStage: stage, snoozeUntil: null } : x)),
+            prev.map((x) =>
+              x.id === task.id && x.status !== 'done'
+                ? { ...x, reminderStage: stage, snoozeUntil: null }
+                : x,
+            ),
           );
         }, delay);
         timersRef.current.set(key, t);
@@ -355,7 +423,9 @@ export function SubtaskGroupTaskDemo() {
         prev.map((t) => {
           if (t.id !== taskId) return t;
           const nextSubs = t.subtasks.map((s) =>
-            s.id === subId && !s.done ? { ...s, done: true, completedAt: new Date().toISOString() } : s,
+            s.id === subId && !s.done
+              ? { ...s, done: true, completedAt: new Date().toISOString() }
+              : s,
           );
           const allDone = nextSubs.length > 0 && nextSubs.every((s) => s.done);
           if (allDone) {
@@ -383,7 +453,8 @@ export function SubtaskGroupTaskDemo() {
             <div className="grid gap-1">
               <div className="text-sm font-bold">Viewer (giả lập người đang xem)</div>
               <div className="text-xs text-muted-foreground">
-                Đổi viewer để thấy nút “Hoàn thành” chỉ hiện ở subtask của mình và nhắc việc mention đúng phần việc chưa xong.
+                Đổi viewer để thấy nút “Hoàn thành” chỉ hiện ở subtask của mình và nhắc việc mention
+                đúng phần việc chưa xong.
               </div>
             </div>
             <div className="w-[220px]">
@@ -408,13 +479,20 @@ export function SubtaskGroupTaskDemo() {
 
       <div className="space-y-6">
         {tasks.length === 0 ? (
-          <div className="text-sm text-muted-foreground">Chưa có task nào. Hãy tạo một task để xem card + reminder realtime.</div>
+          <div className="text-sm text-muted-foreground">
+            Chưa có task nào. Hãy tạo một task để xem card + reminder realtime.
+          </div>
         ) : null}
         {tasks.map((t) => (
-          <TaskCard key={t.id} task={t} nowMs={nowMs} viewer={viewer} onCompleteSubtask={completeSubtask} />
+          <TaskCard
+            key={t.id}
+            task={t}
+            nowMs={nowMs}
+            viewer={viewer}
+            onCompleteSubtask={completeSubtask}
+          />
         ))}
       </div>
     </div>
   );
 }
-

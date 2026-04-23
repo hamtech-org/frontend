@@ -79,19 +79,27 @@ function ChatRow({
     >
       {/* Avatar */}
       <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-        <span className="font-bold text-primary">{c.name.trim().charAt(0).toUpperCase() || 'C'}</span>
+        <span className="font-bold text-primary">
+          {c.name.trim().charAt(0).toUpperCase() || 'C'}
+        </span>
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <p className="text-[15px] font-bold truncate">{c.name}</p>
           {c.muted && (
-            <Badge variant="secondary" className="h-5 bg-gray-200 text-gray-700 border border-gray-300">
+            <Badge
+              variant="secondary"
+              className="h-5 bg-gray-200 text-gray-700 border border-gray-300"
+            >
               Muted
             </Badge>
           )}
           {c.pinned && !c.muted && (
-            <Badge variant="secondary" className="h-5 bg-yellow-100 text-yellow-800 border border-yellow-200">
+            <Badge
+              variant="secondary"
+              className="h-5 bg-yellow-100 text-yellow-800 border border-yellow-200"
+            >
               Pinned
             </Badge>
           )}
@@ -116,7 +124,11 @@ function ChatRow({
               className="rounded-full p-2 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
               aria-label={c.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}
             >
-              {c.pinned ? <PinOff className="w-4 h-4 text-muted-foreground" /> : <Pin className="w-4 h-4 text-muted-foreground" />}
+              {c.pinned ? (
+                <PinOff className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <Pin className="w-4 h-4 text-muted-foreground" />
+              )}
             </button>
           </TooltipTrigger>
           <TooltipContent sideOffset={6}>{c.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}</TooltipContent>
@@ -131,7 +143,9 @@ function ChatRow({
               className="rounded-full p-2 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
               aria-label={c.muted ? 'Bật thông báo' : 'Tắt thông báo (1h)'}
             >
-              <BellOff className={`w-4 h-4 ${c.muted ? 'text-red-500' : 'text-muted-foreground/70'}`} />
+              <BellOff
+                className={`w-4 h-4 ${c.muted ? 'text-red-500' : 'text-muted-foreground/70'}`}
+              />
             </button>
           </TooltipTrigger>
           <TooltipContent sideOffset={6}>
@@ -145,10 +159,42 @@ function ChatRow({
 
 export function PinnedMutedChatListDemo() {
   const [conversations, setConversations] = useState<ConversationState[]>(() => [
-    { id: 1, name: 'Chat A', lastMessage: 'Hello', unread: 0, pinned: true, muted: false, muteUntil: null },
-    { id: 2, name: 'Chat B', lastMessage: 'Ok', unread: 1, pinned: true, muted: false, muteUntil: null },
-    { id: 3, name: 'Chat C', lastMessage: 'Ping', unread: 0, pinned: false, muted: false, muteUntil: null },
-    { id: 4, name: 'Chat D', lastMessage: 'Gửi file', unread: 2, pinned: false, muted: false, muteUntil: null },
+    {
+      id: 1,
+      name: 'Chat A',
+      lastMessage: 'Hello',
+      unread: 0,
+      pinned: true,
+      muted: false,
+      muteUntil: null,
+    },
+    {
+      id: 2,
+      name: 'Chat B',
+      lastMessage: 'Ok',
+      unread: 1,
+      pinned: true,
+      muted: false,
+      muteUntil: null,
+    },
+    {
+      id: 3,
+      name: 'Chat C',
+      lastMessage: 'Ping',
+      unread: 0,
+      pinned: false,
+      muted: false,
+      muteUntil: null,
+    },
+    {
+      id: 4,
+      name: 'Chat D',
+      lastMessage: 'Gửi file',
+      unread: 2,
+      pinned: false,
+      muted: false,
+      muteUntil: null,
+    },
     {
       id: 5,
       name: 'Chat E',
@@ -158,11 +204,19 @@ export function PinnedMutedChatListDemo() {
       muted: true,
       muteUntil: Date.now() + 40 * 60_000,
     },
-    { id: 6, name: 'Chat F', lastMessage: 'Muted forever', unread: 0, pinned: false, muted: true, muteUntil: null },
+    {
+      id: 6,
+      name: 'Chat F',
+      lastMessage: 'Muted forever',
+      unread: 0,
+      pinned: false,
+      muted: true,
+      muteUntil: null,
+    },
   ]);
 
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const timeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const timeoutsRef = useRef<Map<number, number>>(new Map());
 
   // countdown tick
   useEffect(() => {
@@ -177,7 +231,7 @@ export function PinnedMutedChatListDemo() {
 
   // realtime auto-unmute scheduling (per conversation)
   useEffect(() => {
-    timeoutsRef.current.forEach((t) => clearTimeout(t));
+    timeoutsRef.current.forEach((t) => window.clearTimeout(t));
     timeoutsRef.current.clear();
 
     const now = Date.now();
@@ -186,21 +240,22 @@ export function PinnedMutedChatListDemo() {
       if (c.muteUntil === null) continue;
       const delay = c.muteUntil - now;
       if (delay <= 0) continue;
-      const t = window.setTimeout(() => setConversations((prev) => autoUnmute(prev, Date.now())), delay);
+      const t = window.setTimeout(
+        () => setConversations((prev) => autoUnmute(prev, Date.now())),
+        delay,
+      );
       timeoutsRef.current.set(c.id, t);
     }
 
     return () => {
-      timeoutsRef.current.forEach((t) => clearTimeout(t));
+      timeoutsRef.current.forEach((t) => window.clearTimeout(t));
       timeoutsRef.current.clear();
     };
   }, [conversations]);
 
   // ===== Required actions =====
   function togglePin(id: number) {
-    setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, pinned: !c.pinned } : c)),
-    );
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, pinned: !c.pinned } : c)));
   }
 
   function toggleMute(id: number) {
@@ -217,7 +272,9 @@ export function PinnedMutedChatListDemo() {
 
   function receiveMessage(id: number, message: string) {
     setConversations((prev) => {
-      const next = prev.map((c) => (c.id === id ? { ...c, lastMessage: message, unread: c.unread + 1 } : c));
+      const next = prev.map((c) =>
+        c.id === id ? { ...c, lastMessage: message, unread: c.unread + 1 } : c,
+      );
       const target = next.find((c) => c.id === id);
       if (target && !target.muted) toast.info(`${target.name}: ${message}`);
       return next;
@@ -243,7 +300,9 @@ export function PinnedMutedChatListDemo() {
       </div>
 
       <div className="space-y-2">
-        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-1">Pinned</p>
+        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-1">
+          Pinned
+        </p>
         <div className="flex flex-col gap-2">
           {pinned.length === 0 ? (
             <p className="text-sm text-muted-foreground px-1">Không có ghim</p>
@@ -262,7 +321,9 @@ export function PinnedMutedChatListDemo() {
       </div>
 
       <div className="space-y-2">
-        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-1">Chats</p>
+        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-1">
+          Chats
+        </p>
         <div className="flex flex-col gap-2">
           {normal.length === 0 ? (
             <p className="text-sm text-muted-foreground px-1">Không có hội thoại</p>
@@ -281,7 +342,9 @@ export function PinnedMutedChatListDemo() {
       </div>
 
       <div className="space-y-2">
-        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-1">Muted Chats</p>
+        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider px-1">
+          Muted Chats
+        </p>
         <div className="flex flex-col gap-2">
           {muted.length === 0 ? (
             <p className="text-sm text-muted-foreground px-1">Không có muted chats</p>
@@ -301,4 +364,3 @@ export function PinnedMutedChatListDemo() {
     </div>
   );
 }
-

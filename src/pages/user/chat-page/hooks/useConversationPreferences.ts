@@ -52,11 +52,9 @@ export function useConversationPreferences({
             conversationId: activeConversationId,
             muteFor: payload.muteFor,
           }).unwrap();
-          toast.success(
-            payload.muteFor === '1h'
-              ? 'Đã tắt thông báo trong 1 giờ'
-              : 'Đã tắt thông báo trong 4 giờ',
-          );
+          const label =
+            payload.muteFor === '1m' ? '1 phút' : payload.muteFor === '5m' ? '5 phút' : '10 phút';
+          toast.success(`Đã tắt thông báo trong ${label}`);
         } else if (payload.kind === 'untilIso') {
           await updateConversationPreferences({
             conversationId: activeConversationId,

@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BellOff, MessageSquarePlus, RotateCcw } from 'lucide-react';
 import { toast } from 'react-toastify';
 
-import { MuteNotificationsModal, type MuteNotificationsApplyPayload } from '@/components/chat/MuteNotificationsModal';
+import {
+  MuteNotificationsModal,
+  type MuteNotificationsApplyPayload,
+} from '@/components/chat/MuteNotificationsModal';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -21,13 +24,6 @@ const STORAGE_KEY = 'mute-demo:conversations:v1';
 function formatClockHHmm(ms: number): string {
   const d = new Date(ms);
   return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-function nextLocalEightAmMs(nowMs: number): number {
-  const now = new Date(nowMs);
-  const t = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
-  if (t.getTime() <= nowMs) t.setDate(t.getDate() + 1);
-  return t.getTime();
 }
 
 function deriveMuteUntil(payload: MuteNotificationsApplyPayload, nowMs: number): number | null {
@@ -82,14 +78,19 @@ function ChatItem({
       }`}
     >
       <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-        <span className="font-bold text-primary">{conv.name.trim().charAt(0).toUpperCase() || 'C'}</span>
+        <span className="font-bold text-primary">
+          {conv.name.trim().charAt(0).toUpperCase() || 'C'}
+        </span>
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <p className="text-[15px] font-bold truncate">{conv.name}</p>
           {conv.muted && (
-            <Badge variant="secondary" className="h-5 bg-gray-200 text-gray-700 border border-gray-300">
+            <Badge
+              variant="secondary"
+              className="h-5 bg-gray-200 text-gray-700 border border-gray-300"
+            >
               Muted
             </Badge>
           )}
@@ -147,13 +148,20 @@ export function MuteChatListDemo() {
         muteUntil: Date.now() + 45 * 60_000,
       },
       { id: 2, name: 'Anh A', lastMessage: 'Ok nhé', unread: 0, muted: false, muteUntil: null },
-      { id: 3, name: 'Team C', lastMessage: 'Gửi file giúp mình', unread: 1, muted: false, muteUntil: null },
+      {
+        id: 3,
+        name: 'Team C',
+        lastMessage: 'Gửi file giúp mình',
+        unread: 1,
+        muted: false,
+        muteUntil: null,
+      },
     ];
   });
 
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [muteTargetId, setMuteTargetId] = useState<number | null>(null);
-  const timeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const timeoutsRef = useRef<Map<number, number>>(new Map());
 
   // countdown UI tick (realtime)
   useEffect(() => {
@@ -178,7 +186,7 @@ export function MuteChatListDemo() {
   // realtime auto-unmute: schedule per conversation using setTimeout
   useEffect(() => {
     // clear outdated timers
-    timeoutsRef.current.forEach((t) => clearTimeout(t));
+    timeoutsRef.current.forEach((t) => window.clearTimeout(t));
     timeoutsRef.current.clear();
 
     const now = Date.now();
@@ -195,7 +203,7 @@ export function MuteChatListDemo() {
     }
 
     return () => {
-      timeoutsRef.current.forEach((t) => clearTimeout(t));
+      timeoutsRef.current.forEach((t) => window.clearTimeout(t));
       timeoutsRef.current.clear();
     };
   }, [conversations]);
@@ -204,10 +212,6 @@ export function MuteChatListDemo() {
   const mute1m = (id: number) => muteFor(id, { kind: 'muteFor', muteFor: '1m' });
   const mute5m = (id: number) => muteFor(id, { kind: 'muteFor', muteFor: '5m' });
   const mute10m = (id: number) => muteFor(id, { kind: 'muteFor', muteFor: '10m' });
-  const muteUntilMorning = (id: number) => {
-    const until = new Date(nextLocalEightAmMs(Date.now())).toISOString();
-    return muteFor(id, { kind: 'untilIso', notificationsMutedUntil: until });
-  };
   const muteForever = (id: number) => muteFor(id, { kind: 'untilUserUnmutes' });
 
   function muteFor(id: number, payload: MuteNotificationsApplyPayload) {
@@ -235,7 +239,8 @@ export function MuteChatListDemo() {
     setConversations((prev) => {
       const c = prev.find((x) => x.id === id);
       if (!c) return prev;
-      if (c.muted) return prev.map((x) => (x.id === id ? { ...x, muted: false, muteUntil: null } : x));
+      if (c.muted)
+        return prev.map((x) => (x.id === id ? { ...x, muted: false, muteUntil: null } : x));
       return prev;
     });
   }
@@ -295,7 +300,9 @@ export function MuteChatListDemo() {
 
           if (payload.kind === 'clearScheduledMute') {
             setConversations((prev) =>
-              prev.map((c) => (c.id === muteTarget.id ? { ...c, muted: false, muteUntil: null } : c)),
+              prev.map((c) =>
+                c.id === muteTarget.id ? { ...c, muted: false, muteUntil: null } : c,
+              ),
             );
             setMuteTargetId(null);
             return;
@@ -319,4 +326,3 @@ export function MuteChatListDemo() {
     </div>
   );
 }
-
