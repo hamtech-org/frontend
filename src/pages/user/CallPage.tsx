@@ -16,6 +16,7 @@ import {
   Users,
   Pin,
   PinOff,
+  PanelRight,
 } from 'lucide-react';
 import AgoraRTC, {
   type IAgoraRTCClient,
@@ -26,6 +27,8 @@ import AgoraRTC, {
 } from 'agora-rtc-react';
 import { useCallContext } from '@/contexts/CallContext';
 import { socketService } from '@/services/socket';
+import { groupApi } from '@/services/chat/groupApi';
+import { apiClient } from '@/services/api';
 import type { RootState, AppDispatch } from '@/store/store';
 import {
   setCallConnected,
@@ -35,6 +38,7 @@ import {
   setEndReason,
 } from '@/store/slices/callSlice';
 import outgoingRingback from '@/assets/ringtones/amThanhGoi.mp3';
+import SparkMD5 from 'spark-md5';
 
 export default function CallPage() {
   const navigate = useNavigate();
@@ -79,14 +83,68 @@ export default function CallPage() {
   const resolvedConversationIdRef = useRef(resolvedConversationId);
   resolvedConversationIdRef.current = resolvedConversationId;
 
+  const userIdToAgoraUid = useCallback((userId: string): number => {
+    // Backend: md5(userId) -> readUInt32BE(0)
+    // SparkMD5 trả hex string 32 ký tự; 4 bytes đầu = 8 ký tự hex đầu.
+    const hex = SparkMD5.hash(userId);
+    return (parseInt(hex.slice(0, 8), 16) >>> 0) as number;
+  }, []);
+
+  const [agoraUidToName, setAgoraUidToName] = useState<Map<number, string>>(new Map());
+  const agoraUidToNameRef = useRef(agoraUidToName);
+  agoraUidToNameRef.current = agoraUidToName;
+
+  useEffect(() => {
+    // Lấy danh sách thành viên group để map uid -> displayName.
+    // Chỉ cần khi đang call group.
+    const groupId = resolvedConversationId;
+    if (
+      !groupId ||
+      !(scopeParam === 'group' || callScope === 'group' || channelName?.startsWith('grp_'))
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        // Ưu tiên endpoint members của conversation (đã thấy request này chạy trong UI).
+        // Fallback sang groups/:id/members nếu backend cũ chỉ hỗ trợ group endpoint.
+        const res =
+          (await apiClient.get<{ data?: any[] }>(`/chat/conversations/${groupId}/members`)) ??
+          (await groupApi.getMembers(groupId));
+        const members = (res as any)?.data?.data ?? [];
+        const map = new Map<number, string>();
+        for (const m of members as Array<{
+          userId?: string;
+          displayName?: string;
+          email?: string;
+        }>) {
+          const uid = m.userId ? userIdToAgoraUid(m.userId) : null;
+          if (!uid) continue;
+          const name = (m.displayName || m.email || '').trim();
+          if (name) map.set(uid, name);
+        }
+        if (!cancelled) setAgoraUidToName(map);
+      } catch {
+        if (!cancelled) setAgoraUidToName(new Map());
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedConversationId, scopeParam, callScope, channelName, userIdToAgoraUid]);
+
+  const labelForAgoraUid = useCallback((uid: unknown): string => {
+    const n = typeof uid === 'number' ? uid : Number(uid);
+    if (!Number.isFinite(n)) return 'Ẩn danh';
+    return agoraUidToNameRef.current.get(n) ?? `UID ${n}`;
+  }, []);
+
   const isGroup =
-    callScope === 'group' ||
-    scopeParam === 'group' ||
-    Boolean(channelName?.startsWith('grp_'));
+    callScope === 'group' || scopeParam === 'group' || Boolean(channelName?.startsWith('grp_'));
   const hostIdResolved = (hostId || hostIdParam || '').trim();
-  const isHost = Boolean(
-    hostIdResolved && currentUserId && hostIdResolved === currentUserId,
-  );
+  const isHost = Boolean(hostIdResolved && currentUserId && hostIdResolved === currentUserId);
 
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [timer, setTimer] = useState(0);
@@ -97,6 +155,12 @@ export default function CallPage() {
   const [remoteHasVideo, setRemoteHasVideo] = useState(false);
   /** Ghim video (camera hoặc màn hình chia sẻ) của một remote trong cuộc gọi nhóm — hiển thị fullscreen phía trên. */
   const [pinnedRemoteUid, setPinnedRemoteUid] = useState<number | null>(null);
+  const [groupView, setGroupView] = useState<'grid' | 'pinned' | 'participants'>('grid');
+  const [filmstripVisible, setFilmstripVisible] = useState(false);
+  const groupViewRef = useRef(groupView);
+  groupViewRef.current = groupView;
+  const filmstripVisibleRef = useRef(filmstripVisible);
+  filmstripVisibleRef.current = filmstripVisible;
   const ringbackRef = useRef<HTMLAudioElement | null>(null);
 
   const clientRef = useRef<IAgoraRTCClient | null>(null);
@@ -125,8 +189,7 @@ export default function CallPage() {
       try {
         return await factory();
       } catch (e: unknown) {
-        const isDeviceBusy =
-          e instanceof Error && /NOT_READABLE|in use/i.test(e.message);
+        const isDeviceBusy = e instanceof Error && /NOT_READABLE|in use/i.test(e.message);
         if (!isDeviceBusy || i === retries - 1) throw e;
         await new Promise((r) => setTimeout(r, delayMs));
       }
@@ -170,6 +233,34 @@ export default function CallPage() {
     const videoCall = isVideoCallRef.current;
     const group = channelName.startsWith('grp_');
 
+    const subscribeRemoteIfNeeded = async (user: IAgoraRTCRemoteUser) => {
+      const uidNum = Number(user.uid);
+      if (!Number.isFinite(uidNum)) return;
+      if (group) {
+        setRemoteUids((prev) => (prev.includes(uidNum) ? prev : [...prev, uidNum]));
+      } else {
+        setRemoteUser(user);
+      }
+
+      // NOTE: `user-published` không phải lúc nào cũng bắn cho người vào muộn trong group call,
+      // vì vậy ta chủ động subscribe dựa trên trạng thái hasAudio/hasVideo.
+      if (user.hasAudio && !user.audioTrack) {
+        const track = await client.subscribe(user, 'audio');
+        track.play();
+      }
+      if (user.hasVideo && !user.videoTrack) {
+        const track = await client.subscribe(user, 'video');
+        if (group) {
+          // `subscribe` sẽ gắn track vào user.videoTrack; dùng lại logic đặt vào grid/ghim.
+          placeGroupRemoteVideo(user);
+          setRemoteHasVideo(true);
+        } else if (remoteVideoRef.current) {
+          track.play(remoteVideoRef.current);
+          setRemoteHasVideo(true);
+        }
+      }
+    };
+
     /** Đặt video remote (camera hoặc screen track) vào ô grid hoặc vùng ghim theo `pinnedRemoteUidRef`. */
     const placeGroupRemoteVideo = (user: IAgoraRTCRemoteUser) => {
       const track = user.videoTrack;
@@ -181,6 +272,14 @@ export default function CallPage() {
         const main = pinnedMainRef.current;
         if (main) track.play(main);
       } else {
+        // Khi đang ghim, tile remote chỉ tồn tại khi:
+        // - đang ở màn Participants, hoặc
+        // - đang bật filmstrip.
+        if (pinned != null) {
+          const view = groupViewRef.current;
+          const filmstrip = filmstripVisibleRef.current;
+          if (view !== 'participants' && !filmstrip) return;
+        }
         const cell = document.getElementById(`agora-remote-${uidNum}`);
         if (cell) track.play(cell);
       }
@@ -191,29 +290,46 @@ export default function CallPage() {
         const { token, uid } = await fetchAgoraToken(channelName);
         if (cancelled) return;
 
-        client.on('user-joined', () => {
+        client.on('user-joined', (user: IAgoraRTCRemoteUser) => {
           dispatch(setCallConnected());
-        });
-
-        client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
-          await client.subscribe(user, mediaType);
-          const uidNum = Number(user.uid);
           if (group) {
+            const uidNum = Number(user.uid);
+            if (!Number.isFinite(uidNum)) return;
             setRemoteUids((prev) => (prev.includes(uidNum) ? prev : [...prev, uidNum]));
           }
-          if (mediaType === 'video') {
+        });
+
+        client.on(
+          'user-published',
+          async (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
+            await client.subscribe(user, mediaType);
+            const uidNum = Number(user.uid);
+            if (!Number.isFinite(uidNum)) return;
             if (group) {
-              placeGroupRemoteVideo(user);
-              setRemoteHasVideo(true);
-            } else if (remoteVideoRef.current) {
-              user.videoTrack?.play(remoteVideoRef.current);
-              setRemoteHasVideo(true);
+              setRemoteUids((prev) => (prev.includes(uidNum) ? prev : [...prev, uidNum]));
             }
+            if (mediaType === 'video') {
+              if (group) {
+                placeGroupRemoteVideo(user);
+                setRemoteHasVideo(true);
+              } else if (remoteVideoRef.current) {
+                user.videoTrack?.play(remoteVideoRef.current);
+                setRemoteHasVideo(true);
+              }
+            }
+            if (mediaType === 'audio') {
+              user.audioTrack?.play();
+            }
+            if (!group) setRemoteUser(user);
+          },
+        );
+
+        client.on('user-info-updated', async (user: IAgoraRTCRemoteUser) => {
+          try {
+            await subscribeRemoteIfNeeded(user);
+          } catch {
+            // ignore noisy updates
           }
-          if (mediaType === 'audio') {
-            user.audioTrack?.play();
-          }
-          if (!group) setRemoteUser(user);
         });
 
         client.on('user-unpublished', (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
@@ -264,9 +380,17 @@ export default function CallPage() {
           dispatch(setCallConnected());
         }
 
-        const micTrack = await createTrackWithRetry(() =>
-          AgoraRTC.createMicrophoneAudioTrack(),
-        );
+        // Người vào kênh muộn có thể bỏ lỡ event `user-published` từ những người đã publish trước đó.
+        // Chủ động subscribe lại danh sách remoteUsers hiện có để mọi client đều thấy nhau.
+        try {
+          for (const user of client.remoteUsers) {
+            await subscribeRemoteIfNeeded(user);
+          }
+        } catch (e) {
+          console.warn('[CallPage] subscribe existing remote users failed', e);
+        }
+
+        const micTrack = await createTrackWithRetry(() => AgoraRTC.createMicrophoneAudioTrack());
         if (cancelled) {
           (micTrack as IMicrophoneAudioTrack).close();
           return;
@@ -274,9 +398,7 @@ export default function CallPage() {
         micTrackRef.current = micTrack;
 
         if (videoCall) {
-          const camTrack = await createTrackWithRetry(() =>
-            AgoraRTC.createCameraVideoTrack(),
-          );
+          const camTrack = await createTrackWithRetry(() => AgoraRTC.createCameraVideoTrack());
           if (cancelled) {
             (camTrack as ICameraVideoTrack).close();
             (micTrack as IMicrophoneAudioTrack).close();
@@ -326,6 +448,17 @@ export default function CallPage() {
     if (!isGroup) setPinnedRemoteUid(null);
   }, [isGroup]);
 
+  // Đồng bộ groupView theo trạng thái ghim.
+  useEffect(() => {
+    if (!isGroup) return;
+    if (pinnedRemoteUid != null) {
+      setGroupView((v) => (v === 'participants' ? v : 'pinned'));
+    } else {
+      setGroupView('grid');
+      setFilmstripVisible(false);
+    }
+  }, [isGroup, pinnedRemoteUid]);
+
   /** Khi đổi ghim hoặc danh sách UID, gắn lại mọi remote video vào ô grid hoặc vùng ghim fullscreen. */
   useEffect(() => {
     if (!isGroup || !isVideoCall) return;
@@ -343,6 +476,11 @@ export default function CallPage() {
           const main = pinnedMainRef.current;
           if (main) track.play(main);
         } else {
+          if (pinned != null) {
+            const view = groupViewRef.current;
+            const filmstrip = filmstripVisibleRef.current;
+            if (view !== 'participants' && !filmstrip) continue;
+          }
           const cell = document.getElementById(`agora-remote-${uidNum}`);
           if (cell) track.play(cell);
         }
@@ -352,7 +490,16 @@ export default function CallPage() {
     placeAll();
     const id = requestAnimationFrame(() => placeAll());
     return () => cancelAnimationFrame(id);
-  }, [pinnedRemoteUid, remoteUids, isGroup, isVideoCall, joined, status]);
+  }, [
+    pinnedRemoteUid,
+    remoteUids,
+    isGroup,
+    isVideoCall,
+    joined,
+    status,
+    groupView,
+    filmstripVisible,
+  ]);
 
   useEffect(() => {
     micTrackRef.current?.setEnabled(isMicOn);
@@ -372,9 +519,7 @@ export default function CallPage() {
     const enableCamera = async () => {
       try {
         if (!camTrackRef.current) {
-          const camTrack = await createTrackWithRetry(() =>
-            AgoraRTC.createCameraVideoTrack(),
-          );
+          const camTrack = await createTrackWithRetry(() => AgoraRTC.createCameraVideoTrack());
           if (cancelled) {
             (camTrack as ICameraVideoTrack).close();
             return;
@@ -528,10 +673,10 @@ export default function CallPage() {
       await restoreCameraAfterScreenShare();
     } else {
       try {
-        const screenTrack = await AgoraRTC.createScreenVideoTrack(
+        const screenTrack = (await AgoraRTC.createScreenVideoTrack(
           { encoderConfig: '1080p_1' },
           'disable',
-        ) as ILocalVideoTrack;
+        )) as ILocalVideoTrack;
 
         screenTrack.on('track-ended', async () => {
           if (clientRef.current?.connectionState === 'CONNECTED') {
@@ -611,73 +756,122 @@ export default function CallPage() {
       </AnimatePresence>
 
       {isGroup && currentCallIsVideo ? (
-        <div className="absolute inset-0 z-0 pt-24 pb-40 px-4 flex flex-col gap-3 min-h-0 overflow-hidden pointer-events-none">
-          {pinnedRemoteUid != null && (
-            <div className="relative flex-1 min-h-[42vh] rounded-xl overflow-hidden border border-white/10 bg-gray-900 shadow-xl pointer-events-auto shrink">
-              <div ref={pinnedMainRef} className="absolute inset-0 bg-black" />
-              <button
-                type="button"
-                title="Bỏ ghim"
-                onClick={() => setPinnedRemoteUid(null)}
-                className="absolute top-3 right-3 z-20 flex items-center gap-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white text-xs px-3 py-2 border border-white/10"
-              >
-                <PinOff className="w-4 h-4" />
-                Bỏ ghim
-              </button>
-              <span className="absolute bottom-3 left-3 z-20 text-[11px] bg-black/70 px-2 py-1 rounded text-white/90">
-                Đang ghim (video / chia sẻ màn hình) · UID {pinnedRemoteUid}
-              </span>
+        <>
+          {groupView === 'participants' ? (
+            <div className="absolute inset-0 z-0 pt-24 pb-40 px-4 min-h-0 overflow-hidden pointer-events-none">
+              <div className="pointer-events-auto min-h-0 h-full overflow-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-w-6xl mx-auto">
+                  {remoteUids.map((uid) => (
+                    <div
+                      key={uid}
+                      className="relative aspect-video bg-gray-900 rounded-xl overflow-hidden border border-white/10 group/tile"
+                    >
+                      <div id={`agora-remote-${uid}`} className="absolute inset-0" />
+                      <button
+                        type="button"
+                        title="Ghim toàn màn hình"
+                        onClick={() => {
+                          setPinnedRemoteUid(uid);
+                          setGroupView('pinned');
+                        }}
+                        className="absolute top-2 right-2 z-20 rounded-lg bg-black/60 p-1.5 opacity-0 group-hover/tile:opacity-100 sm:opacity-100 hover:bg-black/80 transition-opacity border border-white/10"
+                      >
+                        <Pin className="w-4 h-4 text-white" />
+                      </button>
+                      <span className="absolute top-2 left-2 z-10 text-[10px] bg-black/60 px-2 py-0.5 rounded pointer-events-none">
+                        {labelForAgoraUid(uid)}
+                      </span>
+                    </div>
+                  ))}
+                  {remoteUids.length === 0 && (
+                    <div className="col-span-full flex flex-col items-center justify-center min-h-[40vh] text-white/40 w-full max-w-6xl mx-auto">
+                      <Users className="w-16 h-16 mb-3 opacity-30" />
+                      <p className="text-sm">Đang chờ thành viên vào kênh...</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          )}
-          <div
-            className={`pointer-events-auto min-h-0 ${
-              pinnedRemoteUid != null
-                ? 'shrink-0 max-h-[32vh] overflow-x-auto overflow-y-hidden py-1'
-                : 'flex-1 overflow-auto'
-            }`}
-          >
-            <div
-              className={
-                pinnedRemoteUid != null
-                  ? 'flex flex-row gap-2 w-max pb-1'
-                  : 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-w-6xl mx-auto'
-              }
-            >
-              {(pinnedRemoteUid != null
-                ? remoteUids.filter((u) => u !== pinnedRemoteUid)
-                : remoteUids
-              ).map((uid) => (
-                <div
-                  key={uid}
-                  className={
-                    pinnedRemoteUid != null
-                      ? 'relative w-[140px] shrink-0 aspect-video bg-gray-900 rounded-lg overflow-hidden border border-white/10 group/tile'
-                      : 'relative aspect-video bg-gray-900 rounded-xl overflow-hidden border border-white/10 group/tile'
-                  }
-                >
-                  <div id={`agora-remote-${uid}`} className="absolute inset-0" />
+          ) : (
+            <div className="absolute inset-0 z-0 pt-24 pb-40 px-4 flex flex-col gap-3 min-h-0 overflow-hidden pointer-events-none">
+              {pinnedRemoteUid != null ? (
+                <div className="relative flex-1 min-h-[42vh] rounded-xl overflow-hidden border border-white/10 bg-gray-900 shadow-xl pointer-events-auto shrink">
+                  <div ref={pinnedMainRef} className="absolute inset-0 bg-black" />
                   <button
                     type="button"
-                    title="Ghim toàn màn hình (camera hoặc màn hình đang share)"
-                    onClick={() => setPinnedRemoteUid(uid)}
-                    className="absolute top-2 right-2 z-20 rounded-lg bg-black/60 p-1.5 opacity-0 group-hover/tile:opacity-100 sm:opacity-100 hover:bg-black/80 transition-opacity border border-white/10"
+                    title="Bỏ ghim"
+                    onClick={() => setPinnedRemoteUid(null)}
+                    className="absolute top-3 right-3 z-20 flex items-center gap-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white text-xs px-3 py-2 border border-white/10"
                   >
-                    <Pin className="w-4 h-4 text-white" />
+                    <PinOff className="w-4 h-4" />
+                    Bỏ ghim
                   </button>
-                  <span className="absolute top-2 left-2 z-10 text-[10px] bg-black/60 px-2 py-0.5 rounded pointer-events-none">
-                    #{uid}
+                  <span className="absolute bottom-3 left-3 z-20 text-[11px] bg-black/70 px-2 py-1 rounded text-white/90">
+                    Đang ghim · {labelForAgoraUid(pinnedRemoteUid)}
                   </span>
                 </div>
-              ))}
-              {remoteUids.length === 0 && (
-                <div className="col-span-full flex flex-col items-center justify-center min-h-[40vh] text-white/40 w-full max-w-6xl mx-auto">
-                  <Users className="w-16 h-16 mb-3 opacity-30" />
-                  <p className="text-sm">Đang chờ thành viên vào kênh...</p>
+              ) : (
+                <div className="pointer-events-auto min-h-0 flex-1 overflow-auto">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-w-6xl mx-auto">
+                    {remoteUids.map((uid) => (
+                      <div
+                        key={uid}
+                        className="relative aspect-video bg-gray-900 rounded-xl overflow-hidden border border-white/10 group/tile"
+                      >
+                        <div id={`agora-remote-${uid}`} className="absolute inset-0" />
+                        <button
+                          type="button"
+                          title="Ghim toàn màn hình (camera hoặc màn hình đang share)"
+                          onClick={() => setPinnedRemoteUid(uid)}
+                          className="absolute top-2 right-2 z-20 rounded-lg bg-black/60 p-1.5 opacity-0 group-hover/tile:opacity-100 sm:opacity-100 hover:bg-black/80 transition-opacity border border-white/10"
+                        >
+                          <Pin className="w-4 h-4 text-white" />
+                        </button>
+                        <span className="absolute top-2 left-2 z-10 text-[10px] bg-black/60 px-2 py-0.5 rounded pointer-events-none">
+                          {labelForAgoraUid(uid)}
+                        </span>
+                      </div>
+                    ))}
+                    {remoteUids.length === 0 && (
+                      <div className="col-span-full flex flex-col items-center justify-center min-h-[40vh] text-white/40 w-full max-w-6xl mx-auto">
+                        <Users className="w-16 h-16 mb-3 opacity-30" />
+                        <p className="text-sm">Đang chờ thành viên vào kênh...</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
+
+              {pinnedRemoteUid != null && filmstripVisible ? (
+                <div className="pointer-events-auto shrink-0 max-h-[32vh] overflow-x-auto overflow-y-hidden py-1">
+                  <div className="flex flex-row gap-2 w-max pb-1">
+                    {remoteUids
+                      .filter((u) => u !== pinnedRemoteUid)
+                      .map((uid) => (
+                        <div
+                          key={uid}
+                          className="relative w-[140px] shrink-0 aspect-video bg-gray-900 rounded-lg overflow-hidden border border-white/10 group/tile"
+                        >
+                          <div id={`agora-remote-${uid}`} className="absolute inset-0" />
+                          <button
+                            type="button"
+                            title="Ghim toàn màn hình"
+                            onClick={() => setPinnedRemoteUid(uid)}
+                            className="absolute top-2 right-2 z-20 rounded-lg bg-black/60 p-1.5 opacity-0 group-hover/tile:opacity-100 sm:opacity-100 hover:bg-black/80 transition-opacity border border-white/10"
+                          >
+                            <Pin className="w-4 h-4 text-white" />
+                          </button>
+                          <span className="absolute top-2 left-2 z-10 text-[10px] bg-black/60 px-2 py-0.5 rounded pointer-events-none">
+                            {labelForAgoraUid(uid)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
-          </div>
-        </div>
+          )}
+        </>
       ) : isGroup && !currentCallIsVideo ? (
         <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pt-16 pb-32">
           <Users className="w-20 h-20 text-white/25 mb-4" />
@@ -688,7 +882,7 @@ export default function CallPage() {
                 key={uid}
                 className="w-16 h-16 rounded-full bg-gradient-to-tr from-green-600 to-emerald-500 flex items-center justify-center text-sm font-bold animate-pulse"
               >
-                {uid % 10}
+                {labelForAgoraUid(uid).slice(0, 2).toUpperCase()}
               </div>
             ))}
             {remoteUids.length === 0 && (
@@ -803,13 +997,39 @@ export default function CallPage() {
             {statusLabel}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={toggleFullScreen}
-          className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"
-        >
-          {isFullScreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
-        </button>
+        <div className="flex items-center gap-2">
+          {isGroup && currentCallIsVideo && pinnedRemoteUid != null ? (
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  setGroupView((v) => (v === 'participants' ? 'pinned' : 'participants'))
+                }
+                className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"
+                title={
+                  groupView === 'participants' ? 'Quay lại màn ghim' : 'Xem danh sách thành viên'
+                }
+              >
+                <Users className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilmstripVisible((v) => !v)}
+                className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"
+                title={filmstripVisible ? 'Ẩn filmstrip' : 'Hiện filmstrip'}
+              >
+                <PanelRight className="w-5 h-5" />
+              </button>
+            </>
+          ) : null}
+          <button
+            type="button"
+            onClick={toggleFullScreen}
+            className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"
+          >
+            {isFullScreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+          </button>
+        </div>
       </motion.div>
 
       <div className="flex-1" />
@@ -849,7 +1069,9 @@ export default function CallPage() {
             onClick={onToggleCamera}
             title={isCameraOn ? 'Tắt camera' : 'Bật camera'}
             className={`p-4 rounded-2xl transition-all ${
-              !isCameraOn ? 'bg-red-600 text-white' : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
+              !isCameraOn
+                ? 'bg-red-600 text-white'
+                : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
             }`}
           >
             {isCameraOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
@@ -878,7 +1100,11 @@ export default function CallPage() {
                 : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
             }`}
           >
-            {isScreenSharing ? <MonitorOff className="w-6 h-6" /> : <MonitorUp className="w-6 h-6" />}
+            {isScreenSharing ? (
+              <MonitorOff className="w-6 h-6" />
+            ) : (
+              <MonitorUp className="w-6 h-6" />
+            )}
           </button>
         )}
 

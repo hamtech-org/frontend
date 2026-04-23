@@ -27,6 +27,10 @@ type ChatHeaderProps = {
   onEditGroup?: () => void;
   onAudioCall?: () => void;
   onVideoCall?: () => void;
+  /** Khi có cuộc gọi nhóm đang diễn ra và user chưa tham gia — hiện nút Join nổi bật. */
+  showJoinGroupCall?: boolean;
+  joinGroupCallLabel?: string;
+  onJoinGroupCall?: () => void;
   currentUserRole?: 'owner' | 'admin' | 'member';
   /** Số thành viên từ API `/members` (ưu tiên hơn `memberCount` trên META). */
   resolvedMemberCount?: number;
@@ -84,6 +88,9 @@ export function ChatHeader({
   onEditGroup,
   onAudioCall,
   onVideoCall,
+  showJoinGroupCall,
+  joinGroupCallLabel = 'Tham gia',
+  onJoinGroupCall,
   currentUserRole,
   resolvedMemberCount,
   onSearchMessages,
@@ -193,13 +200,30 @@ export function ChatHeader({
               >
                 <Search className="size-5" />
               </HeaderIconButton>
-              <HeaderIconButton
-                title="Cuộc gọi video nhóm"
-                onClick={onVideoCall ?? undefined}
-                disabled={!onVideoCall}
-              >
-                <Video className="size-5" />
-              </HeaderIconButton>
+              {showJoinGroupCall ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      onClick={onJoinGroupCall}
+                      className="h-9 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 px-3 sm:px-4 shadow-sm gap-2"
+                    >
+                      <Video className="size-4" />
+                      <span className="hidden sm:inline">{joinGroupCallLabel}</span>
+                      <span className="sm:hidden">Tham gia</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Tham gia cuộc gọi nhóm đang diễn ra</TooltipContent>
+                </Tooltip>
+              ) : (
+                <HeaderIconButton
+                  title="Cuộc gọi video nhóm"
+                  onClick={onVideoCall ?? undefined}
+                  disabled={!onVideoCall}
+                >
+                  <Video className="size-5" />
+                </HeaderIconButton>
+              )}
             </>
           ) : (
             <>
