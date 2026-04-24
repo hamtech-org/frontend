@@ -138,7 +138,7 @@ export default function CallPage() {
   const labelForAgoraUid = useCallback((uid: unknown): string => {
     const n = typeof uid === 'number' ? uid : Number(uid);
     if (!Number.isFinite(n)) return 'Ẩn danh';
-    return agoraUidToNameRef.current.get(n) ?? `UID ${n}`;
+    return agoraUidToNameRef.current.get(n) ?? 'Ẩn danh';
   }, []);
 
   const isGroup =
@@ -255,7 +255,7 @@ export default function CallPage() {
           placeGroupRemoteVideo(user);
           setRemoteHasVideo(true);
         } else if (remoteVideoRef.current) {
-          track.play(remoteVideoRef.current);
+          track.play(remoteVideoRef.current, { fit: 'contain' });
           setRemoteHasVideo(true);
         }
       }
@@ -270,7 +270,7 @@ export default function CallPage() {
       track.stop();
       if (pinned === uidNum) {
         const main = pinnedMainRef.current;
-        if (main) track.play(main);
+        if (main) track.play(main, { fit: 'contain' });
       } else {
         // Khi đang ghim, tile remote chỉ tồn tại khi:
         // - đang ở màn Participants, hoặc
@@ -281,7 +281,7 @@ export default function CallPage() {
           if (view !== 'participants' && !filmstrip) return;
         }
         const cell = document.getElementById(`agora-remote-${uidNum}`);
-        if (cell) track.play(cell);
+        if (cell) track.play(cell, { fit: 'contain' });
       }
     };
 
@@ -313,7 +313,7 @@ export default function CallPage() {
                 placeGroupRemoteVideo(user);
                 setRemoteHasVideo(true);
               } else if (remoteVideoRef.current) {
-                user.videoTrack?.play(remoteVideoRef.current);
+                user.videoTrack?.play(remoteVideoRef.current, { fit: 'contain' });
                 setRemoteHasVideo(true);
               }
             }
@@ -474,7 +474,7 @@ export default function CallPage() {
         track.stop();
         if (pinned === uidNum) {
           const main = pinnedMainRef.current;
-          if (main) track.play(main);
+          if (main) track.play(main, { fit: 'contain' });
         } else {
           if (pinned != null) {
             const view = groupViewRef.current;
@@ -482,7 +482,7 @@ export default function CallPage() {
             if (view !== 'participants' && !filmstrip) continue;
           }
           const cell = document.getElementById(`agora-remote-${uidNum}`);
-          if (cell) track.play(cell);
+          if (cell) track.play(cell, { fit: 'contain' });
         }
       }
     };
