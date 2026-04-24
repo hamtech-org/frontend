@@ -16,9 +16,16 @@ interface LoginFormProps {
   isLoading: boolean;
   error: any;
   onRegisterClick: () => void;
+  onForgotPasswordClick: () => void;
 }
 
-export const LoginForm = ({ onSubmit, isLoading, error, onRegisterClick }: LoginFormProps) => {
+export const LoginForm = ({
+  onSubmit,
+  isLoading,
+  error,
+  onRegisterClick,
+  onForgotPasswordClick,
+}: LoginFormProps) => {
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -99,7 +106,14 @@ export const LoginForm = ({ onSubmit, isLoading, error, onRegisterClick }: Login
         )}
       </button>
 
-      <div className="text-center">
+      <div className="flex flex-col gap-2 text-center">
+        <button
+          type="button"
+          onClick={onForgotPasswordClick}
+          className="text-sm text-gray-500 hover:text-blue-600 transition"
+        >
+          Quên mật khẩu?
+        </button>
         <button
           type="button"
           onClick={onRegisterClick}
