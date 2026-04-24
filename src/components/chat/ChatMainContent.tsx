@@ -87,6 +87,11 @@ export function ChatMainContent(props: ChatMainContentProps) {
   const { joinActiveGroupCall } = useCallContext();
   const activeGroupCall = useSelector((s: RootState) => s.call.activeGroupCall);
   const callStatus = useSelector((s: RootState) => s.call.status);
+  const showJoinGroupCall =
+    core.activeConversation?.type === 'group' &&
+    Boolean(core.activeConversationId) &&
+    activeGroupCall?.conversationId === core.activeConversationId &&
+    (callStatus === 'idle' || callStatus === 'ended');
 
   const {
     showContactsManagement,
@@ -134,9 +139,16 @@ export function ChatMainContent(props: ChatMainContentProps) {
             }
             onVideoCall={
               core.activeConversation?.type === 'group'
-                ? directActions.handleGroupVideoCall
+                ? showJoinGroupCall
+                  ? joinActiveGroupCall
+                  : directActions.handleGroupVideoCall
                 : directActions.handleVideoCall
             }
+            showJoinGroupCall={showJoinGroupCall}
+            joinGroupCallLabel={
+              activeGroupCall?.type === 'video' ? 'Tham gia video' : 'Tham gia thoại'
+            }
+            onJoinGroupCall={joinActiveGroupCall}
             currentUserRole={core.currentUserRole}
             resolvedMemberCount={resolvedMemberCount}
             onSearchMessages={onSearchMessages}
@@ -197,7 +209,8 @@ export function ChatMainContent(props: ChatMainContentProps) {
           {postMessageListSlot}
 
           {core.activeConversation?.type === 'group' &&
-            activeGroupCall?.conversationId === core.activeConversationId && (
+            activeGroupCall?.conversationId === core.activeConversationId &&
+            !showJoinGroupCall && (
               <div className="shrink-0 px-3 pb-2 pt-1 border-t border-border/40 bg-background">
                 <div className="rounded-2xl border border-border/40 bg-card px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
                   <div className="flex items-start gap-2 min-w-0">
