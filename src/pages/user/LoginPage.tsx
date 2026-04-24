@@ -1,19 +1,41 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useLoginMutation, useVerifyLoginOtpMutation, useRegisterMutation, useVerifyEmailMutation, useFaceLoginMutation } from '@/store/api/authApi';
+import {
+  useLoginMutation,
+  useVerifyLoginOtpMutation,
+  useRegisterMutation,
+  useVerifyEmailMutation,
+  useFaceLoginMutation,
+  useForgotPasswordMutation,
+  useResetPasswordMutation,
+} from '@/store/api/authApi';
 import { apiClient } from '@/services/api';
 import AwsFaceLivenessComponent from '@/components/AwsFaceLivenessComponent';
 import logo from '@/assets/images/logo_tron.png';
-import { LoginForm, type LoginFormValues, RegisterForm, type RegisterFormValues, OtpVerificationForm, type OtpFormValues } from '../../components';
+import {
+  LoginForm,
+  type LoginFormValues,
+  RegisterForm,
+  type RegisterFormValues,
+  OtpVerificationForm,
+  type OtpFormValues,
+  ForgotPasswordForm,
+  type ForgotPasswordFormValues,
+  ResetPasswordForm,
+  type ResetPasswordFormValues,
+} from '../../components';
 import { X, Loader2 } from 'lucide-react';
 
 const LoginPage = () => {
   const [isRegister, setIsRegister] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [isResetPasswordPending, setIsResetPasswordPending] = useState(false);
   const [isLoginOtpPending, setIsLoginOtpPending] = useState(false);
   const [registrationOtpPending, setRegistrationOtpPending] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
   const [registrationEmail, setRegistrationEmail] = useState('');
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
 
   // Face login states
   const [showFaceLoginEmailDialog, setShowFaceLoginEmailDialog] = useState(false);
@@ -25,10 +47,15 @@ const LoginPage = () => {
 
   // Mutations
   const [login, { isLoading: isLoggingIn, error: loginError }] = useLoginMutation();
-  const [verifyLoginOtp, { isLoading: isVerifyingLoginOtp, error: verifyLoginOtpError }] = useVerifyLoginOtpMutation();
+  const [verifyLoginOtp, { isLoading: isVerifyingLoginOtp, error: verifyLoginOtpError }] =
+    useVerifyLoginOtpMutation();
   const [register, { isLoading: isRegistering, error: registerError }] = useRegisterMutation();
   const [verifyEmail, { isLoading: isVerifying, error: verifyError }] = useVerifyEmailMutation();
   const [faceLogin, { isLoading: isFaceLoginLoading }] = useFaceLoginMutation();
+  const [forgotPassword, { isLoading: isForgotLoading, error: forgotError }] =
+    useForgotPasswordMutation();
+  const [resetPassword, { isLoading: isResetLoading, error: resetError }] =
+    useResetPasswordMutation();
 
   // Login handlers
   const onLoginSubmit = async (data: LoginFormValues) => {
@@ -83,6 +110,35 @@ const LoginPage = () => {
     }
   };
 
+  // Forgot Password handlers
+  const onForgotPasswordSubmit = async (data: ForgotPasswordFormValues) => {
+    try {
+      await forgotPassword(data).unwrap();
+      setForgotPasswordEmail(data.email);
+      setIsResetPasswordPending(true);
+      setIsForgotPassword(false);
+    } catch (err) {
+      console.error('Failed to send forgot password OTP:', err);
+    }
+  };
+
+  const onResetPasswordSubmit = async (data: ResetPasswordFormValues) => {
+    try {
+      await resetPassword({
+        email: forgotPasswordEmail,
+        token: data.otp,
+        newPassword: data.newPassword,
+      }).unwrap();
+
+      // Success - go back to login
+      setIsResetPasswordPending(false);
+      setIsForgotPassword(false);
+      setIsRegister(false);
+    } catch (err) {
+      console.error('Failed to reset password:', err);
+    }
+  };
+
   // Face login handlers
   const startFaceLogin = async () => {
     try {
@@ -122,8 +178,7 @@ const LoginPage = () => {
       setLivenessSessionId('');
 
       const errorMsg =
-        error?.data?.message ||
-        'Đăng nhập bằng khuôn mặt thất bại. Vui lòng thử lại.';
+        error?.data?.message || 'Đăng nhập bằng khuôn mặt thất bại. Vui lòng thử lại.';
       console.error('Face login error:', errorMsg);
     }
   };
@@ -142,14 +197,34 @@ const LoginPage = () => {
             <img src={logo} alt="Zalogram" className="w-16 h-16 mx-auto mb-4" />
             <AnimatePresence mode="wait">
               <motion.div
-                key={isRegister ? 'reg-title' : 'login-title'}
+                key={
+                  isRegister
+                    ? 'reg-title'
+                    : isForgotPassword
+                      ? 'forgot-title'
+                      : isResetPasswordPending
+                        ? 'reset-title'
+                        : 'login-title'
+                }
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
               >
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{isRegister ? 'Tạo tài khoản' : 'Đăng nhập'}</h1>
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                  {isRegister
+                    ? 'Tạo tài khoản'
+                    : isForgotPassword
+                      ? 'Quên mật khẩu'
+                      : isResetPasswordPending
+                        ? 'Đặt lại mật khẩu'
+                        : 'Đăng nhập'}
+                </h1>
                 <p className="text-gray-500 dark:text-gray-400 mt-2">
-                  {isRegister ? 'Bắt đầu hành trình của bạn với chúng tôi.' : 'Chào mừng trở lại!'}
+                  {isRegister
+                    ? 'Bắt đầu hành trình của bạn với chúng tôi.'
+                    : isForgotPassword || isResetPasswordPending
+                      ? 'Khôi phục quyền truy cập vào tài khoản.'
+                      : 'Chào mừng trở lại!'}
                 </p>
               </motion.div>
             </AnimatePresence>
@@ -157,7 +232,12 @@ const LoginPage = () => {
 
           <AnimatePresence mode="wait">
             {registrationOtpPending ? (
-              <motion.div key="register-otp" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.div
+                key="register-otp"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
                 <OtpVerificationForm
                   email={registrationEmail}
                   onSubmit={onRegisterOtpSubmit}
@@ -170,7 +250,12 @@ const LoginPage = () => {
                 />
               </motion.div>
             ) : isRegister ? (
-              <motion.div key="register" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.div
+                key="register"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
                 <RegisterForm
                   onSubmit={onRegisterSubmit}
                   isLoading={isRegistering}
@@ -179,7 +264,12 @@ const LoginPage = () => {
                 />
               </motion.div>
             ) : isLoginOtpPending ? (
-              <motion.div key="login-otp" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.div
+                key="login-otp"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
                 <OtpVerificationForm
                   email={loginEmail}
                   onSubmit={onLoginOtpSubmit}
@@ -188,13 +278,51 @@ const LoginPage = () => {
                   onBack={() => setIsLoginOtpPending(false)}
                 />
               </motion.div>
+            ) : isForgotPassword ? (
+              <motion.div
+                key="forgot-password"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <ForgotPasswordForm
+                  onSubmit={onForgotPasswordSubmit}
+                  isLoading={isForgotLoading}
+                  error={forgotError}
+                  onBack={() => setIsForgotPassword(false)}
+                />
+              </motion.div>
+            ) : isResetPasswordPending ? (
+              <motion.div
+                key="reset-password"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <ResetPasswordForm
+                  email={forgotPasswordEmail}
+                  onSubmit={onResetPasswordSubmit}
+                  isLoading={isResetLoading}
+                  error={resetError}
+                  onBack={() => {
+                    setIsResetPasswordPending(false);
+                    setIsForgotPassword(true);
+                  }}
+                />
+              </motion.div>
             ) : (
-              <motion.div key="login" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.div
+                key="login"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
                 <LoginForm
                   onSubmit={onLoginSubmit}
                   isLoading={isLoggingIn}
                   error={loginError}
                   onRegisterClick={() => setIsRegister(true)}
+                  onForgotPasswordClick={() => setIsForgotPassword(true)}
                 />
 
                 {/* Face Login Divider */}
@@ -204,7 +332,9 @@ const LoginPage = () => {
                       <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
                     </div>
                     <div className="relative flex justify-center text-sm">
-                      <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">hoặc</span>
+                      <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                        hoặc
+                      </span>
                     </div>
                   </div>
                 </div>
