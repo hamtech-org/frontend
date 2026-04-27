@@ -35,8 +35,12 @@ export function AISummaryModal({
                   <Sparkles className="w-[18px] h-[18px] text-white" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-[16px] text-black dark:text-white leading-tight">AI Tóm tắt nhóm</h3>
-                  <p className="text-[11px] text-muted-foreground font-medium">{conversationName}</p>
+                  <h3 className="font-bold text-[16px] text-black dark:text-white leading-tight">
+                    AI Tóm tắt tin nhắn nhóm
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground font-medium">
+                    {conversationName}
+                  </p>
                 </div>
               </div>
               <button
@@ -55,8 +59,12 @@ export function AISummaryModal({
                     <Sparkles className="w-7 h-7 text-white" />
                   </div>
                   <div className="text-center space-y-1.5">
-                    <p className="font-bold text-[15px] text-black dark:text-white">AI đang phân tích...</p>
-                    <p className="text-[13px] text-muted-foreground">Đang đọc và tóm tắt toàn bộ lịch sử chat</p>
+                    <p className="font-bold text-[15px] text-black dark:text-white">
+                      AI đang phân tích...
+                    </p>
+                    <p className="text-[13px] text-muted-foreground">
+                      Đang đọc và tóm tắt toàn bộ lịch sử chat
+                    </p>
                   </div>
                   <div className="flex gap-1.5">
                     {[0, 1, 2].map((i) => (

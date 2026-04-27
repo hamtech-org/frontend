@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   Edit3,
+  PanelLeft,
   PanelRight,
   PanelRightClose,
   Phone,
@@ -17,6 +18,7 @@ import { cn } from '@/utils/cn';
 import type { IConversation } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/types/chat.types';
 import { typingLabel } from '@/utils/chatUtils';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 
 type ChatHeaderProps = {
   activeConversation: IConversation | undefined;
@@ -38,6 +40,8 @@ type ChatHeaderProps = {
   onSearchMessages?: () => void;
   /** Quay lại danh sách hội thoại — chỉ hiển thị trên mobile (< md). */
   onBack?: () => void;
+  /** Mở drawer danh sách hội thoại — chỉ dùng trên mobile (< md). */
+  onOpenConversationList?: () => void;
 };
 
 /** Nút icon trong header — bọc sẵn Tooltip theo chuẩn Hamtech. */
@@ -56,6 +60,30 @@ function HeaderIconButton({
   children: React.ReactNode;
   className?: string;
 }) {
+  const isTabletOrDesktop = useBreakpoint('md');
+
+  // Mobile/touch: avoid Radix TooltipTrigger to prevent click being swallowed.
+  if (!isTabletOrDesktop) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        title={title}
+        aria-label={title}
+        className={cn(
+          'p-2 sm:p-2.5 rounded-full transition-all text-muted-foreground',
+          active
+            ? 'bg-blue-600/10 text-blue-600'
+            : 'hover:bg-muted hover:text-blue-600 disabled:opacity-40 disabled:pointer-events-none',
+          className,
+        )}
+      >
+        {children}
+      </button>
+    );
+  }
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -95,6 +123,7 @@ export function ChatHeader({
   resolvedMemberCount,
   onSearchMessages,
   onBack,
+  onOpenConversationList,
 }: ChatHeaderProps) {
   const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
   // `currentUserRole` có thể chưa có ngay (đợi fetch members) nên không disable click theo role ở header.
@@ -114,6 +143,18 @@ export function ChatHeader({
       <div className="h-16 px-3 md:px-6 flex items-center justify-between border-b border-border/60 bg-background/80 backdrop-blur-md sticky top-0 z-10">
         {/* Thông tin hội thoại */}
         <div className="flex items-center gap-2 md:gap-3">
+          {/* Open conversation list (drawer) — mobile only */}
+          {onOpenConversationList && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onOpenConversationList}
+              className="md:hidden shrink-0 -ml-1 rounded-full"
+              aria-label="Mở danh sách hội thoại"
+            >
+              <PanelLeft className="size-5" />
+            </Button>
+          )}
           {/* Back button — chỉ hiện trên mobile (< md) */}
           {onBack && (
             <Button

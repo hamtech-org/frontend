@@ -11,13 +11,11 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useCallContext } from '@/contexts/CallContext';
 import { useSocketContext } from '@/contexts/SocketContext';
 import { ChatPageProvider, useChatPageContextValue } from '@/pages/user/chat-page/ChatPageContext';
-import { ChatGroupFrameNoticeBar } from '@/pages/user/chat-page/ChatGroupFrameNoticeBar';
 import { useChatModalController } from '@/pages/user/chat-page/hooks/useChatModalController';
 import { useChatMessageData } from '@/pages/user/chat-page/hooks/useChatMessageData';
 import { useChatScrollBehavior } from '@/pages/user/chat-page/hooks/useChatScrollBehavior';
 import { useTaskReminderScheduler } from '@/pages/user/chat-page/hooks/useTaskReminderScheduler';
 import { useChatRealtimeEvents } from '@/pages/user/chat-page/hooks/useChatRealtimeEvents';
-import { useChatGroupFrameNotices } from '@/pages/user/chat-page/hooks/useChatGroupFrameNotices';
 import { useConversationRealtimeLifecycle } from '@/pages/user/chat-page/hooks/useConversationRealtimeLifecycle';
 import { useConversationRoutingSync } from '@/pages/user/chat-page/hooks/useConversationRoutingSync';
 import { useDirectConversationActions } from '@/pages/user/chat-page/hooks/useDirectConversationActions';
@@ -52,7 +50,6 @@ export default function ChatPage() {
   const dispatch = useDispatch<AppDispatch>();
 
   const isTabletOrDesktop = useBreakpoint('md');
-  const isDesktop = useBreakpoint('lg');
 
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const accessToken = useSelector((state: RootState) => state.auth.accessToken);
@@ -316,17 +313,6 @@ export default function ChatPage() {
     navigate,
   });
 
-  const { chatFrameNotice, setChatFrameNotice } = useChatGroupFrameNotices({
-    isConnected,
-    activeConversationId,
-    fetchGroupMembers,
-    fetchGroupRequests,
-    fetchGroupPolls,
-    fetchGroupTasks,
-    setActivePollId: modalActions.setActivePollId,
-    setShowPollVoteModal: modalActions.setShowPollVoteModal,
-  });
-
   const {
     jumpHighlightMessageId,
     jumpFlashNonce,
@@ -405,12 +391,6 @@ export default function ChatPage() {
   const handleCloseInfo = useCallback(() => {
     modalActions.setShowInfo(false);
   }, [modalActions]);
-
-  useEffect(() => {
-    if (!isDesktop && modalState.showInfo) {
-      modalActions.setShowInfo(false);
-    }
-  }, [isDesktop, modalState.showInfo, modalActions]);
 
   const handleStartEdit = useCallback(
     (msg: IMessage) => {
@@ -556,7 +536,10 @@ export default function ChatPage() {
 
         {!isTabletOrDesktop && (
           <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
-            <SheetContent side="left" className="w-80 p-0 overflow-y-auto">
+            <SheetContent
+              side="left"
+              className="w-[clamp(280px,85vw,360px)] max-w-[100vw] p-0 overflow-y-auto"
+            >
               <SheetTitle className="sr-only">Danh sách hội thoại</SheetTitle>
               <ConversationListPanel {...convListPanelProps} />
             </SheetContent>
@@ -568,6 +551,7 @@ export default function ChatPage() {
             showContactsManagement={modalState.showContactsManagement}
             showInfo={modalState.showInfo}
             onToggleShowInfo={handleToggleShowInfo}
+            onOpenConversationList={undefined}
             typingUsers={typingUsers}
             pinned={{
               pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
@@ -602,14 +586,7 @@ export default function ChatPage() {
             onBack={!isTabletOrDesktop ? handleBackToList : undefined}
             onEditGroupTask={(id) => groupController.openEditTaskFromGroupTask(id)}
             onDeleteGroupTask={(id) => void groupController.handleDeleteGroupTask(id)}
-            postMessageListSlot={
-              chatFrameNotice && activeConversationId ? (
-                <ChatGroupFrameNoticeBar
-                  notice={chatFrameNotice}
-                  onDismiss={() => setChatFrameNotice(null)}
-                />
-              ) : null
-            }
+            postMessageListSlot={null}
           />
         )}
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { socketService } from '@/services/socket';
 import type { IMessage } from '@/types/chat.types';
+import { lastMessageLineFromSystemJson } from '@/utils/chatUtils';
 
 export type ChatFrameNoticeVariant = 'poll' | 'task_assigned' | 'task_joined';
 
@@ -101,7 +102,7 @@ export function useChatGroupFrameNotices({
 
   useEffect(() => {
     if (!isConnected) return;
-    const onPollSystemMessage = (data: unknown) => {
+    const onGroupSystemMessage = (data: unknown) => {
       const msg = data as IMessage;
       try {
         if (
@@ -115,42 +116,81 @@ export function useChatGroupFrameNotices({
         const obj = JSON.parse(raw) as {
           kind?: string;
           poll?: { pollId?: string; question?: string };
+          task?: { taskId?: string; title?: string };
           createdAt?: string;
+          actor?: { userId?: string; name?: string };
         };
         const kind = String(obj?.kind ?? '');
         const atIso = String(obj?.createdAt ?? msg.createdAt ?? new Date().toISOString());
 
-        if (kind === 'poll_created' && obj.poll?.pollId) {
-          const pollId = String(obj.poll.pollId);
-          const question = String(obj.poll?.question ?? '').trim();
-          showChatFrameNotice(question ? `Có bình chọn mới: ${question}` : 'Có bình chọn mới', {
+        // Human-friendly preview line (reuse the same wording as sidebar/system message renderer)
+        const preview =
+          lastMessageLineFromSystemJson(raw, {
+            currentUserId: undefined,
+            senderId: String((msg as { senderId?: string }).senderId ?? ''),
+            senderDisplayName:
+              (msg as { senderDisplayName?: string | null }).senderDisplayName ?? null,
+          }) ?? 'Thông báo nhóm';
+
+        const isPollKind = kind.startsWith('poll_');
+        const isTaskKind = kind.startsWith('task_');
+
+        if (isPollKind) {
+          // Keep polls data fresh for info panel
+          void fetchGroupPolls(msg.conversationId);
+
+          // Make "poll_created" actionable
+          const pollId = obj.poll?.pollId ? String(obj.poll.pollId) : '';
+          const onClick =
+            kind === 'poll_created' && pollId
+              ? () => {
+                  setActivePollId(pollId);
+                  setShowPollVoteModal(true);
+                }
+              : undefined;
+
+          dedupedNotice(`sys:${kind}:${pollId || msg.messageId}`, preview, {
             atIso,
             variant: 'poll',
-            onClick: () => {
-              setActivePollId(pollId);
-              setShowPollVoteModal(true);
-            },
+            onClick,
+            dedupeMs: 1500,
           });
           return;
         }
 
-        if (
-          kind === 'task_assigned' ||
-          kind === 'task_joined' ||
-          kind === 'task_updated' ||
-          kind === 'task_deleted'
-        ) {
+        if (isTaskKind) {
           void fetchGroupTasks(msg.conversationId);
+          const taskId = obj.task?.taskId ? String(obj.task.taskId) : '';
+          dedupedNotice(`sys:${kind}:${taskId || msg.messageId}`, preview, {
+            atIso,
+            variant: kind === 'task_joined' ? 'task_joined' : 'task_assigned',
+            dedupeMs: 1500,
+          });
+          return;
         }
+
+        // Fallback: still surface a notice for other system json kinds
+        dedupedNotice(`sys:${kind}:${msg.messageId}`, preview, {
+          atIso,
+          variant: 'task_assigned',
+          dedupeMs: 1500,
+        });
       } catch {
         /* ignore */
       }
     };
-    socketService.on('message:new', onPollSystemMessage);
+    socketService.on('message:new', onGroupSystemMessage);
     return () => {
-      socketService.off('message:new', onPollSystemMessage);
+      socketService.off('message:new', onGroupSystemMessage);
     };
-  }, [isConnected, showChatFrameNotice, fetchGroupTasks, setActivePollId, setShowPollVoteModal]);
+  }, [
+    isConnected,
+    dedupedNotice,
+    fetchGroupPolls,
+    fetchGroupTasks,
+    setActivePollId,
+    setShowPollVoteModal,
+  ]);
 
   useEffect(() => {
     if (!isConnected) return;

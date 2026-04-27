@@ -44,6 +44,7 @@ type ChatComposerProps = {
   currentUserRole?: GroupMemberRole;
   onOpenPoll: () => void;
   onOpenTask: () => void;
+  onOpenAISummary?: () => void;
 };
 
 export function ChatComposer({
@@ -52,6 +53,7 @@ export function ChatComposer({
   currentUserRole,
   onOpenPoll,
   onOpenTask,
+  onOpenAISummary,
 }: ChatComposerProps) {
   type VoiceUiState = 'idle' | 'active-ui' | 'cancelled-ui';
 
@@ -171,6 +173,15 @@ export function ChatComposer({
     if (!list?.length) return;
     addPendingFiles(Array.from(list));
   };
+
+  const quickReplies = [
+    'Dạ, em hiểu rồi ạ.',
+    'Cho mình xin link nhé!',
+    'OK, để mình check lại.',
+    '👍',
+  ];
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleGalleryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     appendFromFileList(e.target.files);
@@ -410,17 +421,19 @@ export function ChatComposer({
                   onOpenTask();
                 }}
                 title="Giao việc / Nhắc hẹn"
-                className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0 hidden sm:block"
+                className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0"
               >
                 <CheckSquare className="w-5 h-5" />
               </button>
               <button
                 type="button"
                 title="AI Tóm tắt nhóm"
-                className="ml-2 hidden shrink-0 items-center gap-2 rounded-lg border border-blue-600/20 bg-blue-600/5 p-2 text-xs font-bold text-blue-600 transition-all hover:bg-blue-600/10 hover:text-blue-700 sm:flex"
+                onClick={() => onOpenAISummary?.()}
+                disabled={!activeConversationId || !onOpenAISummary}
+                className="ml-2 shrink-0 inline-flex items-center gap-2 rounded-lg border border-blue-600/20 bg-blue-600/5 p-2 text-xs font-bold text-blue-600 transition-all hover:bg-blue-600/10 hover:text-blue-700 disabled:opacity-45 disabled:pointer-events-none"
               >
                 <Sparkles className="size-4" />
-                Tóm tắt cuộc gọi / tin nhắn
+                <span>Tóm tắt Tin nhắn</span>
               </button>
             </>
           )}
@@ -441,28 +454,29 @@ export function ChatComposer({
         </div>
       </TooltipProvider>
 
-      <div className="hidden items-center gap-2 overflow-x-auto pb-1 no-scrollbar sm:flex">
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
-          <Sparkles className="w-3 h-3 text-blue-600" />
-          Dạ, em hiểu rồi ạ.
-        </button>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
-          <Sparkles className="w-3 h-3 text-blue-600" />
-          Cho mình xin link nhé!
-        </button>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
-          <Sparkles className="w-3 h-3 text-blue-600" />
-          OK, để mình check lại.
-        </button>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap">
-          <Sparkles className="w-3 h-3 text-blue-600" />
-          👍
-        </button>
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+        {quickReplies.map((text) => (
+          <button
+            key={text}
+            type="button"
+            onClick={() => {
+              if (!activeConversationId) return;
+              setInputText(text);
+              window.setTimeout(() => textareaRef.current?.focus(), 0);
+            }}
+            disabled={!activeConversationId}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap disabled:opacity-45 disabled:pointer-events-none"
+          >
+            <Sparkles className="w-3 h-3 text-blue-600" />
+            {text}
+          </button>
+        ))}
       </div>
 
       <div className="relative flex items-end gap-2">
         <div className="relative flex flex-1 flex-col rounded-xl border border-border/45 bg-muted/35 transition-all focus-within:border-border focus-within:bg-background/90">
           <textarea
+            ref={textareaRef}
             placeholder={
               activeConversation
                 ? `Nhập tin nhắn tới ${activeConversation.name ?? 'hội thoại'}...`

@@ -235,7 +235,7 @@ export function ConversationListPanel({
   };
 
   return (
-    <div className="w-[340px] border-r border-border flex flex-col shrink-0 min-h-0 bg-card text-card-foreground">
+    <div className="w-full md:w-[clamp(260px,28vw,340px)] h-full border-r border-border flex flex-col shrink-0 min-h-0 bg-card text-card-foreground">
       <div className="pt-5 px-4 flex flex-col gap-4 shrink-0 border-b border-border mb-2">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
