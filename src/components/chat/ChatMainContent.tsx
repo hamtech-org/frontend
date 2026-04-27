@@ -18,6 +18,8 @@ interface ChatMainContentProps {
   showContactsManagement: boolean;
   showInfo: boolean;
   onToggleShowInfo: () => void;
+  /** Mở drawer danh sách hội thoại (mobile). */
+  onOpenConversationList?: () => void;
 
   // Typing
   typingUsers: readonly TypingUserEntry[];
@@ -97,6 +99,7 @@ export function ChatMainContent(props: ChatMainContentProps) {
     showContactsManagement,
     showInfo,
     onToggleShowInfo,
+    onOpenConversationList,
     typingUsers,
     pinned,
     scroll,
@@ -130,6 +133,7 @@ export function ChatMainContent(props: ChatMainContentProps) {
             typingUsers={[...typingUsers]}
             showInfo={showInfo}
             onToggleShowInfo={onToggleShowInfo}
+            onOpenConversationList={onOpenConversationList}
             onAddMember={groupActions.openAddMembersModal}
             onEditGroup={groupActions.openEditGroupModal}
             onAudioCall={
