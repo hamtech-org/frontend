@@ -253,6 +253,7 @@ export function ChatMainContent(props: ChatMainContentProps) {
             currentUserRole={core.currentUserRole}
             onOpenPoll={onOpenPoll}
             onOpenTask={onOpenTask}
+            onOpenAISummary={groupActions.openAISummaryFromPanel}
           />
         </>
       )}
