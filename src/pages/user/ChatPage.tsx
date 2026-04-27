@@ -11,13 +11,11 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useCallContext } from '@/contexts/CallContext';
 import { useSocketContext } from '@/contexts/SocketContext';
 import { ChatPageProvider, useChatPageContextValue } from '@/pages/user/chat-page/ChatPageContext';
-import { ChatGroupFrameNoticeBar } from '@/pages/user/chat-page/ChatGroupFrameNoticeBar';
 import { useChatModalController } from '@/pages/user/chat-page/hooks/useChatModalController';
 import { useChatMessageData } from '@/pages/user/chat-page/hooks/useChatMessageData';
 import { useChatScrollBehavior } from '@/pages/user/chat-page/hooks/useChatScrollBehavior';
 import { useTaskReminderScheduler } from '@/pages/user/chat-page/hooks/useTaskReminderScheduler';
 import { useChatRealtimeEvents } from '@/pages/user/chat-page/hooks/useChatRealtimeEvents';
-import { useChatGroupFrameNotices } from '@/pages/user/chat-page/hooks/useChatGroupFrameNotices';
 import { useConversationRealtimeLifecycle } from '@/pages/user/chat-page/hooks/useConversationRealtimeLifecycle';
 import { useConversationRoutingSync } from '@/pages/user/chat-page/hooks/useConversationRoutingSync';
 import { useDirectConversationActions } from '@/pages/user/chat-page/hooks/useDirectConversationActions';
@@ -315,17 +313,6 @@ export default function ChatPage() {
     navigate,
   });
 
-  const { chatFrameNotice, setChatFrameNotice } = useChatGroupFrameNotices({
-    isConnected,
-    activeConversationId,
-    fetchGroupMembers,
-    fetchGroupRequests,
-    fetchGroupPolls,
-    fetchGroupTasks,
-    setActivePollId: modalActions.setActivePollId,
-    setShowPollVoteModal: modalActions.setShowPollVoteModal,
-  });
-
   const {
     jumpHighlightMessageId,
     jumpFlashNonce,
@@ -599,14 +586,7 @@ export default function ChatPage() {
             onBack={!isTabletOrDesktop ? handleBackToList : undefined}
             onEditGroupTask={(id) => groupController.openEditTaskFromGroupTask(id)}
             onDeleteGroupTask={(id) => void groupController.handleDeleteGroupTask(id)}
-            postMessageListSlot={
-              chatFrameNotice && activeConversationId ? (
-                <ChatGroupFrameNoticeBar
-                  notice={chatFrameNotice}
-                  onDismiss={() => setChatFrameNotice(null)}
-                />
-              ) : null
-            }
+            postMessageListSlot={null}
           />
         )}
 
