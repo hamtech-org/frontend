@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/utils/cn';
 import type { RootState } from '@/store/store';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 
 type ChatNavRailProps = {
   navigate: NavigateFunction;
@@ -43,7 +44,7 @@ function NavRailButton({
           type="button"
           onClick={onClick}
           className={cn(
-            'size-12 shrink-0 rounded-2xl flex items-center justify-center transition-colors',
+            'size-10 md:size-12 shrink-0 rounded-2xl flex items-center justify-center transition-colors',
             isActive
               ? 'bg-primary-foreground/20 text-primary-foreground'
               : 'text-primary-foreground/80 hover:bg-primary-foreground/10',
@@ -64,6 +65,7 @@ export function ChatNavRail({
   showContactsManagement,
   onToggleContacts,
 }: ChatNavRailProps) {
+  const isTabletOrDesktop = useBreakpoint('md');
   // Lấy avatar user từ Redux store thay vì hardcode Unsplash
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const avatarUrl = currentUser?.avatar ?? null;
@@ -74,24 +76,37 @@ export function ChatNavRail({
   return (
     <TooltipProvider delayDuration={300}>
       {/* ── Left vertical rail (always visible) ───────────────── */}
-      <div className="flex w-16 bg-primary text-primary-foreground flex-col items-center py-6 shrink-0 z-20">
+      <div
+        className={cn(
+          'flex bg-primary text-primary-foreground flex-col items-center shrink-0 z-20',
+          isTabletOrDesktop ? 'w-16 py-6' : 'w-12 py-4',
+        )}
+      >
         {/* Avatar người dùng — dùng shadcn Avatar + AvatarFallback (Rule 1) */}
         <Tooltip>
           <TooltipTrigger asChild>
             <div
-              className="size-12 shrink-0 rounded-full overflow-hidden mb-6 border border-primary-foreground/20 shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
+              className={cn(
+                'shrink-0 rounded-full overflow-hidden border border-primary-foreground/20 shadow-sm hover:opacity-90 transition-opacity cursor-pointer',
+                isTabletOrDesktop ? 'size-12 mb-6' : 'size-10 mb-4',
+              )}
               onClick={onOpenProfile}
               onKeyDown={(e) => e.key === 'Enter' && onOpenProfile()}
               role="button"
               tabIndex={0}
             >
-              <Avatar className="size-12">
+              <Avatar className={isTabletOrDesktop ? 'size-12' : 'size-10'}>
                 <AvatarImage
                   src={avatarUrl ?? undefined}
                   alt={displayName}
                   referrerPolicy="no-referrer"
                 />
-                <AvatarFallback className="bg-primary-foreground/20 text-primary-foreground font-bold text-lg">
+                <AvatarFallback
+                  className={cn(
+                    'bg-primary-foreground/20 text-primary-foreground font-bold',
+                    isTabletOrDesktop ? 'text-lg' : 'text-sm',
+                  )}
+                >
                   {initials}
                 </AvatarFallback>
               </Avatar>
@@ -108,7 +123,9 @@ export function ChatNavRail({
             onClick={onToggleContacts}
             isActive={!showContactsManagement}
           >
-            <MessageCircle className="size-6 fill-primary-foreground" />
+            <MessageCircle
+              className={cn('fill-primary-foreground', isTabletOrDesktop ? 'size-6' : 'size-5')}
+            />
           </NavRailButton>
 
           {/* Danh bạ */}
@@ -117,37 +134,42 @@ export function ChatNavRail({
             onClick={onToggleContacts}
             isActive={showContactsManagement}
           >
-            <Contact className="size-6" />
+            <Contact className={isTabletOrDesktop ? 'size-6' : 'size-5'} />
           </NavRailButton>
 
           {/* Separator */}
-          <div className="w-8 h-px shrink-0 bg-primary-foreground/20 my-1" />
+          <div
+            className={cn(
+              'h-px shrink-0 bg-primary-foreground/20 my-1',
+              isTabletOrDesktop ? 'w-8' : 'w-7',
+            )}
+          />
 
           <NavRailButton title="Về Bảng Tin" onClick={() => navigate('/')}>
-            <Home className="size-6" />
+            <Home className={isTabletOrDesktop ? 'size-6' : 'size-5'} />
           </NavRailButton>
 
           <NavRailButton title="Kho lưu trữ đám mây">
-            <Cloud className="size-6" />
+            <Cloud className={isTabletOrDesktop ? 'size-6' : 'size-5'} />
           </NavRailButton>
 
           <NavRailButton title="Tệp & Tài liệu">
-            <FolderOpen className="size-[22px]" />
+            <FolderOpen className={isTabletOrDesktop ? 'size-[22px]' : 'size-5'} />
           </NavRailButton>
 
           <NavRailButton title="Nhãn dán">
-            <Sticker className="size-[22px]" />
+            <Sticker className={isTabletOrDesktop ? 'size-[22px]' : 'size-5'} />
           </NavRailButton>
 
           <NavRailButton title="Công việc">
-            <Briefcase className="size-[22px]" />
+            <Briefcase className={isTabletOrDesktop ? 'size-[22px]' : 'size-5'} />
           </NavRailButton>
         </div>
 
         {/* Settings ở cuối */}
         <div className="mt-auto w-full flex justify-center pb-2">
           <NavRailButton title="Cài đặt">
-            <Settings className="size-6" />
+            <Settings className={isTabletOrDesktop ? 'size-6' : 'size-5'} />
           </NavRailButton>
         </div>
       </div>
