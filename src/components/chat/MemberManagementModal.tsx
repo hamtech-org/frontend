@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { KeyRound, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { Trash2, UserPlus, Users, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { apiClient } from '@/services/api';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
@@ -53,6 +53,11 @@ export function MemberManagementModal({
   const [kickConfirmUserId, setKickConfirmUserId] = useState<string | null>(null);
   const [kickSubmitting, setKickSubmitting] = useState(false);
   const [actionMenuUserId, setActionMenuUserId] = useState<string | null>(null);
+  const tabBtnBase =
+    'inline-flex h-10 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-3 text-[12px] font-bold transition-all';
+  const tabBtnActive = 'bg-blue-600 text-white shadow-md shadow-blue-600/20';
+  const tabBtnIdle =
+    'bg-black/5 text-muted-foreground hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10';
 
   const renderAvatar = (opts: { userId: string; name?: string; avatar?: string | null }) => {
     const label = (opts.name ?? opts.userId ?? 'U').trim();
@@ -172,11 +177,7 @@ export function MemberManagementModal({
               key={tab}
               type="button"
               onClick={() => onMemberTabChange(tab)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
-                memberTab === tab
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                  : 'bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10'
-              }`}
+              className={`${tabBtnBase} ${memberTab === tab ? tabBtnActive : tabBtnIdle}`}
             >
               {tab === 'list' ? (
                 <>
@@ -212,12 +213,6 @@ export function MemberManagementModal({
                     <p className="font-bold text-[14px] text-black dark:text-white truncate">
                       {displayNameFor(member.userId, member.name)}
                     </p>
-                    {member.role === 'owner' ? (
-                      <div className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground font-semibold">
-                        <KeyRound className="w-3.5 h-3.5 text-amber-500" />
-                        Trưởng nhóm
-                      </div>
-                    ) : null}
                   </div>
                   {canModerate && member.role !== 'owner' && (
                     <button
@@ -252,9 +247,16 @@ export function MemberManagementModal({
                       className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 hover:border-blue-600/20 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        {renderAvatar({ userId: person.userId, name: displayName, avatar: person.avatar })}
+                        {renderAvatar({
+                          userId: person.userId,
+                          name: displayName,
+                          avatar: person.avatar,
+                        })}
                         <div className="min-w-0">
-                          <p className="font-bold text-[14px] text-black dark:text-white truncate" title={displayName}>
+                          <p
+                            className="font-bold text-[14px] text-black dark:text-white truncate"
+                            title={displayName}
+                          >
                             {displayName}
                           </p>
                           <p className="text-[12px] text-muted-foreground font-medium truncate">
@@ -268,7 +270,9 @@ export function MemberManagementModal({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setActionMenuUserId((prev) => (prev === person.userId ? null : person.userId));
+                            setActionMenuUserId((prev) =>
+                              prev === person.userId ? null : person.userId,
+                            );
                           }}
                           className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
                           title="Tùy chọn"
@@ -379,7 +383,9 @@ export function MemberManagementModal({
                 <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                   <Users className="w-4 h-4 text-blue-600" />
                 </div>
-                <h3 className="font-bold text-[17px] text-black dark:text-white">Quản lý thành viên</h3>
+                <h3 className="font-bold text-[17px] text-black dark:text-white">
+                  Quản lý thành viên
+                </h3>
               </div>
               <button
                 type="button"
@@ -396,7 +402,7 @@ export function MemberManagementModal({
                   key={tab}
                   type="button"
                   onClick={() => onMemberTabChange(tab)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${memberTab === tab ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10'}`}
+                  className={`${tabBtnBase} ${memberTab === tab ? tabBtnActive : tabBtnIdle}`}
                 >
                   {tab === 'list' ? (
                     <>
@@ -423,15 +429,15 @@ export function MemberManagementModal({
                       key={member.userId}
                       className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors group"
                     >
-                      {renderAvatar({ userId: member.userId, name: member.name, avatar: member.avatar })}
+                      {renderAvatar({
+                        userId: member.userId,
+                        name: member.name,
+                        avatar: member.avatar,
+                      })}
                       <div className="flex-1 overflow-hidden">
-                        <p className="font-bold text-[14px] text-black dark:text-white truncate">{member.name}</p>
-                        {member.role === 'owner' ? (
-                          <div className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground font-semibold">
-                            <KeyRound className="w-3.5 h-3.5 text-amber-500" />
-                            Trưởng nhóm
-                          </div>
-                        ) : null}
+                        <p className="font-bold text-[14px] text-black dark:text-white truncate">
+                          {member.name}
+                        </p>
                       </div>
                       {canModerate && member.role !== 'owner' && (
                         <button
@@ -451,7 +457,9 @@ export function MemberManagementModal({
                     </div>
                   ))
                 : requests.map((person) => {
-                    const displayName = (person.name ?? person.displayName ?? person.userId) as string;
+                    const displayName = (person.name ??
+                      person.displayName ??
+                      person.userId) as string;
                     const subtitle =
                       person.status === 'invited' ? 'Được mời vào nhóm' : 'Yêu cầu tham gia';
                     const menuOpen = actionMenuUserId === person.userId;
@@ -461,12 +469,21 @@ export function MemberManagementModal({
                         className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 hover:border-blue-600/20 transition-colors"
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          {renderAvatar({ userId: person.userId, name: displayName, avatar: person.avatar })}
+                          {renderAvatar({
+                            userId: person.userId,
+                            name: displayName,
+                            avatar: person.avatar,
+                          })}
                           <div className="min-w-0">
-                            <p className="font-bold text-[14px] text-black dark:text-white truncate" title={displayName}>
+                            <p
+                              className="font-bold text-[14px] text-black dark:text-white truncate"
+                              title={displayName}
+                            >
                               {displayName}
                             </p>
-                            <p className="text-[12px] text-muted-foreground font-medium truncate">{subtitle}</p>
+                            <p className="text-[12px] text-muted-foreground font-medium truncate">
+                              {subtitle}
+                            </p>
                           </div>
                         </div>
 
@@ -475,7 +492,9 @@ export function MemberManagementModal({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setActionMenuUserId((prev) => (prev === person.userId ? null : person.userId));
+                              setActionMenuUserId((prev) =>
+                                prev === person.userId ? null : person.userId,
+                              );
                             }}
                             className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
                             title="Tùy chọn"
@@ -559,7 +578,9 @@ export function MemberManagementModal({
                     setKickConfirmUserId(null);
                   } catch (e: unknown) {
                     const status = (e as { response?: { status?: number } })?.response?.status;
-                    toast.error(status === 403 ? 'Bạn không có quyền' : 'Không thể mời ra khỏi nhóm');
+                    toast.error(
+                      status === 403 ? 'Bạn không có quyền' : 'Không thể mời ra khỏi nhóm',
+                    );
                   } finally {
                     setKickSubmitting(false);
                   }
