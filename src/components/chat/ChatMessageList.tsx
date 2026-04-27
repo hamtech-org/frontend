@@ -434,6 +434,62 @@ export function ChatMessageList({
     }
   }, []);
 
+  const openTaskDetailById = useCallback(
+    (taskId: string, opts?: { actorLabel?: string }) => {
+      const id = String(taskId ?? '').trim();
+      if (!id) return;
+
+      const t = (groupTasks ?? []).find((x: any) => String(x?.taskId) === id) as any;
+      const nameById = new Map(
+        (groupMembers ?? []).map((m) => [
+          String(m.userId),
+          String(m.displayName ?? (m as any)?.name ?? m.userId ?? '').trim(),
+        ]),
+      );
+      const subs = Array.isArray(t?.subtasks) ? (t.subtasks as any[]) : [];
+      const participantIds = Array.isArray(t?.participants)
+        ? (t.participants as unknown[]).map((x) => String(x))
+        : [];
+      const subAssigneeIds = Array.from(
+        new Set(subs.map((s) => String(s?.assigneeId ?? '').trim()).filter(Boolean)),
+      );
+      const topAssignees = Array.isArray(t?.assignees)
+        ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
+        : [];
+      const isAll = Boolean(t?.assignToAll) || Boolean(t?.broadcast);
+      const ids = subs.length > 0 ? subAssigneeIds : topAssignees;
+      const assigneeLabel = isAll
+        ? 'Cả nhóm'
+        : ids.length > 0
+          ? ids.map((x) => nameById.get(String(x)) || String(x)).join(', ')
+          : undefined;
+
+      setTaskDetailTaskId(id);
+      setTaskDetail({
+        title: String(t?.title ?? ''),
+        note:
+          t?.description != null && String(t.description).trim() !== ''
+            ? String(t.description)
+            : null,
+        dueDate: t?.dueDate != null ? String(t.dueDate) : null,
+        assigneeLabel,
+        participantsCount: participantIds.length,
+        participantIds,
+        actorLabel: opts?.actorLabel,
+        subtasks: subs.map((s) => ({
+          assigneeName:
+            String(s?.assigneeName ?? '').trim() ||
+            nameById.get(String(s?.assigneeId ?? '').trim()) ||
+            String(s?.assigneeId ?? ''),
+          content: String(s?.content ?? ''),
+          done: Boolean(s?.done),
+        })),
+      });
+      setTaskDetailOpen(true);
+    },
+    [groupMembers, groupTasks],
+  );
+
   useEffect(() => {
     if (!taskDetailOpen || !taskDetailTaskId) return;
     const t = (groupTasks ?? []).find(
@@ -441,10 +497,9 @@ export function ChatMessageList({
     ) as any;
     if (!t) return;
     setTaskDetail((prev) => {
-      if (!prev) return prev;
       const participantIds = Array.isArray(t.participants)
         ? (t.participants as unknown[]).map((id) => String(id))
-        : (prev.participantIds ?? []);
+        : (prev?.participantIds ?? []);
       const subs = Array.isArray(t.subtasks) ? (t.subtasks as any[]) : [];
       const nameById = new Map(
         (groupMembers ?? []).map((m) => [
@@ -465,16 +520,16 @@ export function ChatMessageList({
           ? (subs.length > 0 ? subAssigneeIds : topAssignees)
               .map((id) => nameById.get(id) || id)
               .join(', ')
-          : (prev.assigneeLabel ?? undefined);
+          : (prev?.assigneeLabel ?? undefined);
       const noteFromApi =
         t.description != null && String(t.description).trim() !== ''
           ? String(t.description)
-          : prev.note;
+          : prev?.note;
       return {
-        ...prev,
-        title: String(t.title ?? prev.title),
+        ...(prev ?? { title: String(t.title ?? ''), note: null }),
+        title: String(t.title ?? prev?.title ?? ''),
         note: noteFromApi ?? null,
-        dueDate: t.dueDate != null ? String(t.dueDate) : (prev.dueDate ?? null),
+        dueDate: t.dueDate != null ? String(t.dueDate) : (prev?.dueDate ?? null),
         assigneeLabel,
         participantsCount: participantIds.length,
         participantIds,
@@ -678,7 +733,7 @@ export function ChatMessageList({
                   </span>
                   <div
                     className="bg-white dark:bg-zinc-800/95 px-3 py-2 rounded-2xl shadow-sm border border-black/[0.06] dark:border-white/10"
-                    style={{ minWidth: 220, maxWidth: 420 }}
+                    style={{ minWidth: 240, maxWidth: 480 }}
                   >
                     {taskCard ? (
                       <div className="w-full">
@@ -700,7 +755,20 @@ export function ChatMessageList({
                           // Nếu task đã bị hủy/xóa và không còn trên board, chỉ hiển thị dòng hệ thống `task_deleted`
                           // (tránh hiện thêm "thẻ công việc đã hủy" to gây rối).
                           if (taskMissingFromBoard) {
-                            return null;
+                            const titleStr = String(taskCard?.title ?? '').trim();
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                <AlarmClockOff
+                                  className="h-4 w-4 shrink-0 text-muted-foreground/85"
+                                  strokeWidth={1.75}
+                                  aria-hidden
+                                />
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {'Công việc đã bị hủy'}
+                                  {titleStr ? ` "${titleStr}"` : ''}
+                                </span>
+                              </div>
+                            );
                           }
 
                           const byId = new Map(
@@ -1226,8 +1294,7 @@ export function ChatMessageList({
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setTaskDetailTaskId(taskId);
-                                      setTaskDetailOpen(true);
+                                      openTaskDetailById(taskId);
                                     }}
                                     className="ml-1 inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border border-black/10 bg-black/[0.03] px-3 text-[11px] font-bold text-foreground/80 hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/80 dark:hover:bg-white/[0.10] transition-colors"
                                   >
