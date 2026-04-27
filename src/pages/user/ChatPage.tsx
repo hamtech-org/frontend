@@ -571,6 +571,7 @@ export default function ChatPage() {
         {(isTabletOrDesktop || mobileView === 'chat') && (
           <ChatMainContent
             showContactsManagement={modalState.showContactsManagement}
+            contactsTab={modalState.contactsTab}
             showInfo={modalState.showInfo}
             onToggleShowInfo={handleToggleShowInfo}
             onOpenConversationList={undefined}

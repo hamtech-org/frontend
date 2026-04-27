@@ -2,10 +2,12 @@ import type { RefObject, SetStateAction, Dispatch, ReactNode } from 'react';
 import { Phone, Video } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { FriendsListView } from '@/components/chat/FriendsListView';
+import { FriendRequestsView } from '@/components/chat/FriendRequestsView';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import { PinnedMessagesBar } from '@/components/chat/PinnedMessagesBar';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
 import { ChatComposer } from '@/components/chat/ChatComposer';
+import type { ContactsTabId } from '@/components/chat/ContactsManagementPanel';
 import type { IConversation, IMessage, TypingUserEntry } from '@/types/chat.types';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 import { useDispatch } from 'react-redux';
@@ -16,6 +18,7 @@ import { useCallContext } from '@/contexts/CallContext';
 interface ChatMainContentProps {
   // UI visibility (from modalState)
   showContactsManagement: boolean;
+  contactsTab: ContactsTabId;
   showInfo: boolean;
   onToggleShowInfo: () => void;
   /** Mở drawer danh sách hội thoại (mobile). */
@@ -97,6 +100,7 @@ export function ChatMainContent(props: ChatMainContentProps) {
 
   const {
     showContactsManagement,
+    contactsTab,
     showInfo,
     onToggleShowInfo,
     onOpenConversationList,
@@ -125,7 +129,15 @@ export function ChatMainContent(props: ChatMainContentProps) {
   return (
     <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
       {showContactsManagement ? (
-        <FriendsListView onFriendClick={onFriendClick ?? directActions.handleFriendClick} />
+        contactsTab === 'friendRequests' ? (
+          <FriendRequestsView />
+        ) : contactsTab === 'friends' ? (
+          <FriendsListView onFriendClick={onFriendClick ?? directActions.handleFriendClick} />
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+            Chưa hỗ trợ màn hình này.
+          </div>
+        )
       ) : (
         <>
           <ChatHeader
