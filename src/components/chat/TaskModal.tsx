@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCheck, CheckSquare, Trash2, Users, X } from 'lucide-react';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
@@ -49,9 +49,29 @@ export function TaskModal({
   onDeleteTask,
   submitBusy = false,
 }: TaskModalProps) {
+  const getMinDeadlineNow = () => {
+    // datetime-local has minute precision. Lock to current minute (no past minutes/hours).
+    const now = new Date();
+    now.setSeconds(0, 0);
+    return now;
+  };
+
+  const isPastDeadline = (raw: string) => {
+    const s = String(raw ?? '').trim();
+    if (!s) return false;
+    const picked = new Date(s);
+    if (Number.isNaN(picked.getTime())) return false;
+    return picked.getTime() < getMinDeadlineNow().getTime();
+  };
+
   const labelFor = (id: string, name: string) => {
     if (currentUserId && id === currentUserId) return 'Bạn';
     return name;
+  };
+  const roleLabel = (role?: string) => {
+    if (role === 'owner') return 'Trưởng nhóm';
+    if (role === 'admin') return 'Phó nhóm';
+    return 'Thành viên';
   };
 
   const eligibleMembers = assignToAll
@@ -70,8 +90,69 @@ export function TaskModal({
   const hasSubtasks = subtaskRows.some((r) => r.assigneeId && r.content.trim());
   const hasAssignees = assignToAll || taskAssignees.length > 0;
   const hasDeadline = Boolean(taskDeadline?.trim());
+  const deadlineOk = hasDeadline && !isPastDeadline(taskDeadline);
   const canSubmit =
-    taskTitle.trim().length > 0 && hasDeadline && hasAssignees && (hasSubtasks || hasAssignees);
+    taskTitle.trim().length > 0 && deadlineOk && hasAssignees && (hasSubtasks || hasAssignees);
+
+  const todayDateStr = useMemo(() => {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }, []);
+
+  const formatHm = (d: Date) => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const [nowTimeStr, setNowTimeStr] = useState<string>(() => formatHm(getMinDeadlineNow()));
+
+  // Keep "now" ticking so min time for today is always correct.
+  useEffect(() => {
+    if (!open) return;
+    const tick = () => setNowTimeStr(formatHm(getMinDeadlineNow()));
+    tick();
+    const t = window.setInterval(tick, 15_000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const parseDeadlineParts = (raw: string) => {
+    const s = String(raw ?? '').trim();
+    if (!s) return { date: '', time: '' };
+    const [date, time] = s.split('T');
+    return { date: date ?? '', time: (time ?? '').slice(0, 5) };
+  };
+
+  const buildDeadline = (date: string, time: string) => {
+    const d = String(date ?? '').trim();
+    const t = String(time ?? '').trim();
+    if (!d) return '';
+    if (!t) return `${d}T${nowTimeStr}`;
+    return `${d}T${t}`;
+  };
+
+  const parts = parseDeadlineParts(taskDeadline);
+  const selectedDate = parts.date || '';
+  const selectedTime = parts.time || '';
+  const minDate = todayDateStr;
+  const minTimeForSelectedDate = selectedDate === todayDateStr ? nowTimeStr : '00:00';
+
+  // Khi mở modal tạo mới: set deadline mặc định = hôm nay + giờ hiện tại.
+  // Nếu đang mở mà deadline lỡ ở quá khứ: auto kéo lên min hợp lệ.
+  useEffect(() => {
+    if (!open) return;
+    const hasValue = Boolean(taskDeadline && taskDeadline.trim());
+    if (!hasValue && !isEditing) {
+      onTaskDeadlineChange(buildDeadline(todayDateStr, nowTimeStr));
+      return;
+    }
+    if (hasValue && isPastDeadline(taskDeadline)) {
+      onTaskDeadlineChange(buildDeadline(todayDateStr, nowTimeStr));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const resetAndClose = () => {
     onClose();
@@ -136,12 +217,51 @@ export function TaskModal({
                 <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
                   Thời hạn
                 </label>
-                <input
-                  type="datetime-local"
-                  value={taskDeadline}
-                  onChange={(e) => onTaskDeadlineChange(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-green-500/50 text-[14px] font-medium transition-all text-black dark:text-white"
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="mb-1 text-[12px] font-bold text-muted-foreground">Ngày</div>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      min={minDate}
+                      onChange={(e) => {
+                        const nextDate = e.target.value;
+                        const nextTime =
+                          nextDate === todayDateStr && selectedTime && selectedTime < nowTimeStr
+                            ? nowTimeStr
+                            : selectedTime || nowTimeStr;
+                        onTaskDeadlineChange(buildDeadline(nextDate, nextTime));
+                      }}
+                      className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-green-500/50 text-[14px] font-medium transition-all text-black dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-[12px] font-bold text-muted-foreground">
+                      Thời gian
+                    </div>
+                    <input
+                      type="time"
+                      value={selectedTime}
+                      min={minTimeForSelectedDate}
+                      onChange={(e) => {
+                        const nextTime = e.target.value;
+                        const fixedTime =
+                          selectedDate === todayDateStr && nextTime < nowTimeStr
+                            ? nowTimeStr
+                            : nextTime;
+                        onTaskDeadlineChange(
+                          buildDeadline(selectedDate || todayDateStr, fixedTime),
+                        );
+                      }}
+                      className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-green-500/50 text-[14px] font-medium transition-all text-black dark:text-white"
+                    />
+                  </div>
+                </div>
+                {taskDeadline && isPastDeadline(taskDeadline) ? (
+                  <div className="mt-2 text-[12px] font-semibold text-orange-600 dark:text-orange-400">
+                    Thời hạn phải lớn hơn thời gian hiện tại.
+                  </div>
+                ) : null}
               </div>
               <div>
                 <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
@@ -217,7 +337,9 @@ export function TaskModal({
                         <p className="font-semibold text-[14px] text-black dark:text-white truncate group-hover:text-green-600 transition-colors">
                           {labelFor(member.id, member.name)}
                         </p>
-                        <p className="text-[11px] text-muted-foreground">{member.role}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {roleLabel(member.role)}
+                        </p>
                       </div>
                     </label>
                   ))}
@@ -308,7 +430,10 @@ export function TaskModal({
               <button
                 type="button"
                 disabled={!canSubmit || submitBusy}
-                onClick={() => void onSubmitTask()}
+                onClick={() => {
+                  if (!canSubmit || submitBusy) return;
+                  void onSubmitTask();
+                }}
                 className={`flex-1 py-2.5 rounded-xl font-bold text-[14px] text-white transition-all flex items-center justify-center gap-2 ${
                   canSubmit && !submitBusy
                     ? 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-500/20 hover:-translate-y-0.5'

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Trash2, UserPlus, Users, X } from 'lucide-react';
+import { UserPlus, Users, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { apiClient } from '@/services/api';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
@@ -20,6 +20,8 @@ type MemberManagementModalProps = {
   onApprove?: (userId: string) => void | Promise<void>;
   onReject?: (userId: string) => void | Promise<void>;
   onKick?: (userId: string) => void | Promise<void>;
+  /** Owner-only: hạ phó nhóm (admin) xuống member. */
+  onDemoteAdminToMember?: (userId: string) => void | Promise<void>;
   busy?: {
     approving?: boolean;
     rejecting?: boolean;
@@ -27,7 +29,10 @@ type MemberManagementModalProps = {
     changingRole?: boolean;
   };
   variant?: MemberUiVariant;
+  /** Quyền duyệt/từ chối yêu cầu vào nhóm (owner/admin). */
   canModerate?: boolean;
+  /** Quyền kick thành viên (chỉ owner theo nghiệp vụ). */
+  canKick?: boolean;
   onAddMembersClick?: () => void;
   groupId?: string;
 };
@@ -43,15 +48,19 @@ export function MemberManagementModal({
   onApprove,
   onReject,
   onKick,
+  onDemoteAdminToMember,
   busy,
   variant = 'modal',
   canModerate = false,
+  canKick = false,
   onAddMembersClick,
   groupId,
 }: MemberManagementModalProps) {
   const [brokenAvatars, setBrokenAvatars] = useState<Record<string, true>>({});
   const [kickConfirmUserId, setKickConfirmUserId] = useState<string | null>(null);
   const [kickSubmitting, setKickSubmitting] = useState(false);
+  const [demoteConfirmUserId, setDemoteConfirmUserId] = useState<string | null>(null);
+  const [demoteSubmitting, setDemoteSubmitting] = useState(false);
   const [actionMenuUserId, setActionMenuUserId] = useState<string | null>(null);
   const tabBtnBase =
     'inline-flex h-10 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-3 text-[12px] font-bold transition-all';
@@ -93,6 +102,11 @@ export function MemberManagementModal({
     return members.find((m) => m.userId === kickConfirmUserId) ?? null;
   }, [kickConfirmUserId, members]);
 
+  const demoteTarget = useMemo(() => {
+    if (!demoteConfirmUserId) return null;
+    return members.find((m) => m.userId === demoteConfirmUserId) ?? null;
+  }, [demoteConfirmUserId, members]);
+
   useEffect(() => {
     if (!actionMenuUserId) return;
     const close = () => setActionMenuUserId(null);
@@ -127,6 +141,15 @@ export function MemberManagementModal({
     await apiClient.delete(`/chat/groups/${groupId}/members/${userId}`);
   };
 
+  const demoteAdminToMember = async (userId: string) => {
+    if (onDemoteAdminToMember) return onDemoteAdminToMember(userId);
+    if (!groupId) {
+      toast.error('Thiếu groupId để đổi vai trò');
+      return;
+    }
+    await apiClient.put(`/chat/groups/${groupId}/members/${userId}/role`, { role: 'member' });
+  };
+
   const addFriend = async (userId: string) => {
     try {
       await apiClient.post('/contacts/friends/request', { userId });
@@ -144,12 +167,6 @@ export function MemberManagementModal({
       <div className="h-full w-full flex flex-col bg-white dark:bg-[#1a1a1a]">
         <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-              <Users className="w-4 h-4 text-blue-600" />
-            </div>
-            <h3 className="font-bold text-[17px] text-black dark:text-white">Thành viên</h3>
-          </div>
-          <div className="flex items-center gap-2">
             {onAddMembersClick && (
               <button
                 type="button"
@@ -157,17 +174,9 @@ export function MemberManagementModal({
                 className="px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[13px] font-bold text-blue-600 dark:text-blue-400 transition-colors"
                 title="Thêm thành viên"
               >
-                + Thêm
+                + Thêm thành viên
               </button>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 transition-colors"
-              title="Quay lại"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
         </div>
 
@@ -199,38 +208,91 @@ export function MemberManagementModal({
 
         <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-2">
           {memberTab === 'list'
-            ? members.map((member) => (
-                <div
-                  key={member.userId}
-                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors group"
-                >
-                  {renderAvatar({
-                    userId: member.userId,
-                    name: displayNameFor(member.userId, member.name),
-                    avatar: member.avatar,
-                  })}
-                  <div className="flex-1 overflow-hidden">
-                    <p className="font-bold text-[14px] text-black dark:text-white truncate">
-                      {displayNameFor(member.userId, member.name)}
-                    </p>
+            ? members.map((member) => {
+                const menuOpen = actionMenuUserId === member.userId;
+                const canAct = canKick && member.role !== 'owner';
+                const canDemote = canKick && member.role === 'admin';
+                return (
+                  <div
+                    key={member.userId}
+                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                  >
+                    {renderAvatar({
+                      userId: member.userId,
+                      name: displayNameFor(member.userId, member.name),
+                      avatar: member.avatar,
+                    })}
+                    <div className="flex-1 overflow-hidden">
+                      <p className="font-bold text-[14px] text-black dark:text-white truncate">
+                        {displayNameFor(member.userId, member.name)}
+                      </p>
+                    </div>
+                    {member.role === 'owner' ? (
+                      <span className="px-2 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[11px] font-bold shrink-0">
+                        Trưởng nhóm
+                      </span>
+                    ) : member.role === 'admin' ? (
+                      <span className="px-2 py-1 rounded-lg bg-blue-600/10 text-blue-700 dark:text-blue-300 text-[11px] font-bold shrink-0">
+                        Phó nhóm
+                      </span>
+                    ) : null}
+                    {canAct ? (
+                      <div className="relative shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActionMenuUserId((prev) =>
+                              prev === member.userId ? null : member.userId,
+                            );
+                          }}
+                          className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
+                          title="Tùy chọn"
+                          aria-label="Tùy chọn"
+                          aria-expanded={menuOpen}
+                        >
+                          ⋯
+                        </button>
+
+                        {menuOpen && (
+                          <div
+                            role="menu"
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute right-0 top-10 w-44 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
+                          >
+                            {canDemote ? (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={busy?.changingRole}
+                                onClick={() => {
+                                  setActionMenuUserId(null);
+                                  setDemoteConfirmUserId(member.userId);
+                                }}
+                                className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
+                              >
+                                Hạ phó nhóm xuống thành viên
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              role="menuitem"
+                              disabled={busy?.removing}
+                              onClick={() => {
+                                setActionMenuUserId(null);
+                                setKickConfirmUserId(member.userId);
+                              }}
+                              className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
+                            >
+                              Kick
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
-                  {canModerate && member.role !== 'owner' && (
-                    <button
-                      type="button"
-                      onClick={() => setKickConfirmUserId(member.userId)}
-                      disabled={busy?.removing}
-                      className="opacity-0 group-hover:opacity-100 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-[12px] font-bold transition-all flex items-center gap-1 shrink-0"
-                    >
-                      <Trash2 className="w-3 h-3" /> Kick
-                    </button>
-                  )}
-                  {member.role === 'owner' && (
-                    <span className="px-2 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[11px] font-bold shrink-0">
-                      Trưởng nhóm
-                    </span>
-                  )}
-                </div>
-              ))
+                );
+              })
             : !canModerate
               ? null
               : requests.map((person) => {
@@ -363,6 +425,37 @@ export function MemberManagementModal({
             })();
           }}
         />
+
+        <ConfirmModal
+          open={demoteConfirmUserId !== null}
+          title="Hạ phó nhóm"
+          description={
+            demoteTarget
+              ? `Hạ "${demoteTarget.name ?? demoteTarget.userId}" xuống thành viên?`
+              : 'Hạ người này xuống thành viên?'
+          }
+          confirmLabel="Hạ xuống thành viên"
+          isConfirming={demoteSubmitting}
+          onClose={() => {
+            if (!demoteSubmitting) setDemoteConfirmUserId(null);
+          }}
+          onConfirm={() => {
+            if (!demoteConfirmUserId) return;
+            setDemoteSubmitting(true);
+            void (async () => {
+              try {
+                await demoteAdminToMember(demoteConfirmUserId);
+                toast.success('Đã hạ phó nhóm xuống thành viên');
+                setDemoteConfirmUserId(null);
+              } catch (e: unknown) {
+                const status = (e as { response?: { status?: number } })?.response?.status;
+                toast.error(status === 403 ? 'Bạn không có quyền' : 'Không thể đổi vai trò');
+              } finally {
+                setDemoteSubmitting(false);
+              }
+            })();
+          }}
+        />
       </div>
     );
   }
@@ -424,38 +517,92 @@ export function MemberManagementModal({
 
             <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-2">
               {memberTab === 'list'
-                ? members.map((member) => (
-                    <div
-                      key={member.userId}
-                      className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors group"
-                    >
-                      {renderAvatar({
-                        userId: member.userId,
-                        name: member.name,
-                        avatar: member.avatar,
-                      })}
-                      <div className="flex-1 overflow-hidden">
-                        <p className="font-bold text-[14px] text-black dark:text-white truncate">
-                          {member.name}
-                        </p>
+                ? members.map((member) => {
+                    const menuOpen = actionMenuUserId === member.userId;
+                    const canAct = canKick && member.role !== 'owner';
+                    const canDemote = canKick && member.role === 'admin';
+                    return (
+                      <div
+                        key={member.userId}
+                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                      >
+                        {renderAvatar({
+                          userId: member.userId,
+                          name: member.name,
+                          avatar: member.avatar,
+                        })}
+                        <div className="flex-1 overflow-hidden">
+                          <p className="font-bold text-[14px] text-black dark:text-white truncate">
+                            {member.name}
+                          </p>
+                        </div>
+                        {member.role === 'owner' && (
+                          <span className="px-2 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[11px] font-bold shrink-0">
+                            Trưởng nhóm
+                          </span>
+                        )}
+                        {member.role === 'admin' ? (
+                          <span className="px-2 py-1 rounded-lg bg-blue-600/10 text-blue-700 dark:text-blue-300 text-[11px] font-bold shrink-0">
+                            Phó nhóm
+                          </span>
+                        ) : null}
+                        {canAct ? (
+                          <div className="relative shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActionMenuUserId((prev) =>
+                                  prev === member.userId ? null : member.userId,
+                                );
+                              }}
+                              className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
+                              title="Tùy chọn"
+                              aria-label="Tùy chọn"
+                              aria-expanded={menuOpen}
+                            >
+                              ⋯
+                            </button>
+
+                            {menuOpen && (
+                              <div
+                                role="menu"
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 top-10 w-44 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
+                              >
+                                {canDemote ? (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    disabled={busy?.changingRole}
+                                    onClick={() => {
+                                      setActionMenuUserId(null);
+                                      setDemoteConfirmUserId(member.userId);
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
+                                  >
+                                    Hạ phó nhóm xuống thành viên
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={busy?.removing}
+                                  onClick={() => {
+                                    setActionMenuUserId(null);
+                                    setKickConfirmUserId(member.userId);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
+                                >
+                                  Kick
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
                       </div>
-                      {canModerate && member.role !== 'owner' && (
-                        <button
-                          type="button"
-                          onClick={() => setKickConfirmUserId(member.userId)}
-                          disabled={busy?.removing}
-                          className="opacity-0 group-hover:opacity-100 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-[12px] font-bold transition-all flex items-center gap-1 shrink-0"
-                        >
-                          <Trash2 className="w-3 h-3" /> Kick
-                        </button>
-                      )}
-                      {member.role === 'owner' && (
-                        <span className="px-2 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[11px] font-bold shrink-0">
-                          Trưởng nhóm
-                        </span>
-                      )}
-                    </div>
-                  ))
+                    );
+                  })
                 : requests.map((person) => {
                     const displayName = (person.name ??
                       person.displayName ??

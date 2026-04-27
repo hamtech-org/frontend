@@ -3,13 +3,12 @@ import {
   BellOff,
   CheckSquare,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Edit3,
   File,
   FileText,
-  Image as ImageIcon,
-  Link2,
   MessageSquare,
   Pin,
   Plus,
@@ -124,7 +123,7 @@ type BulletinFeedRow = {
   task?: GroupTask;
 };
 
-type BulletinTab = 'all' | 'pinned' | 'notes' | 'polls';
+type BulletinTab = 'all' | 'pinned' | 'polls';
 
 type MessageGalleryKind = 'media' | 'file' | 'link';
 
@@ -432,6 +431,8 @@ type ConversationInfoPanelProps = {
   onApproveMember?: (userId: string) => void | Promise<void>;
   onRejectMember?: (userId: string) => void | Promise<void>;
   onKickMember?: (userId: string) => void | Promise<void>;
+  /** Owner-only: hạ phó nhóm (admin) xuống member. */
+  onDemoteAdminToMember?: (userId: string) => void | Promise<void>;
 
   /** Tin đã tải trong hội thoại — tìm trong phạm vi client. */
   conversationMessages?: IMessage[];
@@ -480,6 +481,7 @@ export function ConversationInfoPanel({
   onApproveMember,
   onRejectMember,
   onKickMember,
+  onDemoteAdminToMember,
   busyMemberActions,
   conversationMessages = [],
   conversationSearchRequestTick = 0,
@@ -497,8 +499,21 @@ export function ConversationInfoPanel({
       ? activeConversation.notificationsMutedUntil.trim()
       : '';
   const isOwner = currentUserRole === 'owner';
+  const effectiveUserId = String(currentUserId ?? core.currentUserId ?? '').trim();
+  const isOwnerEffective =
+    isOwner ||
+    (effectiveUserId
+      ? (members as Array<{ userId?: string; role?: string }>).some(
+          (m) =>
+            String(m?.userId ?? '').trim() === effectiveUserId && String(m?.role ?? '') === 'owner',
+        )
+      : false);
+  // Nghiệp vụ:
+  // - owner: full quản trị
+  // - admin (phó nhóm): chỉ duyệt/từ chối yêu cầu vào nhóm
   const canModerateMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
-  const canDisbandGroup = currentUserRole === 'owner' || currentUserRole === 'admin';
+  const canKickMembers = currentUserRole === 'owner';
+  const canDisbandGroup = currentUserRole === 'owner';
 
   const canCreatePollFromBulletin = useMemo(
     () =>
@@ -558,6 +573,44 @@ export function ConversationInfoPanel({
     bulletinModalMode === 'notesPolls' && (showBulletinPollAdd || showBulletinTaskAdd);
   const [bulletinTab, setBulletinTab] = useState<BulletinTab>('all');
   const [focusFlashNonce, setFocusFlashNonce] = useState(0);
+
+  const showTopBack = Boolean(
+    showInlineMembers ||
+    showConversationSearch ||
+    showGroupManagement ||
+    galleryKind !== null ||
+    bulletinModalMode !== null,
+  );
+
+  const goBackTop = useCallback(() => {
+    if (bulletinModalMode !== null) {
+      setBulletinModalMode(null);
+      setBulletinAddOpen(false);
+      return;
+    }
+    if (galleryKind !== null) {
+      setGalleryKind(null);
+      return;
+    }
+    if (showConversationSearch) {
+      setShowConversationSearch(false);
+      return;
+    }
+    if (showGroupManagement) {
+      setShowGroupManagement(false);
+      return;
+    }
+    if (showInlineMembers) {
+      setShowInlineMembers(false);
+      return;
+    }
+  }, [
+    bulletinModalMode,
+    galleryKind,
+    showConversationSearch,
+    showGroupManagement,
+    showInlineMembers,
+  ]);
 
   useEffect(() => {
     if (!focusTaskId) return;
@@ -669,7 +722,7 @@ export function ConversationInfoPanel({
     return rows;
   }, [members, activeConversation, currentUserId]);
 
-  const bulletinFeedItems = useMemo(() => {
+  const pollFeedItems = useMemo(() => {
     const items: BulletinFeedRow[] = [];
     for (const p of polls) {
       const at = p.createdAt ?? '';
@@ -695,6 +748,15 @@ export function ConversationInfoPanel({
         poll: p,
       });
     }
+    items.sort((a, b) => {
+      if (b.atMs !== a.atMs) return b.atMs - a.atMs;
+      return `${a.kind}-${a.id}`.localeCompare(`${b.kind}-${b.id}`);
+    });
+    return items;
+  }, [polls, memberNameById, currentUserId]);
+
+  const taskFeedItems = useMemo(() => {
+    const items: BulletinFeedRow[] = [];
     for (const t of tasks) {
       const at = t.createdAt ?? '';
       const desc = (t.description ?? '').trim();
@@ -720,19 +782,31 @@ export function ConversationInfoPanel({
       return `${a.kind}-${a.id}`.localeCompare(`${b.kind}-${b.id}`);
     });
     return items;
-  }, [polls, tasks, memberNameById, currentUserId]);
+  }, [tasks, memberNameById, currentUserId]);
 
   const filteredBulletinItems = useMemo(() => {
-    if (bulletinTab === 'all') return bulletinFeedItems;
-    if (bulletinTab === 'polls') return bulletinFeedItems.filter((x) => x.kind === 'poll');
-    if (bulletinTab === 'notes') return bulletinFeedItems.filter((x) => x.kind === 'task');
+    // "Tin ghim & Bình chọn": không hiển thị lịch sử task ở tab Tất cả.
+    // Task được gom về "Danh sách nhắc hẹn".
+    if (bulletinTab === 'all') return pollFeedItems;
+    if (bulletinTab === 'polls') return pollFeedItems;
     return [];
-  }, [bulletinFeedItems, bulletinTab]);
+  }, [pollFeedItems, bulletinTab]);
 
-  const reminderFeedItems = useMemo(
-    () => bulletinFeedItems.filter((x) => x.kind === 'task'),
-    [bulletinFeedItems],
-  );
+  const reminderFeedItems = useMemo(() => taskFeedItems, [taskFeedItems]);
+
+  const pinnedMessages = useMemo(() => {
+    const rows = (conversationMessages ?? [])
+      .filter(
+        (m) => Boolean((m as any)?.isPinned) && !(m as any)?.isDeleted && !(m as any)?.isRecalled,
+      )
+      .slice()
+      .sort((a, b) => {
+        const am = Date.parse(String(a.createdAt ?? '')) || 0;
+        const bm = Date.parse(String(b.createdAt ?? '')) || 0;
+        return bm - am;
+      });
+    return rows;
+  }, [conversationMessages]);
 
   useEffect(() => {
     if (!bulletinAddOpen || bulletinModalMode !== 'notesPolls') return;
@@ -796,8 +870,68 @@ export function ConversationInfoPanel({
 
   return (
     <div className="w-full h-full min-h-0 border-l border-black/5 dark:border-white/5 flex flex-col bg-white dark:bg-[#1a1a1a] overflow-hidden">
-      <div className="h-20 px-6 flex items-center justify-center border-b border-black/5 dark:border-white/5 font-bold text-lg sticky top-0 bg-inherit z-10 shrink-0">
-        Thông tin {activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}
+      <div className="h-20 px-6 flex items-center justify-between border-b border-black/5 dark:border-white/5 sticky top-0 bg-inherit z-10 shrink-0">
+        <div className="w-10">
+          {showTopBack ? (
+            <button
+              type="button"
+              onClick={goBackTop}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/5 transition-colors hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
+              title="Quay lại"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          ) : null}
+        </div>
+
+        <div className="min-w-0 flex-1 px-2 text-center font-bold text-lg">
+          Thông tin {activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}
+        </div>
+
+        <div className="flex w-10 justify-end">
+          {bulletinModalMode !== null && showBulletinAddMenu ? (
+            <div className="relative flex justify-end" ref={bulletinAddRef}>
+              <button
+                type="button"
+                onClick={() => setBulletinAddOpen((v) => !v)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-black/5 text-muted-foreground transition-colors hover:bg-black/10 hover:text-foreground dark:bg-white/5 dark:hover:bg-white/10"
+                aria-label="Thêm bình chọn hoặc công việc"
+                aria-expanded={bulletinAddOpen}
+                title="Thêm"
+              >
+                <Plus className="h-5 w-5" strokeWidth={2.2} />
+              </button>
+              {bulletinAddOpen && (
+                <div className="absolute right-0 top-full z-20 mt-1 min-w-[168px] rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-[#2a2a2a]">
+                  {showBulletinPollAdd ? (
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
+                      onClick={() => {
+                        onOpenPollModalFromPanel?.();
+                        setBulletinAddOpen(false);
+                      }}
+                    >
+                      Tạo bình chọn
+                    </button>
+                  ) : null}
+                  {showBulletinTaskAdd ? (
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
+                      onClick={() => {
+                        onOpenTaskModalFromPanel?.();
+                        setBulletinAddOpen(false);
+                      }}
+                    >
+                      Tạo công việc
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {showInlineMembers ? (
@@ -813,9 +947,11 @@ export function ConversationInfoPanel({
             onApprove={onApproveMember}
             onReject={onRejectMember}
             onKick={onKickMember}
+            onDemoteAdminToMember={onDemoteAdminToMember}
             busy={busyMemberActionsResolved}
             variant="inline"
             canModerate={canModerateMembers}
+            canKick={canKickMembers}
             onAddMembersClick={groupActions.openAddMembersModal}
             groupId={activeConversation?.conversationId}
           />
@@ -823,34 +959,6 @@ export function ConversationInfoPanel({
       ) : galleryKind !== null ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex h-full min-h-0 w-full flex-col bg-white dark:bg-[#1a1a1a]">
-            <div className="flex shrink-0 items-center justify-between border-b border-black/5 px-5 py-4 dark:border-white/5">
-              <div className="flex min-w-0 items-center gap-2">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900/30">
-                  {galleryKind === 'media' ? (
-                    <ImageIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  ) : galleryKind === 'file' ? (
-                    <File className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  ) : (
-                    <Link2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  )}
-                </div>
-                <h3 className="truncate text-[17px] font-bold text-black dark:text-white">
-                  {galleryKind === 'media'
-                    ? 'Ảnh/Video'
-                    : galleryKind === 'file'
-                      ? 'File đã gửi'
-                      : 'Link đã gửi'}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setGalleryKind(null)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/5 transition-colors hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
-                title="Quay lại thông tin"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
             <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4">
               {galleryLoading ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">Đang tải...</p>
@@ -951,77 +1059,6 @@ export function ConversationInfoPanel({
       ) : bulletinModalMode !== null ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-[#1a1a1a]">
-            <div className="flex shrink-0 items-center justify-between border-b border-black/5 px-5 py-4 dark:border-white/5">
-              <div className="flex min-w-0 items-center gap-2">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900/30">
-                  {bulletinModalMode === 'reminders' ? (
-                    <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  ) : (
-                    <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  )}
-                </div>
-                <h3 className="truncate text-[17px] font-bold text-black dark:text-white">
-                  {bulletinModalMode === 'reminders'
-                    ? 'Danh sách nhắc hẹn'
-                    : 'Ghi chú, ghim, bình chọn'}
-                </h3>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                {showBulletinAddMenu ? (
-                  <div className="relative flex justify-end" ref={bulletinAddRef}>
-                    <button
-                      type="button"
-                      onClick={() => setBulletinAddOpen((v) => !v)}
-                      className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
-                      aria-label="Thêm bình chọn hoặc công việc"
-                      aria-expanded={bulletinAddOpen}
-                    >
-                      <Plus className="h-5 w-5" strokeWidth={2.2} />
-                    </button>
-                    {bulletinAddOpen && (
-                      <div className="absolute right-0 top-full z-20 mt-1 min-w-[168px] rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-[#2a2a2a]">
-                        {showBulletinPollAdd ? (
-                          <button
-                            type="button"
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
-                            onClick={() => {
-                              onOpenPollModalFromPanel?.();
-                              setBulletinAddOpen(false);
-                            }}
-                          >
-                            Tạo bình chọn
-                          </button>
-                        ) : null}
-                        {showBulletinTaskAdd ? (
-                          <button
-                            type="button"
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
-                            onClick={() => {
-                              onOpenTaskModalFromPanel?.();
-                              setBulletinAddOpen(false);
-                            }}
-                          >
-                            Tạo công việc
-                          </button>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBulletinModalMode(null);
-                    setBulletinAddOpen(false);
-                  }}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/5 transition-colors hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
-                  title="Quay lại thông tin"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-
             {bulletinModalMode === 'reminders' ? (
               <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-4">
                 {loading?.tasks && reminderFeedItems.length === 0 ? (
@@ -1058,7 +1095,6 @@ export function ConversationInfoPanel({
                     [
                       { id: 'all' as const, label: 'Tất cả' },
                       { id: 'pinned' as const, label: 'Tin ghim' },
-                      { id: 'notes' as const, label: 'Ghi chú' },
                       { id: 'polls' as const, label: 'Bình chọn' },
                     ] as const
                   ).map((tab) => (
@@ -1081,26 +1117,140 @@ export function ConversationInfoPanel({
                 </div>
                 <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-4">
                   {bulletinTab === 'pinned' ? (
-                    <p className="px-2 py-8 text-center text-[13px] text-muted-foreground">
-                      Chưa có tin ghim trong hội thoại.
-                    </p>
+                    pinnedMessages.length === 0 ? (
+                      <p className="px-2 py-8 text-center text-[13px] text-muted-foreground">
+                        Chưa có tin ghim trong hội thoại.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pinnedMessages.map((m) => {
+                          const who = String(m.senderDisplayName ?? '').trim() || 'Thành viên';
+                          const when = formatBulletinFooterTime(m.createdAt);
+                          const content = String(m.content ?? '').trim();
+                          const preview =
+                            content.length > 180 ? `${content.slice(0, 180)}…` : content;
+                          return (
+                            <button
+                              key={m.messageId}
+                              type="button"
+                              onClick={() => {
+                                setBulletinModalMode(null);
+                                setBulletinAddOpen(false);
+                                setShowConversationSearch(false);
+                                onJumpToMessage?.(String(m.messageId));
+                              }}
+                              className="w-full rounded-2xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:bg-black/[0.03] dark:border-white/10 dark:bg-[#242424] dark:hover:bg-white/[0.04]"
+                              title="Nhấn để mở tin ghim"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Pin className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                                <p className="min-w-0 flex-1 truncate text-[13px] font-bold text-foreground">
+                                  {who}
+                                </p>
+                                <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
+                                  {when || '—'}
+                                </span>
+                              </div>
+                              <div className="mt-2 text-[13px] font-medium leading-snug text-foreground/85 whitespace-pre-line">
+                                {preview || '…'}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )
                   ) : bulletinTab === 'polls' && loading?.polls ? (
                     <p className="py-4 text-center text-xs text-muted-foreground">
                       Đang tải bình chọn...
                     </p>
-                  ) : bulletinTab === 'notes' && loading?.tasks ? (
-                    <p className="py-4 text-center text-xs text-muted-foreground">Đang tải...</p>
-                  ) : bulletinTab === 'all' &&
+                  ) : bulletinTab === 'all' ? (
                     (loading?.polls || loading?.tasks) &&
-                    bulletinFeedItems.length === 0 ? (
-                    <p className="py-4 text-center text-xs text-muted-foreground">Đang tải...</p>
+                    pinnedMessages.length === 0 &&
+                    pollFeedItems.length === 0 ? (
+                      <p className="py-4 text-center text-xs text-muted-foreground">Đang tải...</p>
+                    ) : pinnedMessages.length === 0 && pollFeedItems.length === 0 ? (
+                      <p className="px-2 py-8 text-center text-[13px] text-muted-foreground">
+                        Chưa có tin ghim hay bình chọn.
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        {pinnedMessages.length > 0 ? (
+                          <div className="space-y-2">
+                            <div className="px-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                              Tin ghim
+                            </div>
+                            <div className="space-y-2">
+                              {pinnedMessages.map((m) => {
+                                const who =
+                                  String(m.senderDisplayName ?? '').trim() || 'Thành viên';
+                                const when = formatBulletinFooterTime(m.createdAt);
+                                const content = String(m.content ?? '').trim();
+                                const preview =
+                                  content.length > 180 ? `${content.slice(0, 180)}…` : content;
+                                return (
+                                  <button
+                                    key={m.messageId}
+                                    type="button"
+                                    onClick={() => {
+                                      setBulletinModalMode(null);
+                                      setBulletinAddOpen(false);
+                                      setShowConversationSearch(false);
+                                      onJumpToMessage?.(String(m.messageId));
+                                    }}
+                                    className="w-full rounded-2xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:bg-black/[0.03] dark:border-white/10 dark:bg-[#242424] dark:hover:bg-white/[0.04]"
+                                    title="Nhấn để mở tin ghim"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <Pin className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                                      <p className="min-w-0 flex-1 truncate text-[13px] font-bold text-foreground">
+                                        {who}
+                                      </p>
+                                      <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
+                                        {when || '—'}
+                                      </span>
+                                    </div>
+                                    <div className="mt-2 whitespace-pre-line text-[13px] font-medium leading-snug text-foreground/85">
+                                      {preview || '…'}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {pollFeedItems.length > 0 ? (
+                          <div className="space-y-2">
+                            <div className="px-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                              Bình chọn
+                            </div>
+                            <div className="space-y-3">
+                              {pollFeedItems.map((item) => (
+                                <BulletinCardRow
+                                  key={`${item.kind}-${item.id}`}
+                                  item={item}
+                                  memberAvatarById={memberAvatarById}
+                                  currentUserId={currentUserId}
+                                  onVotePoll={onVotePoll}
+                                  onOpenPollVote={onOpenPollVote}
+                                  onAddPollOption={onAddPollOption}
+                                  onClosePoll={onClosePoll}
+                                  onTaskJoined={onTaskJoined}
+                                  onEditTaskFromBulletin={onEditTaskFromBulletin}
+                                  onDeleteTaskFromBulletin={onDeleteTaskFromBulletin}
+                                  taskMutating={taskActionBusy}
+                                  focusTaskId={focusTaskId}
+                                  focusFlashNonce={focusFlashNonce}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
                   ) : filteredBulletinItems.length === 0 ? (
                     <p className="px-2 py-8 text-center text-[13px] text-muted-foreground">
-                      {bulletinTab === 'polls'
-                        ? 'Chưa có bình chọn.'
-                        : bulletinTab === 'notes'
-                          ? 'Chưa có công việc.'
-                          : 'Chưa có bình chọn hay công việc.'}
+                      {bulletinTab === 'polls' ? 'Chưa có bình chọn.' : 'Chưa có tin ghim.'}
                     </p>
                   ) : (
                     filteredBulletinItems.map((item) => (
@@ -1149,7 +1299,7 @@ export function ConversationInfoPanel({
             open
             onClose={() => setShowGroupManagement(false)}
             conversationId={activeConversation.conversationId}
-            canEdit={canModerateMembers}
+            canEdit={currentUserRole === 'owner'}
           />
         </div>
       ) : (
@@ -1299,7 +1449,7 @@ export function ConversationInfoPanel({
                       setShowConversationSearch(false);
                       setShowGroupManagement(true);
                     }}
-                    className="hidden min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group lg:flex"
+                    className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group"
                     title="Quản lý nhóm"
                   >
                     <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
@@ -1423,7 +1573,7 @@ export function ConversationInfoPanel({
                   className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                 >
                   <FileText className="h-4 w-4 shrink-0 opacity-70" />
-                  Ghi chú, ghim, bình chọn
+                  Tin ghim & Bình chọn
                 </button>
               </div>
             )}
@@ -1480,7 +1630,7 @@ export function ConversationInfoPanel({
 
           {activeConversation?.type === 'group' && !activeConversation.isDeleted && (
             <div className="p-4 bg-white dark:bg-transparent mt-2 flex flex-col gap-2 justify-center">
-              {isOwner && (
+              {isOwnerEffective && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1510,7 +1660,7 @@ export function ConversationInfoPanel({
                     toast.warning(leaveMinMembersHint);
                     return;
                   }
-                  if (isOwner) {
+                  if (isOwnerEffective) {
                     if (successorCandidates.length === 0) {
                       toast.warning(
                         'Không còn thành viên khác để chuyển quyền. Hãy giải tán nhóm.',

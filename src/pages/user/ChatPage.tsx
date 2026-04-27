@@ -515,6 +515,7 @@ export default function ChatPage() {
       onApproveMember={groupController.handleApproveRequest}
       onRejectMember={groupController.handleRejectRequest}
       onKickMember={groupController.handleKickMember}
+      onDemoteAdminToMember={groupController.handleDemoteAdminToMember}
       busyMemberActions={{
         approving: groupActionLoading.approveRequest,
         rejecting: groupActionLoading.rejectRequest,

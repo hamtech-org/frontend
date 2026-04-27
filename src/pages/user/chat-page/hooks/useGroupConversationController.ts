@@ -307,8 +307,14 @@ export function useGroupConversationController({
 
   const handleDeleteGroup = useCallback(async () => {
     if (!activeConversationId) return;
-    if (currentUserRole !== 'owner') {
-      toast.error('Chỉ Trưởng nhóm mới có quyền giải tán nhóm');
+    // Hard guard: only OWNER can disband group.
+    const roleFromMembers = groupMembers.find((m) => m.userId === currentUserId)?.role;
+    const effectiveRole = (currentUserRole ?? roleFromMembers ?? 'member') as
+      | 'owner'
+      | 'admin'
+      | 'member';
+    if (effectiveRole !== 'owner') {
+      toast.error('Bạn không có quyền giải tán nhóm');
       return;
     }
     if (!window.confirm('Giải tán nhóm?')) return;
@@ -323,7 +329,7 @@ export function useGroupConversationController({
     } finally {
       setActionBusy('deleteGroup', false);
     }
-  }, [activeConversationId, currentUserRole, navigate, setActionBusy]);
+  }, [activeConversationId, currentUserId, currentUserRole, groupMembers, navigate, setActionBusy]);
 
   const handleLeaveGroup = useCallback(async () => {
     if (!activeConversationId) return;
@@ -871,15 +877,15 @@ export function useGroupConversationController({
         return;
       }
       if (!newOwnerUserId?.trim()) return;
-      if (!window.confirm('Chuyển quyền trưởng nhóm? Bạn sẽ trở thành phó nhóm sau khi chuyển.')) {
-        return;
-      }
       setActionBusy('changeRole', true);
       const before = groupMembers;
       setGroupMembers((prev) =>
         prev.map((m) => {
-          if (m.userId === newOwnerUserId) return { ...m, role: 'owner' as const };
-          if (m.userId === currentUserId) return { ...m, role: 'admin' as const };
+          // Ensure only ONE owner after transfer.
+          if (String(m.userId) === String(newOwnerUserId)) return { ...m, role: 'owner' as const };
+          // Demote any existing owners (usually the current owner) to admin.
+          if (m.role === 'owner') return { ...m, role: 'admin' as const };
+          // Keep others as-is.
           return m;
         }),
       );
@@ -905,6 +911,52 @@ export function useGroupConversationController({
       fetchGroupMembers,
       refetchConversations,
       setGroupMembers,
+    ],
+  );
+
+  const handleDemoteAdminToMember = useCallback(
+    async (userId: string) => {
+      if (!activeConversationId) return;
+      const currentRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
+      if (currentRole !== 'owner') {
+        toast.error('Chỉ trưởng nhóm mới có thể đổi vai trò');
+        return;
+      }
+      if (!userId?.trim()) return;
+      const target = groupMembers.find((m) => m.userId === userId);
+      if (!target) return;
+      if (target.role !== 'admin') {
+        toast.info('Người này không phải phó nhóm');
+        return;
+      }
+
+      setActionBusy('changeRole', true);
+      const before = groupMembers;
+      setGroupMembers((prev) =>
+        prev.map((m) => (m.userId === userId ? { ...m, role: 'member' as const } : m)),
+      );
+      try {
+        await groupApi.changeMemberRole(activeConversationId, userId, 'member');
+        toast.success('Đã hạ phó nhóm xuống thành viên');
+        void fetchGroupMembers(activeConversationId);
+        void refetchConversations?.();
+      } catch (err) {
+        setGroupMembers(before);
+        toast.error('Không thể đổi vai trò. Thử lại sau.');
+        console.error('Failed to demote admin:', err);
+        throw err;
+      } finally {
+        setActionBusy('changeRole', false);
+      }
+    },
+    [
+      activeConversationId,
+      groupMembers,
+      currentUserId,
+      setActionBusy,
+      setGroupMembers,
+      fetchGroupMembers,
+      refetchConversations,
     ],
   );
 
@@ -1143,8 +1195,12 @@ export function useGroupConversationController({
   const handleKickMember = useCallback(
     async (userId: string) => {
       if (!activeConversationId) return;
-      const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
-      if (!isAdminOrOwner) {
+      const roleFromMembers = groupMembers.find((m) => m.userId === currentUserId)?.role;
+      const effectiveRole = (currentUserRole ?? roleFromMembers ?? 'member') as
+        | 'owner'
+        | 'admin'
+        | 'member';
+      if (effectiveRole !== 'owner') {
         toast.error('Bạn không có quyền mời thành viên ra khỏi nhóm');
         return;
       }
@@ -1163,7 +1219,14 @@ export function useGroupConversationController({
         setActionBusy('removeMember', false);
       }
     },
-    [activeConversationId, currentUserRole, groupMembers, setActionBusy, setGroupMembers],
+    [
+      activeConversationId,
+      currentUserId,
+      currentUserRole,
+      groupMembers,
+      setActionBusy,
+      setGroupMembers,
+    ],
   );
 
   const handleVotePoll = useCallback(
@@ -1322,6 +1385,7 @@ export function useGroupConversationController({
       openEditTaskFromGroupTask,
       handleTaskJoined,
       handleTransferGroupOwner,
+      handleDemoteAdminToMember,
       openAISummaryFromPanel,
       handleRerunAISummary,
       handleCreatePoll,
@@ -1351,6 +1415,7 @@ export function useGroupConversationController({
       openEditTaskFromGroupTask,
       handleTaskJoined,
       handleTransferGroupOwner,
+      handleDemoteAdminToMember,
       openAISummaryFromPanel,
       handleRerunAISummary,
       handleCreatePoll,
