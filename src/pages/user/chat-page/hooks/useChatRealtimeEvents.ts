@@ -99,7 +99,6 @@ export function useChatRealtimeEvents({
           if (toast.isActive(toastId)) return;
           toast.info(question ? `Có bình chọn mới: ${question}` : 'Có bình chọn mới', {
             toastId,
-            autoClose: 7000,
             onClick: () => {
               if (msg.conversationId !== activeConversationIdRef.current) return;
               setActivePollId(pollId);
@@ -116,7 +115,6 @@ export function useChatRealtimeEvents({
           if (toast.isActive(toastId)) return;
           toast.info(title ? `Có công việc mới: ${title}` : 'Có công việc mới', {
             toastId,
-            autoClose: 6500,
           });
           return;
         }
@@ -131,7 +129,7 @@ export function useChatRealtimeEvents({
             title
               ? `${actor || 'Một thành viên'} đã tham gia công việc: ${title}`
               : `${actor || 'Một thành viên'} đã tham gia công việc`,
-            { toastId, autoClose: 5500 },
+            { toastId },
           );
           return;
         }

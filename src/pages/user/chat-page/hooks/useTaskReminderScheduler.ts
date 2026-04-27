@@ -266,8 +266,7 @@ export function useTaskReminderScheduler({
   useEffect(() => {
     if (!conversationId) return;
 
-    // Remove deadline reminders: only keep the "task_assigned" card.
-    // Clear any existing reminder timers.
+    // Clear any existing timers (re-schedule on each tasks change).
     const timers = timersRef.current;
     timers.forEach((t) => clearTimeout(t));
     timers.clear();

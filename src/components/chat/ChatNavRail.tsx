@@ -1,13 +1,4 @@
-import {
-  Briefcase,
-  Cloud,
-  Contact,
-  FolderOpen,
-  Home,
-  MessageCircle,
-  Settings,
-  Sticker,
-} from 'lucide-react';
+import { Contact, Home, MessageCircle } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import type { NavigateFunction } from 'react-router-dom';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -147,29 +138,6 @@ export function ChatNavRail({
 
           <NavRailButton title="Về Bảng Tin" onClick={() => navigate('/')}>
             <Home className={isTabletOrDesktop ? 'size-6' : 'size-5'} />
-          </NavRailButton>
-
-          <NavRailButton title="Kho lưu trữ đám mây">
-            <Cloud className={isTabletOrDesktop ? 'size-6' : 'size-5'} />
-          </NavRailButton>
-
-          <NavRailButton title="Tệp & Tài liệu">
-            <FolderOpen className={isTabletOrDesktop ? 'size-[22px]' : 'size-5'} />
-          </NavRailButton>
-
-          <NavRailButton title="Nhãn dán">
-            <Sticker className={isTabletOrDesktop ? 'size-[22px]' : 'size-5'} />
-          </NavRailButton>
-
-          <NavRailButton title="Công việc">
-            <Briefcase className={isTabletOrDesktop ? 'size-[22px]' : 'size-5'} />
-          </NavRailButton>
-        </div>
-
-        {/* Settings ở cuối */}
-        <div className="mt-auto w-full flex justify-center pb-2">
-          <NavRailButton title="Cài đặt">
-            <Settings className={isTabletOrDesktop ? 'size-6' : 'size-5'} />
           </NavRailButton>
         </div>
       </div>

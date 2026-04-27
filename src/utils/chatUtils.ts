@@ -43,7 +43,10 @@ type SystemJsonPreviewCtx = {
 };
 
 /** Một dòng tiếng Việt cho sidebar / lastMessage từ `content` JSON (task, poll, …). */
-export function lastMessageLineFromSystemJson(raw: string, ctx: SystemJsonPreviewCtx): string | null {
+export function lastMessageLineFromSystemJson(
+  raw: string,
+  ctx: SystemJsonPreviewCtx,
+): string | null {
   const trimmed = (raw ?? '').trim();
   if (!trimmed.startsWith('{')) return null;
   try {
@@ -55,9 +58,16 @@ export function lastMessageLineFromSystemJson(raw: string, ctx: SystemJsonPrevie
     };
     const kind = String(obj?.kind ?? '');
     const actorId = String(obj?.actor?.userId ?? ctx.senderId ?? '');
-    const actorName = String(obj?.actor?.name ?? ctx.senderDisplayName ?? 'Ai đó').trim() || 'Ai đó';
-    const who =
-      ctx.currentUserId && actorId && actorId === ctx.currentUserId ? 'Bạn' : actorName;
+    const actorNameRaw = String(obj?.actor?.name ?? '').trim();
+    const senderNameFallback = String(ctx.senderDisplayName ?? '').trim();
+    // Một số payload cũ set `actor.name = "Hệ thống"` → ưu tiên tên thật từ senderDisplayName.
+    const actorName =
+      actorNameRaw &&
+      actorNameRaw.toLowerCase() !== 'hệ thống' &&
+      actorNameRaw.toLowerCase() !== 'he thong'
+        ? actorNameRaw
+        : senderNameFallback || 'Ai đó';
+    const who = ctx.currentUserId && actorId && actorId === ctx.currentUserId ? 'Bạn' : actorName;
 
     if (kind === 'task_joined') {
       const title = String(obj?.task?.title ?? '').trim();
@@ -75,6 +85,10 @@ export function lastMessageLineFromSystemJson(raw: string, ctx: SystemJsonPrevie
       const title = String(obj?.task?.title ?? '').trim();
       return title ? `${who} đã hủy công việc «${title}»` : `${who} đã hủy một công việc`;
     }
+    if (kind === 'task_due') {
+      const title = String(obj?.task?.title ?? '').trim();
+      return title ? `${who} đã đến hạn công việc "${title}"` : `${who} đã đến hạn một công việc`;
+    }
     if (kind === 'poll_created') {
       const question = String(obj?.poll?.question ?? '').trim();
       return question ? `${who} đã tạo một bình chọn: ${question}` : `${who} đã tạo một bình chọn`;
@@ -85,7 +99,9 @@ export function lastMessageLineFromSystemJson(raw: string, ctx: SystemJsonPrevie
     }
     if (kind === 'poll_vote_changed') {
       const optionText = String(obj?.poll?.optionText ?? '').trim();
-      return optionText ? `${who} đã thay đổi bình chọn: ${optionText}` : `${who} đã thay đổi bình chọn`;
+      return optionText
+        ? `${who} đã thay đổi bình chọn: ${optionText}`
+        : `${who} đã thay đổi bình chọn`;
     }
     if (kind === 'poll_unvoted') {
       const optionText = String(obj?.poll?.optionText ?? '').trim();
@@ -107,7 +123,16 @@ export function lastMessageLineFromSystemJson(raw: string, ctx: SystemJsonPrevie
 
 /** Dòng `content` hiển thị trên sidebar / lastMessage (tin đầy đủ từ socket hoặc API). */
 export function lastMessagePreviewContentFromMessage(
-  msg: Pick<IMessage, 'content' | 'type' | 'isRecalled' | 'isDeleted' | 'mediaOriginalName' | 'senderId' | 'senderDisplayName'>,
+  msg: Pick<
+    IMessage,
+    | 'content'
+    | 'type'
+    | 'isRecalled'
+    | 'isDeleted'
+    | 'mediaOriginalName'
+    | 'senderId'
+    | 'senderDisplayName'
+  >,
   viewerUserId?: string,
 ): string {
   if (msg.isRecalled) return 'Tin nhắn đã được thu hồi';
@@ -231,7 +256,10 @@ export function formatPinnedMessagePreviewLine(msg: IMessage): string {
 }
 
 /** Dòng preview tin cuối trên danh sách hội thoại (direct / group, Bạn vs tên). */
-export function formatConversationListLastPreview(conv: IConversation, currentUserId: string): string {
+export function formatConversationListLastPreview(
+  conv: IConversation,
+  currentUserId: string,
+): string {
   const lm = conv.lastMessage;
   if (!lm) return 'Chưa có tin nhắn';
   const content = lm.content ?? '';
@@ -263,7 +291,13 @@ export function formatConversationListLastPreview(conv: IConversation, currentUs
 
   const systemPreview = formatSystemPreview();
   // Với system message dạng sự kiện (giống Zalo), trả về câu hoàn chỉnh, không prefix "Tên:"
-  if (systemPreview) return systemPreview;
+  if (systemPreview) {
+    // Đồng bộ UI: nếu chính mình là người thực hiện → hiển thị "Bạn: ..."
+    if (systemPreview.startsWith('Bạn ')) {
+      return `Bạn: ${systemPreview.slice('Bạn '.length)}`;
+    }
+    return systemPreview;
+  }
 
   const previewText = normalizeLastMessagePreview(
     lm.type,

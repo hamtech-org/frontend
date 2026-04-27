@@ -12,10 +12,20 @@ import {
   messageStatusUpdated,
   typingStarted,
   typingStopped,
+  bumpGroupBoardRefresh,
 } from '@/store/slices/chatSlice';
 import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
-import type { ConversationType, IConversation, IGroupSettings, IMessage, MessageStatus } from '@/types/chat.types';
-import { lastMessagePreviewContentFromMessage, sortConversationsForSidebar } from '@/utils/chatUtils';
+import type {
+  ConversationType,
+  IConversation,
+  IGroupSettings,
+  IMessage,
+  MessageStatus,
+} from '@/types/chat.types';
+import {
+  lastMessagePreviewContentFromMessage,
+  sortConversationsForSidebar,
+} from '@/utils/chatUtils';
 
 function applyMessageStatusPatch(
   dispatch: AppDispatch,
@@ -30,7 +40,8 @@ function applyMessageStatusPatch(
     dispatch(messageStatusUpdated({ conversationId, messageId, status }));
     return;
   }
-  const msgs = chatApi.endpoints.getMessages.select({ conversationId })(store.getState())?.data?.data ?? [];
+  const msgs =
+    chatApi.endpoints.getMessages.select({ conversationId })(store.getState())?.data?.data ?? [];
   const pivot = msgs.find((m) => String(m.messageId) === String(messageId));
   if (!pivot) {
     patchMessageInCache(conversationId, messageId, { status: 'read' });
@@ -81,6 +92,24 @@ export function useChatSocketListeners(
     const handleNewMessage = (data: unknown) => {
       const msg = data as IMessage;
       dispatch(messageReceived(msg));
+      const cid = String(msg.conversationId ?? '').trim();
+      const mid = String(msg.messageId ?? '').trim();
+      if (cid && mid) {
+        try {
+          dispatch(
+            chatApi.util.updateQueryData('getMessages', { conversationId: cid }, (draft) => {
+              if (!draft?.data) return;
+              if (draft.data.some((m) => String(m.messageId) === mid)) return;
+              draft.data.push(msg as IMessage);
+              draft.data.sort(
+                (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+              );
+            }),
+          );
+        } catch {
+          /* chưa subscribe getMessages cho conv này — buffer Redux vẫn nhận qua messageReceived */
+        }
+      }
       if (
         currentUserId &&
         msg.senderId !== currentUserId &&
@@ -113,7 +142,7 @@ export function useChatSocketListeners(
             }
           }
           draft.data = sortConversationsForSidebar(draft.data);
-        })
+        }),
       );
     };
 
@@ -209,6 +238,7 @@ export function useChatSocketListeners(
       const conversationId = p?.conversationId;
       const groupSettings = p?.groupSettings;
       if (!conversationId || !groupSettings) return;
+      dispatch(bumpGroupBoardRefresh({ conversationId: String(conversationId) }));
       dispatch(
         chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
           if (!draft?.data) return;
@@ -237,7 +267,11 @@ export function useChatSocketListeners(
       // Server có thể emit `groupId` hoặc `conversationId` tùy nơi gọi.
       // Giữ code cũ nhưng fallback để đảm bảo invalidate đúng.
       const groupId = data?.groupId ?? data?.conversationId;
-      const memberCountFromSocket = typeof data?.memberCount === 'number' ? data.memberCount : undefined;
+      if (groupId) {
+        dispatch(bumpGroupBoardRefresh({ conversationId: String(groupId) }));
+      }
+      const memberCountFromSocket =
+        typeof data?.memberCount === 'number' ? data.memberCount : undefined;
       if (groupId && memberCountFromSocket !== undefined) {
         dispatch(
           chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
@@ -252,30 +286,47 @@ export function useChatSocketListeners(
         return;
       }
       // Invalidate các tags liên quan để FE tự động fetch lại dữ liệu mới nhất
-      if (data.type === 'poll') dispatch(chatApi.util.invalidateTags([{ type: 'Polls', id: groupId }]));
-      if (data.type === 'task') dispatch(chatApi.util.invalidateTags([{ type: 'Tasks', id: groupId }]));
-      if (data.type === 'request') dispatch(chatApi.util.invalidateTags([{ type: 'GroupRequests', id: groupId }]));
-      
+      if (data.type === 'poll')
+        dispatch(chatApi.util.invalidateTags([{ type: 'Polls', id: groupId }]));
+      if (data.type === 'task')
+        dispatch(chatApi.util.invalidateTags([{ type: 'Tasks', id: groupId }]));
+      if (data.type === 'request')
+        dispatch(chatApi.util.invalidateTags([{ type: 'GroupRequests', id: groupId }]));
+
       // Mặc định luôn refresh Conversations để cập nhật memberCount hoặc status
       dispatch(chatApi.util.invalidateTags(['Conversations']));
       if (groupId === activeConversationIdRef.current) {
-        dispatch(chatApi.util.invalidateTags([{ type: 'Conversations', id: `MEMBERS-${groupId}` }]));
+        dispatch(
+          chatApi.util.invalidateTags([{ type: 'Conversations', id: `MEMBERS-${groupId}` }]),
+        );
       }
     };
 
     /** Cùng ref cho on/off — không dùng `off(event)` không handler (sẽ xóa cả listener của ChatPage / module khác). */
-    const onGroupMemberJoinedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'member' });
-    const onGroupMemberLeftGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'member' });
-    const onGroupMembersAddedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'member' });
-    const onGroupMemberRemovedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'member' });
-    const onGroupRoleChangedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'member' });
-    const onGroupJoinRequestNewGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'request' });
-    const onGroupJoinRequestUpdatedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'request' });
-    const onGroupPollNewGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'poll' });
-    const onGroupPollUpdatedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'poll' });
-    const onGroupTaskNewGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'task' });
-    const onGroupTaskUpdatedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'task' });
-    const onGroupTaskDeletedGU = (data: unknown) => handleGroupUpdate({ ...(data as object), type: 'task' });
+    const onGroupMemberJoinedGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'member' });
+    const onGroupMemberLeftGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'member' });
+    const onGroupMembersAddedGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'member' });
+    const onGroupMemberRemovedGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'member' });
+    const onGroupRoleChangedGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'member' });
+    const onGroupJoinRequestNewGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'request' });
+    const onGroupJoinRequestUpdatedGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'request' });
+    const onGroupPollNewGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'poll' });
+    const onGroupPollUpdatedGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'poll' });
+    const onGroupTaskNewGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'task' });
+    const onGroupTaskUpdatedGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'task' });
+    const onGroupTaskDeletedGU = (data: unknown) =>
+      handleGroupUpdate({ ...(data as object), type: 'task' });
     const onGroupRecapNew = () => {
       dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
@@ -318,7 +369,7 @@ export function useChatSocketListeners(
       socketService.off('message:pin_updated', handlePinUpdated);
       socketService.off('message:reacted', handleReacted);
       socketService.off('message:typing_indicator', handleTyping);
-      
+
       socketService.off('group:disbanded', handleGroupDisbanded);
       socketService.off('group:updated', handleGroupUpdate);
       socketService.off('group:settings_updated', handleGroupSettingsUpdated);

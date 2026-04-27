@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCheck, CheckSquare, Trash2, Users, X } from 'lucide-react';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
@@ -48,15 +49,110 @@ export function TaskModal({
   onDeleteTask,
   submitBusy = false,
 }: TaskModalProps) {
+  const getMinDeadlineNow = () => {
+    // datetime-local has minute precision. Lock to current minute (no past minutes/hours).
+    const now = new Date();
+    now.setSeconds(0, 0);
+    return now;
+  };
+
+  const isPastDeadline = (raw: string) => {
+    const s = String(raw ?? '').trim();
+    if (!s) return false;
+    const picked = new Date(s);
+    if (Number.isNaN(picked.getTime())) return false;
+    return picked.getTime() < getMinDeadlineNow().getTime();
+  };
+
   const labelFor = (id: string, name: string) => {
     if (currentUserId && id === currentUserId) return 'Bạn';
     return name;
   };
+  const roleLabel = (role?: string) => {
+    if (role === 'owner') return 'Trưởng nhóm';
+    if (role === 'admin') return 'Phó nhóm';
+    return 'Thành viên';
+  };
+
+  const eligibleMembers = assignToAll
+    ? members
+    : members.filter((m) => taskAssignees.includes(m.id));
+  const eligibleIdSet = new Set(eligibleMembers.map((m) => m.id));
+
+  useEffect(() => {
+    if (assignToAll) return;
+    if (!onSubtaskRowsChange) return;
+    const next = subtaskRows.filter((r) => eligibleIdSet.has(String(r.assigneeId ?? '')));
+    if (next.length !== subtaskRows.length) onSubtaskRowsChange(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignToAll, taskAssignees.join('|')]);
 
   const hasSubtasks = subtaskRows.some((r) => r.assigneeId && r.content.trim());
+  const hasAssignees = assignToAll || taskAssignees.length > 0;
+  const hasDeadline = Boolean(taskDeadline?.trim());
+  const deadlineOk = hasDeadline && !isPastDeadline(taskDeadline);
   const canSubmit =
-    taskTitle.trim().length > 0 &&
-    (hasSubtasks || assignToAll || taskAssignees.length > 0);
+    taskTitle.trim().length > 0 && deadlineOk && hasAssignees && (hasSubtasks || hasAssignees);
+
+  const todayDateStr = useMemo(() => {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }, []);
+
+  const formatHm = (d: Date) => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const [nowTimeStr, setNowTimeStr] = useState<string>(() => formatHm(getMinDeadlineNow()));
+
+  // Keep "now" ticking so min time for today is always correct.
+  useEffect(() => {
+    if (!open) return;
+    const tick = () => setNowTimeStr(formatHm(getMinDeadlineNow()));
+    tick();
+    const t = window.setInterval(tick, 15_000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const parseDeadlineParts = (raw: string) => {
+    const s = String(raw ?? '').trim();
+    if (!s) return { date: '', time: '' };
+    const [date, time] = s.split('T');
+    return { date: date ?? '', time: (time ?? '').slice(0, 5) };
+  };
+
+  const buildDeadline = (date: string, time: string) => {
+    const d = String(date ?? '').trim();
+    const t = String(time ?? '').trim();
+    if (!d) return '';
+    if (!t) return `${d}T${nowTimeStr}`;
+    return `${d}T${t}`;
+  };
+
+  const parts = parseDeadlineParts(taskDeadline);
+  const selectedDate = parts.date || '';
+  const selectedTime = parts.time || '';
+  const minDate = todayDateStr;
+  const minTimeForSelectedDate = selectedDate === todayDateStr ? nowTimeStr : '00:00';
+
+  // Khi mở modal tạo mới: set deadline mặc định = hôm nay + giờ hiện tại.
+  // Nếu đang mở mà deadline lỡ ở quá khứ: auto kéo lên min hợp lệ.
+  useEffect(() => {
+    if (!open) return;
+    const hasValue = Boolean(taskDeadline && taskDeadline.trim());
+    if (!hasValue && !isEditing) {
+      onTaskDeadlineChange(buildDeadline(todayDateStr, nowTimeStr));
+      return;
+    }
+    if (hasValue && isPastDeadline(taskDeadline)) {
+      onTaskDeadlineChange(buildDeadline(todayDateStr, nowTimeStr));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const resetAndClose = () => {
     onClose();
@@ -121,12 +217,51 @@ export function TaskModal({
                 <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
                   Thời hạn
                 </label>
-                <input
-                  type="datetime-local"
-                  value={taskDeadline}
-                  onChange={(e) => onTaskDeadlineChange(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-green-500/50 text-[14px] font-medium transition-all text-black dark:text-white"
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="mb-1 text-[12px] font-bold text-muted-foreground">Ngày</div>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      min={minDate}
+                      onChange={(e) => {
+                        const nextDate = e.target.value;
+                        const nextTime =
+                          nextDate === todayDateStr && selectedTime && selectedTime < nowTimeStr
+                            ? nowTimeStr
+                            : selectedTime || nowTimeStr;
+                        onTaskDeadlineChange(buildDeadline(nextDate, nextTime));
+                      }}
+                      className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-green-500/50 text-[14px] font-medium transition-all text-black dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-[12px] font-bold text-muted-foreground">
+                      Thời gian
+                    </div>
+                    <input
+                      type="time"
+                      value={selectedTime}
+                      min={minTimeForSelectedDate}
+                      onChange={(e) => {
+                        const nextTime = e.target.value;
+                        const fixedTime =
+                          selectedDate === todayDateStr && nextTime < nowTimeStr
+                            ? nowTimeStr
+                            : nextTime;
+                        onTaskDeadlineChange(
+                          buildDeadline(selectedDate || todayDateStr, fixedTime),
+                        );
+                      }}
+                      className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-green-500/50 text-[14px] font-medium transition-all text-black dark:text-white"
+                    />
+                  </div>
+                </div>
+                {taskDeadline && isPastDeadline(taskDeadline) ? (
+                  <div className="mt-2 text-[12px] font-semibold text-orange-600 dark:text-orange-400">
+                    Thời hạn phải lớn hơn thời gian hiện tại.
+                  </div>
+                ) : null}
               </div>
               <div>
                 <label className="text-[12px] font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
@@ -180,8 +315,10 @@ export function TaskModal({
                           checked={taskAssignees.includes(member.id)}
                           onChange={(e) => {
                             if (assignToAll) return;
-                            if (e.target.checked) onTaskAssigneesChange([...taskAssignees, member.id]);
-                            else onTaskAssigneesChange(taskAssignees.filter((id) => id !== member.id));
+                            if (e.target.checked)
+                              onTaskAssigneesChange([...taskAssignees, member.id]);
+                            else
+                              onTaskAssigneesChange(taskAssignees.filter((id) => id !== member.id));
                           }}
                           disabled={assignToAll}
                           className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600 focus:ring-0 cursor-pointer appearance-none checked:bg-green-500 checked:border-green-500 transition-colors"
@@ -200,7 +337,9 @@ export function TaskModal({
                         <p className="font-semibold text-[14px] text-black dark:text-white truncate group-hover:text-green-600 transition-colors">
                           {labelFor(member.id, member.name)}
                         </p>
-                        <p className="text-[11px] text-muted-foreground">{member.role}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {roleLabel(member.role)}
+                        </p>
                       </div>
                     </label>
                   ))}
@@ -211,11 +350,11 @@ export function TaskModal({
                   Ghi chú thêm
                 </label>
                 <textarea
-                  rows={3}
+                  rows={5}
                   placeholder="Nhập mô tả hoặc ghi chú..."
                   value={taskNote}
                   onChange={(e) => onTaskNoteChange(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-green-500/50 resize-none text-[14px] font-medium transition-all"
+                  className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-green-500/50 resize-y text-[14px] font-medium transition-all"
                 />
               </div>
 
@@ -224,59 +363,59 @@ export function TaskModal({
                   Công việc cụ thể theo từng người
                 </label>
                 <div className="border border-black/5 dark:border-white/10 rounded-2xl overflow-hidden divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-black/20">
-                  {(subtaskRows.length > 0 ? subtaskRows : [{ assigneeId: members[0]?.id ?? '', content: '' }]).map(
-                    (row, idx) => (
-                      <div key={idx} className="flex gap-2 px-4 py-3 items-center">
-                        <select
-                          value={row.assigneeId}
-                          onChange={(e) => {
-                            const next = [...subtaskRows];
-                            next[idx] = { ...next[idx], assigneeId: e.target.value };
-                            onSubtaskRowsChange?.(next);
-                          }}
-                          className="w-[180px] px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-500/40 outline-none text-sm"
-                        >
-                          {members.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {labelFor(m.id, m.name)}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={row.content}
-                          onChange={(e) => {
-                            const next = [...subtaskRows];
-                            next[idx] = { ...next[idx], content: e.target.value };
-                            onSubtaskRowsChange?.(next);
-                          }}
-                          placeholder="Nội dung công việc (ví dụ: Thiết kế UI)"
-                          className="flex-1 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-500/40 outline-none text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => onSubtaskRowsChange?.(subtaskRows.filter((_, i) => i !== idx))}
-                          className="w-9 h-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 transition-colors flex items-center justify-center"
-                          title="Xóa dòng"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ),
+                  {!assignToAll && eligibleMembers.length === 0 ? (
+                    <div className="px-4 py-3 text-[12px] font-semibold text-muted-foreground">
+                      Hãy chọn người ở mục{' '}
+                      <span className="font-extrabold text-foreground/80">GIAO CHO</span> để thêm
+                      công việc cụ thể.
+                    </div>
+                  ) : (
+                    (assignToAll ? members : eligibleMembers).map((m) => {
+                      const existing = subtaskRows.find(
+                        (r) => String(r.assigneeId) === String(m.id),
+                      );
+                      const value = String(existing?.content ?? '');
+                      return (
+                        <div key={m.id} className="px-4 py-3">
+                          <div className="mb-2 text-[13px] font-extrabold text-foreground">
+                            {labelFor(m.id, m.name)}
+                          </div>
+                          <textarea
+                            rows={3}
+                            value={value}
+                            onChange={(e) => {
+                              const nextText = e.target.value;
+                              const id = String(m.id);
+                              const has = subtaskRows.some((r) => String(r.assigneeId) === id);
+                              if (!nextText.trim()) {
+                                if (has) {
+                                  onSubtaskRowsChange?.(
+                                    subtaskRows.filter((r) => String(r.assigneeId) !== id),
+                                  );
+                                }
+                                return;
+                              }
+                              if (has) {
+                                onSubtaskRowsChange?.(
+                                  subtaskRows.map((r) =>
+                                    String(r.assigneeId) === id ? { ...r, content: nextText } : r,
+                                  ),
+                                );
+                              } else {
+                                onSubtaskRowsChange?.([
+                                  ...subtaskRows,
+                                  { assigneeId: id, content: nextText },
+                                ]);
+                              }
+                            }}
+                            placeholder="Nội dung công việc"
+                            className="w-full px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-500/40 outline-none text-sm resize-y leading-5 min-h-[76px]"
+                          />
+                        </div>
+                      );
+                    })
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onSubtaskRowsChange?.([
-                      ...subtaskRows,
-                      { assigneeId: members[0]?.id ?? '', content: '' },
-                    ])
-                  }
-                  className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 transition-colors text-sm font-semibold"
-                >
-                  + Thêm công việc
-                </button>
               </div>
             </div>
             <div className="px-5 py-4 border-t border-black/5 dark:border-white/5 shrink-0 flex gap-2.5">
@@ -291,7 +430,10 @@ export function TaskModal({
               <button
                 type="button"
                 disabled={!canSubmit || submitBusy}
-                onClick={() => void onSubmitTask()}
+                onClick={() => {
+                  if (!canSubmit || submitBusy) return;
+                  void onSubmitTask();
+                }}
                 className={`flex-1 py-2.5 rounded-xl font-bold text-[14px] text-white transition-all flex items-center justify-center gap-2 ${
                   canSubmit && !submitBusy
                     ? 'bg-green-500 hover:bg-green-600 shadow-md shadow-green-500/20 hover:-translate-y-0.5'

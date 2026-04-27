@@ -192,17 +192,14 @@ export function ChatMainContent(props: ChatMainContentProps) {
             onReact={messageActions.handleReactMessage}
             onJumpToLatest={scroll.onJumpToLatest}
             groupTasks={group.tasks}
-            onTaskJoined={(taskId) => {
-              group.setTasks((prev) =>
-                prev.map((task) => {
-                  if (task.taskId !== taskId) return task;
-                  const participants = Array.isArray(task.participants) ? task.participants : [];
-                  return participants.includes(core.currentUserId)
-                    ? task
-                    : { ...task, participants: [...participants, core.currentUserId] };
-                }),
-              );
-            }}
+            groupMembers={group.members}
+            onTaskJoined={
+              core.activeConversation?.type === 'group'
+                ? (taskId) => {
+                    void groupActions.handleTaskJoined(String(taskId));
+                  }
+                : undefined
+            }
             onOpenPollVote={groupActions.openPollVoteModal}
             shareTargetConversations={shareTargetConversations}
             onForwardMediaMessage={onForwardMediaMessage}

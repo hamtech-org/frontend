@@ -35,6 +35,7 @@ export const {
   useGenerateAIRecapMutation,
   useGetPollsQuery,
   useGetTasksQuery,
+  useTriggerTaskDueReminderMutation,
   useGetGroupRequestsQuery,
   useGetLatestAIRecapQuery,
   useGetGroupSettingsQuery,

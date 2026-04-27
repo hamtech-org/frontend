@@ -1,6 +1,10 @@
 import type { ChatEndpointBuilder } from '@/store/api/chat/endpointBuilder';
 import type { ApiSuccessResponse } from '@/types/api.types';
-import type { CreateTaskRequest, UpdateTaskStatusRequest } from '@/store/api/chat/types';
+import type {
+  CreateTaskRequest,
+  TriggerTaskDueReminderRequest,
+  UpdateTaskStatusRequest,
+} from '@/store/api/chat/types';
 
 export function buildTasksEndpoints(builder: ChatEndpointBuilder) {
   return {
@@ -23,6 +27,15 @@ export function buildTasksEndpoints(builder: ChatEndpointBuilder) {
         body,
       }),
       invalidatesTags: (_result, _error, { groupId }) => [{ type: 'Tasks', id: groupId }],
+    }),
+    triggerTaskDueReminder: builder.mutation<
+      ApiSuccessResponse<{ sent: boolean }>,
+      TriggerTaskDueReminderRequest
+    >({
+      query: ({ groupId, taskId }) => ({
+        url: `/chat/groups/${groupId}/tasks/${taskId}/remind-due`,
+        method: 'POST',
+      }),
     }),
   };
 }

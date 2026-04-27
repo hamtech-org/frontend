@@ -8,6 +8,8 @@ interface ChatState {
   messages: Record<string, IMessage[]>;
   typingUsers: Record<string, TypingUserEntry[]>;
   replyingTo: IMessage | null;
+  /** Tăng khi socket báo thay đổi nhóm; ChatPage refetch members/tasks/polls/requests (không cần F5). */
+  groupBoardRefreshTickByConversationId: Record<string, number>;
 }
 
 const initialState: ChatState = {
@@ -16,6 +18,7 @@ const initialState: ChatState = {
   messages: {},
   typingUsers: {},
   replyingTo: null,
+  groupBoardRefreshTickByConversationId: {},
 };
 
 const chatSlice = createSlice({
@@ -185,7 +188,11 @@ const chatSlice = createSlice({
 
     messageReacted: (
       state,
-      action: PayloadAction<{ messageId: string; conversationId: string; reactions: Record<string, string[]> }>,
+      action: PayloadAction<{
+        messageId: string;
+        conversationId: string;
+        reactions: Record<string, string[]>;
+      }>,
     ) => {
       const { messageId, conversationId, reactions } = action.payload;
       const messages = state.messages[conversationId];
@@ -207,7 +214,11 @@ const chatSlice = createSlice({
     },
     setTypingUser: (
       state,
-      action: PayloadAction<{ conversationId: string; userId: string; displayName?: string | null }>,
+      action: PayloadAction<{
+        conversationId: string;
+        userId: string;
+        displayName?: string | null;
+      }>,
     ) => {
       const { conversationId, userId, displayName } = action.payload;
       if (!state.typingUsers[conversationId]) {
@@ -236,6 +247,13 @@ const chatSlice = createSlice({
     clearReplyingTo: (state) => {
       state.replyingTo = null;
     },
+
+    bumpGroupBoardRefresh: (state, action: PayloadAction<{ conversationId: string }>) => {
+      const id = String(action.payload.conversationId ?? '').trim();
+      if (!id) return;
+      const prev = state.groupBoardRefreshTickByConversationId[id] ?? 0;
+      state.groupBoardRefreshTickByConversationId[id] = prev + 1;
+    },
   },
 });
 
@@ -259,6 +277,7 @@ export const {
   messageReacted,
   setReplyingTo,
   clearReplyingTo,
+  bumpGroupBoardRefresh,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

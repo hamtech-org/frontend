@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
+  AlarmClock,
   AlarmClockOff,
   Check,
   CheckCheck,
@@ -35,7 +36,7 @@ import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMe
 import { ForwardMediaPickerModal } from '@/components/chat/ForwardMediaPickerModal';
 import { formatFileSize } from '@/utils/fileHelper';
 import { toast } from 'react-toastify';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 
 async function downloadAuthedFile(url: string, filename: string): Promise<boolean> {
@@ -370,7 +371,6 @@ export function ChatMessageList({
   activeConversation,
   currentUserId,
   typingUsers,
-  unreadIncomingCount,
   actionMenuMsgId,
   onActionMenuMsgIdChange,
   onStartEdit,
@@ -379,7 +379,6 @@ export function ChatMessageList({
   onDelete,
   onReply,
   onReact,
-  onJumpToLatest,
   groupTasks,
   groupMembers,
   onTaskJoined,
@@ -435,6 +434,91 @@ export function ChatMessageList({
     }
   }, []);
 
+  const openTaskDetailById = useCallback(
+    (
+      taskId: string,
+      opts?: {
+        actorLabel?: string;
+        fallback?: {
+          title?: string;
+          dueDate?: string | null;
+          note?: string | null;
+          subtasks?: any[];
+        };
+      },
+    ) => {
+      const id = String(taskId ?? '').trim();
+      if (!id) return;
+
+      const t = (groupTasks ?? []).find((x: any) => String(x?.taskId) === id) as any;
+      const nameById = new Map(
+        (groupMembers ?? []).map((m) => [
+          String(m.userId),
+          String(m.displayName ?? (m as any)?.name ?? m.userId ?? '').trim(),
+        ]),
+      );
+      const subs = Array.isArray(t?.subtasks) ? (t.subtasks as any[]) : [];
+      const participantIds = Array.isArray(t?.participants)
+        ? (t.participants as unknown[]).map((x) => String(x))
+        : [];
+      const subAssigneeIds = Array.from(
+        new Set(subs.map((s) => String(s?.assigneeId ?? '').trim()).filter(Boolean)),
+      );
+      const topAssignees = Array.isArray(t?.assignees)
+        ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
+        : [];
+      const isAll = Boolean(t?.assignToAll) || Boolean(t?.broadcast);
+      const ids = subs.length > 0 ? subAssigneeIds : topAssignees;
+      const assigneeLabel = isAll
+        ? 'Cả nhóm'
+        : ids.length > 0
+          ? ids.map((x) => nameById.get(String(x)) || String(x)).join(', ')
+          : undefined;
+
+      const fb = opts?.fallback ?? {};
+      const fallbackTitle = String(fb.title ?? '').trim();
+      const fallbackNote =
+        fb.note != null && String(fb.note).trim() !== '' ? String(fb.note) : null;
+      const fallbackDue =
+        fb.dueDate != null && String(fb.dueDate).trim() !== '' ? String(fb.dueDate) : null;
+      const fallbackSubsRaw = Array.isArray(fb.subtasks) ? fb.subtasks : [];
+      const fallbackSubs = fallbackSubsRaw.map((s: any) => ({
+        assigneeName: String(s?.assigneeName ?? s?.assignee ?? s?.assigneeId ?? '').trim(),
+        content: String(s?.content ?? s?.text ?? '').trim(),
+        done: Boolean(s?.done),
+      }));
+
+      setTaskDetailTaskId(id);
+      setTaskDetail({
+        title: String(t?.title ?? fallbackTitle ?? ''),
+        note:
+          t?.description != null && String(t.description).trim() !== ''
+            ? String(t.description)
+            : fallbackNote,
+        dueDate: t?.dueDate != null ? String(t.dueDate) : fallbackDue,
+        assigneeLabel,
+        participantsCount: participantIds.length,
+        participantIds,
+        actorLabel: opts?.actorLabel,
+        subtasks:
+          subs.length > 0
+            ? subs.map((s) => ({
+                assigneeName:
+                  String(s?.assigneeName ?? '').trim() ||
+                  nameById.get(String(s?.assigneeId ?? '').trim()) ||
+                  String(s?.assigneeId ?? ''),
+                content: String(s?.content ?? ''),
+                done: Boolean(s?.done),
+              }))
+            : fallbackSubs.length > 0
+              ? fallbackSubs
+              : [],
+      });
+      setTaskDetailOpen(true);
+    },
+    [groupMembers, groupTasks],
+  );
+
   useEffect(() => {
     if (!taskDetailOpen || !taskDetailTaskId) return;
     const t = (groupTasks ?? []).find(
@@ -442,30 +526,53 @@ export function ChatMessageList({
     ) as any;
     if (!t) return;
     setTaskDetail((prev) => {
-      if (!prev) return prev;
       const participantIds = Array.isArray(t.participants)
         ? (t.participants as unknown[]).map((id) => String(id))
-        : (prev.participantIds ?? []);
+        : (prev?.participantIds ?? []);
       const subs = Array.isArray(t.subtasks) ? (t.subtasks as any[]) : [];
+      const nameById = new Map(
+        (groupMembers ?? []).map((m) => [
+          String(m.userId),
+          String(m.displayName ?? (m as any)?.name ?? m.userId ?? '').trim(),
+        ]),
+      );
+      const subAssigneeIds = Array.from(
+        new Set(subs.map((s) => String(s?.assigneeId ?? '').trim()).filter(Boolean)),
+      );
+      const topAssignees = Array.isArray(t.assignees)
+        ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
+        : [];
+      const isAll = Boolean(t.assignToAll) || Boolean(t.broadcast);
+      const assigneeLabel = isAll
+        ? 'Cả nhóm'
+        : (subs.length > 0 ? subAssigneeIds : topAssignees).length > 0
+          ? (subs.length > 0 ? subAssigneeIds : topAssignees)
+              .map((id) => nameById.get(id) || id)
+              .join(', ')
+          : (prev?.assigneeLabel ?? undefined);
       const noteFromApi =
         t.description != null && String(t.description).trim() !== ''
           ? String(t.description)
-          : prev.note;
+          : prev?.note;
       return {
-        ...prev,
-        title: String(t.title ?? prev.title),
+        ...(prev ?? { title: String(t.title ?? ''), note: null }),
+        title: String(t.title ?? prev?.title ?? ''),
         note: noteFromApi ?? null,
-        dueDate: t.dueDate != null ? String(t.dueDate) : (prev.dueDate ?? null),
+        dueDate: t.dueDate != null ? String(t.dueDate) : (prev?.dueDate ?? null),
+        assigneeLabel,
         participantsCount: participantIds.length,
         participantIds,
         subtasks: subs.map((s) => ({
-          assigneeName: String(s?.assigneeName ?? ''),
+          assigneeName:
+            String(s?.assigneeName ?? '').trim() ||
+            nameById.get(String(s?.assigneeId ?? '').trim()) ||
+            String(s?.assigneeId ?? ''),
           content: String(s?.content ?? ''),
           done: Boolean(s?.done),
         })),
       };
     });
-  }, [groupTasks, taskDetailOpen, taskDetailTaskId]);
+  }, [groupMembers, groupTasks, taskDetailOpen, taskDetailTaskId]);
 
   const markMediaDownloaded = useCallback((messageId: string) => {
     setDownloadedMediaIds((prev) => {
@@ -491,7 +598,7 @@ export function ChatMessageList({
   const openDownloadsFolderHint = useCallback(() => {
     toast.info(
       'Trình duyệt thường lưu vào thư mục Tải xuống (Downloads). Mở Explorer / Finder và vào Downloads để xem file.',
-      { autoClose: 5000 },
+      undefined,
     );
   }, []);
 
@@ -572,7 +679,11 @@ export function ChatMessageList({
                 const name = msg.senderDisplayName.trim();
                 if (name) {
                   // Chỉ replace 1 lần để tránh "Tên" xuất hiện ở chỗ khác trong câu.
-                  content = content.replace(name, 'Bạn');
+                  // Quan trọng: KHÔNG replace trong JSON system payload (task/poll/...) vì sẽ làm hỏng dữ liệu (vd: title/assigneeLabel).
+                  const raw = typeof content === 'string' ? content.trim() : '';
+                  if (!raw.startsWith('{')) {
+                    content = content.replace(name, 'Bạn');
+                  }
                 }
               }
 
@@ -587,6 +698,9 @@ export function ChatMessageList({
                 assigneeLabel: string;
                 assignToAll: boolean;
                 broadcast: boolean;
+                assigneeUserIds: string[];
+                assigneesCount?: number;
+                subtasksFromMessage?: any[];
               } = null;
               let taskJoinedLine: null | {
                 actorId: string | null;
@@ -597,6 +711,13 @@ export function ChatMessageList({
                 try {
                   const obj = JSON.parse(content) as any;
                   if (obj?.kind === 'task_assigned' && obj?.task?.title) {
+                    const rawIds = obj?.task?.assigneeUserIds;
+                    const assigneeUserIds = Array.isArray(rawIds)
+                      ? rawIds.map((x: unknown) => String(x)).filter(Boolean)
+                      : [];
+                    const subsRaw = obj?.task?.subtasks;
+                    const subtasksFromMessage = Array.isArray(subsRaw) ? subsRaw : undefined;
+                    const ac = obj?.task?.assigneesCount;
                     taskCard = {
                       taskId: String(obj?.task?.taskId ?? ''),
                       actorId: obj?.actor?.userId ? String(obj.actor.userId) : null,
@@ -607,6 +728,9 @@ export function ChatMessageList({
                       assigneeLabel: String(obj.task.assigneeLabel ?? 'cả nhóm'),
                       assignToAll: Boolean(obj?.task?.assignToAll),
                       broadcast: Boolean(obj?.task?.broadcast),
+                      assigneeUserIds,
+                      ...(typeof ac === 'number' ? { assigneesCount: ac } : {}),
+                      ...(subtasksFromMessage ? { subtasksFromMessage } : {}),
                     };
                   }
                   if (obj?.kind === 'task_joined' && obj?.task?.taskId) {
@@ -638,7 +762,7 @@ export function ChatMessageList({
                   </span>
                   <div
                     className="bg-white dark:bg-zinc-800/95 px-3 py-2 rounded-2xl shadow-sm border border-black/[0.06] dark:border-white/10"
-                    style={{ minWidth: 220, maxWidth: 420 }}
+                    style={{ minWidth: 240, maxWidth: 480 }}
                   >
                     {taskCard ? (
                       <div className="w-full">
@@ -657,20 +781,21 @@ export function ChatMessageList({
                             String(creatorIdForTask) === String(currentUserId),
                           );
 
+                          // Nếu task đã bị hủy/xóa và không còn trên board, chỉ hiển thị dòng hệ thống `task_deleted`
+                          // (tránh hiện thêm "thẻ công việc đã hủy" to gây rối).
                           if (taskMissingFromBoard) {
+                            const titleStr = String(taskCard?.title ?? '').trim();
                             return (
-                              <div className="flex flex-col items-center gap-2 py-3 px-2 text-center">
+                              <div className="flex items-center justify-center gap-2">
                                 <AlarmClockOff
-                                  className="h-9 w-9 shrink-0 text-muted-foreground/75"
+                                  className="h-4 w-4 shrink-0 text-muted-foreground/85"
                                   strokeWidth={1.75}
                                   aria-hidden
                                 />
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                  Công việc đã hủy
-                                </p>
-                                <p className="text-[13px] font-bold text-foreground/60 line-through break-words">
-                                  {taskCard.title}
-                                </p>
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {'Công việc đã bị hủy'}
+                                  {titleStr ? ` "${titleStr}"` : ''}
+                                </span>
                               </div>
                             );
                           }
@@ -678,13 +803,23 @@ export function ChatMessageList({
                           const byId = new Map(
                             (groupMembers ?? []).map((m) => [
                               String(m.userId),
-                              String(m.displayName ?? '').trim(),
+                              String(m.displayName ?? (m as any)?.name ?? m.userId ?? '').trim(),
                             ]),
                           );
                           const t = tBoard;
                           const assignees = Array.isArray((t as any)?.assignees)
                             ? ((t as any).assignees as string[])
                             : [];
+                          const subsBoard = Array.isArray((t as any)?.subtasks)
+                            ? ((t as any).subtasks as any[])
+                            : [];
+                          const subsFromMsg = Array.isArray(taskCard.subtasksFromMessage)
+                            ? taskCard.subtasksFromMessage
+                            : [];
+                          const subs = subsBoard.length > 0 ? subsBoard : subsFromMsg;
+                          const subAssigneeIds = subs
+                            .map((s) => String(s?.assigneeId ?? '').trim())
+                            .filter(Boolean);
                           const labelRaw = String(taskCard.assigneeLabel ?? '');
                           const labelNorm = labelRaw
                             .toLowerCase()
@@ -695,21 +830,35 @@ export function ChatMessageList({
                             labelNorm.includes('ca nhom') ||
                             labelNorm.includes('group') ||
                             labelNorm.includes('all');
-                          const assignToAll =
-                            Boolean((t as any)?.assignToAll) ||
-                            Boolean((t as any)?.broadcast) ||
-                            Boolean(taskCard.assignToAll) ||
-                            Boolean(taskCard.broadcast) ||
-                            assignees.length === 0 ||
-                            labelLooksLikeGroup;
                           const participants = Array.isArray((t as any)?.participants)
                             ? ((t as any).participants as string[])
                             : [];
                           const joined = participants.includes(currentUserId);
-                          const participantNames = participants
-                            .map((id) => byId.get(String(id)) ?? '')
-                            .filter((x) => Boolean(x && x.trim()));
-                          const canJoinThisTask = assignToAll || assignees.includes(currentUserId);
+                          const isSubtaskAssignee = subAssigneeIds.includes(String(currentUserId));
+                          const topIds =
+                            taskCard.assigneeUserIds.length > 0
+                              ? taskCard.assigneeUserIds
+                              : assignees;
+                          const isTopLevelAssignee = topIds
+                            .map(String)
+                            .includes(String(currentUserId));
+                          const explicitAssignToAll =
+                            Boolean((t as any)?.assignToAll) ||
+                            Boolean((t as any)?.broadcast) ||
+                            Boolean(taskCard.assignToAll) ||
+                            Boolean(taskCard.broadcast);
+                          const hasTopLevelAssignees = topIds.length > 0;
+                          const hasSubtasksAssignees = subAssigneeIds.length > 0;
+                          const canJoinThisTask = hasSubtasksAssignees
+                            ? isSubtaskAssignee
+                            : explicitAssignToAll ||
+                              // legacy: không có assignees/subtasks mà label ghi "cả nhóm"
+                              (!hasTopLevelAssignees &&
+                                !hasSubtasksAssignees &&
+                                labelLooksLikeGroup) ||
+                              // legacy: không có assignees/subtasks → coi như cả nhóm
+                              (!hasTopLevelAssignees && !hasSubtasksAssignees) ||
+                              isTopLevelAssignee;
                           const dueForJoin =
                             (t as any)?.dueDate != null && String((t as any).dueDate).trim() !== ''
                               ? String((t as any).dueDate)
@@ -730,14 +879,6 @@ export function ChatMessageList({
                                         : 'Chưa có ai tham gia'}
                                     </span>
                                   </span>
-                                  {participantNames.length > 0 ? (
-                                    <span className="hidden sm:inline text-[12px] text-muted-foreground truncate max-w-[220px]">
-                                      {participantNames.slice(0, 3).join(', ')}
-                                      {participantNames.length > 3
-                                        ? ` và ${participantNames.length - 3} người khác`
-                                        : ''}
-                                    </span>
-                                  ) : null}
                                 </div>
                                 {joined ? (
                                   <span className="px-3 py-1 rounded-full text-[12px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
@@ -759,6 +900,11 @@ export function ChatMessageList({
                                       if (!canJoinThisTask) return;
                                       onTaskJoined?.(taskCard.taskId);
                                     }}
+                                    title={
+                                      !canJoinThisTask
+                                        ? 'Bạn không nằm trong danh sách được giao cho công việc này'
+                                        : undefined
+                                    }
                                     className={
                                       !canJoinThisTask
                                         ? 'px-3 py-1 rounded-full text-[12px] font-semibold bg-black/5 dark:bg-white/10 text-muted-foreground cursor-not-allowed'
@@ -813,23 +959,57 @@ export function ChatMessageList({
                                   const participantIds = Array.isArray(tt?.participants)
                                     ? (tt.participants as unknown[]).map((x) => String(x))
                                     : [];
+                                  const subAssigneeIds = Array.from(
+                                    new Set(
+                                      subs
+                                        .map((s) => String(s?.assigneeId ?? '').trim())
+                                        .filter(Boolean),
+                                    ),
+                                  );
+                                  const topIds =
+                                    taskCard.assigneeUserIds.length > 0
+                                      ? taskCard.assigneeUserIds
+                                      : Array.isArray(tt?.assignees)
+                                        ? (tt.assignees as unknown[])
+                                            .map((x) => String(x))
+                                            .filter(Boolean)
+                                        : [];
+                                  const isAll =
+                                    Boolean(tt?.assignToAll) ||
+                                    Boolean(tt?.broadcast) ||
+                                    Boolean(taskCard.assignToAll) ||
+                                    Boolean(taskCard.broadcast);
+                                  const assigneeDisplay = isAll
+                                    ? 'Cả nhóm'
+                                    : (subs.length > 0 ? subAssigneeIds : topIds).length > 0
+                                      ? (subs.length > 0 ? subAssigneeIds : topIds)
+                                          .map((id) => byId.get(String(id)) ?? String(id))
+                                          .join(', ')
+                                      : taskCard.assigneeLabel;
                                   setTaskDetailTaskId(String(taskCard.taskId));
                                   setTaskDetail({
                                     title: taskCard.title,
                                     note: taskCard.note,
                                     dueDate: taskCard.dueDate,
-                                    assigneeLabel: taskCard.assigneeLabel,
+                                    assigneeLabel: assigneeDisplay,
                                     participantsCount: participantIds.length,
                                     participantIds,
                                     actorLabel:
                                       (taskCard.actorId && taskCard.actorId === currentUserId
                                         ? 'Bạn'
                                         : taskCard.actorName) + ' đã giao việc',
-                                    subtasks: subs.map((s) => ({
-                                      assigneeName: String(s?.assigneeName ?? ''),
-                                      content: String(s?.content ?? ''),
-                                      done: Boolean(s?.done),
-                                    })),
+                                    subtasks: subs.map((s) => {
+                                      const assigneeId = String(s?.assigneeId ?? '').trim();
+                                      const nameRaw = String(s?.assigneeName ?? '').trim();
+                                      const name =
+                                        nameRaw ||
+                                        (assigneeId ? (byId.get(assigneeId) ?? assigneeId) : '');
+                                      return {
+                                        assigneeName: name,
+                                        content: String(s?.content ?? ''),
+                                        done: Boolean(s?.done),
+                                      };
+                                    }),
                                   });
                                   setTaskDetailOpen(true);
                                 }}
@@ -848,9 +1028,46 @@ export function ChatMessageList({
                                   <div className="flex items-center gap-2">
                                     <Users className="w-3.5 h-3.5" />
                                     <span className="font-semibold">Giao cho:</span>
-                                    <span className="min-w-0 truncate">
-                                      {taskCard.assigneeLabel}
-                                    </span>
+                                    {(() => {
+                                      const subs = Array.isArray((tBoard as any)?.subtasks)
+                                        ? ((tBoard as any).subtasks as any[])
+                                        : [];
+                                      const subAssignees =
+                                        subs.length > 0
+                                          ? Array.from(
+                                              new Set(
+                                                subs
+                                                  .map((s) => String(s?.assigneeId ?? '').trim())
+                                                  .filter(Boolean),
+                                              ),
+                                            )
+                                          : [];
+                                      const topIds =
+                                        taskCard.assigneeUserIds.length > 0
+                                          ? taskCard.assigneeUserIds
+                                          : Array.isArray((tBoard as any)?.assignees)
+                                            ? (((tBoard as any).assignees as unknown[]) ?? []).map(
+                                                (x) => String(x),
+                                              )
+                                            : [];
+                                      const ids = subs.length > 0 ? subAssignees : topIds;
+                                      const display =
+                                        Boolean((tBoard as any)?.assignToAll) ||
+                                        Boolean((tBoard as any)?.broadcast) ||
+                                        Boolean(taskCard.assignToAll) ||
+                                        Boolean(taskCard.broadcast)
+                                          ? 'Cả nhóm'
+                                          : ids.length > 0
+                                            ? ids
+                                                .map((id) => byId.get(String(id)) ?? String(id))
+                                                .join(', ')
+                                            : taskCard.assigneeLabel;
+                                      return (
+                                        <span className="min-w-0 truncate" title={display}>
+                                          {display}
+                                        </span>
+                                      );
+                                    })()}
                                   </div>
                                   {taskCard.dueDate ? (
                                     <div className="flex flex-wrap items-center gap-2">
@@ -876,23 +1093,47 @@ export function ChatMessageList({
                                     <div className="mt-3 space-y-2">
                                       {subs.map((s) => {
                                         const done = Boolean(s?.done);
-                                        const line = `${done ? '✓' : '•'} ${String(s?.assigneeName ?? '')} — ${String(
-                                          s?.content ?? '',
-                                        )}`;
+                                        const assigneeId = String(s?.assigneeId ?? '').trim();
+                                        const nameRaw = String(s?.assigneeName ?? '').trim();
+                                        const name =
+                                          nameRaw ||
+                                          (assigneeId ? (byId.get(assigneeId) ?? assigneeId) : '');
+                                        const content = String(s?.content ?? '').trim();
+                                        const line = `${done ? '✓' : '•'} ${name} — ${content}`;
                                         return (
                                           <div
                                             key={String(s?.id ?? line)}
-                                            className="flex items-center justify-between gap-2"
+                                            className="flex items-start gap-2"
                                           >
-                                            <div
-                                              className={`text-[13px] font-semibold break-words ${
+                                            <span
+                                              className={`mt-[2px] inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
                                                 done
-                                                  ? 'text-muted-foreground line-through'
-                                                  : 'text-foreground'
+                                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                                  : 'bg-black/5 text-muted-foreground dark:bg-white/10'
                                               }`}
-                                              title={line}
+                                              aria-hidden
                                             >
-                                              {line}
+                                              {done ? '✓' : '•'}
+                                            </span>
+                                            <div className="min-w-0 flex-1" title={line}>
+                                              <div
+                                                className={`text-[13px] font-extrabold ${
+                                                  done
+                                                    ? 'text-muted-foreground line-through'
+                                                    : 'text-foreground'
+                                                }`}
+                                              >
+                                                {name}
+                                              </div>
+                                              <div
+                                                className={`mt-0.5 text-[13px] font-normal break-words whitespace-pre-line leading-6 line-clamp-3 ${
+                                                  done
+                                                    ? 'text-muted-foreground line-through'
+                                                    : 'text-foreground'
+                                                }`}
+                                              >
+                                                {content || '…'}
+                                              </div>
                                             </div>
                                           </div>
                                         );
@@ -1061,6 +1302,34 @@ export function ChatMessageList({
                                     ' đã hủy công việc'}
                                   {titleStr ? ` "${titleStr}"` : ''}
                                 </span>
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'task_due') {
+                            const titleStr = String(obj?.task?.title ?? '').trim();
+                            const taskId = String(obj?.task?.taskId ?? '').trim();
+                            return (
+                              <div className="flex w-full items-center justify-between gap-2">
+                                <div className="min-w-0 flex items-center gap-2">
+                                  <AlarmClock
+                                    className="h-4 w-4 shrink-0 text-orange-500"
+                                    aria-hidden
+                                  />
+                                  <span className="min-w-0 truncate text-[12px] font-medium text-[#666] dark:text-zinc-300">
+                                    {titleStr ? `Đến hạn: "${titleStr}"` : 'Đến hạn công việc'}
+                                  </span>
+                                </div>
+                                {taskId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      openTaskDetailById(taskId);
+                                    }}
+                                    className="ml-1 inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border border-black/10 bg-black/[0.03] px-3 text-[11px] font-bold text-foreground/80 hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/80 dark:hover:bg-white/[0.10] transition-colors"
+                                  >
+                                    Mở công việc
+                                  </button>
+                                ) : null}
                               </div>
                             );
                           }
@@ -1787,19 +2056,7 @@ export function ChatMessageList({
               </motion.div>
             )}
           </AnimatePresence>
-          {unreadIncomingCount > 0 && (
-            <div className="sticky bottom-3 z-20 flex justify-center">
-              <button
-                type="button"
-                onClick={onJumpToLatest}
-                className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-semibold shadow-lg shadow-blue-600/25 hover:bg-blue-700 transition-colors"
-              >
-                {unreadIncomingCount > 1
-                  ? `${unreadIncomingCount} tin nhắn mới — bấm để xem`
-                  : '1 tin nhắn mới — bấm để xem'}
-              </button>
-            </div>
-          )}
+
           <div ref={messagesEndRef} />
           <MediaLightbox
             open={mediaLightbox !== null}
@@ -1808,98 +2065,171 @@ export function ChatMessageList({
             kind={mediaLightbox?.kind ?? 'image'}
           />
           <Dialog open={taskDetailOpen} onOpenChange={handleTaskDetailDialogOpenChange}>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Chi tiết công việc</DialogTitle>
+            <DialogContent className="bg-white dark:bg-[#1a1a1a] rounded-2xl max-w-[480px] w-full shadow-2xl border border-black/5 dark:border-white/10 flex flex-col overflow-hidden max-h-[88vh] p-0">
+              <DialogHeader className="shrink-0">
+                <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between">
+                  <h3 className="font-bold text-[17px] text-black dark:text-white">
+                    Chi tiết công việc
+                  </h3>
+                </div>
               </DialogHeader>
               {taskDetail ? (
-                <div className="space-y-3">
-                  {taskDetail.actorLabel ? (
-                    <div className="text-[12px] font-semibold text-muted-foreground/90">
-                      {taskDetail.actorLabel}
-                    </div>
-                  ) : null}
-                  <div className="text-[16px] font-extrabold text-foreground break-words leading-[22px]">
-                    {taskDetail.title}
-                  </div>
-                  <div className="space-y-2 text-[13px] text-muted-foreground">
-                    {taskDetail.assigneeLabel ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold">Giao cho:</span> {taskDetail.assigneeLabel}
+                <div className="flex-1 overflow-y-auto px-5 py-5 custom-scrollbar">
+                  <div className="space-y-3">
+                    {taskDetail.actorLabel ? (
+                      <div className="text-[12px] font-semibold text-muted-foreground/90">
+                        {taskDetail.actorLabel}
                       </div>
                     ) : null}
-                    {(() => {
-                      const ids = taskDetail.participantIds ?? [];
-                      if (ids.length === 0) {
+                    <div className="text-[16px] font-extrabold text-foreground break-words leading-[22px]">
+                      {taskDetail.title}
+                    </div>
+                    <div className="space-y-2 text-[13px] text-muted-foreground">
+                      {(() => {
+                        const t = taskDetailTaskId
+                          ? ((groupTasks ?? []).find(
+                              (x: any) => String(x?.taskId) === String(taskDetailTaskId),
+                            ) as any)
+                          : null;
+                        if (!t && !taskDetail.assigneeLabel) return null;
+                        const nameById = new Map(
+                          (groupMembers ?? []).map((m) => [
+                            String(m.userId),
+                            String(m.displayName ?? (m as any)?.name ?? m.userId ?? '').trim(),
+                          ]),
+                        );
+                        const subs = Array.isArray(t?.subtasks) ? (t.subtasks as any[]) : [];
+                        const subAssignees = Array.from(
+                          new Set(
+                            subs.map((s) => String(s?.assigneeId ?? '').trim()).filter(Boolean),
+                          ),
+                        );
+                        const topAssignees = Array.isArray(t?.assignees)
+                          ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
+                          : [];
+                        const isAll = Boolean(t?.assignToAll) || Boolean(t?.broadcast);
+                        const ids = subs.length > 0 ? subAssignees : topAssignees;
+                        const display = isAll
+                          ? 'Cả nhóm'
+                          : ids.length > 0
+                            ? ids.map((id) => nameById.get(id) || id).join(', ')
+                            : (taskDetail.assigneeLabel ?? '');
+                        if (!display.trim()) return null;
                         return (
-                          <div>
-                            <span className="font-semibold">Đã tham gia:</span> Chưa có ai
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold">Giao cho:</span>
+                            <span className="text-foreground/85" title={display}>
+                              {display}
+                            </span>
                           </div>
                         );
-                      }
-                      const nameById = new Map(
-                        (groupMembers ?? []).map((m) => [
-                          String(m.userId),
-                          String(m.displayName ?? m.userId),
-                        ]),
-                      );
-                      const names = ids.map((id) =>
-                        id === currentUserId ? 'Bạn' : (nameById.get(id) ?? id),
-                      );
-                      return (
-                        <div className="space-y-1">
-                          <div>
-                            <span className="font-semibold">Đã tham gia ({ids.length}):</span>
+                      })()}
+                      {(() => {
+                        const ids = taskDetail.participantIds ?? [];
+                        if (ids.length === 0) {
+                          return (
+                            <div>
+                              <span className="font-semibold">Đã tham gia:</span> Chưa có ai
+                            </div>
+                          );
+                        }
+                        const nameById = new Map(
+                          (groupMembers ?? []).map((m) => [
+                            String(m.userId),
+                            String(m.displayName ?? (m as any)?.name ?? m.userId ?? '').trim(),
+                          ]),
+                        );
+                        const names = ids.map((id) => {
+                          const uid = String(id);
+                          const label =
+                            uid === String(currentUserId) ? 'Bạn' : (nameById.get(uid) ?? uid);
+                          return { id: uid, label };
+                        });
+                        return (
+                          <div className="space-y-1">
+                            <div>
+                              <span className="font-semibold">Đã tham gia ({ids.length}):</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {names.map((n) => (
+                                <span
+                                  key={n.id}
+                                  className="inline-flex items-center rounded-full bg-black/5 dark:bg-white/10 px-2.5 py-1 text-[12px] font-semibold text-foreground/80"
+                                >
+                                  {n.label}
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                          <div className="flex flex-wrap gap-2">
-                            {names.map((n) => (
-                              <span
-                                key={n}
-                                className="inline-flex items-center rounded-full bg-black/5 dark:bg-white/10 px-2.5 py-1 text-[12px] font-semibold text-foreground/80"
-                              >
-                                {n}
-                              </span>
-                            ))}
+                        );
+                      })()}
+                      {taskDetail.dueDate ? (
+                        <div className="flex flex-wrap items-center gap-3 min-w-0">
+                          <span className="font-semibold text-foreground">Hạn hoàn thành</span>
+                          <TaskDeadlineCalendar dateIso={taskDetail.dueDate} size="md" />
+                        </div>
+                      ) : null}
+                      {taskDetail.note ? (
+                        <div className="rounded-2xl border border-border/60 bg-muted/15 p-3">
+                          <div className="mb-1 text-[12px] font-extrabold uppercase tracking-wide text-muted-foreground">
+                            Ghi chú
+                          </div>
+                          <div className="whitespace-pre-line break-words text-[13px] leading-6 text-foreground/90">
+                            {taskDetail.note}
                           </div>
                         </div>
-                      );
-                    })()}
-                    {taskDetail.dueDate ? (
-                      <div className="flex flex-wrap items-center gap-3">
-                        <span className="font-semibold text-foreground">Hạn hoàn thành</span>
-                        <TaskDeadlineCalendar dateIso={taskDetail.dueDate} size="md" />
-                      </div>
-                    ) : null}
-                    {taskDetail.note ? (
-                      <div className="whitespace-pre-line break-words rounded-2xl border border-border/60 bg-muted/20 p-3">
-                        <span className="font-semibold">Ghi chú:</span> {taskDetail.note}
+                      ) : null}
+                    </div>
+                    {taskDetail.subtasks && taskDetail.subtasks.length > 0 ? (
+                      <div className="rounded-2xl border border-border/60 bg-muted/15 p-3">
+                        <div className="mb-2 text-[12px] font-extrabold uppercase tracking-wide text-muted-foreground">
+                          Công việc theo từng người
+                        </div>
+                        <div className="space-y-2">
+                          {taskDetail.subtasks.map((s, idx) => {
+                            const done = Boolean(s?.done);
+                            const name = String(s?.assigneeName ?? '').trim();
+                            const content = String(s?.content ?? '').trim();
+                            const line = `${done ? '✓' : '•'} ${name} — ${content}`;
+                            return (
+                              <div key={`${idx}-${line}`} className="flex items-start gap-2">
+                                <span
+                                  className={`mt-[2px] inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
+                                    done
+                                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                      : 'bg-black/5 text-muted-foreground dark:bg-white/10'
+                                  }`}
+                                  aria-hidden
+                                >
+                                  {done ? '✓' : '•'}
+                                </span>
+                                <div className="min-w-0 flex-1" title={line}>
+                                  <div
+                                    className={`text-[13px] font-extrabold ${
+                                      done
+                                        ? 'text-muted-foreground line-through'
+                                        : 'text-foreground'
+                                    }`}
+                                  >
+                                    {name || 'Thành viên'}
+                                  </div>
+                                  <div
+                                    className={`mt-0.5 text-[13px] font-normal break-words whitespace-pre-line leading-6 ${
+                                      done
+                                        ? 'text-muted-foreground line-through'
+                                        : 'text-foreground'
+                                    }`}
+                                  >
+                                    {content || '…'}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     ) : null}
                   </div>
-                  {taskDetail.subtasks && taskDetail.subtasks.length > 0 ? (
-                    <div className="rounded-xl border border-border bg-muted/30 p-3">
-                      <div className="mb-2 text-[12px] font-bold text-foreground">
-                        Công việc theo từng người
-                      </div>
-                      <div className="space-y-1.5">
-                        {taskDetail.subtasks.map((s, idx) => {
-                          const line = `${s?.done ? '✓' : '•'} ${String(s?.assigneeName ?? '')} — ${String(
-                            s?.content ?? '',
-                          )}`;
-                          return (
-                            <div
-                              key={`${idx}-${line}`}
-                              className={`text-[13px] font-semibold break-words ${
-                                s?.done ? 'text-muted-foreground line-through' : 'text-foreground'
-                              }`}
-                            >
-                              {line}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
               ) : null}
             </DialogContent>

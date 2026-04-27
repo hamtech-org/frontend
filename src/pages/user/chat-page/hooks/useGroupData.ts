@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { socketService } from '@/services/socket';
 import { groupApi } from '@/services/chat/groupApi';
-import type { AIRecap, GroupActionLoading, GroupMember, GroupPoll, GroupRequest, GroupTask } from '@/types/chat.group.types';
+import type {
+  AIRecap,
+  GroupActionLoading,
+  GroupMember,
+  GroupPoll,
+  GroupRequest,
+  GroupTask,
+} from '@/types/chat.group.types';
+import type { RootState } from '@/store/store';
 
 type GroupLoadingState = {
   members: boolean;
@@ -20,12 +29,15 @@ interface UseGroupDataParams {
   activeConversationId: string | null;
   activeConversationType?: string;
   refetchConversations: () => Promise<unknown>;
+  /** Khi false, không đăng ký socket (socketService.on bỏ qua nếu chưa connect — tránh mất listener). */
+  isSocketReady?: boolean;
 }
 
 export function useGroupData({
   activeConversationId,
   activeConversationType,
   refetchConversations,
+  isSocketReady = false,
 }: UseGroupDataParams) {
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [groupRequests, setGroupRequests] = useState<GroupRequest[]>([]);
@@ -62,6 +74,12 @@ export function useGroupData({
   const setActionBusy = useCallback((key: keyof GroupActionLoading, value: boolean) => {
     setGroupActionLoading((prev) => ({ ...prev, [key]: value }));
   }, []);
+
+  const groupBoardTick = useSelector((state: RootState) =>
+    activeConversationId
+      ? (state.chat.groupBoardRefreshTickByConversationId[activeConversationId] ?? 0)
+      : 0,
+  );
 
   const fetchGroupMembers = useCallback(async (groupId: string) => {
     setGroupLoading((prev) => ({ ...prev, members: true }));
@@ -114,15 +132,12 @@ export function useGroupData({
         const prevById = new Map(prev.map((t) => [String(t.taskId), t]));
         return next.map((t) => {
           const p = prevById.get(String(t.taskId));
-          const serverParticipants = Array.isArray((t as { participants?: string[] }).participants)
-            ? (t as { participants?: string[] }).participants
-            : undefined;
-          const participants =
-            serverParticipants && serverParticipants.length > 0
-              ? serverParticipants
-              : Array.isArray(p?.participants) && p.participants.length > 0
-                ? p.participants
-                : serverParticipants ?? p?.participants ?? [];
+          const serverParticipants = (t as { participants?: string[] }).participants;
+          const participants = Array.isArray(serverParticipants)
+            ? serverParticipants.map(String)
+            : Array.isArray(p?.participants) && p.participants.length > 0
+              ? p.participants.map(String)
+              : [];
           return {
             ...t,
             // Preserve client-only fields across refetch (backend may not return them).
@@ -185,6 +200,7 @@ export function useGroupData({
 
   useEffect(() => {
     if (!activeConversationId || activeConversationType !== 'group') return;
+    if (!isSocketReady) return;
 
     const isCurrentGroup = (data: unknown): boolean => {
       const payload = data as GroupEventPayload;
@@ -253,12 +269,32 @@ export function useGroupData({
   }, [
     activeConversationId,
     activeConversationType,
+    isSocketReady,
     fetchGroupMembers,
     fetchGroupPolls,
     fetchGroupRequests,
     fetchGroupTasks,
     fetchLatestRecap,
     refetchConversations,
+  ]);
+
+  useEffect(() => {
+    if (!activeConversationId || activeConversationType !== 'group') return;
+    if (groupBoardTick <= 0) return;
+    void Promise.all([
+      fetchGroupMembers(activeConversationId),
+      fetchGroupRequests(activeConversationId),
+      fetchGroupPolls(activeConversationId),
+      fetchGroupTasks(activeConversationId),
+    ]);
+  }, [
+    groupBoardTick,
+    activeConversationId,
+    activeConversationType,
+    fetchGroupMembers,
+    fetchGroupRequests,
+    fetchGroupPolls,
+    fetchGroupTasks,
   ]);
 
   return {
