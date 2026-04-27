@@ -20,6 +20,7 @@ import type { IConversation } from '@/types/chat.types';
 import type { GroupMemberRole } from '@/types/chat.group.types';
 import { useChatComposerController } from '@/pages/user/chat-page/hooks/useChatComposerController';
 import { toast } from 'react-toastify';
+import { AiQuickReplies } from '@/components/chat/AiQuickReplies';
 import {
   canUserCreatePollInGroup,
   canUserCreateTaskInGroup,
@@ -173,13 +174,6 @@ export function ChatComposer({
     if (!list?.length) return;
     addPendingFiles(Array.from(list));
   };
-
-  const quickReplies = [
-    'Dạ, em hiểu rồi ạ.',
-    'Cho mình xin link nhé!',
-    'OK, để mình check lại.',
-    '👍',
-  ];
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -454,24 +448,16 @@ export function ChatComposer({
         </div>
       </TooltipProvider>
 
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-        {quickReplies.map((text) => (
-          <button
-            key={text}
-            type="button"
-            onClick={() => {
-              if (!activeConversationId) return;
-              setInputText(text);
-              window.setTimeout(() => textareaRef.current?.focus(), 0);
-            }}
-            disabled={!activeConversationId}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 text-muted-foreground hover:bg-blue-600 hover:text-white transition-colors text-xs font-bold whitespace-nowrap disabled:opacity-45 disabled:pointer-events-none"
-          >
-            <Sparkles className="w-3 h-3 text-blue-600" />
-            {text}
-          </button>
-        ))}
-      </div>
+      <AiQuickReplies
+        activeConversationId={activeConversationId}
+        inputText={inputText}
+        type="reply"
+        language="vi"
+        textareaRef={textareaRef}
+        onPickReply={(text) => {
+          setInputText(text);
+        }}
+      />
 
       <div className="relative flex items-end gap-2">
         <div className="relative flex flex-1 flex-col rounded-xl border border-border/45 bg-muted/35 transition-all focus-within:border-border focus-within:bg-background/90">
