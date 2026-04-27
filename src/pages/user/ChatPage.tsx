@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
 import { ConversationListPanel } from '@/components/chat/ConversationListPanel';
@@ -26,6 +26,7 @@ import { useChatMobileLayout } from '@/pages/user/chat-page/hooks/useChatMobileL
 import { useMessageJumpNavigation } from '@/pages/user/chat-page/hooks/useMessageJumpNavigation';
 import { useConversationPreferences } from '@/pages/user/chat-page/hooks/useConversationPreferences';
 import { useMessagePinController } from '@/pages/user/chat-page/hooks/useMessagePinController';
+import { useDueTaskNotifications } from '@/pages/user/chat-page/hooks/useDueTaskNotifications';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   useGetConversationsQuery,
@@ -46,6 +47,7 @@ const EMPTY_TYPING_USERS: readonly TypingUserEntry[] = [];
 
 export default function ChatPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
   const dispatch = useDispatch<AppDispatch>();
 
@@ -87,6 +89,9 @@ export default function ChatPage() {
   const [recallMessage] = useRecallMessageMutation();
   const [markAsRead] = useMarkAsReadMutation();
 
+  const { initiateCall, initiateGroupCall } = useCallContext();
+  const { isConnected } = useSocketContext();
+
   const {
     groupMembers,
     setGroupMembers,
@@ -111,13 +116,13 @@ export default function ChatPage() {
     activeConversationId,
     activeConversationType: activeConversation?.type,
     refetchConversations,
+    isSocketReady: isConnected,
   });
   const currentUserRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
 
-  const { initiateCall, initiateGroupCall } = useCallContext();
-  const { isConnected } = useSocketContext();
-
   const { state: modalState, actions: modalActions } = useChatModalController();
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  const [focusTaskNonce, setFocusTaskNonce] = useState(0);
   const {
     mobileView,
     mobileListOpen,
@@ -340,6 +345,15 @@ export default function ChatPage() {
     modalActions.setMessageConfirm(null);
   }, [activeConversationId, modalActions]);
 
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search ?? '');
+    const next = String(sp.get('focusTaskId') ?? '').trim();
+    if (!next) return;
+    setFocusTaskId(next);
+    setFocusTaskNonce((x) => x + 1);
+    modalActions.setShowInfo(true);
+  }, [location.search, modalActions]);
+
   const handleForwardMediaMessage = useCallback(
     async (targetConversationIds: string[], msg: IMessage, caption: string) => {
       if (targetConversationIds.length === 0) return;
@@ -428,6 +442,11 @@ export default function ChatPage() {
     currentUserId,
   });
 
+  useDueTaskNotifications({
+    conversations,
+    currentUserId,
+  });
+
   const convListPanelProps = {
     conversations,
     convsLoading,
@@ -511,6 +530,8 @@ export default function ChatPage() {
       onEditTaskFromBulletin={(t) => groupController.openEditTaskFromGroupTask(String(t.taskId))}
       onDeleteTaskFromBulletin={(id) => void groupController.handleDeleteGroupTask(id)}
       taskActionBusy={groupActionLoading.createTask || groupActionLoading.updateTask}
+      focusTaskId={focusTaskId}
+      focusTaskNonce={focusTaskNonce}
     />
   );
 

@@ -383,7 +383,15 @@ export function useGroupConversationController({
   );
 
   const handleSubmitTask = useCallback(async () => {
-    if (!activeConversationId || !taskTitle.trim()) return;
+    if (!activeConversationId) return;
+    if (!taskTitle.trim()) {
+      toast.error('Vui lòng nhập tiêu đề công việc');
+      return;
+    }
+    if (!taskDeadline?.trim()) {
+      toast.error('Vui lòng chọn thời hạn công việc');
+      return;
+    }
     const isGroupOptIn = Boolean(taskAssignToAll);
     const cleanSubtaskRows = taskSubtaskRows
       .map((r) => ({
@@ -391,6 +399,10 @@ export function useGroupConversationController({
         content: String(r.content ?? '').trim(),
       }))
       .filter((r) => r.assigneeId && r.content);
+    if (!isGroupOptIn && taskAssignees.length === 0) {
+      toast.error('Vui lòng chọn người được giao (hoặc chọn “Giao cho cả nhóm”)');
+      return;
+    }
     const editingId = editingTaskId ? String(editingTaskId) : null;
 
     if (!editingId) {
@@ -408,12 +420,13 @@ export function useGroupConversationController({
     if (editingId) {
       setActionBusy('updateTask', true);
       try {
+        const dueDateIso = deadlineLocalInputToJsonValue(taskDeadline) ?? undefined;
         await groupApi.patchTask(activeConversationId, editingId, {
           title: taskTitle.trim(),
           description: taskNote.trim(),
           assignees: isGroupOptIn ? [] : taskAssignees,
           assignToAll: isGroupOptIn,
-          dueDate: taskDeadline || undefined,
+          dueDate: dueDateIso,
           subtasks: cleanSubtaskRows,
         });
         await fetchGroupTasks(activeConversationId);
@@ -426,6 +439,13 @@ export function useGroupConversationController({
             : isGroupOptIn
               ? 'Cả nhóm'
               : taskAssignees.map((id) => String(byId.get(id) ?? id)).join(', ') || 'cả nhóm';
+        const assigneeUserIds =
+          cleanSubtaskRows.length > 0
+            ? cleanSubtaskRows.map((r) => String(r.assigneeId))
+            : isGroupOptIn
+              ? []
+              : taskAssignees.map((id) => String(id));
+        const assigneesCount = isGroupOptIn ? groupMembers.length : assigneeUserIds.length;
         patchTaskAssignedSystemMessages(dispatch, activeConversationId, editingId, {
           title: taskTitle.trim(),
           dueDate: deadlineLocalInputToJsonValue(taskDeadline),
@@ -433,6 +453,8 @@ export function useGroupConversationController({
           assigneeLabel,
           assignToAll: isGroupOptIn,
           broadcast: isGroupOptIn,
+          assigneeUserIds,
+          assigneesCount,
         });
         toast.success('Đã lưu thay đổi');
         modalActions.closeTaskModal();
@@ -450,6 +472,7 @@ export function useGroupConversationController({
     }
 
     setActionBusy('createTask', true);
+    const dueDateIso = deadlineLocalInputToJsonValue(taskDeadline) ?? undefined;
     const optimisticTask: GroupTask = {
       taskId: `tmp-${Date.now()}`,
       title: taskTitle.trim(),
@@ -473,7 +496,7 @@ export function useGroupConversationController({
             }))
           : undefined,
       status: 'todo',
-      dueDate: taskDeadline || undefined,
+      dueDate: dueDateIso,
       createdAt: new Date().toISOString(),
       creatorId: currentUserId,
       creatorDisplayName: currentUserDisplayName?.trim() ?? null,
@@ -485,7 +508,7 @@ export function useGroupConversationController({
         description: taskNote.trim(),
         assignees: isGroupOptIn ? [] : taskAssignees,
         assignToAll: isGroupOptIn,
-        dueDate: taskDeadline || undefined,
+        dueDate: dueDateIso,
         subtasks: cleanSubtaskRows.length > 0 ? cleanSubtaskRows : undefined,
       });
       const ax = createRes as { data?: { data?: { taskId?: string }; taskId?: string } };
@@ -516,6 +539,13 @@ export function useGroupConversationController({
           : isGroupOptIn
             ? 'Cả nhóm'
             : taskAssignees.map((id) => String(byId.get(id) ?? id)).join(', ') || 'cả nhóm';
+      const assigneeUserIds =
+        subtasks.length > 0
+          ? subtasks.map((s) => String(s.assigneeId))
+          : isGroupOptIn
+            ? []
+            : taskAssignees.map((id) => String(id));
+      const assigneesCount = isGroupOptIn ? groupMembers.length : assigneeUserIds.length;
       const content = JSON.stringify({
         kind: 'task_assigned',
         actor: { userId: currentUserId, name: currentUserDisplayName?.trim() ?? 'Bạn' },
@@ -527,6 +557,8 @@ export function useGroupConversationController({
           assigneeLabel,
           assignToAll: isGroupOptIn,
           broadcast: isGroupOptIn,
+          assigneesCount,
+          assigneeUserIds,
           subtasks: subtasks.length > 0 ? subtasks : undefined,
         },
       });
@@ -729,29 +761,87 @@ export function useGroupConversationController({
           return;
         }
       }
-      let joinedNow = false;
-      let joinedTaskTitle = '';
-      setGroupTasks((prev) =>
-        prev.map((t) => {
-          if (String(t.taskId) !== String(taskId)) return t;
-          joinedTaskTitle = String(t.title ?? '');
-          const p = Array.isArray(t.participants) ? t.participants : [];
-          if (p.includes(currentUserId)) return t;
-          joinedNow = true;
-          return { ...t, participants: [...p, currentUserId] };
-        }),
-      );
-      if (!joinedNow) return;
-      try {
-        await groupApi.joinTask(activeConversationId, String(taskId));
-      } catch (err) {
+      const p0 = Array.isArray(taskRow?.participants) ? taskRow!.participants! : [];
+      if (p0.map(String).includes(String(currentUserId))) return;
+
+      let didOptimistic = false;
+      if (taskRow) {
+        didOptimistic = true;
         setGroupTasks((prev) =>
           prev.map((t) => {
             if (String(t.taskId) !== String(taskId)) return t;
             const p = Array.isArray(t.participants) ? t.participants : [];
-            return { ...t, participants: p.filter((id) => String(id) !== String(currentUserId)) };
+            if (p.map(String).includes(String(currentUserId))) return t;
+            return { ...t, participants: [...p.map(String), String(currentUserId)] };
           }),
         );
+      }
+
+      try {
+        const res = await groupApi.joinTask(activeConversationId, String(taskId));
+        const payload = (res as { data?: { data?: unknown } })?.data?.data as
+          | Record<string, unknown>
+          | undefined;
+        const joinNoticeRaw = payload?.joinNotice as IMessage | undefined;
+        const serverParticipants = (() => {
+          if (!payload || typeof payload !== 'object') return null;
+          const { joinNotice: _jn, ...rest } = payload as Record<string, unknown> & {
+            joinNotice?: unknown;
+          };
+          const id = String((rest as { taskId?: string }).taskId ?? '');
+          const sp = (rest as { participants?: unknown }).participants;
+          if (id !== tid || !Array.isArray(sp)) return null;
+          return sp.map(String);
+        })();
+
+        if (serverParticipants) {
+          setGroupTasks((prev) =>
+            prev.map((t) => {
+              if (String(t.taskId) !== tid) return t;
+              return { ...t, participants: serverParticipants };
+            }),
+          );
+        }
+
+        const joinNotice = joinNoticeRaw;
+        if (
+          joinNotice &&
+          typeof joinNotice === 'object' &&
+          String(joinNotice.messageId ?? '').trim()
+        ) {
+          const normalized: IMessage = {
+            ...joinNotice,
+            conversationId: String(activeConversationId),
+            type: (joinNotice.type ?? 'system') as IMessage['type'],
+          };
+          dispatch(
+            chatApi.util.updateQueryData(
+              'getMessages',
+              { conversationId: activeConversationId },
+              (draft) => {
+                if (!draft.data) draft.data = [];
+                const mid = String(normalized.messageId ?? '');
+                if (mid && !draft.data.some((m) => String(m.messageId) === mid)) {
+                  draft.data.push(normalized);
+                }
+              },
+            ),
+          );
+          dispatch(messageReceived(normalized));
+        }
+      } catch (err) {
+        if (didOptimistic) {
+          setGroupTasks((prev) =>
+            prev.map((t) => {
+              if (String(t.taskId) !== String(taskId)) return t;
+              const p = Array.isArray(t.participants) ? t.participants : [];
+              return {
+                ...t,
+                participants: p.map(String).filter((id) => id !== String(currentUserId)),
+              };
+            }),
+          );
+        }
         const st = (err as Record<string, unknown> & { response?: { status?: number } })?.response
           ?.status;
         const msg = String(
@@ -766,13 +856,14 @@ export function useGroupConversationController({
         );
         return;
       }
-      toast.success(
-        joinedTaskTitle
-          ? `Đã xác nhận tham gia: «${joinedTaskTitle}»`
-          : 'Đã xác nhận tham gia công việc',
-      );
+
+      try {
+        await fetchGroupTasks(activeConversationId);
+      } catch {
+        /* ignore */
+      }
     },
-    [activeConversationId, currentUserId, groupTasks, setGroupTasks],
+    [activeConversationId, currentUserId, dispatch, fetchGroupTasks, groupTasks, setGroupTasks],
   );
 
   const handleTransferGroupOwner = useCallback(
@@ -1150,6 +1241,55 @@ export function useGroupConversationController({
       );
       try {
         await groupApi.updateTaskStatus(activeConversationId, taskId, nextStatus);
+
+        // Fallback optimistic system message (in case socket misses).
+        try {
+          const nowIso = new Date().toISOString();
+          const payload = {
+            kind: 'task_updated',
+            task: { taskId: String(taskId), title: String(currentTask.title ?? '').trim() },
+            actor: {
+              userId: currentUserId,
+              name: String(currentUserDisplayName ?? 'Ai đó'),
+            },
+            createdAt: nowIso,
+          };
+          const systemMsg: IMessage = {
+            messageId: `local-task-updated:${activeConversationId}:${taskId}:${Date.now()}`,
+            conversationId: activeConversationId,
+            senderId: currentUserId,
+            senderDisplayName: currentUserDisplayName ?? null,
+            type: 'system',
+            content: JSON.stringify(payload),
+            mediaUrl: null,
+            thumbnailUrl: null,
+            replyTo: null,
+            isPinned: false,
+            isEdited: false,
+            isRecalled: false,
+            reactions: {},
+            createdAt: nowIso,
+          } as any;
+
+          dispatch(messageReceived(systemMsg));
+          dispatch(
+            chatApi.util.updateQueryData(
+              'getMessages',
+              { conversationId: activeConversationId },
+              (draft) => {
+                if (!draft?.data) return;
+                if (draft.data.some((m) => String(m.messageId) === String(systemMsg.messageId)))
+                  return;
+                draft.data.push(systemMsg);
+                draft.data.sort(
+                  (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+                );
+              },
+            ),
+          );
+        } catch {
+          /* ignore */
+        }
       } catch (error) {
         setGroupTasks(before);
         toast.error('Không thể cập nhật công việc');
@@ -1158,7 +1298,15 @@ export function useGroupConversationController({
         setActionBusy('updateTask', false);
       }
     },
-    [activeConversationId, groupTasks, setActionBusy, setGroupTasks],
+    [
+      activeConversationId,
+      currentUserDisplayName,
+      currentUserId,
+      dispatch,
+      groupTasks,
+      setActionBusy,
+      setGroupTasks,
+    ],
   );
 
   return useMemo(

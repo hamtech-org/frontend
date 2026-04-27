@@ -23,7 +23,12 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
-import type { GroupMember, GroupMemberRole, GroupRequest } from '@/types/chat.group.types';
+import type {
+  GroupMember,
+  GroupMemberRole,
+  GroupRequest,
+  GroupTask as GroupTaskModel,
+} from '@/types/chat.group.types';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import { apiClient } from '@/services/api';
@@ -57,20 +62,7 @@ type GroupPoll = {
   creatorDisplayName?: string | null;
 };
 
-type GroupTask = {
-  taskId: string;
-  title: string;
-  description?: string;
-  status: 'todo' | 'in_progress' | 'done';
-  createdAt?: string;
-  creatorId?: string;
-  creatorDisplayName?: string | null;
-  dueDate?: string | null;
-  assignToAll?: boolean;
-  broadcast?: boolean;
-  assignees?: string[];
-  participants?: string[];
-};
+type GroupTask = GroupTaskModel;
 
 /** Kiểu Zalo: 28/02/2026 lúc 16:24 */
 function formatBulletinFooterTime(iso?: string) {
@@ -243,11 +235,20 @@ function BulletinCardRow({
               const dueOk = due && !Number.isNaN(new Date(due).getTime());
               const assignees = Array.isArray(t.assignees) ? t.assignees : [];
               const participants = Array.isArray(t.participants) ? t.participants : [];
+              const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+              const subAssigneeIds = subs
+                .map((s) => String(s.assigneeId ?? '').trim())
+                .filter(Boolean);
               const assignToAll =
-                Boolean(t.assignToAll) || Boolean(t.broadcast) || assignees.length === 0;
+                Boolean(t.assignToAll) ||
+                Boolean(t.broadcast) ||
+                (assignees.length === 0 && subAssigneeIds.length === 0);
               const uid = String(currentUserId ?? '');
               const joined = uid ? participants.includes(uid) : false;
-              const canJoin = assignToAll || (uid ? assignees.includes(uid) : false);
+              const canJoin =
+                assignToAll ||
+                (uid ? assignees.map(String).includes(uid) : false) ||
+                (uid ? subAssigneeIds.includes(uid) : false);
               const joinDeadlinePassed = dueOk && isTaskJoinDeadlinePassed(due);
               const showJoinButton =
                 Boolean(onTaskJoined) && !joined && canJoin && !joinDeadlinePassed;

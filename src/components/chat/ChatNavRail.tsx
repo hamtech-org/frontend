@@ -1,13 +1,4 @@
-import {
-  Briefcase,
-  Cloud,
-  Contact,
-  FolderOpen,
-  Home,
-  MessageCircle,
-  Settings,
-  Sticker,
-} from 'lucide-react';
+import { Contact, Home, MessageCircle } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import type { NavigateFunction } from 'react-router-dom';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';

@@ -59,6 +59,8 @@ type TaskAssignedPatchFields = {
   assigneeLabel: string;
   assignToAll: boolean;
   broadcast: boolean;
+  assigneeUserIds?: string[];
+  assigneesCount?: number;
 };
 
 function mergeTaskAssignedJsonString(
@@ -74,7 +76,8 @@ function mergeTaskAssignedJsonString(
       kind?: string;
       task?: Record<string, unknown>;
     };
-    if (obj?.kind !== 'task_assigned' || String(obj?.task?.taskId ?? '') !== String(taskId)) return null;
+    if (obj?.kind !== 'task_assigned' || String(obj?.task?.taskId ?? '') !== String(taskId))
+      return null;
     obj.task = {
       ...obj.task,
       title: fields.title,
@@ -83,6 +86,8 @@ function mergeTaskAssignedJsonString(
       assigneeLabel: fields.assigneeLabel,
       assignToAll: fields.assignToAll,
       broadcast: fields.broadcast,
+      ...(fields.assigneeUserIds !== undefined ? { assigneeUserIds: fields.assigneeUserIds } : {}),
+      ...(fields.assigneesCount !== undefined ? { assigneesCount: fields.assigneesCount } : {}),
     };
     return JSON.stringify(obj);
   } catch {

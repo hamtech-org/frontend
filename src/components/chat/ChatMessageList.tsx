@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
+  AlarmClock,
   AlarmClockOff,
   Check,
   CheckCheck,
@@ -732,22 +733,10 @@ export function ChatMessageList({
                             labelNorm.includes('ca nhom') ||
                             labelNorm.includes('group') ||
                             labelNorm.includes('all');
-                          const assignToAll =
-                            Boolean((t as any)?.assignToAll) ||
-                            Boolean((t as any)?.broadcast) ||
-                            Boolean(taskCard.assignToAll) ||
-                            Boolean(taskCard.broadcast) ||
-                            // Không dùng `assignees.length === 0` để suy ra "cả nhóm" khi có subtasks
-                            // (vì subtask có thể giao riêng từng người nhưng assignees có thể rỗng tuỳ payload).
-                            (assignees.length === 0 && subAssigneeIds.length === 0) ||
-                            labelLooksLikeGroup;
                           const participants = Array.isArray((t as any)?.participants)
                             ? ((t as any).participants as string[])
                             : [];
                           const joined = participants.includes(currentUserId);
-                          const participantNames = participants
-                            .map((id) => byId.get(String(id)) ?? '')
-                            .filter((x) => Boolean(x && x.trim()));
                           const isSubtaskAssignee = subAssigneeIds.includes(String(currentUserId));
                           const topIds =
                             taskCard.assigneeUserIds.length > 0
@@ -756,8 +745,23 @@ export function ChatMessageList({
                           const isTopLevelAssignee = topIds
                             .map(String)
                             .includes(String(currentUserId));
-                          const canJoinThisTask =
-                            assignToAll || isTopLevelAssignee || isSubtaskAssignee;
+                          const explicitAssignToAll =
+                            Boolean((t as any)?.assignToAll) ||
+                            Boolean((t as any)?.broadcast) ||
+                            Boolean(taskCard.assignToAll) ||
+                            Boolean(taskCard.broadcast);
+                          const hasTopLevelAssignees = topIds.length > 0;
+                          const hasSubtasksAssignees = subAssigneeIds.length > 0;
+                          const canJoinThisTask = hasSubtasksAssignees
+                            ? isSubtaskAssignee
+                            : explicitAssignToAll ||
+                              // legacy: không có assignees/subtasks mà label ghi "cả nhóm"
+                              (!hasTopLevelAssignees &&
+                                !hasSubtasksAssignees &&
+                                labelLooksLikeGroup) ||
+                              // legacy: không có assignees/subtasks → coi như cả nhóm
+                              (!hasTopLevelAssignees && !hasSubtasksAssignees) ||
+                              isTopLevelAssignee;
                           const dueForJoin =
                             (t as any)?.dueDate != null && String((t as any).dueDate).trim() !== ''
                               ? String((t as any).dueDate)
@@ -1201,6 +1205,35 @@ export function ChatMessageList({
                                     ' đã hủy công việc'}
                                   {titleStr ? ` "${titleStr}"` : ''}
                                 </span>
+                              </div>
+                            );
+                          }
+                          if (obj?.kind === 'task_due') {
+                            const titleStr = String(obj?.task?.title ?? '').trim();
+                            const taskId = String(obj?.task?.taskId ?? '').trim();
+                            return (
+                              <div className="flex w-full items-center justify-between gap-2">
+                                <div className="min-w-0 flex items-center gap-2">
+                                  <AlarmClock
+                                    className="h-4 w-4 shrink-0 text-orange-500"
+                                    aria-hidden
+                                  />
+                                  <span className="min-w-0 truncate text-[12px] font-medium text-[#666] dark:text-zinc-300">
+                                    {titleStr ? `Đến hạn: "${titleStr}"` : 'Đến hạn công việc'}
+                                  </span>
+                                </div>
+                                {taskId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setTaskDetailTaskId(taskId);
+                                      setTaskDetailOpen(true);
+                                    }}
+                                    className="ml-1 inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border border-black/10 bg-black/[0.03] px-3 text-[11px] font-bold text-foreground/80 hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/80 dark:hover:bg-white/[0.10] transition-colors"
+                                  >
+                                    Mở công việc
+                                  </button>
+                                ) : null}
                               </div>
                             );
                           }

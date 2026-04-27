@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { CheckCheck, CheckSquare, Trash2, Users, X } from 'lucide-react';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
@@ -53,10 +54,24 @@ export function TaskModal({
     return name;
   };
 
+  const eligibleMembers = assignToAll
+    ? members
+    : members.filter((m) => taskAssignees.includes(m.id));
+  const eligibleIdSet = new Set(eligibleMembers.map((m) => m.id));
+
+  useEffect(() => {
+    if (assignToAll) return;
+    if (!onSubtaskRowsChange) return;
+    const next = subtaskRows.filter((r) => eligibleIdSet.has(String(r.assigneeId ?? '')));
+    if (next.length !== subtaskRows.length) onSubtaskRowsChange(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignToAll, taskAssignees.join('|')]);
+
   const hasSubtasks = subtaskRows.some((r) => r.assigneeId && r.content.trim());
+  const hasAssignees = assignToAll || taskAssignees.length > 0;
+  const hasDeadline = Boolean(taskDeadline?.trim());
   const canSubmit =
-    taskTitle.trim().length > 0 &&
-    (hasSubtasks || assignToAll || taskAssignees.length > 0);
+    taskTitle.trim().length > 0 && hasDeadline && hasAssignees && (hasSubtasks || hasAssignees);
 
   const resetAndClose = () => {
     onClose();
@@ -180,8 +195,10 @@ export function TaskModal({
                           checked={taskAssignees.includes(member.id)}
                           onChange={(e) => {
                             if (assignToAll) return;
-                            if (e.target.checked) onTaskAssigneesChange([...taskAssignees, member.id]);
-                            else onTaskAssigneesChange(taskAssignees.filter((id) => id !== member.id));
+                            if (e.target.checked)
+                              onTaskAssigneesChange([...taskAssignees, member.id]);
+                            else
+                              onTaskAssigneesChange(taskAssignees.filter((id) => id !== member.id));
                           }}
                           disabled={assignToAll}
                           className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600 focus:ring-0 cursor-pointer appearance-none checked:bg-green-500 checked:border-green-500 transition-colors"
@@ -211,11 +228,11 @@ export function TaskModal({
                   Ghi chú thêm
                 </label>
                 <textarea
-                  rows={3}
+                  rows={5}
                   placeholder="Nhập mô tả hoặc ghi chú..."
                   value={taskNote}
                   onChange={(e) => onTaskNoteChange(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-green-500/50 resize-none text-[14px] font-medium transition-all"
+                  className="w-full px-4 py-3 rounded-xl bg-black/5 dark:bg-white/5 outline-none border border-transparent focus:border-green-500/50 resize-y text-[14px] font-medium transition-all"
                 />
               </div>
 
@@ -224,59 +241,59 @@ export function TaskModal({
                   Công việc cụ thể theo từng người
                 </label>
                 <div className="border border-black/5 dark:border-white/10 rounded-2xl overflow-hidden divide-y divide-black/5 dark:divide-white/5 bg-white dark:bg-black/20">
-                  {(subtaskRows.length > 0 ? subtaskRows : [{ assigneeId: members[0]?.id ?? '', content: '' }]).map(
-                    (row, idx) => (
-                      <div key={idx} className="flex gap-2 px-4 py-3 items-center">
-                        <select
-                          value={row.assigneeId}
-                          onChange={(e) => {
-                            const next = [...subtaskRows];
-                            next[idx] = { ...next[idx], assigneeId: e.target.value };
-                            onSubtaskRowsChange?.(next);
-                          }}
-                          className="w-[180px] px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-500/40 outline-none text-sm"
-                        >
-                          {members.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {labelFor(m.id, m.name)}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={row.content}
-                          onChange={(e) => {
-                            const next = [...subtaskRows];
-                            next[idx] = { ...next[idx], content: e.target.value };
-                            onSubtaskRowsChange?.(next);
-                          }}
-                          placeholder="Nội dung công việc (ví dụ: Thiết kế UI)"
-                          className="flex-1 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-500/40 outline-none text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => onSubtaskRowsChange?.(subtaskRows.filter((_, i) => i !== idx))}
-                          className="w-9 h-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 transition-colors flex items-center justify-center"
-                          title="Xóa dòng"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ),
+                  {!assignToAll && eligibleMembers.length === 0 ? (
+                    <div className="px-4 py-3 text-[12px] font-semibold text-muted-foreground">
+                      Hãy chọn người ở mục{' '}
+                      <span className="font-extrabold text-foreground/80">GIAO CHO</span> để thêm
+                      công việc cụ thể.
+                    </div>
+                  ) : (
+                    (assignToAll ? members : eligibleMembers).map((m) => {
+                      const existing = subtaskRows.find(
+                        (r) => String(r.assigneeId) === String(m.id),
+                      );
+                      const value = String(existing?.content ?? '');
+                      return (
+                        <div key={m.id} className="px-4 py-3">
+                          <div className="mb-2 text-[13px] font-extrabold text-foreground">
+                            {labelFor(m.id, m.name)}
+                          </div>
+                          <textarea
+                            rows={3}
+                            value={value}
+                            onChange={(e) => {
+                              const nextText = e.target.value;
+                              const id = String(m.id);
+                              const has = subtaskRows.some((r) => String(r.assigneeId) === id);
+                              if (!nextText.trim()) {
+                                if (has) {
+                                  onSubtaskRowsChange?.(
+                                    subtaskRows.filter((r) => String(r.assigneeId) !== id),
+                                  );
+                                }
+                                return;
+                              }
+                              if (has) {
+                                onSubtaskRowsChange?.(
+                                  subtaskRows.map((r) =>
+                                    String(r.assigneeId) === id ? { ...r, content: nextText } : r,
+                                  ),
+                                );
+                              } else {
+                                onSubtaskRowsChange?.([
+                                  ...subtaskRows,
+                                  { assigneeId: id, content: nextText },
+                                ]);
+                              }
+                            }}
+                            placeholder="Nội dung công việc"
+                            className="w-full px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-transparent focus:border-green-500/40 outline-none text-sm resize-y leading-5 min-h-[76px]"
+                          />
+                        </div>
+                      );
+                    })
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onSubtaskRowsChange?.([
-                      ...subtaskRows,
-                      { assigneeId: members[0]?.id ?? '', content: '' },
-                    ])
-                  }
-                  className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 transition-colors text-sm font-semibold"
-                >
-                  + Thêm công việc
-                </button>
               </div>
             </div>
             <div className="px-5 py-4 border-t border-black/5 dark:border-white/5 shrink-0 flex gap-2.5">

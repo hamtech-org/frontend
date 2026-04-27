@@ -109,3 +109,8 @@ export interface UpdateTaskStatusRequest {
   taskId: string;
   status: 'todo' | 'in_progress' | 'done';
 }
+
+export interface TriggerTaskDueReminderRequest {
+  groupId: string;
+  taskId: string;
+}
