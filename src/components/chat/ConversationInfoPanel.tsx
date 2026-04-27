@@ -949,8 +949,8 @@ export function ConversationInfoPanel({
           </div>
         </div>
       ) : bulletinModalMode !== null ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex h-full min-h-0 w-full flex-col bg-white dark:bg-[#1a1a1a]">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-[#1a1a1a]">
             <div className="flex shrink-0 items-center justify-between border-b border-black/5 px-5 py-4 dark:border-white/5">
               <div className="flex min-w-0 items-center gap-2">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900/30">
@@ -1023,7 +1023,7 @@ export function ConversationInfoPanel({
             </div>
 
             {bulletinModalMode === 'reminders' ? (
-              <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+              <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-4">
                 {loading?.tasks && reminderFeedItems.length === 0 ? (
                   <p className="py-6 text-center text-sm text-muted-foreground">Đang tải...</p>
                 ) : reminderFeedItems.length === 0 ? (
@@ -1079,7 +1079,7 @@ export function ConversationInfoPanel({
                     </button>
                   ))}
                 </div>
-                <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+                <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-4">
                   {bulletinTab === 'pinned' ? (
                     <p className="px-2 py-8 text-center text-[13px] text-muted-foreground">
                       Chưa có tin ghim trong hội thoại.

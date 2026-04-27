@@ -651,11 +651,7 @@ export function useGroupConversationController({
           modalActions.closeTaskModal();
         }
         hideTaskAssignedCardsForTaskId(dispatch, activeConversationId, tid);
-        toast.success(
-          titleFromBoard || titleFromEditor
-            ? `Đã hủy công việc "${(titleFromBoard || titleFromEditor).trim()}"`
-            : 'Đã hủy công việc',
-        );
+        // Không toast: chỉ hiển thị system message trong khung chat (task_deleted).
         await fetchGroupTasks(activeConversationId);
       } catch (err) {
         const st = (err as Record<string, unknown> & { response?: { status?: number } })?.response

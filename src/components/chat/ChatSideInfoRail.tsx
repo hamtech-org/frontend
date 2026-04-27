@@ -25,6 +25,7 @@ export function ChatSideInfoRail({
 }: ChatSideInfoRailProps) {
   const isDesktop = useBreakpoint('lg');
   const visible = showInfo && !showContactsManagement;
+  const railWidth = 'clamp(300px,24vw,380px)';
 
   // ── Desktop: animated sidebar ────────────────────────────────────────
   if (isDesktop) {
@@ -34,10 +35,10 @@ export function ChatSideInfoRail({
           <motion.div
             key="conversation-info-panel"
             initial={{ width: 0, opacity: 0, x: 12 }}
-            animate={{ width: 'auto', opacity: 1, x: 0 }}
+            animate={{ width: railWidth, opacity: 1, x: 0 }}
             exit={{ width: 0, opacity: 0, x: 12 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="overflow-hidden shrink-0 w-[clamp(300px,24vw,380px)]"
+            className="overflow-hidden shrink-0"
           >
             {children}
           </motion.div>
