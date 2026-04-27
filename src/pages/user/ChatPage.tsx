@@ -52,7 +52,6 @@ export default function ChatPage() {
   const dispatch = useDispatch<AppDispatch>();
 
   const isTabletOrDesktop = useBreakpoint('md');
-  const isDesktop = useBreakpoint('lg');
 
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const accessToken = useSelector((state: RootState) => state.auth.accessToken);
@@ -406,12 +405,6 @@ export default function ChatPage() {
     modalActions.setShowInfo(false);
   }, [modalActions]);
 
-  useEffect(() => {
-    if (!isDesktop && modalState.showInfo) {
-      modalActions.setShowInfo(false);
-    }
-  }, [isDesktop, modalState.showInfo, modalActions]);
-
   const handleStartEdit = useCallback(
     (msg: IMessage) => {
       if (msg.type !== 'text') return;
@@ -556,7 +549,10 @@ export default function ChatPage() {
 
         {!isTabletOrDesktop && (
           <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
-            <SheetContent side="left" className="w-80 p-0 overflow-y-auto">
+            <SheetContent
+              side="left"
+              className="w-[clamp(280px,85vw,360px)] max-w-[100vw] p-0 overflow-y-auto"
+            >
               <SheetTitle className="sr-only">Danh sách hội thoại</SheetTitle>
               <ConversationListPanel {...convListPanelProps} />
             </SheetContent>
@@ -568,6 +564,7 @@ export default function ChatPage() {
             showContactsManagement={modalState.showContactsManagement}
             showInfo={modalState.showInfo}
             onToggleShowInfo={handleToggleShowInfo}
+            onOpenConversationList={undefined}
             typingUsers={typingUsers}
             pinned={{
               pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
