@@ -370,7 +370,6 @@ export function ChatMessageList({
   activeConversation,
   currentUserId,
   typingUsers,
-  unreadIncomingCount,
   actionMenuMsgId,
   onActionMenuMsgIdChange,
   onStartEdit,
@@ -379,7 +378,6 @@ export function ChatMessageList({
   onDelete,
   onReply,
   onReact,
-  onJumpToLatest,
   groupTasks,
   groupMembers,
   onTaskJoined,
@@ -447,6 +445,26 @@ export function ChatMessageList({
         ? (t.participants as unknown[]).map((id) => String(id))
         : (prev.participantIds ?? []);
       const subs = Array.isArray(t.subtasks) ? (t.subtasks as any[]) : [];
+      const nameById = new Map(
+        (groupMembers ?? []).map((m) => [
+          String(m.userId),
+          String(m.displayName ?? (m as any)?.name ?? m.userId ?? '').trim(),
+        ]),
+      );
+      const subAssigneeIds = Array.from(
+        new Set(subs.map((s) => String(s?.assigneeId ?? '').trim()).filter(Boolean)),
+      );
+      const topAssignees = Array.isArray(t.assignees)
+        ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
+        : [];
+      const isAll = Boolean(t.assignToAll) || Boolean(t.broadcast);
+      const assigneeLabel = isAll
+        ? 'Cả nhóm'
+        : (subs.length > 0 ? subAssigneeIds : topAssignees).length > 0
+          ? (subs.length > 0 ? subAssigneeIds : topAssignees)
+              .map((id) => nameById.get(id) || id)
+              .join(', ')
+          : (prev.assigneeLabel ?? undefined);
       const noteFromApi =
         t.description != null && String(t.description).trim() !== ''
           ? String(t.description)
@@ -456,16 +474,20 @@ export function ChatMessageList({
         title: String(t.title ?? prev.title),
         note: noteFromApi ?? null,
         dueDate: t.dueDate != null ? String(t.dueDate) : (prev.dueDate ?? null),
+        assigneeLabel,
         participantsCount: participantIds.length,
         participantIds,
         subtasks: subs.map((s) => ({
-          assigneeName: String(s?.assigneeName ?? ''),
+          assigneeName:
+            String(s?.assigneeName ?? '').trim() ||
+            nameById.get(String(s?.assigneeId ?? '').trim()) ||
+            String(s?.assigneeId ?? ''),
           content: String(s?.content ?? ''),
           done: Boolean(s?.done),
         })),
       };
     });
-  }, [groupTasks, taskDetailOpen, taskDetailTaskId]);
+  }, [groupMembers, groupTasks, taskDetailOpen, taskDetailTaskId]);
 
   const markMediaDownloaded = useCallback((messageId: string) => {
     setDownloadedMediaIds((prev) => {
@@ -491,7 +513,7 @@ export function ChatMessageList({
   const openDownloadsFolderHint = useCallback(() => {
     toast.info(
       'Trình duyệt thường lưu vào thư mục Tải xuống (Downloads). Mở Explorer / Finder và vào Downloads để xem file.',
-      { autoClose: 5000 },
+      undefined,
     );
   }, []);
 
@@ -572,7 +594,11 @@ export function ChatMessageList({
                 const name = msg.senderDisplayName.trim();
                 if (name) {
                   // Chỉ replace 1 lần để tránh "Tên" xuất hiện ở chỗ khác trong câu.
-                  content = content.replace(name, 'Bạn');
+                  // Quan trọng: KHÔNG replace trong JSON system payload (task/poll/...) vì sẽ làm hỏng dữ liệu (vd: title/assigneeLabel).
+                  const raw = typeof content === 'string' ? content.trim() : '';
+                  if (!raw.startsWith('{')) {
+                    content = content.replace(name, 'Bạn');
+                  }
                 }
               }
 
@@ -587,6 +613,9 @@ export function ChatMessageList({
                 assigneeLabel: string;
                 assignToAll: boolean;
                 broadcast: boolean;
+                assigneeUserIds: string[];
+                assigneesCount?: number;
+                subtasksFromMessage?: any[];
               } = null;
               let taskJoinedLine: null | {
                 actorId: string | null;
@@ -597,6 +626,13 @@ export function ChatMessageList({
                 try {
                   const obj = JSON.parse(content) as any;
                   if (obj?.kind === 'task_assigned' && obj?.task?.title) {
+                    const rawIds = obj?.task?.assigneeUserIds;
+                    const assigneeUserIds = Array.isArray(rawIds)
+                      ? rawIds.map((x: unknown) => String(x)).filter(Boolean)
+                      : [];
+                    const subsRaw = obj?.task?.subtasks;
+                    const subtasksFromMessage = Array.isArray(subsRaw) ? subsRaw : undefined;
+                    const ac = obj?.task?.assigneesCount;
                     taskCard = {
                       taskId: String(obj?.task?.taskId ?? ''),
                       actorId: obj?.actor?.userId ? String(obj.actor.userId) : null,
@@ -607,6 +643,9 @@ export function ChatMessageList({
                       assigneeLabel: String(obj.task.assigneeLabel ?? 'cả nhóm'),
                       assignToAll: Boolean(obj?.task?.assignToAll),
                       broadcast: Boolean(obj?.task?.broadcast),
+                      assigneeUserIds,
+                      ...(typeof ac === 'number' ? { assigneesCount: ac } : {}),
+                      ...(subtasksFromMessage ? { subtasksFromMessage } : {}),
                     };
                   }
                   if (obj?.kind === 'task_joined' && obj?.task?.taskId) {
@@ -657,34 +696,32 @@ export function ChatMessageList({
                             String(creatorIdForTask) === String(currentUserId),
                           );
 
+                          // Nếu task đã bị hủy/xóa và không còn trên board, chỉ hiển thị dòng hệ thống `task_deleted`
+                          // (tránh hiện thêm "thẻ công việc đã hủy" to gây rối).
                           if (taskMissingFromBoard) {
-                            return (
-                              <div className="flex flex-col items-center gap-2 py-3 px-2 text-center">
-                                <AlarmClockOff
-                                  className="h-9 w-9 shrink-0 text-muted-foreground/75"
-                                  strokeWidth={1.75}
-                                  aria-hidden
-                                />
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                  Công việc đã hủy
-                                </p>
-                                <p className="text-[13px] font-bold text-foreground/60 line-through break-words">
-                                  {taskCard.title}
-                                </p>
-                              </div>
-                            );
+                            return null;
                           }
 
                           const byId = new Map(
                             (groupMembers ?? []).map((m) => [
                               String(m.userId),
-                              String(m.displayName ?? '').trim(),
+                              String(m.displayName ?? (m as any)?.name ?? m.userId ?? '').trim(),
                             ]),
                           );
                           const t = tBoard;
                           const assignees = Array.isArray((t as any)?.assignees)
                             ? ((t as any).assignees as string[])
                             : [];
+                          const subsBoard = Array.isArray((t as any)?.subtasks)
+                            ? ((t as any).subtasks as any[])
+                            : [];
+                          const subsFromMsg = Array.isArray(taskCard.subtasksFromMessage)
+                            ? taskCard.subtasksFromMessage
+                            : [];
+                          const subs = subsBoard.length > 0 ? subsBoard : subsFromMsg;
+                          const subAssigneeIds = subs
+                            .map((s) => String(s?.assigneeId ?? '').trim())
+                            .filter(Boolean);
                           const labelRaw = String(taskCard.assigneeLabel ?? '');
                           const labelNorm = labelRaw
                             .toLowerCase()
@@ -700,7 +737,9 @@ export function ChatMessageList({
                             Boolean((t as any)?.broadcast) ||
                             Boolean(taskCard.assignToAll) ||
                             Boolean(taskCard.broadcast) ||
-                            assignees.length === 0 ||
+                            // Không dùng `assignees.length === 0` để suy ra "cả nhóm" khi có subtasks
+                            // (vì subtask có thể giao riêng từng người nhưng assignees có thể rỗng tuỳ payload).
+                            (assignees.length === 0 && subAssigneeIds.length === 0) ||
                             labelLooksLikeGroup;
                           const participants = Array.isArray((t as any)?.participants)
                             ? ((t as any).participants as string[])
@@ -709,7 +748,16 @@ export function ChatMessageList({
                           const participantNames = participants
                             .map((id) => byId.get(String(id)) ?? '')
                             .filter((x) => Boolean(x && x.trim()));
-                          const canJoinThisTask = assignToAll || assignees.includes(currentUserId);
+                          const isSubtaskAssignee = subAssigneeIds.includes(String(currentUserId));
+                          const topIds =
+                            taskCard.assigneeUserIds.length > 0
+                              ? taskCard.assigneeUserIds
+                              : assignees;
+                          const isTopLevelAssignee = topIds
+                            .map(String)
+                            .includes(String(currentUserId));
+                          const canJoinThisTask =
+                            assignToAll || isTopLevelAssignee || isSubtaskAssignee;
                           const dueForJoin =
                             (t as any)?.dueDate != null && String((t as any).dueDate).trim() !== ''
                               ? String((t as any).dueDate)
@@ -730,14 +778,6 @@ export function ChatMessageList({
                                         : 'Chưa có ai tham gia'}
                                     </span>
                                   </span>
-                                  {participantNames.length > 0 ? (
-                                    <span className="hidden sm:inline text-[12px] text-muted-foreground truncate max-w-[220px]">
-                                      {participantNames.slice(0, 3).join(', ')}
-                                      {participantNames.length > 3
-                                        ? ` và ${participantNames.length - 3} người khác`
-                                        : ''}
-                                    </span>
-                                  ) : null}
                                 </div>
                                 {joined ? (
                                   <span className="px-3 py-1 rounded-full text-[12px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
@@ -759,6 +799,11 @@ export function ChatMessageList({
                                       if (!canJoinThisTask) return;
                                       onTaskJoined?.(taskCard.taskId);
                                     }}
+                                    title={
+                                      !canJoinThisTask
+                                        ? 'Bạn không nằm trong danh sách được giao cho công việc này'
+                                        : undefined
+                                    }
                                     className={
                                       !canJoinThisTask
                                         ? 'px-3 py-1 rounded-full text-[12px] font-semibold bg-black/5 dark:bg-white/10 text-muted-foreground cursor-not-allowed'
@@ -813,23 +858,57 @@ export function ChatMessageList({
                                   const participantIds = Array.isArray(tt?.participants)
                                     ? (tt.participants as unknown[]).map((x) => String(x))
                                     : [];
+                                  const subAssigneeIds = Array.from(
+                                    new Set(
+                                      subs
+                                        .map((s) => String(s?.assigneeId ?? '').trim())
+                                        .filter(Boolean),
+                                    ),
+                                  );
+                                  const topIds =
+                                    taskCard.assigneeUserIds.length > 0
+                                      ? taskCard.assigneeUserIds
+                                      : Array.isArray(tt?.assignees)
+                                        ? (tt.assignees as unknown[])
+                                            .map((x) => String(x))
+                                            .filter(Boolean)
+                                        : [];
+                                  const isAll =
+                                    Boolean(tt?.assignToAll) ||
+                                    Boolean(tt?.broadcast) ||
+                                    Boolean(taskCard.assignToAll) ||
+                                    Boolean(taskCard.broadcast);
+                                  const assigneeDisplay = isAll
+                                    ? 'Cả nhóm'
+                                    : (subs.length > 0 ? subAssigneeIds : topIds).length > 0
+                                      ? (subs.length > 0 ? subAssigneeIds : topIds)
+                                          .map((id) => byId.get(String(id)) ?? String(id))
+                                          .join(', ')
+                                      : taskCard.assigneeLabel;
                                   setTaskDetailTaskId(String(taskCard.taskId));
                                   setTaskDetail({
                                     title: taskCard.title,
                                     note: taskCard.note,
                                     dueDate: taskCard.dueDate,
-                                    assigneeLabel: taskCard.assigneeLabel,
+                                    assigneeLabel: assigneeDisplay,
                                     participantsCount: participantIds.length,
                                     participantIds,
                                     actorLabel:
                                       (taskCard.actorId && taskCard.actorId === currentUserId
                                         ? 'Bạn'
                                         : taskCard.actorName) + ' đã giao việc',
-                                    subtasks: subs.map((s) => ({
-                                      assigneeName: String(s?.assigneeName ?? ''),
-                                      content: String(s?.content ?? ''),
-                                      done: Boolean(s?.done),
-                                    })),
+                                    subtasks: subs.map((s) => {
+                                      const assigneeId = String(s?.assigneeId ?? '').trim();
+                                      const nameRaw = String(s?.assigneeName ?? '').trim();
+                                      const name =
+                                        nameRaw ||
+                                        (assigneeId ? (byId.get(assigneeId) ?? assigneeId) : '');
+                                      return {
+                                        assigneeName: name,
+                                        content: String(s?.content ?? ''),
+                                        done: Boolean(s?.done),
+                                      };
+                                    }),
                                   });
                                   setTaskDetailOpen(true);
                                 }}
@@ -848,9 +927,46 @@ export function ChatMessageList({
                                   <div className="flex items-center gap-2">
                                     <Users className="w-3.5 h-3.5" />
                                     <span className="font-semibold">Giao cho:</span>
-                                    <span className="min-w-0 truncate">
-                                      {taskCard.assigneeLabel}
-                                    </span>
+                                    {(() => {
+                                      const subs = Array.isArray((tBoard as any)?.subtasks)
+                                        ? ((tBoard as any).subtasks as any[])
+                                        : [];
+                                      const subAssignees =
+                                        subs.length > 0
+                                          ? Array.from(
+                                              new Set(
+                                                subs
+                                                  .map((s) => String(s?.assigneeId ?? '').trim())
+                                                  .filter(Boolean),
+                                              ),
+                                            )
+                                          : [];
+                                      const topIds =
+                                        taskCard.assigneeUserIds.length > 0
+                                          ? taskCard.assigneeUserIds
+                                          : Array.isArray((tBoard as any)?.assignees)
+                                            ? (((tBoard as any).assignees as unknown[]) ?? []).map(
+                                                (x) => String(x),
+                                              )
+                                            : [];
+                                      const ids = subs.length > 0 ? subAssignees : topIds;
+                                      const display =
+                                        Boolean((tBoard as any)?.assignToAll) ||
+                                        Boolean((tBoard as any)?.broadcast) ||
+                                        Boolean(taskCard.assignToAll) ||
+                                        Boolean(taskCard.broadcast)
+                                          ? 'Cả nhóm'
+                                          : ids.length > 0
+                                            ? ids
+                                                .map((id) => byId.get(String(id)) ?? String(id))
+                                                .join(', ')
+                                            : taskCard.assigneeLabel;
+                                      return (
+                                        <span className="min-w-0 truncate" title={display}>
+                                          {display}
+                                        </span>
+                                      );
+                                    })()}
                                   </div>
                                   {taskCard.dueDate ? (
                                     <div className="flex flex-wrap items-center gap-2">
@@ -876,23 +992,47 @@ export function ChatMessageList({
                                     <div className="mt-3 space-y-2">
                                       {subs.map((s) => {
                                         const done = Boolean(s?.done);
-                                        const line = `${done ? '✓' : '•'} ${String(s?.assigneeName ?? '')} — ${String(
-                                          s?.content ?? '',
-                                        )}`;
+                                        const assigneeId = String(s?.assigneeId ?? '').trim();
+                                        const nameRaw = String(s?.assigneeName ?? '').trim();
+                                        const name =
+                                          nameRaw ||
+                                          (assigneeId ? (byId.get(assigneeId) ?? assigneeId) : '');
+                                        const content = String(s?.content ?? '').trim();
+                                        const line = `${done ? '✓' : '•'} ${name} — ${content}`;
                                         return (
                                           <div
                                             key={String(s?.id ?? line)}
-                                            className="flex items-center justify-between gap-2"
+                                            className="flex items-start gap-2"
                                           >
-                                            <div
-                                              className={`text-[13px] font-semibold break-words ${
+                                            <span
+                                              className={`mt-[2px] inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
                                                 done
-                                                  ? 'text-muted-foreground line-through'
-                                                  : 'text-foreground'
+                                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                                  : 'bg-black/5 text-muted-foreground dark:bg-white/10'
                                               }`}
-                                              title={line}
+                                              aria-hidden
                                             >
-                                              {line}
+                                              {done ? '✓' : '•'}
+                                            </span>
+                                            <div className="min-w-0 flex-1" title={line}>
+                                              <div
+                                                className={`text-[13px] font-extrabold ${
+                                                  done
+                                                    ? 'text-muted-foreground line-through'
+                                                    : 'text-foreground'
+                                                }`}
+                                              >
+                                                {name}
+                                              </div>
+                                              <div
+                                                className={`mt-0.5 text-[13px] font-normal break-words whitespace-pre-line leading-6 line-clamp-3 ${
+                                                  done
+                                                    ? 'text-muted-foreground line-through'
+                                                    : 'text-foreground'
+                                                }`}
+                                              >
+                                                {content || '…'}
+                                              </div>
                                             </div>
                                           </div>
                                         );
@@ -1787,19 +1927,7 @@ export function ChatMessageList({
               </motion.div>
             )}
           </AnimatePresence>
-          {unreadIncomingCount > 0 && (
-            <div className="sticky bottom-3 z-20 flex justify-center">
-              <button
-                type="button"
-                onClick={onJumpToLatest}
-                className="px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-semibold shadow-lg shadow-blue-600/25 hover:bg-blue-700 transition-colors"
-              >
-                {unreadIncomingCount > 1
-                  ? `${unreadIncomingCount} tin nhắn mới — bấm để xem`
-                  : '1 tin nhắn mới — bấm để xem'}
-              </button>
-            </div>
-          )}
+
           <div ref={messagesEndRef} />
           <MediaLightbox
             open={mediaLightbox !== null}
@@ -1823,11 +1951,45 @@ export function ChatMessageList({
                     {taskDetail.title}
                   </div>
                   <div className="space-y-2 text-[13px] text-muted-foreground">
-                    {taskDetail.assigneeLabel ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold">Giao cho:</span> {taskDetail.assigneeLabel}
-                      </div>
-                    ) : null}
+                    {(() => {
+                      const t = taskDetailTaskId
+                        ? ((groupTasks ?? []).find(
+                            (x: any) => String(x?.taskId) === String(taskDetailTaskId),
+                          ) as any)
+                        : null;
+                      if (!t && !taskDetail.assigneeLabel) return null;
+                      const nameById = new Map(
+                        (groupMembers ?? []).map((m) => [
+                          String(m.userId),
+                          String(m.displayName ?? (m as any)?.name ?? m.userId ?? '').trim(),
+                        ]),
+                      );
+                      const subs = Array.isArray(t?.subtasks) ? (t.subtasks as any[]) : [];
+                      const subAssignees = Array.from(
+                        new Set(
+                          subs.map((s) => String(s?.assigneeId ?? '').trim()).filter(Boolean),
+                        ),
+                      );
+                      const topAssignees = Array.isArray(t?.assignees)
+                        ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
+                        : [];
+                      const isAll = Boolean(t?.assignToAll) || Boolean(t?.broadcast);
+                      const ids = subs.length > 0 ? subAssignees : topAssignees;
+                      const display = isAll
+                        ? 'Cả nhóm'
+                        : ids.length > 0
+                          ? ids.map((id) => nameById.get(id) || id).join(', ')
+                          : (taskDetail.assigneeLabel ?? '');
+                      if (!display.trim()) return null;
+                      return (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold">Giao cho:</span>
+                          <span className="text-foreground/85" title={display}>
+                            {display}
+                          </span>
+                        </div>
+                      );
+                    })()}
                     {(() => {
                       const ids = taskDetail.participantIds ?? [];
                       if (ids.length === 0) {
@@ -1840,12 +2002,15 @@ export function ChatMessageList({
                       const nameById = new Map(
                         (groupMembers ?? []).map((m) => [
                           String(m.userId),
-                          String(m.displayName ?? m.userId),
+                          String(m.displayName ?? (m as any)?.name ?? m.userId ?? '').trim(),
                         ]),
                       );
-                      const names = ids.map((id) =>
-                        id === currentUserId ? 'Bạn' : (nameById.get(id) ?? id),
-                      );
+                      const names = ids.map((id) => {
+                        const uid = String(id);
+                        const label =
+                          uid === String(currentUserId) ? 'Bạn' : (nameById.get(uid) ?? uid);
+                        return { id: uid, label };
+                      });
                       return (
                         <div className="space-y-1">
                           <div>
@@ -1854,10 +2019,10 @@ export function ChatMessageList({
                           <div className="flex flex-wrap gap-2">
                             {names.map((n) => (
                               <span
-                                key={n}
+                                key={n.id}
                                 className="inline-flex items-center rounded-full bg-black/5 dark:bg-white/10 px-2.5 py-1 text-[12px] font-semibold text-foreground/80"
                               >
-                                {n}
+                                {n.label}
                               </span>
                             ))}
                           </div>
@@ -1871,29 +2036,55 @@ export function ChatMessageList({
                       </div>
                     ) : null}
                     {taskDetail.note ? (
-                      <div className="whitespace-pre-line break-words rounded-2xl border border-border/60 bg-muted/20 p-3">
-                        <span className="font-semibold">Ghi chú:</span> {taskDetail.note}
+                      <div className="rounded-2xl border border-border/60 bg-muted/15 p-3">
+                        <div className="mb-1 text-[12px] font-extrabold uppercase tracking-wide text-muted-foreground">
+                          Ghi chú
+                        </div>
+                        <div className="whitespace-pre-line break-words text-[13px] leading-6 text-foreground/90">
+                          {taskDetail.note}
+                        </div>
                       </div>
                     ) : null}
                   </div>
                   {taskDetail.subtasks && taskDetail.subtasks.length > 0 ? (
-                    <div className="rounded-xl border border-border bg-muted/30 p-3">
-                      <div className="mb-2 text-[12px] font-bold text-foreground">
+                    <div className="rounded-2xl border border-border/60 bg-muted/15 p-3">
+                      <div className="mb-2 text-[12px] font-extrabold uppercase tracking-wide text-muted-foreground">
                         Công việc theo từng người
                       </div>
-                      <div className="space-y-1.5">
+                      <div className="space-y-2">
                         {taskDetail.subtasks.map((s, idx) => {
-                          const line = `${s?.done ? '✓' : '•'} ${String(s?.assigneeName ?? '')} — ${String(
-                            s?.content ?? '',
-                          )}`;
+                          const done = Boolean(s?.done);
+                          const name = String(s?.assigneeName ?? '').trim();
+                          const content = String(s?.content ?? '').trim();
+                          const line = `${done ? '✓' : '•'} ${name} — ${content}`;
                           return (
-                            <div
-                              key={`${idx}-${line}`}
-                              className={`text-[13px] font-semibold break-words ${
-                                s?.done ? 'text-muted-foreground line-through' : 'text-foreground'
-                              }`}
-                            >
-                              {line}
+                            <div key={`${idx}-${line}`} className="flex items-start gap-2">
+                              <span
+                                className={`mt-[2px] inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
+                                  done
+                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                    : 'bg-black/5 text-muted-foreground dark:bg-white/10'
+                                }`}
+                                aria-hidden
+                              >
+                                {done ? '✓' : '•'}
+                              </span>
+                              <div className="min-w-0 flex-1" title={line}>
+                                <div
+                                  className={`text-[13px] font-extrabold ${
+                                    done ? 'text-muted-foreground line-through' : 'text-foreground'
+                                  }`}
+                                >
+                                  {name || 'Thành viên'}
+                                </div>
+                                <div
+                                  className={`mt-0.5 text-[13px] font-normal break-words whitespace-pre-line leading-6 ${
+                                    done ? 'text-muted-foreground line-through' : 'text-foreground'
+                                  }`}
+                                >
+                                  {content || '…'}
+                                </div>
+                              </div>
                             </div>
                           );
                         })}
