@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { apiClient } from '@/services/api';
@@ -56,11 +56,6 @@ export function AiQuickReplies({
 
   const cacheRef = useRef(new Map<string, string[]>());
   const lastInputKeyRef = useRef<string>('');
-
-  const cacheKey = useMemo(() => {
-    if (!selectedTopic) return '';
-    return `${selectedTopic}::${language}::${type}::${inputTrimmed}`;
-  }, [inputTrimmed, language, selectedTopic, type]);
 
   const fetchSuggestions = async (topic: Topic) => {
     if (!canSuggest) return;

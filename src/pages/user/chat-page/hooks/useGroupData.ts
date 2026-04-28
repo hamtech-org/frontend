@@ -3,7 +3,6 @@ import { useSelector } from 'react-redux';
 import { socketService } from '@/services/socket';
 import { groupApi } from '@/services/chat/groupApi';
 import type {
-  AIRecap,
   GroupActionLoading,
   GroupMember,
   GroupPoll,
@@ -43,7 +42,6 @@ export function useGroupData({
   const [groupRequests, setGroupRequests] = useState<GroupRequest[]>([]);
   const [groupPolls, setGroupPolls] = useState<GroupPoll[]>([]);
   const [groupTasks, setGroupTasks] = useState<GroupTask[]>([]);
-  const [latestRecap, setLatestRecap] = useState<AIRecap | null>(null);
   const [groupJoinRequested, setGroupJoinRequested] = useState(false);
   const [groupLoading, setGroupLoading] = useState<GroupLoadingState>({
     members: false,
@@ -159,17 +157,10 @@ export function useGroupData({
   }, []);
 
   const fetchLatestRecap = useCallback(async (groupId: string) => {
-    setGroupLoading((prev) => ({ ...prev, recap: true }));
-    try {
-      // Recap endpoint đã được chuyển sang `/api/v1/ai/group-summary` (module AI),
-      // nên không còn fetch "latest recap" từ chat module nữa.
-      void groupId;
-      setLatestRecap(null);
-    } catch {
-      setLatestRecap(null);
-    } finally {
-      setGroupLoading((prev) => ({ ...prev, recap: false }));
-    }
+    // Recap endpoint đã được chuyển sang `/api/v1/ai/group-summary` (module AI).
+    // Giữ function để không vỡ call sites cũ, nhưng không fetch dữ liệu nữa.
+    void groupId;
+    setGroupLoading((prev) => ({ ...prev, recap: false }));
   }, []);
 
   useEffect(() => {
@@ -178,7 +169,6 @@ export function useGroupData({
       setGroupRequests([]);
       setGroupPolls([]);
       setGroupTasks([]);
-      setLatestRecap(null);
       setGroupJoinRequested(false);
       return;
     }
@@ -306,8 +296,6 @@ export function useGroupData({
     setGroupPolls,
     groupTasks,
     setGroupTasks,
-    latestRecap,
-    setLatestRecap,
     groupJoinRequested,
     setGroupJoinRequested,
     groupLoading,
