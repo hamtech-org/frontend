@@ -1,7 +1,6 @@
 import { apiClient } from '@/services/api';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import type {
-  AIRecap,
   GroupMember,
   GroupMemberRole,
   GroupPoll,
@@ -21,11 +20,6 @@ export const groupApi = {
   },
   getTasks(groupId: string) {
     return apiClient.get<ApiSuccessResponse<GroupTask[]>>(`/chat/groups/${groupId}/tasks`);
-  },
-  getLatestRecap(groupId: string) {
-    return apiClient.get<ApiSuccessResponse<AIRecap | null>>(
-      `/chat/groups/${groupId}/ai-recap/latest`,
-    );
   },
   updateGroup(groupId: string, payload: { name: string; avatar?: string }) {
     return apiClient.put(`/chat/groups/${groupId}`, payload);
@@ -83,9 +77,6 @@ export const groupApi = {
     await apiClient.put(`/chat/groups/${groupId}/members/${currentOwnerUserId}/role`, {
       role: 'admin',
     });
-  },
-  generateRecap(groupId: string) {
-    return apiClient.post<ApiSuccessResponse<AIRecap>>(`/chat/groups/${groupId}/ai-recap`);
   },
   createPoll(
     groupId: string,

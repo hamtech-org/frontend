@@ -32,12 +32,10 @@ export const {
   useUnvotePollMutation,
   useCreateTaskMutation,
   useUpdateTaskStatusMutation,
-  useGenerateAIRecapMutation,
   useGetPollsQuery,
   useGetTasksQuery,
   useTriggerTaskDueReminderMutation,
   useGetGroupRequestsQuery,
-  useGetLatestAIRecapQuery,
   useGetGroupSettingsQuery,
   useUpdateGroupSettingsMutation,
 } = chatApi;

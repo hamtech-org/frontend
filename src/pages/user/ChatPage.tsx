@@ -101,8 +101,6 @@ export default function ChatPage() {
     setGroupPolls,
     groupTasks,
     setGroupTasks,
-    latestRecap,
-    setLatestRecap,
     groupJoinRequested,
     setGroupJoinRequested,
     groupLoading,
@@ -188,7 +186,6 @@ export default function ChatPage() {
       groupPolls,
       groupTasks,
       groupJoinRequested,
-      latestRecap,
     },
     groupSetters: {
       setGroupMembers,
@@ -196,7 +193,6 @@ export default function ChatPage() {
       setGroupPolls,
       setGroupTasks,
       setGroupJoinRequested,
-      setLatestRecap,
     },
     groupFetchers: {
       fetchGroupMembers,
@@ -571,6 +567,7 @@ export default function ChatPage() {
         {(isTabletOrDesktop || mobileView === 'chat') && (
           <ChatMainContent
             showContactsManagement={modalState.showContactsManagement}
+            contactsTab={modalState.contactsTab}
             showInfo={modalState.showInfo}
             onToggleShowInfo={handleToggleShowInfo}
             onOpenConversationList={undefined}
