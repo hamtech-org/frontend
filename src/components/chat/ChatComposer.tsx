@@ -63,6 +63,7 @@ export function ChatComposer({
 
   const currentUserId = useSelector((state: RootState) => state.auth.user?.userId ?? '');
   const [aiReplyLoading, setAiReplyLoading] = useState(false);
+  const [showAiQuickReplies, setShowAiQuickReplies] = useState(true);
 
   const {
     inputText,
@@ -446,8 +447,31 @@ export function ChatComposer({
             </TooltipTrigger>
             <TooltipContent side="top">Voice (preview)</TooltipContent>
           </Tooltip>
+
           <div className="mx-0.5 h-5 w-px bg-border sm:mx-1" />
-          flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                disabled={!activeConversationId}
+                aria-label={showAiQuickReplies ? 'Tắt gợi ý AI' : 'Bật gợi ý AI'}
+                aria-pressed={showAiQuickReplies}
+                onClick={() => setShowAiQuickReplies((prev) => !prev)}
+                className={[
+                  'shrink-0 rounded-lg p-2 transition-all disabled:pointer-events-none disabled:opacity-40',
+                  showAiQuickReplies
+                    ? 'bg-blue-600/10 text-blue-600 hover:bg-blue-600/15'
+                    : 'text-muted-foreground hover:bg-muted hover:text-blue-600',
+                ].join(' ')}
+              >
+                <Sparkles className="size-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {showAiQuickReplies ? 'Tắt gợi ý AI' : 'Bật gợi ý AI'}
+            </TooltipContent>
+          </Tooltip>
+
           {activeConversation?.type === 'group' && (
             <>
               <button
@@ -500,6 +524,7 @@ export function ChatComposer({
               </button>
             </>
           )}
+
           {activeConversation?.type === 'direct' && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -516,16 +541,18 @@ export function ChatComposer({
         </div>
       </TooltipProvider>
 
-      <AiQuickReplies
-        activeConversationId={activeConversationId}
-        inputText={inputText}
-        type="reply"
-        language="vi"
-        textareaRef={textareaRef}
-        onPickReply={(text) => {
-          setInputText(text);
-        }}
-      />
+      {showAiQuickReplies && (
+        <AiQuickReplies
+          activeConversationId={activeConversationId}
+          inputText={inputText}
+          type="reply"
+          language="vi"
+          textareaRef={textareaRef}
+          onPickReply={(text) => {
+            setInputText(text);
+          }}
+        />
+      )}
 
       <div className="relative flex items-end gap-2">
         <div className="relative flex flex-1 flex-col rounded-xl border border-border/45 bg-muted/35 transition-all focus-within:border-border focus-within:bg-background/90">
