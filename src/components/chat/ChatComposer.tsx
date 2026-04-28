@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import EmojiPicker from 'emoji-picker-react';
 import {
   BarChart2,
@@ -21,6 +22,8 @@ import type { GroupMemberRole } from '@/types/chat.group.types';
 import { useChatComposerController } from '@/pages/user/chat-page/hooks/useChatComposerController';
 import { toast } from 'react-toastify';
 import { AiQuickReplies } from '@/components/chat/AiQuickReplies';
+import { apiClient } from '@/services/api';
+import type { RootState } from '@/store/store';
 import {
   canUserCreatePollInGroup,
   canUserCreateTaskInGroup,
@@ -57,6 +60,9 @@ export function ChatComposer({
   onOpenAISummary,
 }: ChatComposerProps) {
   type VoiceUiState = 'idle' | 'active-ui' | 'cancelled-ui';
+
+  const currentUserId = useSelector((state: RootState) => state.auth.user?.userId ?? '');
+  const [aiReplyLoading, setAiReplyLoading] = useState(false);
 
   const {
     inputText,
@@ -214,6 +220,70 @@ export function ChatComposer({
               {replyingTo.isRecalled ? 'Tin nhắn đã được thu hồi' : replyingTo.content}
             </p>
           </div>
+
+          <TooltipProvider delayDuration={250}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  disabled={
+                    !activeConversationId ||
+                    !currentUserId ||
+                    aiReplyLoading ||
+                    replyingTo.isRecalled
+                  }
+                  onClick={async () => {
+                    if (!activeConversationId) return;
+                    if (!currentUserId) {
+                      toast.error('Không tìm thấy thông tin người dùng hiện tại.');
+                      return;
+                    }
+                    if (replyingTo.isRecalled) {
+                      toast.info('Tin nhắn đã thu hồi, không thể gợi ý trả lời.');
+                      return;
+                    }
+
+                    setAiReplyLoading(true);
+                    try {
+                      const res = await apiClient.post<{
+                        success: boolean;
+                        data: { suggestions: string[]; model: string; tokensUsed: number };
+                      }>('/ai/suggest-reply-context', {
+                        conversationId: activeConversationId,
+                        meUserId: currentUserId,
+                        theirUserId: replyingTo.senderId,
+                        anchorMessageId: replyingTo.messageId,
+                      });
+
+                      const suggestions = res.data?.data?.suggestions ?? [];
+                      const first = suggestions[0]?.trim();
+                      if (!first) {
+                        toast.warning('AI chưa trả về gợi ý phù hợp.');
+                        return;
+                      }
+
+                      setInputText(first);
+                      window.setTimeout(() => textareaRef.current?.focus(), 0);
+                    } catch {
+                      toast.error('Gợi ý trả lời thất bại. Vui lòng thử lại.');
+                    } finally {
+                      setAiReplyLoading(false);
+                    }
+                  }}
+                  aria-label="AI gợi ý câu trả lời"
+                  className="p-1.5 rounded-full hover:bg-muted transition-colors text-blue-600 disabled:opacity-45 disabled:pointer-events-none"
+                >
+                  {aiReplyLoading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="size-4" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">AI gợi ý trả lời</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           {/* X thay Smile — semantic đúng hơn cho nút đóng (Hamtech Rule) */}
           <button
             type="button"
@@ -376,9 +446,8 @@ export function ChatComposer({
             </TooltipTrigger>
             <TooltipContent side="top">Voice (preview)</TooltipContent>
           </Tooltip>
-
           <div className="mx-0.5 h-5 w-px bg-border sm:mx-1" />
-
+          flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2
           {activeConversation?.type === 'group' && (
             <>
               <button
@@ -431,7 +500,6 @@ export function ChatComposer({
               </button>
             </>
           )}
-
           {activeConversation?.type === 'direct' && (
             <Tooltip>
               <TooltipTrigger asChild>
