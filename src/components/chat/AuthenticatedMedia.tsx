@@ -10,6 +10,23 @@ type AuthenticatedMediaProps = {
   videoAutoPlay?: boolean;
 };
 
+function isCloudFrontSignedUrl(raw: string): boolean {
+  const src = (raw ?? '').trim();
+  if (!src) return false;
+  try {
+    const u = new URL(src, window.location.origin);
+    const host = u.hostname.toLowerCase();
+    if (!host.endsWith('cloudfront.net')) return false;
+    return (
+      u.searchParams.has('Signature') &&
+      u.searchParams.has('Key-Pair-Id') &&
+      (u.searchParams.has('Expires') || u.searchParams.has('Policy'))
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Fetches private media with Bearer token then displays via blob URL (img/video).
  */
@@ -30,9 +47,9 @@ export function AuthenticatedMedia({
     const run = async () => {
       try {
         const token = localStorage.getItem('accessToken');
-        const res = await fetch(src, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const isSignedCdn = isCloudFrontSignedUrl(src);
+        const headers = !isSignedCdn && token ? { Authorization: `Bearer ${token}` } : undefined;
+        const res = await fetch(src, { headers });
         if (!res.ok) throw new Error(String(res.status));
         const blob = await res.blob();
         if (cancelled) return;
