@@ -4,13 +4,13 @@ import { toast } from 'react-toastify';
 import { chatApi } from '@/store/api/chatApi';
 import { socketService } from '@/services/socket';
 import { groupApi } from '@/services/chat/groupApi';
+import { apiClient } from '@/services/api';
 import type { IMessage, IConversation } from '@/types/chat.types';
 import {
   canUserCreatePollInGroup,
   canUserCreateTaskInGroup,
 } from '@/utils/groupConversationPermissions';
 import type {
-  AIRecap,
   GroupActionLoading,
   GroupMember,
   GroupPoll,
@@ -55,7 +55,6 @@ interface UseGroupConversationControllerParams {
     groupPolls: GroupPoll[];
     groupTasks: GroupTask[];
     groupJoinRequested: boolean;
-    latestRecap: AIRecap | null;
   };
   groupSetters: {
     setGroupMembers: Dispatch<SetStateAction<GroupMember[]>>;
@@ -65,7 +64,6 @@ interface UseGroupConversationControllerParams {
     setGroupPolls: Dispatch<SetStateAction<GroupPoll[]>>;
     setGroupTasks: Dispatch<SetStateAction<GroupTask[]>>;
     setGroupJoinRequested: Dispatch<SetStateAction<boolean>>;
-    setLatestRecap: Dispatch<SetStateAction<AIRecap | null>>;
   };
   groupFetchers: {
     fetchGroupMembers: (groupId: string) => Promise<void>;
@@ -139,16 +137,9 @@ export function useGroupConversationController({
   setActionBusy,
   navigate,
 }: UseGroupConversationControllerParams) {
-  const { groupMembers, groupRequests, groupPolls, groupTasks, groupJoinRequested, latestRecap } =
-    groupState;
-  const {
-    setGroupMembers,
-    setGroupRequests,
-    setGroupPolls,
-    setGroupTasks,
-    setGroupJoinRequested,
-    setLatestRecap,
-  } = groupSetters;
+  const { groupMembers, groupRequests, groupPolls, groupTasks, groupJoinRequested } = groupState;
+  const { setGroupMembers, setGroupRequests, setGroupPolls, setGroupTasks, setGroupJoinRequested } =
+    groupSetters;
   const { fetchGroupMembers, fetchGroupRequests, fetchGroupPolls, fetchGroupTasks } = groupFetchers;
   const {
     editGroupAvatarPreview,
@@ -962,42 +953,86 @@ export function useGroupConversationController({
 
   const openAISummaryFromPanel = useCallback(async () => {
     modalActions.setShowAISummaryModal(true);
-    if (latestRecap) {
-      modalActions.setAiSummaryResult(latestRecap.content);
-      return;
-    }
     modalActions.setAiSummaryResult('');
     modalActions.setAiSummaryLoading(true);
     try {
       if (!activeConversationId) return;
-      const result = await groupApi.generateRecap(activeConversationId);
-      setLatestRecap(result.data.data);
-      modalActions.setAiSummaryResult(result.data.data?.content ?? '');
+      const result = await apiClient.post<{
+        success: boolean;
+        data: { summary: string; highlights: string[]; model: string; tokensUsed: number };
+      }>('/ai/group-summary', {
+        conversationId: activeConversationId,
+        limit: 40,
+      });
+      const summary = String(result.data?.data?.summary ?? '').trim();
+      const highlights = Array.isArray(result.data?.data?.highlights)
+        ? result.data.data.highlights
+        : [];
+
+      const summaryBlock = summary
+        ? `Tóm tắt\n${summary
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .map((l) => (l.startsWith('-') || l.startsWith('•') ? l : `• ${l}`))
+            .join('\n')}`
+        : 'Tóm tắt\n• (Chưa có)';
+
+      const highlightsBlock =
+        highlights.length > 0
+          ? `Điểm nổi bật\n${highlights.map((h) => `• ${String(h).trim()}`).join('\n')}`
+          : 'Điểm nổi bật\n• (Không có)';
+
+      modalActions.setAiSummaryResult([summaryBlock, highlightsBlock].join('\n\n'));
     } catch (error) {
       console.error('Failed to generate AI summary:', error);
       modalActions.setAiSummaryResult('Không thể tạo tóm tắt vào lúc này.');
     } finally {
       modalActions.setAiSummaryLoading(false);
     }
-  }, [activeConversationId, latestRecap, modalActions, setLatestRecap]);
+  }, [activeConversationId, modalActions]);
 
   const handleRerunAISummary = useCallback(async () => {
     if (!activeConversationId) return;
     modalActions.setAiSummaryResult('');
     modalActions.setAiSummaryLoading(true);
     try {
-      const result = await groupApi.generateRecap(activeConversationId);
-      setLatestRecap(result.data.data);
-      modalActions.setAiSummaryResult(result.data.data?.content ?? '');
-      toast.success('Đã tạo AI recap');
+      const result = await apiClient.post<{
+        success: boolean;
+        data: { summary: string; highlights: string[]; model: string; tokensUsed: number };
+      }>('/ai/group-summary', {
+        conversationId: activeConversationId,
+        limit: 40,
+      });
+      const summary = String(result.data?.data?.summary ?? '').trim();
+      const highlights = Array.isArray(result.data?.data?.highlights)
+        ? result.data.data.highlights
+        : [];
+
+      const summaryBlock = summary
+        ? `Tóm tắt\n${summary
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .map((l) => (l.startsWith('-') || l.startsWith('•') ? l : `• ${l}`))
+            .join('\n')}`
+        : 'Tóm tắt\n• (Chưa có)';
+
+      const highlightsBlock =
+        highlights.length > 0
+          ? `Điểm nổi bật\n${highlights.map((h) => `• ${String(h).trim()}`).join('\n')}`
+          : 'Điểm nổi bật\n• (Không có)';
+
+      modalActions.setAiSummaryResult([summaryBlock, highlightsBlock].join('\n\n'));
+      toast.success('Đã tạo tóm tắt AI');
     } catch (error) {
       console.error('Failed to rerun AI summary:', error);
       modalActions.setAiSummaryResult('Không thể làm mới tóm tắt.');
-      toast.error('Không thể tạo AI recap');
+      toast.error('Không thể tạo tóm tắt AI');
     } finally {
       modalActions.setAiSummaryLoading(false);
     }
-  }, [activeConversationId, modalActions, setLatestRecap]);
+  }, [activeConversationId, modalActions]);
 
   const handleCreatePoll = useCallback(async () => {
     if (!activeConversationId || !pollQuestion.trim()) return;

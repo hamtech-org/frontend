@@ -161,8 +161,10 @@ export function useGroupData({
   const fetchLatestRecap = useCallback(async (groupId: string) => {
     setGroupLoading((prev) => ({ ...prev, recap: true }));
     try {
-      const res = await groupApi.getLatestRecap(groupId);
-      setLatestRecap(res.data.data ?? null);
+      // Recap endpoint đã được chuyển sang `/api/v1/ai/group-summary` (module AI),
+      // nên không còn fetch "latest recap" từ chat module nữa.
+      void groupId;
+      setLatestRecap(null);
     } catch {
       setLatestRecap(null);
     } finally {
@@ -186,7 +188,6 @@ export function useGroupData({
       fetchGroupRequests(activeConversationId),
       fetchGroupPolls(activeConversationId),
       fetchGroupTasks(activeConversationId),
-      fetchLatestRecap(activeConversationId),
     ]);
   }, [
     activeConversationId,
@@ -195,7 +196,6 @@ export function useGroupData({
     fetchGroupRequests,
     fetchGroupPolls,
     fetchGroupTasks,
-    fetchLatestRecap,
   ]);
 
   useEffect(() => {

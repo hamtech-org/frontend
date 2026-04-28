@@ -6,7 +6,6 @@ import { buildGroupsEndpoints } from '@/store/api/chat/groups.endpoints';
 import { buildRequestsEndpoints } from '@/store/api/chat/requests.endpoints';
 import { buildPollsEndpoints } from '@/store/api/chat/polls.endpoints';
 import { buildTasksEndpoints } from '@/store/api/chat/tasks.endpoints';
-import { buildAiRecapEndpoints } from '@/store/api/chat/aiRecap.endpoints';
 
 export const chatApi = createApi({
   reducerPath: 'chatApi',
@@ -19,6 +18,5 @@ export const chatApi = createApi({
     ...buildRequestsEndpoints(builder),
     ...buildPollsEndpoints(builder),
     ...buildTasksEndpoints(builder),
-    ...buildAiRecapEndpoints(builder),
   }),
 });
