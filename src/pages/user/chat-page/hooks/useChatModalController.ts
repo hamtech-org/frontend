@@ -7,7 +7,6 @@ export interface ChatModalState {
   showInfo: boolean;
   showOtherPinnedPanel: boolean;
   showMarkReadModal: boolean;
-  showProfileModal: boolean;
   showCreateGroupModal: boolean;
   selectedGroupMembers: string[];
   groupName: string;
@@ -55,7 +54,6 @@ export function useChatModalController() {
   );
   const [showOtherPinnedPanel, setShowOtherPinnedPanel] = useState(false);
   const [showMarkReadModal, setShowMarkReadModal] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [selectedGroupMembers, setSelectedGroupMembers] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
@@ -120,7 +118,6 @@ export function useChatModalController() {
     showInfo,
     showOtherPinnedPanel,
     showMarkReadModal,
-    showProfileModal,
     showCreateGroupModal,
     selectedGroupMembers,
     groupName,
@@ -164,7 +161,6 @@ export function useChatModalController() {
       setShowInfo,
       setShowOtherPinnedPanel,
       setShowMarkReadModal,
-      setShowProfileModal,
       setShowCreateGroupModal,
       setSelectedGroupMembers,
       setGroupName,
