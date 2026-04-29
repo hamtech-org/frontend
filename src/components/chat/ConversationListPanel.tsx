@@ -379,11 +379,22 @@ export function ConversationListPanel({
           onContactsTabChange={onContactsTabChange}
         />
       ) : (
-        <div className="flex-1 min-h-0 pl-0 pr-2 pb-4 flex flex-col gap-2">
-          {/* pl-0: bỏ padding trái (trước đây px-4 làm list lệch quá sang phải) */}
+        <div className="flex-1 min-h-0 pb-4 flex flex-col gap-2">
+          {/* px-2 được chuyển vào bên trong item để chống cắt khúc khi scale/ring */}
           {convsLoading && (
-            <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-              Đang tải...
+            <div className="flex flex-col gap-2 px-3 pt-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 p-3 rounded-2xl animate-pulse">
+                  <div className="w-11 h-11 rounded-full bg-muted shrink-0" />
+                  <div className="flex-1 min-w-0 flex flex-col gap-2">
+                    <div className="h-3.5 bg-muted rounded-full w-3/4" />
+                    <div className="h-2.5 bg-muted/70 rounded-full w-1/2" />
+                  </div>
+                  <div className="shrink-0 flex flex-col items-end gap-2">
+                    <div className="h-2.5 bg-muted rounded-full w-8" />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
           {!convsLoading && (
@@ -415,21 +426,18 @@ export function ConversationListPanel({
                     : '';
 
                   const baseIdle = 'hover:bg-black/5 dark:hover:bg-white/5';
-                  const mutedIdle = 'bg-muted/40 opacity-60 hover:bg-muted/60';
+
                   /** Nút bật lại thông báo (chuông gạch) — hiện mọi hàng đang mute, kể cả trong panel muted. */
                   const showMuteToggle = isMuted && !!onToggleConversationMute;
 
                   return (
-                    <div key={key} style={style} className="pb-2">
+                    <div key={key} style={style} className="px-2 pb-0.5">
                       <motion.div
-                        whileHover={{ scale: 1.01 }}
                         whileTap={{ scale: 0.98 }}
-                        className={`w-full p-3 rounded-2xl flex items-center gap-2 transition-colors group ${
+                        className={`w-full p-2.5 rounded-2xl flex items-center gap-2 transition-colors group ${
                           isActive
-                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                            : isMuted
-                              ? mutedIdle
-                              : baseIdle
+                            ? 'bg-blue-500/12 dark:bg-blue-400/10 text-blue-700 dark:text-blue-300 shadow-sm ring-1 ring-blue-500/20 dark:ring-blue-400/15'
+                            : baseIdle
                         }`}
                       >
                         <button
@@ -442,11 +450,13 @@ export function ConversationListPanel({
                               <img
                                 src={conv.avatar}
                                 alt={displayName}
-                                className="w-11 h-11 rounded-full object-cover border-2 border-inherit"
+                                className={`w-11 h-11 rounded-full object-cover border-2 ${isActive ? 'border-blue-500/30' : 'border-transparent'}`}
                                 referrerPolicy="no-referrer"
                               />
                             ) : (
-                              <div className="w-11 h-11 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center border-2 border-inherit">
+                              <div
+                                className={`w-11 h-11 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center border-2 ${isActive ? 'border-blue-500/30' : 'border-transparent'}`}
+                              >
                                 {isGroup ? (
                                   <Users className="w-5 h-5 text-blue-600" />
                                 ) : (
@@ -467,7 +477,7 @@ export function ConversationListPanel({
                             <p
                               className={`text-[13px] mt-0.5 flex items-center gap-1 min-w-0 ${
                                 isActive
-                                  ? 'text-white/80'
+                                  ? 'text-blue-600/70 dark:text-blue-300/70'
                                   : hasUnread
                                     ? 'font-semibold text-foreground'
                                     : 'text-black/50 dark:text-white/50'
@@ -482,14 +492,14 @@ export function ConversationListPanel({
                                   ) : null}
                                   {lastMsgType === 'image' && (
                                     <Image
-                                      className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white/90' : 'text-blue-500'}`}
+                                      className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-blue-500' : 'text-blue-500'}`}
                                       aria-hidden
                                     />
                                   )}
                                   {lastMsgType === 'video' && (
                                     <Video
                                       className={`w-3.5 h-3.5 shrink-0 ${
-                                        isActive ? 'text-white/90' : 'text-violet-500'
+                                        isActive ? 'text-violet-500' : 'text-violet-500'
                                       }`}
                                       aria-hidden
                                     />
@@ -498,7 +508,7 @@ export function ConversationListPanel({
                                     <Paperclip
                                       className={`w-3.5 h-3.5 shrink-0 ${
                                         isActive
-                                          ? 'text-white/90'
+                                          ? 'text-slate-600 dark:text-slate-400'
                                           : 'text-slate-600 dark:text-slate-400'
                                       }`}
                                       aria-hidden
@@ -518,7 +528,40 @@ export function ConversationListPanel({
                         </button>
 
                         <div className="shrink-0 flex flex-col items-end gap-1 self-stretch justify-between py-0.5 pl-1 min-w-[52px]">
-                          <div className="flex items-center gap-1 justify-end w-full flex-wrap">
+                          {/* Top: Time */}
+                          <p
+                            className={`text-[11px] font-medium tabular-nums shrink-0 w-full text-right ${
+                              isActive
+                                ? 'text-blue-600/60 dark:text-blue-300/60'
+                                : 'text-muted-foreground'
+                            }`}
+                          >
+                            {lastMsgTime}
+                          </p>
+
+                          {/* Bottom: Icons and Badges (horizontal) */}
+                          <div className="flex items-center justify-end gap-1.5 w-full flex-nowrap mt-auto">
+                            {showConvPinIcon && (
+                              <span
+                                className="shrink-0 pointer-events-none"
+                                aria-hidden
+                                title={
+                                  hasPinnedMessages
+                                    ? 'Ghim hội thoại (có tin ghim trong chat)'
+                                    : 'Ghim hội thoại lên đầu danh sách'
+                                }
+                              >
+                                <Pin
+                                  className={`w-3.5 h-3.5 ${
+                                    isActive
+                                      ? 'text-blue-500/70'
+                                      : 'text-zinc-600 dark:text-zinc-400'
+                                  }`}
+                                  strokeWidth={1.75}
+                                />
+                              </span>
+                            )}
+
                             {showMuteToggle ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -529,19 +572,15 @@ export function ConversationListPanel({
                                       e.stopPropagation();
                                       onToggleConversationMute(conv.conversationId);
                                     }}
-                                    className={`shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-full ${
+                                    className={`shrink-0 w-5 h-5 inline-flex items-center justify-center rounded-full ${
                                       isActive
-                                        ? 'hover:bg-white/15'
+                                        ? 'hover:bg-blue-500/10'
                                         : 'hover:bg-black/10 dark:hover:bg-white/10'
                                     }`}
                                     aria-label="Bật thông báo"
                                   >
                                     <BellOff
-                                      className={`w-3.5 h-3.5 shrink-0 ${
-                                        isActive
-                                          ? 'text-white/90'
-                                          : 'text-red-500 dark:text-red-400'
-                                      }`}
+                                      className={`w-3.5 h-3.5 shrink-0 text-red-500 dark:text-red-400`}
                                       aria-hidden
                                     />
                                   </button>
@@ -551,41 +590,13 @@ export function ConversationListPanel({
                                 </TooltipContent>
                               </Tooltip>
                             ) : null}
-                            <p
-                              className={`text-[11px] font-medium tabular-nums shrink-0 ${
-                                isActive ? 'text-white/70' : 'text-muted-foreground'
-                              }`}
-                            >
-                              {lastMsgTime}
-                            </p>
+
+                            {(conv.unreadCount ?? 0) > 0 && !isActive && (
+                              <div className="min-h-[18px] min-w-[18px] px-1 rounded-full bg-red-500 flex items-center justify-center text-[10px] font-bold text-white leading-none">
+                                {formatUnreadBadge(conv.unreadCount ?? 0)}
+                              </div>
+                            )}
                           </div>
-                          {showConvPinIcon && (
-                            <div
-                              className="flex items-center justify-end w-full gap-0.5"
-                              title={
-                                hasPinnedMessages
-                                  ? 'Ghim hội thoại (có tin ghim trong chat)'
-                                  : 'Ghim hội thoại lên đầu danh sách'
-                              }
-                            >
-                              <span
-                                className="p-0.5 rounded-md shrink-0 pointer-events-none"
-                                aria-hidden
-                              >
-                                <Pin
-                                  className={`w-3.5 h-3.5 ${
-                                    isActive ? 'text-white/85' : 'text-zinc-600 dark:text-zinc-400'
-                                  }`}
-                                  strokeWidth={1.75}
-                                />
-                              </span>
-                            </div>
-                          )}
-                          {(conv.unreadCount ?? 0) > 0 && !isActive && (
-                            <div className="min-h-[18px] min-w-[18px] px-1 rounded-full bg-red-500 flex items-center justify-center text-[10px] font-bold text-white leading-none">
-                              {formatUnreadBadge(conv.unreadCount ?? 0)}
-                            </div>
-                          )}
                         </div>
                       </motion.div>
                     </div>
@@ -610,7 +621,7 @@ export function ConversationListPanel({
                             <span>{row.title}</span>
                           </p>
                           {typeof row.count === 'number' ? (
-                            <span className="tabular-nums text-muted-foreground/80">
+                            <span className="text-[10px] tabular-nums text-muted-foreground/60">
                               {isPinnedHeader ? `${row.count}/5` : row.count}
                             </span>
                           ) : null}
@@ -641,7 +652,7 @@ export function ConversationListPanel({
                             rowCount={mainRows.length}
                             rowRenderer={renderMainRow}
                             rowHeight={({ index }) =>
-                              mainRows[index]?.kind === 'header' ? 34 : 96
+                              mainRows[index]?.kind === 'header' ? 34 : 72
                             }
                             overscanRowCount={10}
                             className="custom-scrollbar"
@@ -697,7 +708,7 @@ export function ConversationListPanel({
                                   height={height}
                                   rowCount={mutedConversations.length}
                                   rowRenderer={renderMutedRow(mutedConversations)}
-                                  rowHeight={96}
+                                  rowHeight={72}
                                   overscanRowCount={6}
                                   className="custom-scrollbar"
                                 />
