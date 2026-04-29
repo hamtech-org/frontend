@@ -1,7 +1,6 @@
 import { AddFriendModal } from '@/components/chat/AddFriendModal';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
 import { MarkReadModal } from '@/components/chat/MarkReadModal';
-import { ProfileModal } from '@/components/chat/ProfileModal';
 import { CreateGroupModal } from '@/components/chat/CreateGroupModal';
 import { PollModal } from '@/components/chat/PollModal';
 import { AISummaryModal } from '@/components/chat/AISummaryModal';
@@ -24,7 +23,6 @@ interface ChatModalsHostProps {
     showMarkReadModal: boolean;
     showAddFriendModal: boolean;
     addFriendQuery: string;
-    showProfileModal: boolean;
     showCreateGroupModal: boolean;
     groupName: string;
     selectedGroupMembers: string[];
@@ -60,7 +58,6 @@ interface ChatModalsHostProps {
     setAddFriendQuery: (value: string) => void;
     setShowAddFriendModal: (value: boolean) => void;
     setMessageConfirm: (value: MessageConfirmState) => void;
-    setShowProfileModal: (value: boolean) => void;
     setShowCreateGroupModal: (value: boolean) => void;
     setGroupName: (value: string) => void;
     setPollQuestion: (value: string) => void;
@@ -124,7 +121,6 @@ export function ChatModalsHost({
     showMarkReadModal,
     showAddFriendModal,
     addFriendQuery,
-    showProfileModal,
     showCreateGroupModal,
     groupName,
     selectedGroupMembers,
@@ -200,7 +196,6 @@ export function ChatModalsHost({
         }}
         onConfirm={() => void messageActions.handleMessageConfirm()}
       />
-      <ProfileModal open={showProfileModal} onClose={() => actions.setShowProfileModal(false)} />
       <CreateGroupModal
         open={showCreateGroupModal}
         onClose={() => actions.setShowCreateGroupModal(false)}

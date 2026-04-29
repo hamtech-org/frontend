@@ -14,7 +14,6 @@ export { ContactsManagementPanel } from './ContactsManagementPanel';
 export { FriendsListView } from './FriendsListView';
 export { FriendRequestsView } from './FriendRequestsView';
 export { PendingFriendsPanel } from './PendingFriendsPanel';
-export { ProfileModal } from './ProfileModal';
 export { CreateGroupModal } from './CreateGroupModal';
 export { PollModal } from './PollModal';
 export { MemberManagementModal } from './MemberManagementModal';
