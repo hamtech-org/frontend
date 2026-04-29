@@ -28,7 +28,7 @@ import {
 import type { IConversation, IMessage, IReplyToDetails, MessageStatus } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/types/chat.types';
 import { formatTime, formatDate } from '@/utils/formatDate';
-import { isTaskJoinDeadlinePassed, typingInitial, typingLabel } from '@/utils/chatUtils';
+import { isTaskJoinDeadlinePassed, typingLabel } from '@/utils/chatUtils';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { MediaLightbox } from '@/components/chat/MediaLightbox';
@@ -343,7 +343,7 @@ export type ChatMessageListProps = {
   onReact: (msg: IMessage, emoji: string) => void;
   onJumpToLatest: () => void;
   groupTasks?: any[];
-  groupMembers?: Array<{ userId: string; displayName?: string | null }>;
+  groupMembers?: Array<{ userId: string; displayName?: string | null; avatar?: string | null }>;
   onTaskJoined?: (taskId: string) => void;
   onOpenPollVote?: (pollId: string) => void;
   /** Đánh dấu + hiệu ứng khi nhảy tới tin (ghim, tìm tin, …). */
@@ -393,6 +393,15 @@ export function ChatMessageList({
 }: ChatMessageListProps) {
   // Prevent duplicated task cards (optimistic tmp + server/system duplicates).
   const seenTaskAssignedIds = new Set<string>();
+
+  /** Map userId → avatar URL (dùng cho ZaloStyleAvatar trong bubble). */
+  const memberAvatarMap = new Map<string, string | null>();
+  for (const m of groupMembers ?? []) {
+    memberAvatarMap.set(m.userId, m.avatar ?? null);
+  }
+  /** Fallback cho direct chat: avatar người kia = activeConversation.avatar. */
+  const directOtherAvatar =
+    activeConversation?.type === 'direct' ? (activeConversation.avatar ?? null) : null;
 
   const scrollToMessage = (messageId: string) => {
     if (onJumpToMessage) {
@@ -1401,9 +1410,12 @@ export function ChatMessageList({
                   className={`flex items-end gap-2 group/msg ${isMeCall ? 'flex-row-reverse' : 'flex-row'} ${isSameSenderAsPrevCall ? 'mt-0' : 'mt-1'}`}
                 >
                   {showAvatarCall ? (
-                    <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-indigo-500 flex items-center justify-center shrink-0 text-white text-xs font-bold shadow-sm mb-0.5">
-                      {(msg.senderDisplayName ?? msg.senderId).trim().slice(0, 1).toUpperCase()}
-                    </div>
+                    <ZaloStyleAvatar
+                      userId={msg.senderId}
+                      displayName={msg.senderDisplayName ?? msg.senderId}
+                      avatarUrl={memberAvatarMap.get(msg.senderId) ?? directOtherAvatar}
+                      className="w-8 h-8 shadow-sm mb-0.5"
+                    />
                   ) : isMeCall ? null : (
                     <div className="w-8 shrink-0" aria-hidden />
                   )}
@@ -1495,9 +1507,12 @@ export function ChatMessageList({
                   />
                 )}
                 {showAvatar ? (
-                  <div className="relative z-[2] w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-indigo-500 flex items-center justify-center shrink-0 text-white text-xs font-bold shadow-sm mb-0.5">
-                    {(msg.senderDisplayName ?? msg.senderId).trim().slice(0, 1).toUpperCase()}
-                  </div>
+                  <ZaloStyleAvatar
+                    userId={msg.senderId}
+                    displayName={msg.senderDisplayName ?? msg.senderId}
+                    avatarUrl={memberAvatarMap.get(msg.senderId) ?? directOtherAvatar}
+                    className="relative z-[2] w-8 h-8 shadow-sm mb-0.5"
+                  />
                 ) : isMe ? null : (
                   <div className="relative z-[2] w-8 shrink-0" aria-hidden />
                 )}
@@ -2025,9 +2040,12 @@ export function ChatMessageList({
                 transition={{ duration: 0.2, ease: 'easeOut' }}
                 className="flex items-end gap-2"
               >
-                <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-400 to-indigo-500 flex items-center justify-center shrink-0 text-white text-xs font-bold shadow-sm">
-                  {typingInitial(typingUsers[0])}
-                </div>
+                <ZaloStyleAvatar
+                  userId={typingUsers[0].userId}
+                  displayName={typingUsers[0].displayName}
+                  avatarUrl={memberAvatarMap.get(typingUsers[0].userId) ?? directOtherAvatar}
+                  className="w-8 h-8 shadow-sm"
+                />
                 <div className="flex flex-col items-start gap-1">
                   <span className="text-[11px] font-semibold text-foreground/70 px-0.5">
                     {typingUsers.length === 1
