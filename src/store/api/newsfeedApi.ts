@@ -3,6 +3,7 @@ import type { ApiSuccessResponse } from '@/types/api.types';
 import { baseQueryWithReauth } from './baseQuery';
 import type {
   IComment,
+  IFeedPage,
   IPost,
   PostPublicationStatus,
   PostVisibility,
@@ -28,13 +29,24 @@ export interface UpdatePostBody {
   mediaUrls?: string[];
 }
 
+export interface FeedQueryParams {
+  limit?: number;
+  cursor?: string | null;
+}
+
 export const newsfeedApi = createApi({
   reducerPath: 'newsfeedApi',
   baseQuery: baseQueryWithReauth,
   tagTypes: ['Feed', 'Posts', 'PostDetail', 'Comments'],
   endpoints: (builder) => ({
-    getFeed: builder.query<ApiSuccessResponse<IPost[]>, void>({
-      query: () => '/newsfeed/feed',
+    getFeed: builder.query<ApiSuccessResponse<IFeedPage>, FeedQueryParams | void>({
+      query: (params) => ({
+        url: '/newsfeed/feed',
+        params: {
+          limit: params?.limit,
+          cursor: params?.cursor ?? undefined,
+        },
+      }),
       providesTags: ['Feed'],
     }),
 
@@ -106,6 +118,7 @@ export const newsfeedApi = createApi({
 
 export const {
   useGetFeedQuery,
+  useLazyGetFeedQuery,
   useGetPostByIdQuery,
   useCreatePostMutation,
   useUpdatePostMutation,

@@ -102,6 +102,11 @@
     display: none;
   }
 
+  .feed-card-virtualized {
+    content-visibility: auto;
+    contain-intrinsic-size: 560px;
+  }
+
   /** Nhảy từ danh sách ghim / tìm tin — một lần, không lặp */
   .chat-msg-jump-highlight {
     animation: chat-msg-jump-flash 2.1s ease-out forwards;
