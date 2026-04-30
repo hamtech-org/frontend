@@ -8,7 +8,6 @@ const StudioPage = React.lazy(() => import('@/pages/user/StudioPage'));
 const AIStudioPage = React.lazy(() => import('@/pages/user/AIStudioPage'));
 const ProfilePage = React.lazy(() => import('@/pages/user/ProfilePage'));
 const SearchPage = React.lazy(() => import('@/pages/user/SearchPage'));
-const PostDetailPage = React.lazy(() => import('@/pages/user/PostDetailPage'));
 const PostEditorPage = React.lazy(() => import('@/pages/user/PostEditorPage'));
 const AdminDashboard = React.lazy(() => import('@/pages/admin/AdminDashboard'));
 const AdminAnalytics = React.lazy(() => import('@/pages/admin/AdminAnalytics'));
@@ -25,7 +24,6 @@ export const appRouteElements = (
     <Route path="/analytics" element={<AdminAnalytics />} />
     <Route path="/ai-studio" element={<AIStudioPage />} />
     <Route path="/profile" element={<ProfilePage />} />
-    <Route path="/post/:postId" element={<PostDetailPage />} />
     <Route path="/posts/new" element={<PostEditorPage />} />
     <Route path="/posts/:postId/edit" element={<PostEditorPage />} />
     <Route path="/components-demo" element={<ComponentsDemoPage />} />

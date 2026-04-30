@@ -89,13 +89,13 @@ export default function PostEditorPage() {
 
     if (isEdit && postId) {
       await updatePost({ postId, data: payload }).unwrap();
-      navigate(`/post/${postId}`);
+      navigate('/');
       return;
     }
 
     const created = await createPost(payload).unwrap();
     const id = created.data?.postId;
-    if (id) navigate(`/post/${id}`);
+    if (id) navigate('/');
   };
 
   return (
@@ -182,7 +182,7 @@ export default function PostEditorPage() {
           <button
             type="button"
             className="rounded-2xl bg-black/5 px-6 py-3 text-sm font-bold hover:bg-black/10"
-            onClick={() => navigate(isEdit ? `/post/${postId}` : '/')}
+            onClick={() => navigate('/')}
             disabled={busy}
           >
             Hủy

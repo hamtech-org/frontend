@@ -51,7 +51,6 @@ export default function HomePage() {
         isFetchingNext={isFetchingNext}
         hasMore={hasMore}
         loadMoreRef={loadMoreRef}
-        onOpenPost={(postId) => navigate(`/post/${postId}`)}
       />
     </div>
   );

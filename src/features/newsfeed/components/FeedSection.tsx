@@ -9,7 +9,6 @@ interface Props {
   isFetchingNext: boolean;
   hasMore: boolean;
   loadMoreRef: RefObject<HTMLDivElement>;
-  onOpenPost: (postId: string) => void;
 }
 
 export const FeedSection = ({
@@ -18,7 +17,6 @@ export const FeedSection = ({
   isFetchingNext,
   hasMore,
   loadMoreRef,
-  onOpenPost,
 }: Props) => (
   <section className="space-y-6 pb-2">
     <div className="flex items-center justify-between">
@@ -30,7 +28,7 @@ export const FeedSection = ({
         <p className="text-sm text-muted-foreground">Đang tải bài viết...</p>
       ) : null}
       {posts.map((post) => (
-        <PostCard key={post.postId} post={post} onOpenPost={onOpenPost} />
+        <PostCard key={post.postId} post={post} />
       ))}
       <FeedLoadState
         isFetchingNext={isFetchingNext}

@@ -82,13 +82,15 @@ const GlobalSearchBox: React.FC<GlobalSearchBoxProps> = ({
           navigate(`/group/${groupId}`);
           clearAndCloseSearch();
         }}
-        onOpenPost={(postId) => {
-          navigate(`/post/${postId}`);
+        onOpenPost={(_postId) => {
+          navigate('/');
           clearAndCloseSearch();
         }}
       />
 
-      {isOpen && !disableOutsideBackdrop && <div className="fixed inset-0 z-40" onClick={closeSearch} />}
+      {isOpen && !disableOutsideBackdrop && (
+        <div className="fixed inset-0 z-40" onClick={closeSearch} />
+      )}
     </div>
   );
 };
