@@ -175,6 +175,7 @@ const App: React.FC = () => {
           className={cn(
             'flex-1 min-h-0 relative',
             isChatRoute ? 'overflow-hidden' : 'overflow-y-auto',
+            isChatRoute ? 'bg-background' : 'bg-muted/55',
           )}
         >
           <AnimatePresence initial={false} mode="sync">
@@ -184,7 +185,7 @@ const App: React.FC = () => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="h-full bg-background will-change-transform"
+              className="h-full will-change-transform"
             >
               <Suspense fallback={<PageLoader />}>
                 <CallProvider>
