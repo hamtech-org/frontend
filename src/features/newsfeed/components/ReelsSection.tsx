@@ -24,7 +24,7 @@ export const ReelsSection = ({
     {canScrollLeft ? (
       <button
         type="button"
-        className="absolute left-2 top-1/2 z-10 -translate-y-1/2 size-9 rounded-full bg-background/90 shadow-md flex items-center justify-center"
+        className="absolute left-2 top-1/2 z-10 -translate-y-1/2 size-8 rounded-full bg-background/90 shadow-sm flex items-center justify-center"
         onClick={() => onScrollByDirection('left')}
         aria-label="Cuộn reels sang trái"
       >
@@ -34,7 +34,7 @@ export const ReelsSection = ({
     {canScrollRight ? (
       <button
         type="button"
-        className="absolute right-2 top-1/2 z-10 -translate-y-1/2 size-9 rounded-full bg-background/90 shadow-md flex items-center justify-center"
+        className="absolute right-2 top-1/2 z-10 -translate-y-1/2 size-8 rounded-full bg-background/90 shadow-sm flex items-center justify-center"
         onClick={() => onScrollByDirection('right')}
         aria-label="Cuộn reels sang phải"
       >
@@ -44,20 +44,20 @@ export const ReelsSection = ({
 
     <div
       ref={scrollerRef}
-      className="no-scrollbar flex items-stretch gap-3 overflow-x-auto pb-1"
+      className="no-scrollbar flex items-stretch gap-2.5 overflow-x-auto pb-1"
       onScroll={onScroll}
     >
       <button
         type="button"
-        className="relative shrink-0 w-[140px] rounded-2xl overflow-hidden bg-card shadow-sm"
+        className="relative shrink-0 w-[132px] rounded-xl overflow-hidden bg-card shadow-sm"
       >
         <div className="h-[180px] bg-accent/60 flex items-center justify-center">
-          <div className="size-16 rounded-full bg-primary/20" />
+          <div className="size-14 rounded-full bg-primary/20" />
         </div>
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 size-10 rounded-full bg-blue-600 border-4 border-background flex items-center justify-center">
-          <Plus className="w-5 h-5 text-white" />
+        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 size-9 rounded-full bg-blue-600 border-4 border-background flex items-center justify-center">
+          <Plus className="w-4 h-4 text-white" />
         </div>
-        <div className="py-3 text-sm font-bold text-foreground bg-background/70">Tạo tin</div>
+        <div className="py-2.5 text-xs font-bold text-foreground bg-background/70">Tạo tin</div>
       </button>
 
       {reels.map((reel) => (

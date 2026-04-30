@@ -27,8 +27,8 @@ export default function HomePage() {
   );
 
   return (
-    <div className="editorial-void max-w-[800px] mx-auto space-y-8 pt-2 md:pt-3 lg:pt-4">
-      <section className="space-y-4">
+    <div className="editorial-void max-w-[800px] mx-auto space-y-5 pt-1 md:pt-2 lg:pt-3">
+      <section className="space-y-3">
         <CreatePostPromptCard
           createPostName={createPostName}
           createPostAvatar={createPostAvatar}

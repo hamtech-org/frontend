@@ -13,8 +13,8 @@ export const CreatePostPromptCard = ({
   createPostInitial,
   onCreatePost,
 }: Props) => (
-  <div className="rounded-3xl border border-border/40 bg-card px-4 py-3">
-    <div className="flex items-center gap-3">
+  <div className="rounded-2xl border border-border/40 bg-card px-4 py-3">
+    <div className="flex items-center gap-2.5">
       <div className="size-10 rounded-full bg-muted/40 flex items-center justify-center shrink-0 overflow-hidden">
         {createPostAvatar ? (
           <img
@@ -29,7 +29,7 @@ export const CreatePostPromptCard = ({
       </div>
       <button
         type="button"
-        className="min-w-0 flex-1 truncate rounded-full bg-muted/50 px-4 py-2 text-left text-base text-muted-foreground"
+        className="min-w-0 flex-1 truncate rounded-full bg-muted/50 px-4 py-2.5 text-left text-base text-muted-foreground"
         onClick={onCreatePost}
       >
         {createPostName} ơi, bạn đang nghĩ gì thế?
