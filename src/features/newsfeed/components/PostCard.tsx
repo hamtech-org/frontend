@@ -154,28 +154,31 @@ export const PostCard = ({ post }: Props) => {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="flex items-center gap-2 group"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all hover:bg-muted/70 group"
             onClick={() => {
               void reactToPost({ postId: post.postId, type: 'like' });
               setIsLiked((prev) => !prev);
             }}
           >
-            <div className="p-1.5 rounded-full transition-all group-hover:bg-muted/70">
-              <Heart
-                className={`w-4 h-4 transition-all ${
-                  isLiked ? 'text-red-500 fill-red-500' : 'text-muted-foreground'
-                }`}
-              />
-            </div>
+            <Heart
+              className={`w-4 h-4 transition-all ${
+                isLiked ? 'text-red-500 fill-red-500' : 'text-muted-foreground'
+              }`}
+            />
             <span className="text-sm font-bold">{vm.likes}</span>
           </button>
-          <button type="button" className="flex items-center gap-2 group" onClick={toggleComments}>
-            <div className="p-1.5 rounded-full transition-all group-hover:bg-muted/70">
-              <MessageCircle className="w-4 h-4 text-muted-foreground transition-all" />
-            </div>
+          <button
+            type="button"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all hover:bg-muted/70 group"
+            onClick={toggleComments}
+          >
+            <MessageCircle className="w-4 h-4 text-muted-foreground transition-all" />
             <span className="text-sm font-bold">{displayCommentsCount}</span>
           </button>
-          <button type="button" className="p-1.5 rounded-full transition-all hover:bg-muted/70">
+          <button
+            type="button"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all hover:bg-muted/70 group"
+          >
             <Share2 className="w-4 h-4 text-muted-foreground transition-all" />
           </button>
         </div>
