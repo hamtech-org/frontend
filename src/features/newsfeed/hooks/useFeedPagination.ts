@@ -12,7 +12,7 @@ export const useFeedPagination = () => {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   const [isFetchingNext, setIsFetchingNext] = useState(false);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const didBootstrapFeedRef = useRef(false);
 
   const fetchFeedPage = useCallback(

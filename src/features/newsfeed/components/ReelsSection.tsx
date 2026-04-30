@@ -7,7 +7,7 @@ interface Props {
   reels: ReelItem[];
   canScrollLeft: boolean;
   canScrollRight: boolean;
-  scrollerRef: RefObject<HTMLDivElement | null>;
+  scrollerRef: RefObject<HTMLDivElement>;
   onScroll: () => void;
   onScrollByDirection: (direction: 'left' | 'right') => void;
 }

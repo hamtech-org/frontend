@@ -8,7 +8,7 @@ interface Props {
   isLoadingInitial: boolean;
   isFetchingNext: boolean;
   hasMore: boolean;
-  loadMoreRef: RefObject<HTMLDivElement | null>;
+  loadMoreRef: RefObject<HTMLDivElement>;
   onOpenPost: (postId: string) => void;
 }
 
