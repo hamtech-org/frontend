@@ -20,6 +20,7 @@ import {
   useReactToPostMutation,
 } from '@/store/api/newsfeedApi';
 import type { IComment } from '@/types/newsfeed.types';
+import { formatRelative } from '@/utils/formatDate';
 
 interface Props {
   post: IPost;
@@ -35,6 +36,8 @@ export const PostCard = ({ post }: Props) => {
   const [hasMoreComments, setHasMoreComments] = useState(false);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [displayCommentsCount, setDisplayCommentsCount] = useState(post.commentsCount ?? 0);
   const [getCommentsPage] = useLazyGetCommentsQuery();
   const [addComment, { isLoading: isAddingComment }] = useAddCommentMutation();
   const [reactToPost] = useReactToPostMutation();
@@ -56,17 +59,9 @@ export const PostCard = ({ post }: Props) => {
       }).unwrap();
       const page = res.data;
       if (append) {
-        setComments((prev) =>
-          [...prev, ...page.items].sort(
-            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-          ),
-        );
+        setComments((prev) => [...prev, ...page.items]);
       } else {
-        setComments(
-          [...page.items].sort(
-            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-          ),
-        );
+        setComments(page.items);
       }
       setNextCursor(page.nextCursor);
       setHasMoreComments(page.hasMore);
@@ -96,11 +91,8 @@ export const PostCard = ({ post }: Props) => {
     try {
       const created = await addComment({ postId: post.postId, content }).unwrap();
       if (created.data) {
-        setComments((prev) =>
-          [...prev, created.data].sort(
-            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-          ),
-        );
+        setComments((prev) => [...prev, created.data]);
+        setDisplayCommentsCount((prev) => prev + 1);
       }
       setCommentText('');
     } catch {
@@ -132,9 +124,7 @@ export const PostCard = ({ post }: Props) => {
           </div>
           <div>
             <h3 className="font-bold text-sm leading-tight">{vm.displayName}</h3>
-            <p className="text-xs text-muted-foreground">
-              {new Date(post.createdAt).toLocaleDateString()}
-            </p>
+            <p className="text-xs text-muted-foreground">{formatRelative(post.createdAt)}</p>
           </div>
         </div>
         <button
@@ -167,26 +157,26 @@ export const PostCard = ({ post }: Props) => {
             className="flex items-center gap-2 group"
             onClick={() => {
               void reactToPost({ postId: post.postId, type: 'like' });
+              setIsLiked((prev) => !prev);
             }}
           >
-            <div className="p-1.5 rounded-full group-hover:bg-red-500/10 transition-all">
-              <Heart className="w-4 h-4 group-hover:text-red-500 group-hover:fill-red-500 transition-all" />
+            <div className="p-1.5 rounded-full transition-all group-hover:bg-muted/70">
+              <Heart
+                className={`w-4 h-4 transition-all ${
+                  isLiked ? 'text-red-500 fill-red-500' : 'text-muted-foreground'
+                }`}
+              />
             </div>
             <span className="text-sm font-bold">{vm.likes}</span>
           </button>
           <button type="button" className="flex items-center gap-2 group" onClick={toggleComments}>
-            <div className="p-1.5 rounded-full group-hover:bg-blue-600/10 transition-all">
-              <MessageCircle className="w-4 h-4 group-hover:text-blue-600 transition-all" />
+            <div className="p-1.5 rounded-full transition-all group-hover:bg-muted/70">
+              <MessageCircle className="w-4 h-4 text-muted-foreground transition-all" />
             </div>
-            <span className="text-sm font-bold">
-              {comments.length > 0 ? comments.length : post.commentsCount}
-            </span>
+            <span className="text-sm font-bold">{displayCommentsCount}</span>
           </button>
-          <button
-            type="button"
-            className="p-1.5 rounded-full hover:bg-green-500/10 group transition-all"
-          >
-            <Share2 className="w-4 h-4 group-hover:text-green-500 transition-all" />
+          <button type="button" className="p-1.5 rounded-full transition-all hover:bg-muted/70">
+            <Share2 className="w-4 h-4 text-muted-foreground transition-all" />
           </button>
         </div>
         <button
@@ -239,7 +229,7 @@ export const PostCard = ({ post }: Props) => {
                       <p className="text-sm text-foreground">{comment.content}</p>
                     </div>
                     <div className="mt-1 flex items-center gap-3 px-1 text-[11px] text-muted-foreground">
-                      <span>{new Date(comment.createdAt).toLocaleDateString()}</span>
+                      <span>{formatRelative(comment.createdAt)}</span>
                       <button type="button" className="font-semibold hover:text-foreground">
                         Thích
                       </button>
