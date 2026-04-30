@@ -3,6 +3,7 @@ import type { ApiSuccessResponse } from '@/types/api.types';
 import { baseQueryWithReauth } from './baseQuery';
 import type {
   IComment,
+  ICommentsPage,
   IFeedPage,
   IPost,
   PostPublicationStatus,
@@ -30,6 +31,12 @@ export interface UpdatePostBody {
 }
 
 export interface FeedQueryParams {
+  limit?: number;
+  cursor?: string | null;
+}
+
+export interface CommentsQueryParams {
+  postId: string;
   limit?: number;
   cursor?: string | null;
 }
@@ -88,9 +95,15 @@ export const newsfeedApi = createApi({
       invalidatesTags: (_res, _err, postId) => ['Feed', { type: 'PostDetail', id: postId }],
     }),
 
-    getComments: builder.query<ApiSuccessResponse<IComment[]>, string>({
-      query: (postId) => `/newsfeed/posts/${postId}/comments`,
-      providesTags: (_res, _err, postId) => [{ type: 'Comments', id: postId }],
+    getComments: builder.query<ApiSuccessResponse<ICommentsPage>, CommentsQueryParams>({
+      query: ({ postId, limit, cursor }) => ({
+        url: `/newsfeed/posts/${postId}/comments`,
+        params: {
+          limit,
+          cursor: cursor ?? undefined,
+        },
+      }),
+      providesTags: (_res, _err, arg) => [{ type: 'Comments', id: arg.postId }],
     }),
 
     addComment: builder.mutation<
@@ -102,7 +115,70 @@ export const newsfeedApi = createApi({
         method: 'POST',
         body: { content, parentId },
       }),
-      invalidatesTags: (_res, _err, arg) => [{ type: 'Comments', id: arg.postId }],
+      async onQueryStarted({ postId, content }, { dispatch, queryFulfilled, getState }) {
+        const currentUser = (
+          getState() as {
+            auth?: { user?: { userId?: string; displayName?: string; avatar?: string | null } };
+          }
+        )?.auth?.user;
+        const tempId = `temp-${Date.now()}`;
+        const tempComment: IComment = {
+          commentId: tempId,
+          postId,
+          authorId: currentUser?.userId ?? 'me',
+          author: {
+            userId: currentUser?.userId ?? 'me',
+            displayName: currentUser?.displayName ?? 'Bạn',
+            avatar: currentUser?.avatar ?? null,
+          },
+          content,
+          parentId: null,
+          reactionsCount: {},
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        const patch = dispatch(
+          newsfeedApi.util.updateQueryData(
+            'getComments',
+            { postId, limit: 5, cursor: null },
+            (draft) => {
+              draft.data.items.push(tempComment);
+            },
+          ),
+        );
+
+        const feedPatch = dispatch(
+          newsfeedApi.util.updateQueryData('getFeed', undefined, (draft) => {
+            draft.data.items = draft.data.items.map((item) =>
+              item.postId === postId
+                ? { ...item, commentsCount: (item.commentsCount ?? 0) + 1 }
+                : item,
+            );
+          }),
+        );
+
+        try {
+          const { data } = await queryFulfilled;
+          if (data?.data) {
+            dispatch(
+              newsfeedApi.util.updateQueryData(
+                'getComments',
+                { postId, limit: 5, cursor: null },
+                (draft) => {
+                  const index = draft.data.items.findIndex((item) => item.commentId === tempId);
+                  if (index >= 0) {
+                    draft.data.items[index] = data.data;
+                  }
+                },
+              ),
+            );
+          }
+        } catch {
+          patch.undo();
+          feedPatch.undo();
+        }
+      },
     }),
 
     reactToPost: builder.mutation<ApiSuccessResponse<null>, { postId: string; type: string }>({
@@ -124,6 +200,7 @@ export const {
   useUpdatePostMutation,
   useDeletePostMutation,
   useGetCommentsQuery,
+  useLazyGetCommentsQuery,
   useAddCommentMutation,
   useReactToPostMutation,
 } = newsfeedApi;
