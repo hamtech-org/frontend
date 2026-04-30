@@ -9,7 +9,7 @@ import {
   Share2,
   Smile,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { IPost } from '@/types/newsfeed.types';
 import type { RootState } from '@/store/store';
@@ -36,7 +36,8 @@ export const PostCard = ({ post }: Props) => {
   const [hasMoreComments, setHasMoreComments] = useState(false);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
-  const [isLiked, setIsLiked] = useState(false);
+  const [isLiked, setIsLiked] = useState(post.currentUserReaction === 'like');
+  const [displayLikesCount, setDisplayLikesCount] = useState(vm.likes);
   const [displayCommentsCount, setDisplayCommentsCount] = useState(post.commentsCount ?? 0);
   const [getCommentsPage] = useLazyGetCommentsQuery();
   const [addComment, { isLoading: isAddingComment }] = useAddCommentMutation();
@@ -44,6 +45,11 @@ export const PostCard = ({ post }: Props) => {
   const commentAuthorName = currentUser?.displayName?.trim() || 'Bạn';
   const commentAuthorAvatar = currentUser?.avatar || '';
   const commentAuthorInitial = commentAuthorName.charAt(0).toUpperCase() || 'U';
+
+  useEffect(() => {
+    setIsLiked(post.currentUserReaction === 'like');
+    setDisplayLikesCount(toPostCardViewModel(post).likes);
+  }, [post]);
 
   const loadCommentPage = async (cursor?: string | null, append: boolean = false) => {
     if (append) {
@@ -157,7 +163,9 @@ export const PostCard = ({ post }: Props) => {
             className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all hover:bg-muted/70 group"
             onClick={() => {
               void reactToPost({ postId: post.postId, type: 'like' });
-              setIsLiked((prev) => !prev);
+              const nextLiked = !isLiked;
+              setIsLiked(nextLiked);
+              setDisplayLikesCount((count) => (nextLiked ? count + 1 : Math.max(0, count - 1)));
             }}
           >
             <Heart
@@ -165,7 +173,7 @@ export const PostCard = ({ post }: Props) => {
                 isLiked ? 'text-red-500 fill-red-500' : 'text-muted-foreground'
               }`}
             />
-            <span className="text-sm font-bold">{vm.likes}</span>
+            <span className="text-sm font-bold">{displayLikesCount}</span>
           </button>
           <button
             type="button"
