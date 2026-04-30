@@ -26,15 +26,17 @@ export const FeedSection = ({
     </div>
 
     <div className="space-y-6">
+      {isLoadingInitial ? (
+        <p className="text-sm text-muted-foreground">Đang tải bài viết...</p>
+      ) : null}
+      {posts.map((post) => (
+        <PostCard key={post.postId} post={post} onOpenPost={onOpenPost} />
+      ))}
       <FeedLoadState
-        isLoadingInitial={isLoadingInitial}
         isFetchingNext={isFetchingNext}
         hasMore={hasMore}
         hasPosts={posts.length > 0}
       />
-      {posts.map((post) => (
-        <PostCard key={post.postId} post={post} onOpenPost={onOpenPost} />
-      ))}
       <div ref={loadMoreRef} />
     </div>
   </section>
