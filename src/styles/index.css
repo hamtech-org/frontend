@@ -215,6 +215,27 @@
   .post-richtext .ProseMirror code {
     @apply rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.9em];
   }
+
+  /* ── Tiptap post editor (modal) ── */
+  .tiptap-post-editor .ProseMirror {
+    @apply min-h-[140px] outline-none text-lg leading-relaxed text-foreground;
+  }
+
+  .tiptap-post-editor .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .tiptap-post-editor .ProseMirror p {
+    margin: 0;
+  }
+
+  .tiptap-post-editor .ProseMirror > * + * {
+    margin-top: 0.5rem;
+  }
 }
 
 ::-webkit-scrollbar {

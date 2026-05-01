@@ -5,9 +5,13 @@ import {
   Image as ImageIcon,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
   SendHorizontal,
   Share2,
   Smile,
+  Trash2,
+  Flag,
+  EyeOff,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -16,19 +20,37 @@ import type { RootState } from '@/store/store';
 import { toPostCardViewModel } from '@/features/newsfeed/utils/postViewModel';
 import {
   useAddCommentMutation,
+  useDeletePostMutation,
   useLazyGetCommentsQuery,
   useReactToPostMutation,
 } from '@/store/api/newsfeedApi';
 import type { IComment } from '@/types/newsfeed.types';
 import { formatRelative } from '@/utils/formatDate';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { HashtagText } from './HashtagText';
+import { MediaGallery } from './MediaGallery';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface Props {
   post: IPost;
+  onEditPost?: (post: IPost) => void;
 }
 
-export const PostCard = ({ post }: Props) => {
+export const PostCard = ({ post, onEditPost }: Props) => {
   const vm = toPostCardViewModel(post);
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  const isOwner = currentUser?.userId === vm.authorId;
+
+  // ── Comment section state ──
   const [isCommentOpen, setIsCommentOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [comments, setComments] = useState<IComment[]>([]);
@@ -36,20 +58,29 @@ export const PostCard = ({ post }: Props) => {
   const [hasMoreComments, setHasMoreComments] = useState(false);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
+
+  // ── Reaction state ──
   const [isLiked, setIsLiked] = useState(post.currentUserReaction === 'like');
   const [displayLikesCount, setDisplayLikesCount] = useState(vm.likes);
   const [displayCommentsCount, setDisplayCommentsCount] = useState(post.commentsCount ?? 0);
+
+  // ── Menu state ──
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
   const [getCommentsPage] = useLazyGetCommentsQuery();
   const [addComment, { isLoading: isAddingComment }] = useAddCommentMutation();
   const [reactToPost] = useReactToPostMutation();
+  const [deletePost, { isLoading: isDeleting }] = useDeletePostMutation();
+
   const commentAuthorName = currentUser?.displayName?.trim() || 'Bạn';
   const commentAuthorAvatar = currentUser?.avatar || '';
   const commentAuthorInitial = commentAuthorName.charAt(0).toUpperCase() || 'U';
 
   useEffect(() => {
     setIsLiked(post.currentUserReaction === 'like');
-    setDisplayLikesCount(toPostCardViewModel(post).likes);
-  }, [post]);
+    setDisplayLikesCount(vm.likes);
+  }, [post, vm.likes]);
 
   const loadCommentPage = async (cursor?: string | null, append: boolean = false) => {
     if (append) {
@@ -106,6 +137,16 @@ export const PostCard = ({ post }: Props) => {
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await deletePost(post.postId).unwrap();
+      window.dispatchEvent(new CustomEvent('post:deleted', { detail: post.postId }));
+    } catch {
+      // no-op
+    }
+    setShowDeleteDialog(false);
+  };
+
   return (
     <motion.article
       key={post.postId}
@@ -133,29 +174,71 @@ export const PostCard = ({ post }: Props) => {
             <p className="text-xs text-muted-foreground">{formatRelative(post.createdAt)}</p>
           </div>
         </div>
-        <button
-          type="button"
-          className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all"
-        >
-          <MoreHorizontal className="w-5 h-5" />
-        </button>
+
+        {/* ── 3-dot menu ── */}
+        <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-48 p-1.5 rounded-xl" align="end">
+            {isOwner ? (
+              <>
+                <button
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onEditPost?.(post);
+                  }}
+                >
+                  <Pencil className="h-4 w-4 text-muted-foreground" />
+                  Chỉnh sửa
+                </button>
+                <button
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-500/10"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setShowDeleteDialog(true);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Xóa bài viết
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <Flag className="h-4 w-4 text-muted-foreground" />
+                  Báo cáo
+                </button>
+                <button
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  Ẩn bài viết
+                </button>
+              </>
+            )}
+          </PopoverContent>
+        </Popover>
       </div>
       <div className="px-3 md:px-4 pb-2.5">
-        <p className="text-sm leading-6 whitespace-pre-wrap">
-          {vm.excerpt}
+        <div className="text-sm leading-6 whitespace-pre-wrap">
+          <HashtagText text={vm.excerpt} />
           {vm.hasExcerptOverflow ? '…' : ''}
-        </p>
-      </div>
-      {vm.imageUrl ? (
-        <div className="relative overflow-hidden max-h-[320px]">
-          <img
-            src={vm.imageUrl}
-            alt="Post content"
-            className="w-full h-full max-h-[320px] object-cover hover:scale-105 transition-transform duration-1000"
-            referrerPolicy="no-referrer"
-          />
         </div>
-      ) : null}
+      </div>
+
+      <MediaGallery mediaUrls={post.mediaUrls} />
+
       <div className="p-3 md:p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
@@ -211,7 +294,7 @@ export const PostCard = ({ post }: Props) => {
               </div>
             </div>
           ) : comments.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Chưa có bình luận nào.</p>
+            <p className="text-xs text-muted-foreground text-center py-2">Chưa có bình luận nào.</p>
           ) : (
             <div className="space-y-2">
               {comments.map((comment) => (
@@ -237,7 +320,9 @@ export const PostCard = ({ post }: Props) => {
                       <p className="text-xs font-semibold text-foreground/80">
                         {comment.author?.displayName ?? comment.authorId}
                       </p>
-                      <p className="text-sm text-foreground">{comment.content}</p>
+                      <p className="text-sm text-foreground">
+                        <HashtagText text={comment.content} />
+                      </p>
                     </div>
                     <div className="mt-1 flex items-center gap-3 px-1 text-[11px] text-muted-foreground">
                       <span>{formatRelative(comment.createdAt)}</span>
@@ -320,6 +405,28 @@ export const PostCard = ({ post }: Props) => {
           </div>
         </div>
       ) : null}
+
+      {/* ── Delete confirmation dialog ── */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xóa bài viết?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bài viết này sẽ bị xóa vĩnh viễn. Bạn không thể hoàn tác hành động này.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeleting}
+              onClick={() => void handleDelete()}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {isDeleting ? 'Đang xóa...' : 'Xóa'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.article>
   );
 };

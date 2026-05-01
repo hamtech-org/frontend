@@ -1,5 +1,4 @@
-import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '@/store/store';
 import { REELS } from '@/features/newsfeed/constants';
@@ -8,10 +7,12 @@ import { useHorizontalScrollerControls } from '@/features/newsfeed/hooks/useHori
 import { CreatePostPromptCard } from '@/features/newsfeed/components/CreatePostPromptCard';
 import { ReelsSection } from '@/features/newsfeed/components/ReelsSection';
 import { FeedSection } from '@/features/newsfeed/components/FeedSection';
-
+import { CreatePostModal } from '@/features/newsfeed/components/CreatePostModal';
+import type { IPost } from '@/types/newsfeed.types';
 export default function HomePage() {
-  const navigate = useNavigate();
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState<IPost | undefined>(undefined);
   const { posts, hasMore, isLoadingInitial, isFetchingNext, loadMoreRef } = useFeedPagination();
   const { scrollerRef, canScrollLeft, canScrollRight, updateNavState, scrollByDirection } =
     useHorizontalScrollerControls();
@@ -33,7 +34,10 @@ export default function HomePage() {
           createPostName={createPostName}
           createPostAvatar={createPostAvatar}
           createPostInitial={createPostInitial}
-          onCreatePost={() => navigate('/posts/new')}
+          onCreatePost={() => {
+            setEditingPost(undefined);
+            setIsModalOpen(true);
+          }}
         />
         <ReelsSection
           reels={REELS}
@@ -51,6 +55,19 @@ export default function HomePage() {
         isFetchingNext={isFetchingNext}
         hasMore={hasMore}
         loadMoreRef={loadMoreRef}
+        onEditPost={(post) => {
+          setEditingPost(post);
+          setIsModalOpen(true);
+        }}
+      />
+
+      <CreatePostModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingPost(undefined);
+        }}
+        editingPost={editingPost}
       />
     </div>
   );

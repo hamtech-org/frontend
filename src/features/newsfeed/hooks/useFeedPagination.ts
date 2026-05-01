@@ -15,6 +15,36 @@ export const useFeedPagination = () => {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const didBootstrapFeedRef = useRef(false);
 
+  useEffect(() => {
+    const handlePostCreated = (e: CustomEvent<IPost>) => {
+      setPosts((prev) => {
+        // Avoid duplicate if already exists
+        if (prev.some((p) => p.postId === e.detail.postId)) return prev;
+        return [e.detail, ...prev];
+      });
+    };
+
+    const handlePostDeleted = (e: CustomEvent<string>) => {
+      setPosts((prev) => prev.filter((p) => p.postId !== e.detail));
+    };
+
+    const handlePostUpdated = (e: CustomEvent<Partial<IPost>>) => {
+      setPosts((prev) =>
+        prev.map((p) => (p.postId === e.detail.postId ? { ...p, ...e.detail } : p)),
+      );
+    };
+
+    window.addEventListener('post:created', handlePostCreated as EventListener);
+    window.addEventListener('post:deleted', handlePostDeleted as EventListener);
+    window.addEventListener('post:updated', handlePostUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener('post:created', handlePostCreated as EventListener);
+      window.removeEventListener('post:deleted', handlePostDeleted as EventListener);
+      window.removeEventListener('post:updated', handlePostUpdated as EventListener);
+    };
+  }, []);
+
   const fetchFeedPage = useCallback(
     async (cursor: string | null, replace: boolean): Promise<void> => {
       if (!replace && (!hasMore || isFetchingNext)) return;

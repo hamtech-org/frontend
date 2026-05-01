@@ -9,6 +9,7 @@ export interface PostCardViewModel {
   initial: string;
   excerpt: string;
   hasExcerptOverflow: boolean;
+  authorId: string;
 }
 
 export const toPostCardViewModel = (post: IPost): PostCardViewModel => {
@@ -27,5 +28,6 @@ export const toPostCardViewModel = (post: IPost): PostCardViewModel => {
     initial,
     excerpt,
     hasExcerptOverflow: fullText.length > 180,
+    authorId: post.authorId,
   };
 };
