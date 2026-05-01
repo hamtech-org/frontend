@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
-import ReactDOM from 'react-dom';
 import EmojiPicker from 'emoji-picker-react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
@@ -14,7 +13,6 @@ import {
   ChevronDown,
   X,
   Pencil,
-  Play,
   ChevronLeft,
 } from 'lucide-react';
 
@@ -88,9 +86,7 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
   );
 
   // Emoji picker state
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const emojiBtnRef = useRef<HTMLButtonElement>(null);
-  const [emojiPickerPos, setEmojiPickerPos] = useState<{ top: number; right: number } | null>(null);
+  const [activeEmojiPicker, setActiveEmojiPicker] = useState<'main' | 'bottom' | null>(null);
 
   // Draft dialog state
   const [showDraftDialog, setShowDraftDialog] = useState(false);
@@ -104,34 +100,6 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
   const [createPost, { isLoading: creating }] = useCreatePostMutation();
   const [updatePost, { isLoading: updating }] = useUpdatePostMutation();
   const [uploadMulti, { isLoading: uploading }] = useUploadMediaMultiMutation();
-
-  // ── Emoji portal position ──
-  const openEmojiPicker = () => {
-    if (emojiBtnRef.current) {
-      const rect = emojiBtnRef.current.getBoundingClientRect();
-      setEmojiPickerPos({
-        top: rect.top - 400,
-        right: window.innerWidth - rect.right,
-      });
-    }
-    setShowEmojiPicker((prev) => !prev);
-  };
-
-  // Close emoji picker on outside click
-  useEffect(() => {
-    if (!showEmojiPicker) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      // Check if click is on the emoji button itself
-      if (emojiBtnRef.current?.contains(target)) return;
-      // Check if click is inside the emoji picker portal
-      const pickerEl = document.getElementById('emoji-picker-portal');
-      if (pickerEl?.contains(target)) return;
-      setShowEmojiPicker(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showEmojiPicker]);
 
   // Revoke all local blob URLs to prevent memory leaks
   const revokeLocalUrls = (items: MediaItem[]) => {
@@ -160,7 +128,7 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
       setVisibility('public');
       setMediaItems([]);
     }
-    setShowEmojiPicker(false);
+    setActiveEmojiPicker(null);
     setShowDraftDialog(false);
   }, [isOpen, editingPost, emptyTiptapJson]);
 
@@ -284,7 +252,7 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
 
   const handleEmojiClick = (emojiObject: { emoji: string }) => {
     editorRef.current?.insertContent(emojiObject.emoji);
-    setShowEmojiPicker(false);
+    setActiveEmojiPicker(null);
   };
 
   const visConfig = VISIBILITY_CONFIG[visibility];
@@ -418,13 +386,29 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
 
                     {/* Emoji trigger row */}
                     <div className="relative flex justify-end px-4 pb-3">
-                      <button
-                        ref={emojiBtnRef}
-                        onClick={openEmojiPicker}
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted"
+                      <Popover
+                        open={activeEmojiPicker === 'main'}
+                        onOpenChange={(open) => setActiveEmojiPicker(open ? 'main' : null)}
                       >
-                        <Smile className="h-5 w-5" />
-                      </button>
+                        <PopoverTrigger asChild>
+                          <button className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted">
+                            <Smile className="h-5 w-5" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          side="top"
+                          align="end"
+                          className="w-auto p-0 border-none shadow-none bg-transparent"
+                          sideOffset={8}
+                        >
+                          <EmojiPicker
+                            onEmojiClick={handleEmojiClick}
+                            theme={theme as any}
+                            width={320}
+                            height={380}
+                          />
+                        </PopoverContent>
+                      </Popover>
                     </div>
 
                     {/* Media gallery preview */}
@@ -435,60 +419,62 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
                             previewUrls.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
                           }`}
                         >
-                          {previewUrls.slice(0, 4).map((url, index) => (
-                            <div
-                              key={`preview-${index}`}
-                              className={`relative overflow-hidden bg-muted/30 ${
-                                previewUrls.length === 1
-                                  ? 'max-h-72'
-                                  : previewUrls.length === 3 && index === 0
-                                    ? 'row-span-2 h-full'
-                                    : 'h-36'
-                              }`}
-                            >
-                              {isVideoUrl(url) ? (
-                                <div className="relative h-full w-full">
-                                  <video
+                          {mediaItems.slice(0, 4).map((item, index) => {
+                            const url = item.kind === 'local' ? item.previewUrl : item.url;
+                            const isVideo =
+                              item.kind === 'local'
+                                ? item.file.type.startsWith('video/')
+                                : isVideoUrl(item.url);
+                            return (
+                              <div
+                                key={`preview-${index}`}
+                                className={`relative overflow-hidden bg-muted/30 ${
+                                  previewUrls.length === 1
+                                    ? 'max-h-72'
+                                    : previewUrls.length === 3 && index === 0
+                                      ? 'row-span-2 h-full'
+                                      : 'h-36'
+                                }`}
+                              >
+                                {isVideo ? (
+                                  <div className="relative h-full w-full bg-black">
+                                    <video
+                                      src={`${url}#t=0.001`}
+                                      controls
+                                      preload="metadata"
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </div>
+                                ) : (
+                                  <img
                                     src={url}
-                                    muted
-                                    playsInline
+                                    alt={`preview ${index + 1}`}
                                     className="h-full w-full object-cover"
                                   />
-                                  <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60">
-                                      <Play className="h-5 w-5 text-white ml-0.5" />
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : (
-                                <img
-                                  src={url}
-                                  alt={`preview ${index + 1}`}
-                                  className="h-full w-full object-cover"
-                                />
-                              )}
-                              {/* Remove button on preview */}
-                              <button
-                                onClick={() => removeMediaItem(index)}
-                                className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                              {/* Badge: local = unsaved, remote = uploaded */}
-                              {mediaItems[index]?.kind === 'local' && (
-                                <span className="absolute bottom-1.5 left-1.5 rounded bg-orange-500/90 px-1.5 py-0.5 text-[9px] font-bold text-white leading-none">
-                                  Chưa lưu
-                                </span>
-                              )}
-                              {index === 3 && previewUrls.length > 4 && (
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                                  <span className="text-xl font-bold text-white">
-                                    +{previewUrls.length - 4}
+                                )}
+                                {/* Remove button on preview */}
+                                <button
+                                  onClick={() => removeMediaItem(index)}
+                                  className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                                {/* Badge: local = unsaved, remote = uploaded */}
+                                {item.kind === 'local' && (
+                                  <span className="absolute bottom-1.5 left-1.5 rounded bg-orange-500/90 px-1.5 py-0.5 text-[9px] font-bold text-white leading-none">
+                                    Chưa lưu
                                   </span>
-                                </div>
-                              )}
-                            </div>
-                          ))}
+                                )}
+                                {index === 3 && previewUrls.length > 4 && (
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                                    <span className="text-xl font-bold text-white">
+                                      +{previewUrls.length - 4}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
 
                         <button
@@ -528,13 +514,29 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
                           <UserPlus className="h-5 w-5 text-blue-500" />
                         </button>
 
-                        <button
-                          ref={emojiBtnRef as React.RefObject<HTMLButtonElement>}
-                          onClick={openEmojiPicker}
-                          className="hidden h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted sm:flex"
+                        <Popover
+                          open={activeEmojiPicker === 'bottom'}
+                          onOpenChange={(open) => setActiveEmojiPicker(open ? 'bottom' : null)}
                         >
-                          <Smile className="h-5 w-5 text-yellow-500" />
-                        </button>
+                          <PopoverTrigger asChild>
+                            <button className="hidden h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted sm:flex">
+                              <Smile className="h-5 w-5 text-yellow-500" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            side="top"
+                            align="center"
+                            className="w-auto p-0 border-none shadow-none bg-transparent"
+                            sideOffset={8}
+                          >
+                            <EmojiPicker
+                              onEmojiClick={handleEmojiClick}
+                              theme={theme as any}
+                              width={320}
+                              height={380}
+                            />
+                          </PopoverContent>
+                        </Popover>
 
                         <button className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted">
                           <MapPin className="h-5 w-5 text-red-500" />
@@ -576,24 +578,23 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
                       <div className="grid grid-cols-2 gap-2">
                         {mediaItems.map((item, index) => {
                           const url = item.kind === 'local' ? item.previewUrl : item.url;
+                          const isVideo =
+                            item.kind === 'local'
+                              ? item.file.type.startsWith('video/')
+                              : isVideoUrl(item.url);
                           return (
                             <div
                               key={`manage-${index}`}
                               className="relative aspect-square overflow-hidden rounded-xl bg-muted/30"
                             >
-                              {isVideoUrl(url) ? (
-                                <div className="relative h-full w-full">
+                              {isVideo ? (
+                                <div className="relative h-full w-full bg-black">
                                   <video
-                                    src={url}
-                                    muted
-                                    playsInline
+                                    src={`${url}#t=0.001`}
+                                    controls
+                                    preload="metadata"
                                     className="h-full w-full object-cover"
                                   />
-                                  <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60">
-                                      <Play className="h-4 w-4 text-white ml-0.5" />
-                                    </div>
-                                  </div>
                                 </div>
                               ) : (
                                 <img
@@ -657,30 +658,6 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* ── Emoji Picker Portal ── */}
-      {showEmojiPicker &&
-        emojiPickerPos &&
-        ReactDOM.createPortal(
-          <div
-            id="emoji-picker-portal"
-            style={{
-              position: 'fixed',
-              top: Math.max(8, emojiPickerPos.top),
-              right: emojiPickerPos.right,
-              zIndex: 9999,
-            }}
-            className="overflow-hidden rounded-2xl border border-border/40 bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-150"
-          >
-            <EmojiPicker
-              onEmojiClick={handleEmojiClick}
-              theme={theme as any}
-              width={320}
-              height={380}
-            />
-          </div>,
-          document.body,
-        )}
 
       {/* ── Draft Dialog ── */}
       <AlertDialog open={showDraftDialog} onOpenChange={setShowDraftDialog}>
