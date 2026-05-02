@@ -297,7 +297,7 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
                   className="text-[17px] font-bold tracking-tight"
                 >
                   {currentView === 'mediaManager'
-                    ? 'Quản lý media'
+                    ? 'Chỉnh sửa ảnh và video'
                     : isEdit
                       ? 'Chỉnh sửa bài viết'
                       : 'Tạo bài viết'}
@@ -482,7 +482,7 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
                           className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border/60 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                         >
                           <Pencil className="h-3.5 w-3.5" />
-                          Quản lý media ({previewUrls.length}/{MAX_MEDIA})
+                          Chỉnh sửa ({previewUrls.length}/{MAX_MEDIA})
                         </button>
                       </div>
                     )}

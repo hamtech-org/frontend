@@ -82,7 +82,7 @@ export function MediaManagerModal({
       >
         {/* Header */}
         <div className="relative flex h-14 items-center justify-center border-b border-border/60 px-12">
-          <h2 className="text-[17px] font-bold tracking-tight">Quản lý media</h2>
+          <h2 className="text-[17px] font-bold tracking-tight">Chỉnh sửa media</h2>
           <button
             onClick={onClose}
             disabled={uploading}

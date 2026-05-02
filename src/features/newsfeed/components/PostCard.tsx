@@ -237,7 +237,9 @@ export const PostCard = ({ post, onEditPost }: Props) => {
         </div>
       </div>
 
-      <MediaGallery mediaUrls={post.mediaUrls} />
+      <div className="px-3 md:px-4 pb-3">
+        <MediaGallery mediaUrls={post.mediaUrls} />
+      </div>
 
       <div className="p-3 md:p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
