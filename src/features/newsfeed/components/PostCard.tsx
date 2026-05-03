@@ -1,36 +1,32 @@
 import { motion } from 'motion/react';
 import {
   Bookmark,
-  Image as ImageIcon,
   MessageCircle,
   MoreHorizontal,
   Pencil,
-  SendHorizontal,
   Share2,
-  Smile,
   Trash2,
   Flag,
   EyeOff,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
-import type { IPost } from '@/types/newsfeed.types';
+import type { IPost, IComment } from '@/types/newsfeed.types';
 import type { RootState } from '@/store/store';
 import { toPostCardViewModel } from '@/features/newsfeed/utils/postViewModel';
 import {
-  useAddCommentMutation,
   useDeletePostMutation,
   useLazyGetCommentsQuery,
   useReactToPostMutation,
-  useReactToCommentMutation,
 } from '@/store/api/newsfeedApi';
-import type { IComment } from '@/types/newsfeed.types';
 import { formatRelative } from '@/utils/formatDate';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HashtagText } from './HashtagText';
 import { MediaGallery } from './MediaGallery';
 import { ReactionButton } from '@/components/common/ReactionButton';
 import { ReactionSummary } from '@/components/common/ReactionButton/ReactionSummary';
+import { CommentItem } from './CommentItem';
+import { CommentInput } from './CommentInput';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,7 +50,6 @@ export const PostCard = ({ post, onEditPost }: Props) => {
 
   // ── Comment section state ──
   const [isCommentOpen, setIsCommentOpen] = useState(false);
-  const [commentText, setCommentText] = useState('');
   const [comments, setComments] = useState<IComment[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMoreComments, setHasMoreComments] = useState(false);
@@ -75,14 +70,12 @@ export const PostCard = ({ post, onEditPost }: Props) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const [getCommentsPage] = useLazyGetCommentsQuery();
-  const [addComment, { isLoading: isAddingComment }] = useAddCommentMutation();
   const [reactToPost] = useReactToPostMutation();
-  const [reactToComment] = useReactToCommentMutation();
   const [deletePost, { isLoading: isDeleting }] = useDeletePostMutation();
 
-  const commentAuthorName = currentUser?.displayName?.trim() || 'Bạn';
-  const commentAuthorAvatar = currentUser?.avatar || '';
-  const commentAuthorInitial = commentAuthorName.charAt(0).toUpperCase() || 'U';
+  const myName = currentUser?.displayName?.trim() || 'Bạn';
+  const myAvatar = currentUser?.avatar || '';
+  const myInitial = myName.charAt(0).toUpperCase() || 'U';
 
   const loadCommentPage = async (cursor?: string | null, append: boolean = false) => {
     if (append) {
@@ -122,21 +115,6 @@ export const PostCard = ({ post, onEditPost }: Props) => {
       }
       return next;
     });
-  };
-
-  const submitComment = async () => {
-    const content = commentText.trim();
-    if (!content) return;
-    try {
-      const created = await addComment({ postId: post.postId, content }).unwrap();
-      if (created.data) {
-        setComments((prev) => [...prev, created.data]);
-        setDisplayCommentsCount((prev) => prev + 1);
-      }
-      setCommentText('');
-    } catch {
-      // no-op
-    }
   };
 
   const handleDelete = async () => {
@@ -253,7 +231,7 @@ export const PostCard = ({ post, onEditPost }: Props) => {
             <ReactionButton
               size="md"
               currentUserReaction={localReaction}
-              count={Object.values(localReactionsCount).reduce((a, b) => a + (b || 0), 0)}
+              count={Object.values(localReactionsCount).reduce((a, b) => (a || 0) + (b || 0), 0)}
               onReact={(type) => {
                 const prevReaction = localReaction;
                 const newCounts = { ...localReactionsCount };
@@ -298,146 +276,55 @@ export const PostCard = ({ post, onEditPost }: Props) => {
         </button>
       </div>
       {isCommentOpen ? (
-        <div className="px-3 md:px-4 pt-2.5 pb-3 space-y-3 border-t border-border/50">
-          {isLoadingComments && comments.length === 0 ? (
-            <div className="space-y-2 animate-pulse">
-              <div className="rounded-xl bg-muted/50 px-3 py-2">
-                <div className="h-2.5 w-20 rounded bg-muted/70" />
-                <div className="mt-2 h-3 w-4/5 rounded bg-muted/60" />
-              </div>
-              <div className="rounded-xl bg-muted/50 px-3 py-2">
-                <div className="h-2.5 w-16 rounded bg-muted/70" />
-                <div className="mt-2 h-3 w-2/3 rounded bg-muted/60" />
-              </div>
-            </div>
-          ) : comments.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-2">Chưa có bình luận nào.</p>
-          ) : (
-            <div className="space-y-2">
-              {comments.map((comment) => (
-                <div key={comment.commentId} className="flex items-start gap-2">
-                  <div className="size-7 rounded-full overflow-hidden bg-muted/60 flex items-center justify-center shrink-0">
-                    {comment.author?.avatar ? (
-                      <img
-                        src={comment.author.avatar}
-                        alt={comment.author.displayName}
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <span className="text-[10px] font-bold text-muted-foreground">
-                        {(comment.author?.displayName ?? comment.authorId)
-                          .charAt(0)
-                          .toUpperCase() || 'U'}
-                      </span>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="rounded-xl bg-muted/50 px-3 py-2">
-                      <p className="text-xs font-semibold text-foreground/80">
-                        {comment.author?.displayName ?? comment.authorId}
-                      </p>
-                      <p className="text-sm text-foreground">
-                        <HashtagText text={comment.content} />
-                      </p>
-                    </div>
-                    <div className="mt-1 flex items-center gap-3 px-1 text-[11px] text-muted-foreground relative">
-                      <span>{formatRelative(comment.createdAt)}</span>
-                      <div className="flex items-center gap-2 relative">
-                        <ReactionButton
-                          size="sm"
-                          showLabel={false}
-                          className="h-5 px-1 rounded-sm"
-                          currentUserReaction={comment.currentUserReaction}
-                          count={Object.values(comment.reactionsCount || {}).reduce(
-                            (a, b) => a + (b || 0),
-                            0,
-                          )}
-                          onReact={(type) => {
-                            const serverType = type ?? comment.currentUserReaction;
-                            if (!serverType) return;
-                            void reactToComment({
-                              postId: post.postId,
-                              commentId: comment.commentId,
-                              type: serverType,
-                            });
-                          }}
-                        />
-                      </div>
-                      <button type="button" className="font-semibold hover:text-foreground">
-                        Trả lời
-                      </button>
+        <div className="px-3 md:px-4 pt-2.5 pb-3 border-t border-border/50 flex flex-col gap-3">
+          {/* Comment list */}
+          <div className="flex flex-col gap-2">
+            {isLoadingComments && comments.length === 0 ? (
+              <>
+                {[0, 1].map((i) => (
+                  <div key={i} className="flex items-start gap-2 animate-pulse">
+                    <div className="size-7 rounded-full bg-muted/60 shrink-0" />
+                    <div className="flex-1 rounded-xl bg-muted/50 px-3 py-2">
+                      <div className="h-2.5 w-20 rounded bg-muted/70" />
+                      <div className="mt-2 h-3 w-4/5 rounded bg-muted/60" />
                     </div>
                   </div>
-                </div>
-              ))}
-              {hasMoreComments ? (
-                <button
-                  type="button"
-                  onClick={() => void loadCommentPage(nextCursor, true)}
-                  disabled={isLoadingMoreComments}
-                  className="px-1 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
-                >
-                  {isLoadingMoreComments ? 'Đang tải...' : 'Xem thêm bình luận'}
-                </button>
-              ) : null}
-            </div>
-          )}
-          <div className="flex items-start gap-2">
-            <div className="size-8 rounded-full overflow-hidden bg-muted/40 flex items-center justify-center shrink-0">
-              {commentAuthorAvatar ? (
-                <img
-                  src={commentAuthorAvatar}
-                  alt={commentAuthorName}
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <span className="text-xs font-bold text-muted-foreground">
-                  {commentAuthorInitial}
-                </span>
-              )}
-            </div>
-            <div className="min-w-0 flex-1 rounded-xl border border-border/60 bg-background p-2 space-y-2">
-              <input
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    void submitComment();
-                  }
-                }}
-                placeholder="Viết bình luận..."
-                className="w-full border-none bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground"
-              />
-              <div className="flex items-center justify-between border-t border-border/50 pt-2">
-                <div className="flex items-center gap-1">
+                ))}
+              </>
+            ) : comments.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Chưa có bình luận nào.
+              </p>
+            ) : (
+              <>
+                {comments.map((comment) => (
+                  <CommentItem key={comment.commentId} comment={comment} postId={post.postId} />
+                ))}
+                {hasMoreComments && (
                   <button
                     type="button"
-                    className="rounded-md p-1.5 text-amber-500 hover:bg-muted/70"
+                    onClick={() => void loadCommentPage(nextCursor, true)}
+                    disabled={isLoadingMoreComments}
+                    className="px-1 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
                   >
-                    <Smile className="h-4 w-4" />
+                    {isLoadingMoreComments ? 'Đang tải...' : 'Xem thêm bình luận'}
                   </button>
-                  <button
-                    type="button"
-                    className="rounded-md p-1.5 text-green-600 hover:bg-muted/70"
-                  >
-                    <ImageIcon className="h-4 w-4" />
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  disabled={isAddingComment || commentText.trim().length === 0}
-                  onClick={submitComment}
-                  className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-60"
-                >
-                  <SendHorizontal className="h-3.5 w-3.5" />
-                  Gửi
-                </button>
-              </div>
-            </div>
+                )}
+              </>
+            )}
           </div>
+
+          {/* New comment input */}
+          <CommentInput
+            postId={post.postId}
+            authorName={myName}
+            authorAvatar={myAvatar}
+            authorInitial={myInitial}
+            onSubmitted={(newComment) => {
+              setComments((prev) => [...prev, newComment]);
+              setDisplayCommentsCount((prev) => prev + 1);
+            }}
+          />
         </div>
       ) : null}
 
