@@ -139,6 +139,21 @@
   }
 }
 
+@keyframes floatUp {
+  0%   { transform: translateY(0) scale(1); opacity: 1; }
+  50%  { transform: translateY(-40px) scale(1.5); opacity: 1; }
+  100% { transform: translateY(-80px) scale(0.5); opacity: 0; }
+}
+.emoji-float { animation: floatUp 0.8s ease-out forwards; }
+
+@keyframes emojiPop {
+  0%   { transform: scale(0) translateY(4px); opacity: 0; }
+  60%  { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+.emoji-pop { animation: emojiPop 0.25s ease-out forwards; }
+
+
 @layer components {
   .glass-card {
     @apply backdrop-blur-xl bg-white/70 border border-white/20 shadow-sm;
