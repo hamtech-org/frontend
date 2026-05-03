@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLazyGetFeedQuery } from '@/store/api/newsfeedApi';
 import type { IPost } from '@/types/newsfeed.types';
+import type { ReactionType } from '@/types/reaction.types';
 import { FEED_PAGE_SIZE } from '@/features/newsfeed/constants';
 import { mergeDedupPosts } from '@/features/newsfeed/utils/feedMerge';
 import { toFeedPage } from '@/features/newsfeed/adapters/newsfeedApi.adapter';
@@ -34,14 +35,30 @@ export const useFeedPagination = () => {
       );
     };
 
+    const handlePostReacted = (e: CustomEvent<{ postId: string; type: ReactionType | null }>) => {
+      setPosts((prev) =>
+        prev.map((p) => {
+          if (p.postId !== e.detail.postId) return p;
+          const { type } = e.detail;
+          const oldType = p.currentUserReaction;
+          const newCounts = { ...p.reactionsCount };
+          if (oldType) newCounts[oldType] = Math.max(0, (newCounts[oldType] ?? 1) - 1);
+          if (type) newCounts[type] = (newCounts[type] ?? 0) + 1;
+          return { ...p, currentUserReaction: type, reactionsCount: newCounts };
+        }),
+      );
+    };
+
     window.addEventListener('post:created', handlePostCreated as EventListener);
     window.addEventListener('post:deleted', handlePostDeleted as EventListener);
     window.addEventListener('post:updated', handlePostUpdated as EventListener);
+    window.addEventListener('post:reacted', handlePostReacted as EventListener);
 
     return () => {
       window.removeEventListener('post:created', handlePostCreated as EventListener);
       window.removeEventListener('post:deleted', handlePostDeleted as EventListener);
       window.removeEventListener('post:updated', handlePostUpdated as EventListener);
+      window.removeEventListener('post:reacted', handlePostReacted as EventListener);
     };
   }, []);
 

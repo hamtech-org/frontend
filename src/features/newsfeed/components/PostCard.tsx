@@ -1,7 +1,6 @@
 import { motion } from 'motion/react';
 import {
   Bookmark,
-  Heart,
   Image as ImageIcon,
   MessageCircle,
   MoreHorizontal,
@@ -13,7 +12,7 @@ import {
   Flag,
   EyeOff,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { IPost } from '@/types/newsfeed.types';
 import type { RootState } from '@/store/store';
@@ -23,12 +22,15 @@ import {
   useDeletePostMutation,
   useLazyGetCommentsQuery,
   useReactToPostMutation,
+  useReactToCommentMutation,
 } from '@/store/api/newsfeedApi';
 import type { IComment } from '@/types/newsfeed.types';
 import { formatRelative } from '@/utils/formatDate';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HashtagText } from './HashtagText';
 import { MediaGallery } from './MediaGallery';
+import { ReactionButton } from '@/components/common/ReactionButton';
+import { ReactionSummary } from '@/components/common/ReactionButton/ReactionSummary';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,9 +61,13 @@ export const PostCard = ({ post, onEditPost }: Props) => {
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
 
-  // ── Reaction state ──
-  const [isLiked, setIsLiked] = useState(post.currentUserReaction === 'like');
-  const [displayLikesCount, setDisplayLikesCount] = useState(vm.likes);
+  // ── Reaction state (optimistic) ──
+  const [localReaction, setLocalReaction] = useState<
+    import('@/types/reaction.types').ReactionType | null
+  >(post.currentUserReaction ?? null);
+  const [localReactionsCount, setLocalReactionsCount] = useState<Partial<Record<string, number>>>(
+    post.reactionsCount || {},
+  );
   const [displayCommentsCount, setDisplayCommentsCount] = useState(post.commentsCount ?? 0);
 
   // ── Menu state ──
@@ -71,16 +77,12 @@ export const PostCard = ({ post, onEditPost }: Props) => {
   const [getCommentsPage] = useLazyGetCommentsQuery();
   const [addComment, { isLoading: isAddingComment }] = useAddCommentMutation();
   const [reactToPost] = useReactToPostMutation();
+  const [reactToComment] = useReactToCommentMutation();
   const [deletePost, { isLoading: isDeleting }] = useDeletePostMutation();
 
   const commentAuthorName = currentUser?.displayName?.trim() || 'Bạn';
   const commentAuthorAvatar = currentUser?.avatar || '';
   const commentAuthorInitial = commentAuthorName.charAt(0).toUpperCase() || 'U';
-
-  useEffect(() => {
-    setIsLiked(post.currentUserReaction === 'like');
-    setDisplayLikesCount(vm.likes);
-  }, [post, vm.likes]);
 
   const loadCommentPage = async (cursor?: string | null, append: boolean = false) => {
     if (append) {
@@ -155,7 +157,7 @@ export const PostCard = ({ post, onEditPost }: Props) => {
       viewport={{ once: true }}
       className="feed-card-virtualized glass-card max-w-3xl mx-auto rounded-2xl overflow-hidden border-none shadow-lg shadow-black/5 dark:shadow-white/5"
     >
-      <div className="p-3 md:p-4 flex items-center justify-between">
+      <div className="px-3 py-2 md:px-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="size-9 rounded-full overflow-hidden bg-muted/40 flex items-center justify-center shrink-0">
             {vm.avatar ? (
@@ -230,36 +232,49 @@ export const PostCard = ({ post, onEditPost }: Props) => {
           </PopoverContent>
         </Popover>
       </div>
-      <div className="px-3 md:px-4 pb-2.5">
+      <div className="px-3 md:px-4 pb-2">
         <div className="text-sm leading-6 whitespace-pre-wrap">
           <HashtagText text={vm.excerpt} />
           {vm.hasExcerptOverflow ? '…' : ''}
         </div>
       </div>
 
-      <div className="px-3 md:px-4 pb-3">
+      <div className="px-3 md:px-4 pb-2">
         <MediaGallery mediaUrls={post.mediaUrls} />
       </div>
 
-      <div className="p-3 md:p-4 flex items-center justify-between">
+      <div className="px-3 md:px-4 pb-0">
+        <ReactionSummary summary={localReactionsCount} size="sm" className="mb-1" />
+      </div>
+
+      <div className="px-3 py-1.5 md:px-4 flex items-center justify-between border-t border-border/40">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all hover:bg-muted/70 group"
-            onClick={() => {
-              void reactToPost({ postId: post.postId, type: 'like' });
-              const nextLiked = !isLiked;
-              setIsLiked(nextLiked);
-              setDisplayLikesCount((count) => (nextLiked ? count + 1 : Math.max(0, count - 1)));
-            }}
-          >
-            <Heart
-              className={`w-4 h-4 transition-all ${
-                isLiked ? 'text-red-500 fill-red-500' : 'text-muted-foreground'
-              }`}
+          <div className="flex items-center gap-2">
+            <ReactionButton
+              size="md"
+              currentUserReaction={localReaction}
+              count={Object.values(localReactionsCount).reduce((a, b) => a + (b || 0), 0)}
+              onReact={(type) => {
+                const prevReaction = localReaction;
+                const newCounts = { ...localReactionsCount };
+                if (prevReaction) {
+                  newCounts[prevReaction] = Math.max(0, (newCounts[prevReaction] || 0) - 1);
+                }
+                if (type) {
+                  newCounts[type] = (newCounts[type] || 0) + 1;
+                }
+                setLocalReaction(type);
+                setLocalReactionsCount(newCounts);
+
+                const serverType = type ?? prevReaction;
+                if (!serverType) return;
+                window.dispatchEvent(
+                  new CustomEvent('post:reacted', { detail: { postId: post.postId, type } }),
+                );
+                void reactToPost({ postId: post.postId, type: serverType });
+              }}
             />
-            <span className="text-sm font-bold">{displayLikesCount}</span>
-          </button>
+          </div>
           <button
             type="button"
             className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all hover:bg-muted/70 group"
@@ -283,7 +298,7 @@ export const PostCard = ({ post, onEditPost }: Props) => {
         </button>
       </div>
       {isCommentOpen ? (
-        <div className="px-3 md:px-4 pb-3.5 space-y-3 border-t border-border/50">
+        <div className="px-3 md:px-4 pt-2.5 pb-3 space-y-3 border-t border-border/50">
           {isLoadingComments && comments.length === 0 ? (
             <div className="space-y-2 animate-pulse">
               <div className="rounded-xl bg-muted/50 px-3 py-2">
@@ -326,11 +341,29 @@ export const PostCard = ({ post, onEditPost }: Props) => {
                         <HashtagText text={comment.content} />
                       </p>
                     </div>
-                    <div className="mt-1 flex items-center gap-3 px-1 text-[11px] text-muted-foreground">
+                    <div className="mt-1 flex items-center gap-3 px-1 text-[11px] text-muted-foreground relative">
                       <span>{formatRelative(comment.createdAt)}</span>
-                      <button type="button" className="font-semibold hover:text-foreground">
-                        Thích
-                      </button>
+                      <div className="flex items-center gap-2 relative">
+                        <ReactionButton
+                          size="sm"
+                          showLabel={false}
+                          className="h-5 px-1 rounded-sm"
+                          currentUserReaction={comment.currentUserReaction}
+                          count={Object.values(comment.reactionsCount || {}).reduce(
+                            (a, b) => a + (b || 0),
+                            0,
+                          )}
+                          onReact={(type) => {
+                            const serverType = type ?? comment.currentUserReaction;
+                            if (!serverType) return;
+                            void reactToComment({
+                              postId: post.postId,
+                              commentId: comment.commentId,
+                              type: serverType,
+                            });
+                          }}
+                        />
+                      </div>
                       <button type="button" className="font-semibold hover:text-foreground">
                         Trả lời
                       </button>
