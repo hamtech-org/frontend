@@ -109,14 +109,20 @@ export const newsfeedApi = createApi({
 
     addComment: builder.mutation<
       ApiSuccessResponse<IComment>,
-      { postId: string; content: string; parentId?: string }
+      { postId: string; content: string; parentId?: string; mediaUrls?: string[] }
     >({
-      query: ({ postId, content, parentId }) => ({
+      query: ({ postId, content, parentId, mediaUrls }) => ({
         url: `/newsfeed/posts/${postId}/comments`,
         method: 'POST',
-        body: { content, parentId },
+        body: { content, parentId, mediaUrls },
       }),
-      async onQueryStarted({ postId, content }, { dispatch, queryFulfilled, getState }) {
+      async onQueryStarted(
+        { postId, content, parentId, mediaUrls },
+        { dispatch, queryFulfilled, getState },
+      ) {
+        // Chỉ optimistic update cho top-level comment
+        if (parentId) return;
+
         const currentUser = (
           getState() as {
             auth?: { user?: { userId?: string; displayName?: string; avatar?: string | null } };
@@ -133,6 +139,7 @@ export const newsfeedApi = createApi({
             avatar: currentUser?.avatar ?? null,
           },
           content,
+          mediaUrls,
           parentId: null,
           reactionsCount: {},
           createdAt: new Date().toISOString(),
@@ -180,6 +187,16 @@ export const newsfeedApi = createApi({
           feedPatch.undo();
         }
       },
+    }),
+
+    getCommentReplies: builder.query<
+      ApiSuccessResponse<ICommentsPage>,
+      { postId: string; commentId: string; cursor?: string | null }
+    >({
+      query: ({ postId, commentId, cursor }) => ({
+        url: `/newsfeed/posts/${postId}/comments`,
+        params: { parentId: commentId, limit: 5, cursor: cursor ?? undefined },
+      }),
     }),
 
     reactToPost: builder.mutation<
@@ -265,4 +282,6 @@ export const {
   useReactToPostMutation,
   useReactToCommentMutation,
   useReactToReelMutation,
+  useGetCommentRepliesQuery,
+  useLazyGetCommentRepliesQuery,
 } = newsfeedApi;
