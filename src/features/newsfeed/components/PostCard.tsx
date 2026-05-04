@@ -37,6 +37,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Props {
   post: IPost;
@@ -221,8 +222,17 @@ export const PostCard = ({ post, onEditPost }: Props) => {
         <MediaGallery mediaUrls={post.mediaUrls} />
       </div>
 
-      <div className="px-3 md:px-4 pb-0">
+      <div className="px-3 md:px-4 pb-0 flex items-center justify-between">
         <ReactionSummary summary={localReactionsCount} size="sm" className="mb-1" />
+        {displayCommentsCount > 0 && (
+          <button
+            type="button"
+            onClick={toggleComments}
+            className="text-xs text-muted-foreground hover:underline mb-1"
+          >
+            {displayCommentsCount} bình luận
+          </button>
+        )}
       </div>
 
       <div className="px-3 py-1.5 md:px-4 flex items-center justify-between border-t border-border/40">
@@ -259,7 +269,6 @@ export const PostCard = ({ post, onEditPost }: Props) => {
             onClick={toggleComments}
           >
             <MessageCircle className="w-4 h-4 text-muted-foreground transition-all" />
-            <span className="text-sm font-bold">{displayCommentsCount}</span>
           </button>
           <button
             type="button"
@@ -300,14 +309,26 @@ export const PostCard = ({ post, onEditPost }: Props) => {
                 {comments.map((comment) => (
                   <CommentItem key={comment.commentId} comment={comment} postId={post.postId} />
                 ))}
-                {hasMoreComments && (
+                {isLoadingMoreComments && (
+                  <div className="flex flex-col gap-2 py-1">
+                    {[0, 1].map((i) => (
+                      <div key={i} className="flex items-start gap-2 animate-pulse">
+                        <Skeleton className="size-7 rounded-full shrink-0" />
+                        <div className="flex flex-col gap-1.5 flex-1">
+                          <Skeleton className="h-2.5 w-16 rounded" />
+                          <Skeleton className="h-8 w-3/4 rounded-xl" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {hasMoreComments && !isLoadingMoreComments && (
                   <button
                     type="button"
                     onClick={() => void loadCommentPage(nextCursor, true)}
-                    disabled={isLoadingMoreComments}
                     className="px-1 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
                   >
-                    {isLoadingMoreComments ? 'Đang tải...' : 'Xem thêm bình luận'}
+                    Xem thêm bình luận
                   </button>
                 )}
               </>
