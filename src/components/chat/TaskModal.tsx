@@ -115,7 +115,6 @@ export function TaskModal({
     tick();
     const t = window.setInterval(tick, 15_000);
     return () => window.clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const parseDeadlineParts = (raw: string) => {

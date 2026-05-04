@@ -28,7 +28,7 @@ export const userApi = createApi({
             });
           }
         }
-        
+
         return {
           url: '/users/me',
           method: 'PUT',
@@ -80,8 +80,7 @@ export const userApi = createApi({
     }),
 
     getFriends: builder.query<ApiSuccessResponse<IUser[]>, { limit?: number; offset?: number }>({
-      query: ({ limit = 50, offset = 0 }) => 
-        `/users/friends?limit=${limit}&offset=${offset}`,
+      query: ({ limit = 50, offset = 0 }) => `/users/friends?limit=${limit}&offset=${offset}`,
       providesTags: ['Friend'],
     }),
 
@@ -97,6 +96,16 @@ export const userApi = createApi({
       query: ({ limit = 10 }) => `/users/friends/suggestions?limit=${limit}`,
       providesTags: ['Friend'],
     }),
+
+    // Batch fetch user public profile (displayName/avatar) by ids.
+    // Used for rendering newsfeed posts efficiently.
+    postMultipleUsers: builder.mutation<ApiSuccessResponse<IUser[]>, { userIds: string[] }>({
+      query: ({ userIds }) => ({
+        url: '/users/multiple',
+        method: 'POST',
+        body: { userIds },
+      }),
+    }),
   }),
 });
 
@@ -111,4 +120,5 @@ export const {
   useGetFriendsQuery,
   useGetPendingRequestsQuery,
   useGetSuggestedFriendsQuery,
+  usePostMultipleUsersMutation,
 } = userApi;
