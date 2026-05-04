@@ -106,21 +106,11 @@ export const CommentInput = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const incoming = Array.from(e.target.files ?? []);
     if (!incoming.length) return;
-    const merged = [...mediaFiles, ...incoming].slice(0, 4);
-    setMediaFiles(merged);
-    merged.forEach((file, idx) => {
-      if (idx >= mediaPreviews.length) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          setMediaPreviews((prev) => {
-            const next = [...prev];
-            next[idx] = ev.target?.result as string;
-            return next;
-          });
-        };
-        reader.readAsDataURL(file);
-      }
-    });
+    const file = incoming[0];
+    setMediaFiles([file]);
+    const reader = new FileReader();
+    reader.onload = (ev) => setMediaPreviews([ev.target?.result as string]);
+    reader.readAsDataURL(file);
     e.target.value = '';
   };
 
@@ -181,121 +171,116 @@ export const CommentInput = ({
         )}
       </div>
 
-      <div className="min-w-0 flex-1 rounded-xl border border-border/60 bg-background overflow-hidden">
-        {replyTo && (
-          <div className="flex items-center justify-between px-3 py-1.5 bg-muted/40 border-b border-border/40">
-            <span className="text-xs text-muted-foreground">
-              Đang trả lời{' '}
-              <span className="font-semibold text-foreground">{replyTo.authorName}</span>
-            </span>
-            <button
-              type="button"
-              onClick={onClearReply}
-              className="rounded-full p-0.5 hover:bg-muted transition-colors"
-            >
-              <X className="size-3 text-muted-foreground" />
-            </button>
-          </div>
-        )}
-
+      <div className="min-w-0 flex-1">
+        {/* Media preview — ngoài khung text */}
         {mediaPreviews.length > 0 && (
-          <div className="flex gap-1.5 flex-wrap p-2 border-b border-border/40">
-            {mediaPreviews.map((src, idx) => (
-              <div
-                key={idx}
-                className="relative size-14 rounded-lg overflow-hidden bg-muted/40 shrink-0"
-              >
-                {mediaFiles[idx]?.type.startsWith('video/') ? (
-                  <video src={src} className="w-full h-full object-cover" />
-                ) : (
-                  <img src={src} alt="" className="w-full h-full object-cover" />
-                )}
-                <button
-                  type="button"
-                  onClick={() => removeMedia(idx)}
-                  className="absolute top-0.5 right-0.5 size-4 rounded-full bg-background/80 flex items-center justify-center"
-                >
-                  <X className="size-2.5" />
-                </button>
-              </div>
-            ))}
+          <div className="relative mb-1.5 overflow-hidden rounded-xl">
+            {mediaFiles[0]?.type.startsWith('video/') ? (
+              <video src={mediaPreviews[0]} className="max-h-48 w-full object-cover" />
+            ) : (
+              <img src={mediaPreviews[0]} alt="" className="max-h-48 w-full object-cover" />
+            )}
+            <button
+              type="button"
+              onClick={() => removeMedia(0)}
+              className="absolute top-1.5 right-1.5 size-5 rounded-full bg-background/80 flex items-center justify-center hover:bg-background transition-colors"
+            >
+              <X className="size-3" />
+            </button>
           </div>
         )}
 
-        <textarea
-          ref={textRef}
-          value={text}
-          autoFocus={autoFocus}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void handleSubmit();
-            }
-          }}
-          placeholder={replyTo ? `Trả lời ${replyTo.authorName}...` : 'Viết bình luận...'}
-          rows={1}
-          className="w-full resize-none border-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground leading-5 max-h-28 overflow-y-auto"
-        />
+        <div className="rounded-xl border border-border/60 bg-background overflow-hidden">
+          {replyTo && (
+            <div className="flex items-center justify-between px-3 py-1.5 bg-muted/40 border-b border-border/40">
+              <span className="text-xs text-muted-foreground">
+                Đang trả lời{' '}
+                <span className="font-semibold text-foreground">{replyTo.authorName}</span>
+              </span>
+              <button
+                type="button"
+                onClick={onClearReply}
+                className="rounded-full p-0.5 hover:bg-muted transition-colors"
+              >
+                <X className="size-3 text-muted-foreground" />
+              </button>
+            </div>
+          )}
 
-        <div className="flex items-center justify-between px-2 py-1.5 border-t border-border/40">
-          <div className="flex items-center gap-0.5">
-            <Popover open={showEmoji} onOpenChange={setShowEmoji}>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className="rounded-md p-1.5 text-amber-500 hover:bg-muted/70 transition-colors"
-                >
-                  <Smile className="size-4" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent side="top" align="start" className="w-64 p-2">
-                <div className="grid grid-cols-8 gap-0.5">
-                  {COMMON_EMOJIS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={() => insertEmoji(emoji)}
-                      className="size-7 flex items-center justify-center rounded hover:bg-muted text-base transition-colors"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
+          <textarea
+            ref={textRef}
+            value={text}
+            autoFocus={autoFocus}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void handleSubmit();
+              }
+            }}
+            placeholder={replyTo ? `Trả lời ${replyTo.authorName}...` : 'Viết bình luận...'}
+            rows={1}
+            className="w-full resize-none border-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground leading-5 max-h-28 overflow-y-auto"
+          />
+
+          <div className="flex items-center justify-between px-2 py-1.5 border-t border-border/40">
+            <div className="flex items-center gap-0.5">
+              <Popover open={showEmoji} onOpenChange={setShowEmoji}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="rounded-md p-1.5 text-amber-500 hover:bg-muted/70 transition-colors"
+                  >
+                    <Smile className="size-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent side="top" align="start" className="w-64 p-2">
+                  <div className="grid grid-cols-8 gap-0.5">
+                    {COMMON_EMOJIS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => insertEmoji(emoji)}
+                        className="size-7 flex items-center justify-center rounded hover:bg-muted text-base transition-colors"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <button
+                type="button"
+                disabled={mediaFiles.length >= 1}
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-md p-1.5 text-green-600 hover:bg-muted/70 transition-colors disabled:opacity-40"
+              >
+                <ImageIcon className="size-4" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
 
             <button
               type="button"
-              disabled={mediaFiles.length >= 4}
-              onClick={() => fileInputRef.current?.click()}
-              className="rounded-md p-1.5 text-green-600 hover:bg-muted/70 transition-colors disabled:opacity-40"
+              disabled={!canSubmit}
+              onClick={() => void handleSubmit()}
+              className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 transition-opacity"
             >
-              <ImageIcon className="size-4" />
+              {isLoading ? (
+                <span className="size-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              ) : (
+                <SendHorizontal className="size-3.5" />
+              )}
+              {isUploading ? 'Đang tải...' : 'Gửi'}
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              className="hidden"
-              onChange={handleFileChange}
-            />
           </div>
-
-          <button
-            type="button"
-            disabled={!canSubmit}
-            onClick={() => void handleSubmit()}
-            className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50 transition-opacity"
-          >
-            {isLoading ? (
-              <span className="size-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-            ) : (
-              <SendHorizontal className="size-3.5" />
-            )}
-            {isUploading ? 'Đang tải...' : 'Gửi'}
-          </button>
         </div>
       </div>
     </div>
