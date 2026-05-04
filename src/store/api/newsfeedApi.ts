@@ -6,6 +6,7 @@ import type {
   ICommentsPage,
   IFeedPage,
   IPost,
+  ISavedPostsPage,
   PostPublicationStatus,
   PostVisibility,
 } from '@/types/newsfeed.types';
@@ -34,6 +35,11 @@ export interface UpdatePostBody {
 export interface FeedQueryParams {
   limit?: number;
   cursor?: string | null;
+}
+
+export interface SharePostBody {
+  content?: string;
+  visibility?: PostVisibility;
 }
 
 export interface CommentsQueryParams {
@@ -266,6 +272,47 @@ export const newsfeedApi = createApi({
         body: { type },
       }),
     }),
+
+    sharePost: builder.mutation<ApiSuccessResponse<IPost>, { postId: string } & SharePostBody>({
+      query: ({ postId, ...body }) => ({
+        url: `/newsfeed/posts/${postId}/share`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Feed'],
+    }),
+
+    toggleSavePost: builder.mutation<ApiSuccessResponse<{ isSaved: boolean }>, string>({
+      query: (postId) => ({
+        url: `/newsfeed/posts/${postId}/save`,
+        method: 'POST',
+      }),
+      async onQueryStarted(postId, { dispatch, queryFulfilled }) {
+        // Optimistic update: toggle isSaved trong feed cache
+        const patch = dispatch(
+          newsfeedApi.util.updateQueryData('getFeed', undefined, (draft) => {
+            const post = draft.data.items.find((p) => p.postId === postId);
+            if (post) post.isSaved = !post.isSaved;
+          }),
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patch.undo();
+        }
+      },
+    }),
+
+    getSavedPosts: builder.query<ApiSuccessResponse<ISavedPostsPage>, FeedQueryParams | void>({
+      query: (params) => ({
+        url: '/newsfeed/feed/saved',
+        params: {
+          limit: params?.limit,
+          cursor: params?.cursor ?? undefined,
+        },
+      }),
+      providesTags: ['Feed'],
+    }),
   }),
 });
 
@@ -284,4 +331,7 @@ export const {
   useReactToReelMutation,
   useGetCommentRepliesQuery,
   useLazyGetCommentRepliesQuery,
+  useSharePostMutation,
+  useToggleSavePostMutation,
+  useGetSavedPostsQuery,
 } = newsfeedApi;

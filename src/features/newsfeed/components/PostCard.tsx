@@ -18,6 +18,7 @@ import {
   useDeletePostMutation,
   useLazyGetCommentsQuery,
   useReactToPostMutation,
+  useToggleSavePostMutation,
 } from '@/store/api/newsfeedApi';
 import { formatRelative } from '@/utils/formatDate';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -27,6 +28,8 @@ import { ReactionButton } from '@/components/common/ReactionButton';
 import { ReactionSummary } from '@/components/common/ReactionButton/ReactionSummary';
 import { CommentItem } from './CommentItem';
 import { CommentInput } from './CommentInput';
+import { SharedPostPreview } from './SharedPostPreview';
+import { SharePostModal } from './SharePostModal';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,13 +69,16 @@ export const PostCard = ({ post, onEditPost }: Props) => {
   );
   const [displayCommentsCount, setDisplayCommentsCount] = useState(post.commentsCount ?? 0);
 
-  // ── Menu state ──
+  // ── Menu / share / save state ──
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [isSaved, setIsSaved] = useState(post.isSaved ?? false);
 
   const [getCommentsPage] = useLazyGetCommentsQuery();
   const [reactToPost] = useReactToPostMutation();
   const [deletePost, { isLoading: isDeleting }] = useDeletePostMutation();
+  const [toggleSavePost] = useToggleSavePostMutation();
 
   const myName = currentUser?.displayName?.trim() || 'Bạn';
   const myAvatar = currentUser?.avatar || '';
@@ -216,23 +222,31 @@ export const PostCard = ({ post, onEditPost }: Props) => {
           <HashtagText text={vm.excerpt} />
           {vm.hasExcerptOverflow ? '…' : ''}
         </div>
+        {post.sharedFrom && <SharedPostPreview sharedFrom={post.sharedFrom} />}
       </div>
 
-      <div className="px-3 md:px-4 pb-2">
-        <MediaGallery mediaUrls={post.mediaUrls} />
-      </div>
+      {!post.sharedFrom && (
+        <div className="px-3 md:px-4 pb-2">
+          <MediaGallery mediaUrls={post.mediaUrls} />
+        </div>
+      )}
 
       <div className="px-3 md:px-4 pb-0 flex items-center justify-between">
         <ReactionSummary summary={localReactionsCount} size="sm" className="mb-1" />
-        {displayCommentsCount > 0 && (
-          <button
-            type="button"
-            onClick={toggleComments}
-            className="text-xs text-muted-foreground hover:underline mb-1"
-          >
-            {displayCommentsCount} bình luận
-          </button>
-        )}
+        <div className="flex items-center gap-2 mb-1">
+          {post.sharesCount > 0 && (
+            <span className="text-xs text-muted-foreground">{post.sharesCount} chia sẻ</span>
+          )}
+          {displayCommentsCount > 0 && (
+            <button
+              type="button"
+              onClick={toggleComments}
+              className="text-xs text-muted-foreground hover:underline"
+            >
+              {displayCommentsCount} bình luận
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="px-3 py-1.5 md:px-4 flex items-center justify-between border-t border-border/40">
@@ -241,7 +255,6 @@ export const PostCard = ({ post, onEditPost }: Props) => {
             <ReactionButton
               size="md"
               currentUserReaction={localReaction}
-              count={Object.values(localReactionsCount).reduce((a, b) => (a || 0) + (b || 0), 0)}
               onReact={(type) => {
                 const prevReaction = localReaction;
                 const newCounts = { ...localReactionsCount };
@@ -273,6 +286,7 @@ export const PostCard = ({ post, onEditPost }: Props) => {
           <button
             type="button"
             className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all hover:bg-muted/70 group"
+            onClick={() => setShareModalOpen(true)}
           >
             <Share2 className="w-4 h-4 text-muted-foreground transition-all" />
           </button>
@@ -280,8 +294,19 @@ export const PostCard = ({ post, onEditPost }: Props) => {
         <button
           type="button"
           className="p-1.5 rounded-full hover:bg-blue-600/10 group transition-all"
+          onClick={() => {
+            const next = !isSaved;
+            setIsSaved(next);
+            void toggleSavePost(post.postId)
+              .unwrap()
+              .catch(() => setIsSaved(!next));
+          }}
         >
-          <Bookmark className="w-4 h-4 group-hover:text-blue-600 transition-all" />
+          <Bookmark
+            className={`w-4 h-4 transition-all ${
+              isSaved ? 'fill-blue-600 text-blue-600' : 'group-hover:text-blue-600'
+            }`}
+          />
         </button>
       </div>
       {isCommentOpen ? (
@@ -348,6 +373,9 @@ export const PostCard = ({ post, onEditPost }: Props) => {
           />
         </div>
       ) : null}
+
+      {/* ── Share modal ── */}
+      <SharePostModal open={shareModalOpen} post={post} onClose={() => setShareModalOpen(false)} />
 
       {/* ── Delete confirmation dialog ── */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
