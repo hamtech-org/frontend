@@ -105,10 +105,10 @@ export const ReactionButton: React.FC<ReactionButtonProps> = ({
   const mergedSummary =
     currentUserReaction && summary
       ? {
-          total: Object.values(summary).reduce((a, b) => a + (b || 0), 0),
+          total: Object.values(summary).reduce<number>((a, b) => a + (b || 0), 0),
           topLotties: Object.entries(summary)
             .filter(([, v]) => (v || 0) > 0)
-            .sort(([, a], [, b]) => (b || 0) - (a || 0))
+            .sort(([, av], [, bv]) => (bv || 0) - (av || 0))
             .slice(0, 3)
             .map(([k]) => REACTION_META[k as ReactionType]?.lottie)
             .filter(Boolean) as object[],

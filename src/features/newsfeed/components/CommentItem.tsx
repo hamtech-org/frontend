@@ -72,8 +72,6 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
   const myAvatar = currentUser?.avatar ?? '';
   const myInitial = myName.charAt(0).toUpperCase();
 
-  const totalReactions = Object.values(localReactionsCount).reduce((a, b) => a + (b || 0), 0);
-
   return (
     <div className={cn('flex items-start gap-2', isNested && 'ml-9')}>
       <div
