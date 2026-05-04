@@ -7,6 +7,7 @@ import { ReactionButton } from '@/components/common/ReactionButton';
 import { ReactionSummary } from '@/components/common/ReactionButton/ReactionSummary';
 import { CommentInput } from './CommentInput';
 import { HashtagText } from './HashtagText';
+import { MediaLightbox } from './MediaLightbox';
 import { formatRelative } from '@/utils/formatDate';
 import { cn } from '@/utils/cn';
 
@@ -20,6 +21,7 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
   const currentUser = useSelector((state: RootState) => state.auth.user);
 
   const [showReplyInput, setShowReplyInput] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [showReplies, setShowReplies] = useState(false);
   const [replies, setReplies] = useState<IComment[]>([]);
   const [replyNextCursor, setReplyNextCursor] = useState<string | null>(null);
@@ -100,41 +102,55 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
       </div>
 
       <div className="min-w-0 flex-1">
-        {/* Comment bubble */}
-        <div className="rounded-xl bg-muted/50 px-3 py-2">
-          <p
-            className={cn('font-semibold text-foreground/80', isNested ? 'text-[11px]' : 'text-xs')}
-          >
-            {authorName}
-          </p>
-          <p className="text-sm text-foreground mt-0.5 leading-5">
-            <HashtagText text={comment.content} />
-          </p>
-
-          {/* Media attachments */}
-          {comment.mediaUrls && comment.mediaUrls.length > 0 && (
-            <div className="flex gap-1.5 flex-wrap mt-2">
-              {comment.mediaUrls.map((url, idx) =>
-                /\.(mp4|webm|mov)(\?|$)/i.test(url) ? (
-                  <video
-                    key={idx}
-                    src={url}
-                    controls
-                    className="rounded-lg max-h-48 max-w-[220px] object-cover"
-                  />
-                ) : (
-                  <img
-                    key={idx}
-                    src={url}
-                    alt=""
-                    className="rounded-lg max-h-48 max-w-[220px] object-cover cursor-pointer"
-                    onClick={() => window.open(url, '_blank')}
-                  />
-                ),
-              )}
-            </div>
+        {/* Author name — ngoài bubble */}
+        <p
+          className={cn(
+            'mb-0.5 px-1 font-semibold text-foreground/80',
+            isNested ? 'text-[11px]' : 'text-xs',
           )}
-        </div>
+        >
+          {authorName}
+        </p>
+
+        {/* Bubble — chỉ render khi có text */}
+        {!!comment.content && (
+          <div className="w-fit max-w-full rounded-xl bg-muted/50 px-3 py-2">
+            <p className="text-sm text-foreground leading-5">
+              <HashtagText text={comment.content} />
+            </p>
+          </div>
+        )}
+
+        {/* Media — thumbnail tappable + lightbox */}
+        {comment.mediaUrls && comment.mediaUrls.length > 0 && (
+          <>
+            <button
+              type="button"
+              className="mt-1 w-fit overflow-hidden rounded-xl cursor-pointer block"
+              onClick={() => setLightboxOpen(true)}
+            >
+              {/\.(mp4|webm|mov)(\?|$)/i.test(comment.mediaUrls[0]) ? (
+                <video
+                  src={comment.mediaUrls[0]}
+                  className="block max-w-[200px] max-h-[150px] object-cover"
+                />
+              ) : (
+                <img
+                  src={comment.mediaUrls[0]}
+                  alt=""
+                  className="block max-w-[200px] max-h-[150px] object-cover"
+                />
+              )}
+            </button>
+            {lightboxOpen && (
+              <MediaLightbox
+                mediaUrls={comment.mediaUrls}
+                startIndex={0}
+                onClose={() => setLightboxOpen(false)}
+              />
+            )}
+          </>
+        )}
 
         {/* Metadata row: time, reactions, reply */}
         <div className="mt-0.5 flex items-center gap-3 px-1 text-[11px] text-muted-foreground">
