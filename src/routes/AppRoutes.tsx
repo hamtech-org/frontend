@@ -11,6 +11,7 @@ const SearchPage = React.lazy(() => import('@/pages/user/SearchPage'));
 const AdminDashboard = React.lazy(() => import('@/pages/admin/AdminDashboard'));
 const AdminAnalytics = React.lazy(() => import('@/pages/admin/AdminAnalytics'));
 const ComponentsDemoPage = React.lazy(() => import('@/pages/user/ComponentsDemoPage'));
+const ReelsPage = React.lazy(() => import('@/pages/user/ReelsPage'));
 
 export const appRouteElements = (
   <>
@@ -24,6 +25,7 @@ export const appRouteElements = (
     <Route path="/ai-studio" element={<AIStudioPage />} />
     <Route path="/profile" element={<ProfilePage />} />
     <Route path="/components-demo" element={<ComponentsDemoPage />} />
+    <Route path="/reels" element={<ReelsPage />} />
     <Route path="/admin" element={<AdminDashboard />} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </>
