@@ -290,7 +290,7 @@ export function CreateReelModal({ isOpen, onClose }: Props) {
                 </div>
                 <span className="text-sm font-semibold text-foreground">Chọn video</span>
                 <span className="mt-1 text-xs text-muted-foreground">
-                  MP4, WebM, MOV — Tối đa 60s
+                  MP4, WebM, MOV — Tối đa 10 phút
                 </span>
                 <input
                   type="file"
