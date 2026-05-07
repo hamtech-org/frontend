@@ -106,9 +106,9 @@ export default function ReelsPage() {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-40 bg-black flex flex-col">
+    <div className="h-full w-full bg-black flex flex-col relative">
       {/* Top tabs */}
-      <div className="absolute top-0 inset-x-0 z-30 flex items-center justify-center gap-6 pt-4 pb-2 bg-gradient-to-b from-black/50 to-transparent">
+      <div className="absolute top-0 inset-x-0 z-30 flex items-center justify-center gap-6 pt-4 pb-2 bg-linear-to-b from-black/50 to-transparent">
         {TABS.map((tab) => (
           <button
             key={tab.key}
@@ -154,14 +154,14 @@ export default function ReelsPage() {
       {allReels.length > 0 && (
         <div
           ref={containerRef}
-          className="flex-1 overflow-y-auto snap-y snap-mandatory scrollbar-hide"
+          className="flex-1 min-h-0 overflow-y-auto snap-y snap-mandatory scrollbar-hide"
           style={{ scrollSnapType: 'y mandatory' }}
         >
           {allReels.map((reel, index) => (
             <div
               key={reel.reelId}
               ref={(node) => itemRefs(node, index)}
-              className="relative w-full h-[100dvh] snap-start snap-always"
+              className="relative w-full h-full snap-start snap-always"
             >
               <ReelPlayerFull reel={reel} isVisible={visibleIndex === index} />
               <ReelActionRail

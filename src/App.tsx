@@ -32,6 +32,8 @@ const App: React.FC = () => {
   const isGuestRoute = GUEST_ROUTES.includes(location.pathname);
   const isCallRoute = location.pathname === '/call';
   const isChatRoute = location.pathname.startsWith('/chat');
+  const isReelsRoute = location.pathname.startsWith('/reels');
+  const isImmersiveRoute = isChatRoute || isReelsRoute;
   const routeTransitionKey = isChatRoute ? 'chat' : location.pathname;
   const shouldRenderAppShell = !isGuestRoute && !isCallRoute && !isChatRoute;
   const {
@@ -157,7 +159,7 @@ const App: React.FC = () => {
           )}
         </AnimatePresence>
 
-        {!isChatRoute && (
+        {!isImmersiveRoute && (
           <AppHeader
             isDarkMode={isDarkMode}
             isSidebarOpen={isDesktopSidebarExpanded}
@@ -174,8 +176,8 @@ const App: React.FC = () => {
         <div
           className={cn(
             'flex-1 min-h-0 relative',
-            isChatRoute ? 'overflow-hidden' : 'overflow-y-auto',
-            isChatRoute ? 'bg-background' : 'bg-muted/55',
+            isImmersiveRoute ? 'overflow-hidden' : 'overflow-y-auto',
+            isReelsRoute ? 'bg-black' : isChatRoute ? 'bg-background' : 'bg-muted/55',
           )}
         >
           <AnimatePresence initial={false} mode="sync">
