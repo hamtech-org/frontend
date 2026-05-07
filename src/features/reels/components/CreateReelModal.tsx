@@ -82,17 +82,22 @@ export function CreateReelModal({ isOpen, onClose }: Props) {
     setThumbnailUrl(null);
   }, []);
 
-  // Extract metadata + generate thumbnail when video loads
-  const handleVideoLoaded = useCallback(() => {
+  const handleVideoMetadata = useCallback(() => {
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    if (!video) return;
 
     setVideoDuration(Math.round(video.duration * 1000));
     setVideoWidth(video.videoWidth);
     setVideoHeight(video.videoHeight);
 
-    // Generate thumbnail from first frame
+    video.currentTime = Math.min(1, video.duration * 0.1);
+  }, []);
+
+  const handleVideoSeeked = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
@@ -254,7 +259,8 @@ export function CreateReelModal({ isOpen, onClose }: Props) {
                   className="w-full max-h-80 object-contain rounded-2xl"
                   controls
                   muted
-                  onLoadedMetadata={handleVideoLoaded}
+                  onLoadedMetadata={handleVideoMetadata}
+                  onSeeked={handleVideoSeeked}
                 />
                 <button
                   onClick={() => {
