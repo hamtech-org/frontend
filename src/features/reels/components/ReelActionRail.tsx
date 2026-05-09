@@ -1,47 +1,43 @@
 import { useState, useCallback } from 'react';
-import { Heart, MessageCircle, Bookmark, Flag, Share2, Eye } from 'lucide-react';
+import { Heart, MessageCircle, Share2, MoreHorizontal, Bookmark, Flag, Eye } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useReactToReelMutation, useToggleSaveReelMutation } from '@/store/api/newsfeedApi';
 import type { ReactionType } from '@/types/reaction.types';
 import type { IReel } from '@/types/newsfeed.types';
+import type { VideoRect } from './ReelPlayerFull';
 
 interface Props {
   reel: IReel;
   onOpenComments: () => void;
   onOpenReport: () => void;
+  videoRect?: VideoRect;
 }
 
-/** Tổng reactions từ reactionsCount map */
 function totalReactions(counts: Partial<Record<ReactionType, number>>): number {
   return Object.values(counts).reduce((acc, v) => acc + (v ?? 0), 0);
 }
 
-/** Format số lớn: 1200 → 1.2K */
 function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
 }
 
-/**
- * Cột action bên phải reel (TikTok-style):
- * ❤️ Like, 💬 Comment, 🔖 Save, 📤 Share, 🚩 Report, 👁 Views
- */
-export const ReelActionRail = ({ reel, onOpenComments, onOpenReport }: Props) => {
+export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }: Props) => {
   const [reactToReel] = useReactToReelMutation();
   const [toggleSave] = useToggleSaveReelMutation();
 
-  // Optimistic local state
   const [liked, setLiked] = useState<ReactionType | null>(reel.currentUserReaction ?? null);
   const [likeCount, setLikeCount] = useState(totalReactions(reel.reactionsCount));
   const [saved, setSaved] = useState(reel.isSaved ?? false);
   const [saveCount, setSaveCount] = useState(reel.savesCount);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const handleLike = useCallback(async () => {
     const prevLiked = liked;
     const prevCount = likeCount;
 
     if (liked) {
-      // Toggle off
       setLiked(null);
       setLikeCount((c) => Math.max(0, c - 1));
     } else {
@@ -72,90 +68,136 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport }: Props) =>
     }
   }, [saved, saveCount, reel.reelId, toggleSave]);
 
-  const actions = [
-    {
-      icon: Heart,
-      label: 'Thích',
-      count: formatCount(likeCount),
-      active: !!liked,
-      activeColor: 'text-red-500',
-      fillWhenActive: true,
-      onClick: handleLike,
-    },
-    {
-      icon: MessageCircle,
-      label: 'Bình luận',
-      count: formatCount(reel.commentsCount),
-      active: false,
-      activeColor: '',
-      fillWhenActive: false,
-      onClick: onOpenComments,
-    },
-    {
-      icon: Bookmark,
-      label: 'Lưu',
-      count: formatCount(saveCount),
-      active: saved,
-      activeColor: 'text-yellow-400',
-      fillWhenActive: true,
-      onClick: handleSave,
-    },
-    {
-      icon: Share2,
-      label: 'Chia sẻ',
-      count: formatCount(reel.sharesCount),
-      active: false,
-      activeColor: '',
-      fillWhenActive: false,
-      onClick: () => {
-        // TODO Phase C: share flow
-      },
-    },
-    {
-      icon: Flag,
-      label: 'Báo cáo',
-      count: '',
-      active: false,
-      activeColor: '',
-      fillWhenActive: false,
-      onClick: onOpenReport,
-    },
-  ];
-
   return (
-    <div className="absolute right-3 bottom-24 z-20 flex flex-col items-center gap-5">
-      {actions.map((action) => (
-        <button
-          key={action.label}
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            action.onClick();
-          }}
-          className="flex flex-col items-center gap-1 group"
-          aria-label={action.label}
-        >
-          <div
-            className={`size-11 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center 
-              transition-all duration-200 group-hover:bg-black/50 group-active:scale-90
-              ${action.active ? action.activeColor : 'text-white'}`}
-          >
-            <action.icon
-              className="size-5"
-              fill={action.active && action.fillWhenActive ? 'currentColor' : 'none'}
-            />
-          </div>
-          {action.count && (
-            <span className="text-xs font-semibold text-white drop-shadow-sm">{action.count}</span>
-          )}
-        </button>
-      ))}
+    <div
+      className="absolute z-20 flex flex-col items-center gap-5"
+      style={
+        videoRect
+          ? {
+              left: videoRect.left + videoRect.width + 8,
+              bottom: videoRect.top + 96,
+            }
+          : {
+              right: 12,
+              bottom: 96,
+            }
+      }
+    >
+      {/* Like */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          void handleLike();
+        }}
+        className="flex flex-col items-center gap-1 group"
+        aria-label="Thích"
+      >
+        <Heart
+          className={`size-7 drop-shadow-md transition-transform group-active:scale-90 ${
+            liked ? 'text-red-500' : 'text-white'
+          }`}
+          fill={liked ? 'currentColor' : 'none'}
+          strokeWidth={2}
+        />
+        <span className="text-xs font-semibold text-white drop-shadow-sm">
+          {formatCount(likeCount)}
+        </span>
+      </button>
 
-      {/* Views count (display only) */}
-      <div className="flex flex-col items-center gap-1 opacity-70">
-        <Eye className="size-4 text-white" />
-        <span className="text-[10px] text-white">{formatCount(reel.viewsCount)}</span>
-      </div>
+      {/* Comment */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenComments();
+        }}
+        className="flex flex-col items-center gap-1 group"
+        aria-label="Bình luận"
+      >
+        <MessageCircle
+          className="size-7 text-white drop-shadow-md transition-transform group-active:scale-90"
+          strokeWidth={2}
+        />
+        <span className="text-xs font-semibold text-white drop-shadow-sm">
+          {formatCount(reel.commentsCount)}
+        </span>
+      </button>
+
+      {/* Share */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
+        className="flex flex-col items-center gap-1 group"
+        aria-label="Chia sẻ"
+      >
+        <Share2
+          className="size-7 text-white drop-shadow-md transition-transform group-active:scale-90"
+          strokeWidth={2}
+        />
+        <span className="text-xs font-semibold text-white drop-shadow-sm">
+          {formatCount(reel.sharesCount)}
+        </span>
+      </button>
+
+      {/* More */}
+      <Popover open={moreOpen} onOpenChange={setMoreOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center justify-center group"
+            aria-label="Thêm"
+          >
+            <MoreHorizontal
+              className="size-7 text-white drop-shadow-md transition-transform group-active:scale-90"
+              strokeWidth={2}
+            />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="w-48 p-1.5 rounded-xl"
+          side="left"
+          align="end"
+          sideOffset={8}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              void handleSave();
+              setMoreOpen(false);
+            }}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            <Bookmark
+              className={`size-4 ${saved ? 'text-yellow-500' : 'text-muted-foreground'}`}
+              fill={saved ? 'currentColor' : 'none'}
+            />
+            {saved ? 'Bỏ lưu' : 'Lưu reel'}
+            {saveCount > 0 && (
+              <span className="ml-auto text-xs text-muted-foreground">
+                {formatCount(saveCount)}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => {
+              onOpenReport();
+              setMoreOpen(false);
+            }}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted text-destructive"
+          >
+            <Flag className="size-4" />
+            Báo cáo
+          </button>
+          <div className="flex items-center gap-2.5 px-3 py-2 text-sm text-muted-foreground">
+            <Eye className="size-4" />
+            {formatCount(reel.viewsCount)} lượt xem
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 };

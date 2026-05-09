@@ -2,30 +2,24 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { Loader2, Plus } from 'lucide-react';
 import { useGetReelsFeedQuery, useLazyGetReelsFeedQuery } from '@/store/api/newsfeedApi';
 import { ReelPlayerFull } from '@/features/reels/components/ReelPlayerFull';
+import type { VideoRect } from '@/features/reels/components/ReelPlayerFull';
 import { ReelActionRail } from '@/features/reels/components/ReelActionRail';
 import { ReelCommentsSheet } from '@/features/reels/components/ReelCommentsSheet';
 import { ReelReportDialog } from '@/features/reels/components/ReelReportDialog';
 import { CreateReelModal } from '@/features/reels/components/CreateReelModal';
-import type { IReel, ReelFeedKind } from '@/types/newsfeed.types';
+import type { IReel } from '@/types/newsfeed.types';
 
-const TABS: { key: ReelFeedKind; label: string }[] = [
-  { key: 'foryou', label: 'Dành cho bạn' },
-  { key: 'following', label: 'Đang theo dõi' },
-];
-
-/**
- * Trang Reels full-screen vertical snap-scroll (TikTok-style).
- * Route: /reels
- */
 export default function ReelsPage() {
-  const [feedKind, setFeedKind] = useState<ReelFeedKind>('foryou');
   const [visibleIndex, setVisibleIndex] = useState(0);
   const [commentsReelId, setCommentsReelId] = useState<string | null>(null);
   const [reportReelId, setReportReelId] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [globalVolume, setGlobalVolume] = useState(1);
+  const [globalMuted, setGlobalMuted] = useState(true);
+  const [videoRect, setVideoRect] = useState<VideoRect | undefined>(undefined);
 
   // Fetch initial page
-  const { data, isLoading, isFetching } = useGetReelsFeedQuery({ feed: feedKind, limit: 10 });
+  const { data, isLoading, isFetching } = useGetReelsFeedQuery({ feed: 'foryou', limit: 10 });
   const [fetchMore] = useLazyGetReelsFeedQuery();
 
   // Accumulate reels across pages
@@ -83,7 +77,7 @@ export default function ReelsPage() {
   // Load more khi gần cuối
   useEffect(() => {
     if (visibleIndex >= allReels.length - 3 && hasMore && nextCursor && !isFetching) {
-      fetchMore({ feed: feedKind, limit: 10, cursor: nextCursor })
+      fetchMore({ feed: 'foryou', limit: 10, cursor: nextCursor })
         .unwrap()
         .then((res) => {
           if (res?.data) {
@@ -94,37 +88,10 @@ export default function ReelsPage() {
         })
         .catch(() => {});
     }
-  }, [visibleIndex, allReels.length, hasMore, nextCursor, isFetching, feedKind, fetchMore]);
-
-  // Switch tab
-  const handleSwitchTab = useCallback((kind: ReelFeedKind) => {
-    setFeedKind(kind);
-    setAllReels([]);
-    setNextCursor(null);
-    setHasMore(true);
-    setVisibleIndex(0);
-  }, []);
+  }, [visibleIndex, allReels.length, hasMore, nextCursor, isFetching, fetchMore]);
 
   return (
     <div className="h-full w-full bg-black flex flex-col relative">
-      {/* Top tabs */}
-      <div className="absolute top-0 inset-x-0 z-30 flex items-center justify-center gap-6 pt-4 pb-2 bg-linear-to-b from-black/50 to-transparent">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => handleSwitchTab(tab.key)}
-            className={`text-sm font-bold transition-all pb-1 border-b-2 ${
-              feedKind === tab.key
-                ? 'text-white border-white'
-                : 'text-white/60 border-transparent hover:text-white/80'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
       {/* Create button */}
       <button
         type="button"
@@ -163,9 +130,18 @@ export default function ReelsPage() {
               ref={(node) => itemRefs(node, index)}
               className="relative w-full h-full snap-start snap-always"
             >
-              <ReelPlayerFull reel={reel} isVisible={visibleIndex === index} />
+              <ReelPlayerFull
+                reel={reel}
+                isVisible={visibleIndex === index}
+                volume={globalVolume}
+                onVolumeChange={setGlobalVolume}
+                isMuted={globalMuted}
+                onMutedChange={setGlobalMuted}
+                onVideoRectChange={visibleIndex === index ? setVideoRect : undefined}
+              />
               <ReelActionRail
                 reel={reel}
+                videoRect={videoRect}
                 onOpenComments={() => setCommentsReelId(reel.reelId)}
                 onOpenReport={() => setReportReelId(reel.reelId)}
               />
