@@ -267,25 +267,9 @@ export const ReelPlayerFull = ({
         >
           {/* Author row */}
           <div className="flex items-center gap-2.5 mb-2">
-            {reel.author?.avatar ? (
-              <img
-                src={reel.author.avatar}
-                alt={reel.author.displayName}
-                className="size-10 rounded-full border-2 border-white/80 object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="size-10 rounded-full border-2 border-white/80 bg-primary/80 flex items-center justify-center">
-                <span className="text-sm font-bold text-white">
-                  {reel.author?.displayName?.charAt(0)?.toUpperCase() ?? '?'}
-                </span>
-              </div>
-            )}
             <span className="text-white font-bold text-[15px] drop-shadow-md">
               {reel.author?.displayName ?? 'Người dùng'}
             </span>
-            <span className="text-white/50 text-sm">·</span>
-            <span className="text-white/80 text-sm font-medium">Đang theo dõi</span>
           </div>
 
           {/* Caption + hashtags */}

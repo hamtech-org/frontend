@@ -1,8 +1,11 @@
-import { useState, useCallback } from 'react';
-import { Heart, MessageCircle, Share2, MoreHorizontal, Bookmark, Flag, Eye } from 'lucide-react';
+import { useState, useCallback, useRef } from 'react';
+import { ThumbsUp, MessageCircle, Share2, MoreHorizontal, Bookmark, Flag, Eye } from 'lucide-react';
+import { Player } from '@lottiefiles/react-lottie-player';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useReactToReelMutation, useToggleSaveReelMutation } from '@/store/api/newsfeedApi';
+import { REACTION_META } from '@/types/reaction.types';
 import type { ReactionType } from '@/types/reaction.types';
+import { FloatingEmoji } from '@/components/common/ReactionButton/FloatingEmoji';
 import type { IReel } from '@/types/newsfeed.types';
 import type { VideoRect } from './ReelPlayerFull';
 
@@ -23,6 +26,41 @@ function formatCount(n: number): string {
   return String(n);
 }
 
+const ReactionPickerItem = ({
+  type,
+  meta,
+  onReact,
+}: {
+  type: ReactionType;
+  meta: (typeof REACTION_META)[ReactionType];
+  onReact: (type: ReactionType) => void;
+}) => {
+  const playerRef = useRef<Player>(null);
+  return (
+    <button
+      type="button"
+      title={meta.label}
+      onClick={(e) => {
+        e.stopPropagation();
+        onReact(type);
+      }}
+      onMouseEnter={() => playerRef.current?.play()}
+      onMouseLeave={() => playerRef.current?.stop()}
+      className="size-10 flex items-center justify-center rounded-full hover:bg-muted transition-transform hover:scale-125 hover:-translate-y-1 active:scale-90"
+    >
+      <div className="size-8">
+        <Player
+          ref={playerRef}
+          src={meta.lottie}
+          autoplay
+          loop
+          style={{ width: '100%', height: '100%' }}
+        />
+      </div>
+    </button>
+  );
+};
+
 export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }: Props) => {
   const [reactToReel] = useReactToReelMutation();
   const [toggleSave] = useToggleSaveReelMutation();
@@ -32,26 +70,74 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }
   const [saved, setSaved] = useState(reel.isSaved ?? false);
   const [saveCount, setSaveCount] = useState(reel.savesCount);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
+  const reactionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const likeButtonRef = useRef<HTMLButtonElement>(null);
+  const [floatingEmoji, setFloatingEmoji] = useState<{
+    id: number;
+    gif: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
-  const handleLike = useCallback(async () => {
-    const prevLiked = liked;
-    const prevCount = likeCount;
+  const handleReact = useCallback(
+    async (type: ReactionType) => {
+      const prevLiked = liked;
+      const prevCount = likeCount;
+      setReactionPickerOpen(false);
 
-    if (liked) {
-      setLiked(null);
-      setLikeCount((c) => Math.max(0, c - 1));
-    } else {
-      setLiked('like');
-      setLikeCount((c) => c + 1);
-    }
+      const toggling = type === liked;
 
-    try {
-      await reactToReel({ reelId: reel.reelId, type: 'like' }).unwrap();
-    } catch {
-      setLiked(prevLiked);
-      setLikeCount(prevCount);
-    }
-  }, [liked, likeCount, reel.reelId, reactToReel]);
+      if (!toggling && likeButtonRef.current) {
+        const rect = likeButtonRef.current.getBoundingClientRect();
+        const meta = REACTION_META[type];
+        if (meta) {
+          setFloatingEmoji({
+            id: Date.now(),
+            gif: meta.gif,
+            x: rect.left + rect.width / 2,
+            y: rect.top,
+          });
+        }
+      }
+
+      if (toggling) {
+        setLiked(null);
+        setLikeCount((c) => Math.max(0, c - 1));
+      } else if (!liked) {
+        setLiked(type);
+        setLikeCount((c) => c + 1);
+      } else {
+        setLiked(type);
+      }
+
+      try {
+        await reactToReel({ reelId: reel.reelId, type }).unwrap();
+      } catch {
+        setLiked(prevLiked);
+        setLikeCount(prevCount);
+      }
+    },
+    [liked, likeCount, reel.reelId, reactToReel],
+  );
+
+  const handleDefaultLikeClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      void handleReact(liked ?? 'like');
+    },
+    [liked, handleReact],
+  );
+
+  const handleReactionEnter = useCallback(() => {
+    if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current);
+    reactionTimeoutRef.current = setTimeout(() => setReactionPickerOpen(true), 400);
+  }, []);
+
+  const handleReactionLeave = useCallback(() => {
+    if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current);
+    reactionTimeoutRef.current = setTimeout(() => setReactionPickerOpen(false), 300);
+  }, []);
 
   const handleSave = useCallback(async () => {
     const prevSaved = saved;
@@ -68,6 +154,8 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }
     }
   }, [saved, saveCount, reel.reelId, toggleSave]);
 
+  const currentMeta = liked ? REACTION_META[liked] : null;
+
   return (
     <div
       className="absolute z-20 flex flex-col items-center gap-5"
@@ -83,27 +171,99 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }
             }
       }
     >
-      {/* Like */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          void handleLike();
-        }}
-        className="flex flex-col items-center gap-1 group"
-        aria-label="Thích"
+      {/* Avatar */}
+      <div className="relative mb-1">
+        {reel.author?.avatar ? (
+          <img
+            src={reel.author.avatar}
+            alt={reel.author.displayName}
+            className="size-12 rounded-full border-2 border-white/80 object-cover"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className="size-12 rounded-full border-2 border-white/80 bg-primary/80 flex items-center justify-center">
+            <span className="text-sm font-bold text-white">
+              {reel.author?.displayName?.charAt(0)?.toUpperCase() ?? '?'}
+            </span>
+          </div>
+        )}
+        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 size-5 rounded-full bg-primary flex items-center justify-center">
+          <span className="text-white text-xs font-bold leading-none">+</span>
+        </div>
+      </div>
+
+      {/* Like + Reaction picker */}
+      <div
+        className="relative flex flex-col items-center gap-1"
+        onMouseEnter={handleReactionEnter}
+        onMouseLeave={handleReactionLeave}
       >
-        <Heart
-          className={`size-7 drop-shadow-md transition-transform group-active:scale-90 ${
-            liked ? 'text-red-500' : 'text-white'
-          }`}
-          fill={liked ? 'currentColor' : 'none'}
-          strokeWidth={2}
-        />
-        <span className="text-xs font-semibold text-white drop-shadow-sm">
-          {formatCount(likeCount)}
-        </span>
-      </button>
+        {reactionPickerOpen && (
+          <div
+            className="absolute bottom-full right-0 mb-2 flex items-center gap-1 rounded-full bg-background p-1.5 shadow-xl animate-in fade-in zoom-in-95 duration-200 z-50"
+            onMouseEnter={() => {
+              if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current);
+              setReactionPickerOpen(true);
+            }}
+            onMouseLeave={handleReactionLeave}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(
+              Object.entries(REACTION_META) as [
+                ReactionType,
+                (typeof REACTION_META)[ReactionType],
+              ][]
+            ).map(([type, meta]) => (
+              <ReactionPickerItem
+                key={type}
+                type={type}
+                meta={meta}
+                onReact={(t) => void handleReact(t)}
+              />
+            ))}
+          </div>
+        )}
+
+        <button
+          ref={likeButtonRef}
+          type="button"
+          onClick={handleDefaultLikeClick}
+          className="flex flex-col items-center gap-1 group"
+          aria-label="Thích"
+        >
+          {currentMeta ? (
+            <div className="size-7 drop-shadow-md">
+              <Player
+                src={currentMeta.lottie}
+                autoplay
+                loop={false}
+                style={{ width: '100%', height: '100%' }}
+              />
+            </div>
+          ) : (
+            <ThumbsUp
+              className="size-7 text-white drop-shadow-md transition-transform group-active:scale-90"
+              strokeWidth={2}
+            />
+          )}
+          <span
+            className="text-xs font-semibold drop-shadow-sm"
+            style={{ color: currentMeta ? currentMeta.color : 'white' }}
+          >
+            {formatCount(likeCount)}
+          </span>
+        </button>
+
+        {floatingEmoji && (
+          <FloatingEmoji
+            key={floatingEmoji.id}
+            gif={floatingEmoji.gif}
+            x={floatingEmoji.x}
+            y={floatingEmoji.y}
+            onComplete={() => setFloatingEmoji(null)}
+          />
+        )}
+      </div>
 
       {/* Comment */}
       <button
