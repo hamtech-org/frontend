@@ -260,14 +260,19 @@ export function ChatModalsHost({
         title="Hủy công việc?"
         description={
           taskDeleteConfirm ? (
-            <>
-              Bạn sắp hủy công việc{' '}
-              <span className="font-bold text-foreground">«{taskDeleteConfirm.title}»</span>.
-              <br />
-              <br />
-              Thẻ giao việc sẽ được thu hồi cho toàn bộ nhóm (không còn hiển thị). Mọi người vẫn
-              thấy dòng nhật ký hủy việc trong khung chat.
-            </>
+            <div className="flex flex-col gap-3">
+              <div>
+                Bạn sắp hủy công việc:{' '}
+                <span className="font-bold text-foreground bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded text-[15px] inline-block mt-1">
+                  {taskDeleteConfirm.title}
+                </span>
+              </div>
+              <div className="text-[13.5px] text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg border border-red-100 dark:border-red-500/20 leading-relaxed mt-1">
+                <span className="font-bold block mb-1">Lưu ý:</span>
+                Thẻ giao việc sẽ được thu hồi cho toàn bộ nhóm và không còn hiển thị. Mọi người vẫn
+                thấy dòng nhật ký hủy việc trong khung chat.
+              </div>
+            </div>
           ) : undefined
         }
         confirmLabel="Hủy công việc"
