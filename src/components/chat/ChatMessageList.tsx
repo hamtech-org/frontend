@@ -716,6 +716,32 @@ export function ChatMessageList({
                 actorName: string;
                 title: string;
               } = null;
+              // Hội thoại 1-1 KHÔNG có khái niệm "công việc nhóm" — bất kỳ
+              // system message dạng task_* nào lọt vào đây (do race lúc đổi
+              // hội thoại trong `useTaskReminderScheduler`, hoặc tin tồn dư
+              // trong cache từ phiên cũ) đều bị bỏ qua. Tránh hiển thị nhầm
+              // "Công việc đã bị hủy" / "Đến hạn công việc" trong chat riêng
+              // cho task vốn thuộc về một nhóm khác.
+              const isDirectChat = activeConversation?.type === 'direct';
+              if (isDirectChat && typeof content === 'string' && content.trim().startsWith('{')) {
+                try {
+                  const probe = JSON.parse(content) as { kind?: string };
+                  const k = String(probe?.kind ?? '');
+                  if (
+                    k === 'task_assigned' ||
+                    k === 'task_joined' ||
+                    k === 'task_updated' ||
+                    k === 'task_deleted' ||
+                    k === 'task_due' ||
+                    k === 'task_reminder'
+                  ) {
+                    return null;
+                  }
+                } catch {
+                  /* không phải JSON hợp lệ — render fallback bình thường */
+                }
+              }
+
               if (typeof content === 'string' && content.trim().startsWith('{')) {
                 try {
                   const obj = JSON.parse(content) as any;
