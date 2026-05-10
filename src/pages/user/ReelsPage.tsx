@@ -91,80 +91,79 @@ export default function ReelsPage() {
   }, [visibleIndex, allReels.length, hasMore, nextCursor, isFetching, fetchMore]);
 
   return (
-    <div className="h-full w-full bg-black flex flex-col relative">
-      {/* Create button */}
-      <button
-        type="button"
-        onClick={() => setIsCreateOpen(true)}
-        className="absolute top-4 right-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white transition-all hover:bg-white/30 hover:scale-110"
-        aria-label="Tạo reel mới"
-      >
-        <Plus className="h-5 w-5" />
-      </button>
-
-      {/* Loading state */}
-      {isLoading && (
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="size-8 text-white animate-spin" />
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!isLoading && allReels.length === 0 && (
-        <div className="flex-1 flex flex-col items-center justify-center text-white/60">
-          <p className="text-lg font-semibold">Chưa có reel nào</p>
-          <p className="text-sm mt-1">Hãy quay lại sau hoặc thử tab khác!</p>
-        </div>
-      )}
-
-      {/* Snap scroll container */}
-      {allReels.length > 0 && (
-        <div
-          ref={containerRef}
-          className="flex-1 min-h-0 overflow-y-auto snap-y snap-mandatory scrollbar-hide"
-          style={{ scrollSnapType: 'y mandatory' }}
+    <div className="h-full w-full bg-black flex overflow-hidden">
+      {/* Main video column */}
+      <div className="relative flex-1 flex flex-col min-w-0">
+        {/* Create button */}
+        <button
+          type="button"
+          onClick={() => setIsCreateOpen(true)}
+          className="absolute top-4 right-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white transition-all hover:bg-white/30 hover:scale-110"
+          aria-label="Tạo reel mới"
         >
-          {allReels.map((reel, index) => (
-            <div
-              key={reel.reelId}
-              ref={(node) => itemRefs(node, index)}
-              className="relative w-full h-full snap-start snap-always"
-            >
-              <ReelPlayerFull
-                reel={reel}
-                isVisible={visibleIndex === index}
-                volume={globalVolume}
-                onVolumeChange={setGlobalVolume}
-                isMuted={globalMuted}
-                onMutedChange={setGlobalMuted}
-                onVideoRectChange={visibleIndex === index ? setVideoRect : undefined}
-              />
-              <ReelActionRail
-                reel={reel}
-                videoRect={videoRect}
-                onOpenComments={() => setCommentsReelId(reel.reelId)}
-                onOpenReport={() => setReportReelId(reel.reelId)}
-              />
-            </div>
-          ))}
+          <Plus className="h-5 w-5" />
+        </button>
 
-          {/* Loading more indicator */}
-          {isFetching && (
-            <div className="h-20 flex items-center justify-center">
-              <Loader2 className="size-6 text-white/60 animate-spin" />
-            </div>
-          )}
-        </div>
+        {/* Loading state */}
+        {isLoading && (
+          <div className="flex-1 flex items-center justify-center">
+            <Loader2 className="size-8 text-white animate-spin" />
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!isLoading && allReels.length === 0 && (
+          <div className="flex-1 flex flex-col items-center justify-center text-white/60">
+            <p className="text-lg font-semibold">Chưa có reel nào</p>
+            <p className="text-sm mt-1">Hãy quay lại sau hoặc thử tab khác!</p>
+          </div>
+        )}
+
+        {/* Snap scroll container */}
+        {allReels.length > 0 && (
+          <div
+            ref={containerRef}
+            className="flex-1 min-h-0 overflow-y-auto snap-y snap-mandatory scrollbar-hide"
+            style={{ scrollSnapType: 'y mandatory' }}
+          >
+            {allReels.map((reel, index) => (
+              <div
+                key={reel.reelId}
+                ref={(node) => itemRefs(node, index)}
+                className="relative w-full h-full snap-start snap-always"
+              >
+                <ReelPlayerFull
+                  reel={reel}
+                  isVisible={visibleIndex === index}
+                  volume={globalVolume}
+                  onVolumeChange={setGlobalVolume}
+                  isMuted={globalMuted}
+                  onMutedChange={setGlobalMuted}
+                  onVideoRectChange={visibleIndex === index ? setVideoRect : undefined}
+                />
+                <ReelActionRail
+                  reel={reel}
+                  videoRect={videoRect}
+                  onOpenComments={() => setCommentsReelId(reel.reelId)}
+                  onOpenReport={() => setReportReelId(reel.reelId)}
+                />
+              </div>
+            ))}
+
+            {/* Loading more indicator */}
+            {isFetching && (
+              <div className="h-20 flex items-center justify-center">
+                <Loader2 className="size-6 text-white/60 animate-spin" />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Comments sidebar — đẩy video qua thay vì overlay */}
+      {commentsReelId && (
+        <ReelCommentsSheet reelId={commentsReelId} onClose={() => setCommentsReelId(null)} />
       )}
-
-      {/* Comments Sheet */}
-      <ReelCommentsSheet
-        reelId={commentsReelId ?? ''}
-        open={!!commentsReelId}
-        onOpenChange={(open) => {
-          if (!open) setCommentsReelId(null);
-        }}
-      />
 
       {/* Report Dialog */}
       <ReelReportDialog
