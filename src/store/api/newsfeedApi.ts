@@ -413,14 +413,66 @@ export const newsfeedApi = createApi({
 
     addReelComment: builder.mutation<
       ApiSuccessResponse<IComment>,
-      { reelId: string; content: string; mediaUrls?: string[] }
+      { reelId: string; content: string; parentId?: string; mediaUrls?: string[] }
     >({
-      query: ({ reelId, content, mediaUrls }) => ({
+      query: ({ reelId, content, parentId, mediaUrls }) => ({
         url: `/newsfeed/reels/${reelId}/comments`,
         method: 'POST',
-        body: { content, mediaUrls },
+        body: { content, parentId, mediaUrls },
       }),
       invalidatesTags: (_res, _err, arg) => [{ type: 'ReelComments', id: arg.reelId }],
+    }),
+
+    reactToReelComment: builder.mutation<
+      ApiSuccessResponse<IReactionSummary>,
+      { reelId: string; commentId: string; type: ReactionType }
+    >({
+      query: ({ reelId, commentId, type }) => ({
+        url: `/newsfeed/reels/${reelId}/comments/${commentId}/react`,
+        method: 'POST',
+        body: { type },
+      }),
+      async onQueryStarted({ reelId, commentId, type }, { dispatch, queryFulfilled }) {
+        const patch = dispatch(
+          newsfeedApi.util.updateQueryData('getReelComments', { reelId, limit: 20 }, (draft) => {
+            const comment = draft.data.items.find((c) => c.commentId === commentId);
+            if (comment) {
+              const oldType = comment.currentUserReaction;
+              if (oldType === type) {
+                comment.currentUserReaction = null;
+                if (comment.reactionsCount[type] && comment.reactionsCount[type]! > 0) {
+                  comment.reactionsCount[type]! -= 1;
+                }
+              } else {
+                if (
+                  oldType &&
+                  comment.reactionsCount[oldType] &&
+                  comment.reactionsCount[oldType]! > 0
+                ) {
+                  comment.reactionsCount[oldType]! -= 1;
+                }
+                comment.currentUserReaction = type;
+                comment.reactionsCount[type] = (comment.reactionsCount[type] ?? 0) + 1;
+              }
+            }
+          }),
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patch.undo();
+        }
+      },
+    }),
+
+    getReelCommentReplies: builder.query<
+      ApiSuccessResponse<ICommentsPage>,
+      { reelId: string; commentId: string; cursor?: string | null }
+    >({
+      query: ({ reelId, commentId, cursor }) => ({
+        url: `/newsfeed/reels/${reelId}/comments`,
+        params: { parentId: commentId, limit: 5, cursor: cursor ?? undefined },
+      }),
     }),
   }),
 });
@@ -456,4 +508,7 @@ export const {
   useGetReelCommentsQuery,
   useLazyGetReelCommentsQuery,
   useAddReelCommentMutation,
+  useReactToReelCommentMutation,
+  useLazyGetReelCommentRepliesQuery,
+  useGetReelCommentRepliesQuery,
 } = newsfeedApi;
