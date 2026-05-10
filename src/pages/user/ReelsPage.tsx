@@ -90,6 +90,13 @@ export default function ReelsPage() {
     }
   }, [visibleIndex, allReels.length, hasMore, nextCursor, isFetching, fetchMore]);
 
+  // Auto-update comments khi user scroll sang reel khác (nếu panel đang mở)
+  useEffect(() => {
+    if (commentsReelId !== null && allReels[visibleIndex]) {
+      setCommentsReelId(allReels[visibleIndex].reelId);
+    }
+  }, [visibleIndex, allReels]);
+
   return (
     <div className="h-full w-full bg-black flex overflow-hidden">
       {/* Main video column */}
