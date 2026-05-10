@@ -264,7 +264,7 @@ export function ChatModalsHost({
               <div>
                 Bạn sắp hủy công việc:{' '}
                 <span className="font-bold text-foreground bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded text-[15px] inline-block mt-1">
-                  «{taskDeleteConfirm.title}»
+                  {taskDeleteConfirm.title}
                 </span>
               </div>
               <div className="text-[13.5px] text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg border border-red-100 dark:border-red-500/20 leading-relaxed mt-1">
