@@ -296,6 +296,15 @@ export function formatConversationListLastPreview(
     if (systemPreview.startsWith('Bạn ')) {
       return `Bạn: ${systemPreview.slice('Bạn '.length)}`;
     }
+    // Người khác là tác giả (trong NHÓM): chuyển "Tên đã ..." → "Tên: đã ..."
+    // để đồng bộ format với non-JSON system message ("Bạn: ..." / "Tên: ...").
+    // Direct chat không prefix vì đối phương đã là title hội thoại.
+    if (conv.type === 'group') {
+      const senderNameForSysJson = lm.senderDisplayName?.trim() ?? '';
+      if (senderNameForSysJson && systemPreview.startsWith(`${senderNameForSysJson} `)) {
+        return `${senderNameForSysJson}: ${systemPreview.slice(senderNameForSysJson.length + 1)}`;
+      }
+    }
     return systemPreview;
   }
 
