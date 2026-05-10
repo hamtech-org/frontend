@@ -742,6 +742,45 @@ export function ChatMessageList({
                 }
               }
 
+              // Trong NHÓM: thẻ `task_assigned` có messageId dạng
+              // `local-task-card:<convId>:<taskId>` là card LOCAL do
+              // `useTaskReminderScheduler` bơm vào dựa trên `groupTasks`. Khi
+              // người dùng chuyển nhóm A → B, `activeConversationId` đổi sang B
+              // ngay nhưng `groupTasks` còn 1 nhịp render là dữ liệu của A →
+              // hook bơm nhầm card của task thuộc nhóm A vào cache của nhóm B.
+              // Sau khi tasks của B load xong, taskId đó không có trên board →
+              // logic `taskMissingFromBoard` ở dưới sẽ render "Công việc đã bị
+              // hủy" sai. Lưới chắn bổ sung: nếu là local card mà taskId không
+              // còn trên board của nhóm hiện tại → bỏ qua hoàn toàn (return
+              // null) thay vì hiển thị nhầm là đã hủy.
+              if (
+                !isDirectChat &&
+                typeof msg.messageId === 'string' &&
+                msg.messageId.startsWith('local-task-card:') &&
+                typeof content === 'string' &&
+                content.trim().startsWith('{')
+              ) {
+                try {
+                  const probe = JSON.parse(content) as {
+                    kind?: string;
+                    task?: { taskId?: string };
+                  };
+                  if (probe?.kind === 'task_assigned') {
+                    const probeTaskId = String(probe?.task?.taskId ?? '').trim();
+                    if (probeTaskId && !probeTaskId.startsWith('tmp-')) {
+                      const onBoard = (groupTasks ?? []).some(
+                        (x: { taskId?: string }) => String(x?.taskId) === probeTaskId,
+                      );
+                      if (!onBoard) {
+                        return null;
+                      }
+                    }
+                  }
+                } catch {
+                  /* không phải JSON hợp lệ — bỏ qua, render theo nhánh dưới */
+                }
+              }
+
               if (typeof content === 'string' && content.trim().startsWith('{')) {
                 try {
                   const obj = JSON.parse(content) as any;
