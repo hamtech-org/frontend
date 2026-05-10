@@ -1,5 +1,5 @@
 import { cn } from '@/utils/cn';
-import { Calendar as CalendarIcon, Clock } from 'lucide-react';
+import { Calendar as CalendarIcon } from 'lucide-react';
 
 type TaskDeadlineCalendarProps = {
   dateIso: string;

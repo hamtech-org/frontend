@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Check, CheckCheck, CheckSquare, Trash2, Users, X } from 'lucide-react';
+import { Check, CheckSquare, Trash2, Users, X } from 'lucide-react';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 
 type TaskModalProps = {
