@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  BarChart2,
   ChevronDown,
   ChevronUp,
   FileText,
@@ -40,7 +41,12 @@ export function PinnedRowPreview({ msg }: { msg: IMessage }) {
       <span className="inline-flex items-center gap-1.5 min-w-0">
         <span className="font-medium text-slate-800 dark:text-slate-100 shrink-0">{sender}:</span>
         <span className="relative w-5 h-5 rounded overflow-hidden bg-slate-200 dark:bg-slate-700 shrink-0 ring-1 ring-black/5">
-          <AuthenticatedMedia src={thumb} kind="image" className="w-full h-full object-cover" alt="" />
+          <AuthenticatedMedia
+            src={thumb}
+            kind="image"
+            className="w-full h-full object-cover"
+            alt=""
+          />
         </span>
         <span className="truncate text-slate-600 dark:text-slate-300">Ảnh</span>
       </span>
@@ -62,7 +68,12 @@ export function PinnedRowPreview({ msg }: { msg: IMessage }) {
       <span className="inline-flex items-center gap-1.5 min-w-0">
         <span className="font-medium text-slate-800 dark:text-slate-100 shrink-0">{sender}:</span>
         <span className="relative w-5 h-5 rounded overflow-hidden bg-zinc-900 shrink-0 ring-1 ring-black/5">
-          <AuthenticatedMedia src={thumb} kind="image" className="w-full h-full object-cover" alt="" />
+          <AuthenticatedMedia
+            src={thumb}
+            kind="image"
+            className="w-full h-full object-cover"
+            alt=""
+          />
         </span>
         <span className="truncate text-slate-600 dark:text-slate-300">Video</span>
       </span>
@@ -97,7 +108,9 @@ export function PinnedRowPreview({ msg }: { msg: IMessage }) {
         <span className="inline-flex items-center gap-1.5 min-w-0">
           <span className="font-medium text-slate-800 dark:text-slate-100 shrink-0">{sender}:</span>
           <Link2 className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
-          <span className="truncate text-slate-600 dark:text-slate-300">Link · {truncateUrl(url)}</span>
+          <span className="truncate text-slate-600 dark:text-slate-300">
+            Link · {truncateUrl(url)}
+          </span>
         </span>
       );
     }
@@ -121,6 +134,20 @@ function PinnedRow({
   onScrollToMessage: (id: string) => void;
   onTogglePin: (m: IMessage) => void;
 }) {
+  const pollQuestion = (() => {
+    if ((msg as any)?.type !== 'system') return null;
+    const raw = String((msg as any)?.content ?? '').trim();
+    if (!raw.startsWith('{')) return null;
+    try {
+      const obj = JSON.parse(raw) as { kind?: string; poll?: { question?: string } };
+      if (obj?.kind !== 'poll_created') return null;
+      const q = String(obj?.poll?.question ?? '').trim();
+      return q || null;
+    } catch {
+      return null;
+    }
+  })();
+
   const moreBtnRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
@@ -191,13 +218,21 @@ function PinnedRow({
           className="flex items-start gap-3 min-w-0 flex-1 text-left py-0.5 rounded-lg -mx-1 px-1 transition-transform duration-200 active:scale-[0.995] group-hover/pinrow:translate-x-0.5"
           onClick={() => onScrollToMessage(msg.messageId)}
         >
-          <div className="w-9 h-9 rounded-full bg-[#0068ff] flex items-center justify-center shrink-0 shadow-sm transition-transform duration-200 group-hover/pinrow:scale-105 group-hover/pinrow:shadow-md">
-            <MessageSquare className="w-[18px] h-[18px] text-white" strokeWidth={2} />
-          </div>
+          {pollQuestion ? (
+            <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center shrink-0 shadow-sm transition-transform duration-200 group-hover/pinrow:scale-105 group-hover/pinrow:shadow-md">
+              <BarChart2 className="w-[18px] h-[18px] text-white" strokeWidth={2} />
+            </div>
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-[#0068ff] flex items-center justify-center shrink-0 shadow-sm transition-transform duration-200 group-hover/pinrow:scale-105 group-hover/pinrow:shadow-md">
+              <MessageSquare className="w-[18px] h-[18px] text-white" strokeWidth={2} />
+            </div>
+          )}
           <div className="flex flex-col min-w-0 gap-0.5 pt-0.5">
-            <p className="text-[13px] font-bold text-slate-900 dark:text-slate-100 leading-tight">Tin nhắn</p>
-            <div className="text-[13px] leading-snug">
-              <PinnedRowPreview msg={msg} />
+            <p className="text-[13px] font-bold text-slate-900 dark:text-slate-100 leading-tight">
+              {pollQuestion ? 'Bình chọn' : 'Tin nhắn'}
+            </p>
+            <div className="text-[13px] leading-snug truncate text-slate-600 dark:text-slate-300">
+              {pollQuestion ? pollQuestion : <PinnedRowPreview msg={msg} />}
             </div>
           </div>
         </button>
