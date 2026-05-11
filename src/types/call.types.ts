@@ -38,9 +38,9 @@ export interface CallState {
   isScreenSharing: boolean;
   /** Route để quay về khi kết thúc/từ chối/timeout cuộc gọi (ưu tiên /chat/:conversationId). */
   returnTo: string | null;
-  /** Lý do kết thúc để hiển thị UI full-screen (missed/rejected/...) */
-  endReason: 'missed' | 'rejected' | null;
-  /** Cuộc gọi nhóm đang diễn ra (theo server) — hiện banner Tham gia trong chat nhóm. */
+  /** Lý do kết thúc để hiển thị UI full-screen (missed/rejected/busy/...) */
+  endReason: 'missed' | 'rejected' | 'busy' | null;
+  /** Cuộc gọi nhóm đang diễn ra (theo server) — nút Tham gia trên header chat nhóm. */
   activeGroupCall: ActiveGroupCallSession | null;
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'motion/react';
@@ -17,6 +17,8 @@ import {
   Pin,
   PinOff,
   PanelRight,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import AgoraRTC, {
   type IAgoraRTCClient,
@@ -39,6 +41,7 @@ import {
 } from '@/store/slices/callSlice';
 import outgoingRingback from '@/assets/ringtones/amThanhGoi.mp3';
 import SparkMD5 from 'spark-md5';
+import { GROUP_TILE_GAP_PX, gridColsRows, maxTilesPerPage } from '@/utils/groupCallVideoGrid';
 
 export default function CallPage() {
   const navigate = useNavigate();
@@ -174,7 +177,13 @@ export default function CallPage() {
   const screenTrackRef = useRef<ILocalVideoTrack | null>(null);
   const localVideoRef = useRef<HTMLDivElement>(null);
   const remoteVideoRef = useRef<HTMLDivElement>(null);
+  /** Giới hạn kéo PiP “Bạn” trong toàn màn hình gọi (thay dragConstraints số cố định). */
+  const callShellRef = useRef<HTMLDivElement>(null);
   const pinnedMainRef = useRef<HTMLDivElement>(null);
+
+  /** Kích thước vùng lưới video nhóm (ước lượng từ viewport — header + footer + PiP). */
+  const [groupGridViewport, setGroupGridViewport] = useState({ width: 0, height: 0 });
+  const [groupVideoPage, setGroupVideoPage] = useState(0);
 
   const isVideoCall = (urlCallType ?? callType) === 'video';
   const isVideoCallRef = useRef(isVideoCall);
@@ -378,6 +387,13 @@ export default function CallPage() {
         setJoined(true);
         if (group) {
           dispatch(setCallConnected());
+          const convRtc = resolvedConversationIdRef.current;
+          if (convRtc && channelName.startsWith('grp_')) {
+            socketService.emit('call:group-rtc-joined', {
+              channelName,
+              conversationId: convRtc,
+            });
+          }
         }
 
         // Người vào kênh muộn có thể bỏ lỡ event `user-published` từ những người đã publish trước đó.
@@ -422,6 +438,10 @@ export default function CallPage() {
 
     return () => {
       cancelled = true;
+      const convRtc = resolvedConversationIdRef.current;
+      if (channelName.startsWith('grp_') && convRtc) {
+        socketService.emit('call:group-rtc-left', { channelName, conversationId: convRtc });
+      }
       micTrackRef.current?.close();
       camTrackRef.current?.close();
       screenTrackRef.current?.close();
@@ -458,48 +478,6 @@ export default function CallPage() {
       setFilmstripVisible(false);
     }
   }, [isGroup, pinnedRemoteUid]);
-
-  /** Khi đổi ghim hoặc danh sách UID, gắn lại mọi remote video vào ô grid hoặc vùng ghim fullscreen. */
-  useEffect(() => {
-    if (!isGroup || !isVideoCall) return;
-    const client = clientRef.current;
-    if (!client || client.connectionState !== 'CONNECTED') return;
-
-    const placeAll = () => {
-      const pinned = pinnedRemoteUidRef.current;
-      for (const user of client.remoteUsers) {
-        const track = user.videoTrack;
-        if (!track) continue;
-        const uidNum = Number(user.uid);
-        track.stop();
-        if (pinned === uidNum) {
-          const main = pinnedMainRef.current;
-          if (main) track.play(main, { fit: 'contain' });
-        } else {
-          if (pinned != null) {
-            const view = groupViewRef.current;
-            const filmstrip = filmstripVisibleRef.current;
-            if (view !== 'participants' && !filmstrip) continue;
-          }
-          const cell = document.getElementById(`agora-remote-${uidNum}`);
-          if (cell) track.play(cell, { fit: 'contain' });
-        }
-      }
-    };
-
-    placeAll();
-    const id = requestAnimationFrame(() => placeAll());
-    return () => cancelAnimationFrame(id);
-  }, [
-    pinnedRemoteUid,
-    remoteUids,
-    isGroup,
-    isVideoCall,
-    joined,
-    status,
-    groupView,
-    filmstripVisible,
-  ]);
 
   useEffect(() => {
     micTrackRef.current?.setEnabled(isMicOn);
@@ -612,13 +590,16 @@ export default function CallPage() {
   }, []);
 
   const handleDirectEnd = useCallback(() => {
-    endCall({ durationSec: timer, result: 'completed' });
+    endCall({
+      durationSec: status === 'connected' ? timer : 0,
+      result: status === 'outgoing-ringing' ? 'cancelled' : 'completed',
+    });
     cleanupLocalMedia();
     setTimeout(() => {
       dispatch(resetCall());
       navigate(resolvedReturnTo);
     }, 500);
-  }, [endCall, timer, dispatch, navigate, resolvedReturnTo, cleanupLocalMedia]);
+  }, [endCall, timer, status, dispatch, navigate, resolvedReturnTo, cleanupLocalMedia]);
 
   const handleGroupLeave = useCallback(() => {
     leaveGroupCall();
@@ -708,6 +689,83 @@ export default function CallPage() {
 
   const currentCallIsVideo = callType === 'video' || (!isGroup && upgradeStatus === 'accepted');
 
+  useEffect(() => {
+    if (!isGroup || !currentCallIsVideo) return;
+    const update = () => {
+      const w = Math.max(200, window.innerWidth - 32);
+      const h = Math.max(200, window.innerHeight - 260);
+      setGroupGridViewport({ width: w, height: h });
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [isGroup, currentCallIsVideo]);
+
+  const groupTilesLayout = useMemo(() => {
+    const n = remoteUids.length;
+    const { width: vw, height: vh } = groupGridViewport;
+    if (n === 0) return { tilesPerPage: 1, pageCount: 1 };
+    const tiles = vw > 0 && vh > 0 ? maxTilesPerPage(vw, vh, n) : Math.min(n, 4);
+    const pageCount = Math.max(1, Math.ceil(n / tiles));
+    return { tilesPerPage: tiles, pageCount };
+  }, [remoteUids.length, groupGridViewport]);
+
+  useEffect(() => {
+    setGroupVideoPage((p) => Math.min(p, Math.max(0, groupTilesLayout.pageCount - 1)));
+  }, [groupTilesLayout.pageCount]);
+
+  const pagedRemoteUids = useMemo(() => {
+    const { tilesPerPage } = groupTilesLayout;
+    const start = groupVideoPage * tilesPerPage;
+    return remoteUids.slice(start, start + tilesPerPage);
+  }, [remoteUids, groupTilesLayout.tilesPerPage, groupVideoPage]);
+
+  /** Khi đổi ghim hoặc danh sách UID, gắn lại mọi remote video vào ô grid hoặc vùng ghim fullscreen. */
+  useEffect(() => {
+    if (!isGroup || !isVideoCall) return;
+    const client = clientRef.current;
+    if (!client || client.connectionState !== 'CONNECTED') return;
+
+    const placeAll = () => {
+      const pinned = pinnedRemoteUidRef.current;
+      for (const user of client.remoteUsers) {
+        const track = user.videoTrack;
+        if (!track) continue;
+        const uidNum = Number(user.uid);
+        track.stop();
+        if (pinned === uidNum) {
+          const main = pinnedMainRef.current;
+          if (main) track.play(main, { fit: 'contain' });
+        } else {
+          if (pinned != null) {
+            const view = groupViewRef.current;
+            const filmstrip = filmstripVisibleRef.current;
+            if (view !== 'participants' && !filmstrip) continue;
+          }
+          const cell = document.getElementById(`agora-remote-${uidNum}`);
+          if (cell) track.play(cell, { fit: 'contain' });
+        }
+      }
+    };
+
+    placeAll();
+    const id = requestAnimationFrame(() => placeAll());
+    return () => cancelAnimationFrame(id);
+  }, [
+    pinnedRemoteUid,
+    remoteUids,
+    isGroup,
+    isVideoCall,
+    joined,
+    status,
+    groupView,
+    filmstripVisible,
+    groupVideoPage,
+    pagedRemoteUids,
+  ]);
+
+  const groupGridDims = gridColsRows(Math.max(1, pagedRemoteUids.length));
+
   const statusLabel =
     status === 'connected'
       ? `Đang gọi • ${formatTime(timer)}`
@@ -718,7 +776,10 @@ export default function CallPage() {
         : 'Đang kết nối...';
 
   return (
-    <div className="fixed inset-0 z-[100] bg-gray-950 text-white flex flex-col overflow-hidden">
+    <div
+      ref={callShellRef}
+      className="fixed inset-0 z-[100] bg-gray-950 text-white flex flex-col overflow-hidden"
+    >
       <AnimatePresence>
         {status === 'ended' && endReason && (
           <motion.div
@@ -737,17 +798,25 @@ export default function CallPage() {
               <div className="mx-auto mb-5 w-20 h-20 rounded-full bg-blue-600/15 flex items-center justify-center">
                 {endReason === 'rejected' ? (
                   <PhoneOff className="w-8 h-8 text-red-400" />
+                ) : endReason === 'busy' ? (
+                  <PhoneOff className="w-8 h-8 text-amber-400" />
                 ) : (
                   <PhoneOff className="w-8 h-8 text-yellow-300" />
                 )}
               </div>
               <p className="text-xl font-bold">
-                {endReason === 'rejected' ? 'Cuộc gọi bị từ chối' : 'Cuộc gọi nhỡ'}
+                {endReason === 'rejected'
+                  ? 'Cuộc gọi bị từ chối'
+                  : endReason === 'busy'
+                    ? 'Đang bận'
+                    : 'Cuộc gọi nhỡ'}
               </p>
               <p className="text-sm text-white/60 mt-2">
                 {endReason === 'rejected'
                   ? 'Người nghe đã từ chối cuộc gọi.'
-                  : 'Người nghe không phản hồi.'}
+                  : endReason === 'busy'
+                    ? 'Người nhận đang trong cuộc gọi khác.'
+                    : 'Người nghe không phản hồi.'}
               </p>
               <p className="text-xs text-white/40 mt-5">Tự động quay lại cuộc trò chuyện...</p>
             </motion.div>
@@ -759,12 +828,19 @@ export default function CallPage() {
         <>
           {groupView === 'participants' ? (
             <div className="absolute inset-0 z-0 pt-24 pb-40 px-4 min-h-0 overflow-hidden pointer-events-none">
-              <div className="pointer-events-auto min-h-0 h-full overflow-auto">
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-w-6xl mx-auto">
-                  {remoteUids.map((uid) => (
+              <div className="pointer-events-auto flex h-full min-h-0 flex-col overflow-hidden">
+                <div
+                  className="grid min-h-0 w-full flex-1"
+                  style={{
+                    gridTemplateColumns: `repeat(${groupGridDims.cols}, minmax(0, 1fr))`,
+                    gridTemplateRows: `repeat(${groupGridDims.rows}, minmax(0, 1fr))`,
+                    gap: GROUP_TILE_GAP_PX,
+                  }}
+                >
+                  {pagedRemoteUids.map((uid) => (
                     <div
                       key={uid}
-                      className="relative aspect-video bg-gray-900 rounded-xl overflow-hidden border border-white/10 group/tile"
+                      className="group/tile relative min-h-0 min-w-0 overflow-hidden rounded-xl border border-white/10 bg-gray-900"
                     >
                       <div id={`agora-remote-${uid}`} className="absolute inset-0" />
                       <button
@@ -774,22 +850,49 @@ export default function CallPage() {
                           setPinnedRemoteUid(uid);
                           setGroupView('pinned');
                         }}
-                        className="absolute top-2 right-2 z-20 rounded-lg bg-black/60 p-1.5 opacity-0 group-hover/tile:opacity-100 sm:opacity-100 hover:bg-black/80 transition-opacity border border-white/10"
+                        className="absolute top-2 right-2 z-20 rounded-lg border border-white/10 bg-black/60 p-1.5 opacity-0 transition-opacity hover:bg-black/80 group-hover/tile:opacity-100 sm:opacity-100"
                       >
-                        <Pin className="w-4 h-4 text-white" />
+                        <Pin className="h-4 w-4 text-white" />
                       </button>
-                      <span className="absolute top-2 left-2 z-10 text-[10px] bg-black/60 px-2 py-0.5 rounded pointer-events-none">
+                      <span className="pointer-events-none absolute left-2 top-2 z-10 rounded bg-black/60 px-2 py-0.5 text-[10px]">
                         {labelForAgoraUid(uid)}
                       </span>
                     </div>
                   ))}
-                  {remoteUids.length === 0 && (
-                    <div className="col-span-full flex flex-col items-center justify-center min-h-[40vh] text-white/40 w-full max-w-6xl mx-auto">
-                      <Users className="w-16 h-16 mb-3 opacity-30" />
+                  {remoteUids.length === 0 ? (
+                    <div className="col-span-full row-span-full flex min-h-[40vh] flex-col items-center justify-center text-white/40">
+                      <Users className="mb-3 h-16 w-16 opacity-30" />
                       <p className="text-sm">Đang chờ thành viên vào kênh...</p>
                     </div>
-                  )}
+                  ) : null}
                 </div>
+                {groupTilesLayout.pageCount > 1 ? (
+                  <div className="flex shrink-0 items-center justify-center gap-6 py-2">
+                    <button
+                      type="button"
+                      disabled={groupVideoPage <= 0}
+                      onClick={() => setGroupVideoPage((p) => Math.max(0, p - 1))}
+                      className="rounded-full bg-white/10 p-2 hover:bg-white/20 disabled:pointer-events-none disabled:opacity-30"
+                      aria-label="Trang trước"
+                    >
+                      <ChevronLeft className="h-7 w-7" />
+                    </button>
+                    <span className="text-xs text-white/70">
+                      {groupVideoPage + 1} / {groupTilesLayout.pageCount}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={groupVideoPage >= groupTilesLayout.pageCount - 1}
+                      onClick={() =>
+                        setGroupVideoPage((p) => Math.min(groupTilesLayout.pageCount - 1, p + 1))
+                      }
+                      className="rounded-full bg-white/10 p-2 hover:bg-white/20 disabled:pointer-events-none disabled:opacity-30"
+                      aria-label="Trang sau"
+                    >
+                      <ChevronRight className="h-7 w-7" />
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -811,34 +914,68 @@ export default function CallPage() {
                   </span>
                 </div>
               ) : (
-                <div className="pointer-events-auto min-h-0 flex-1 overflow-auto">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-w-6xl mx-auto">
-                    {remoteUids.map((uid) => (
+                <div className="pointer-events-auto flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <div
+                    className="grid min-h-0 w-full flex-1"
+                    style={{
+                      gridTemplateColumns: `repeat(${groupGridDims.cols}, minmax(0, 1fr))`,
+                      gridTemplateRows: `repeat(${groupGridDims.rows}, minmax(0, 1fr))`,
+                      gap: GROUP_TILE_GAP_PX,
+                    }}
+                  >
+                    {pagedRemoteUids.map((uid) => (
                       <div
                         key={uid}
-                        className="relative aspect-video bg-gray-900 rounded-xl overflow-hidden border border-white/10 group/tile"
+                        className="group/tile relative min-h-0 min-w-0 overflow-hidden rounded-xl border border-white/10 bg-gray-900"
                       >
                         <div id={`agora-remote-${uid}`} className="absolute inset-0" />
                         <button
                           type="button"
                           title="Ghim toàn màn hình (camera hoặc màn hình đang share)"
                           onClick={() => setPinnedRemoteUid(uid)}
-                          className="absolute top-2 right-2 z-20 rounded-lg bg-black/60 p-1.5 opacity-0 group-hover/tile:opacity-100 sm:opacity-100 hover:bg-black/80 transition-opacity border border-white/10"
+                          className="absolute top-2 right-2 z-20 rounded-lg border border-white/10 bg-black/60 p-1.5 opacity-0 transition-opacity hover:bg-black/80 group-hover/tile:opacity-100 sm:opacity-100"
                         >
-                          <Pin className="w-4 h-4 text-white" />
+                          <Pin className="h-4 w-4 text-white" />
                         </button>
-                        <span className="absolute top-2 left-2 z-10 text-[10px] bg-black/60 px-2 py-0.5 rounded pointer-events-none">
+                        <span className="pointer-events-none absolute left-2 top-2 z-10 rounded bg-black/60 px-2 py-0.5 text-[10px]">
                           {labelForAgoraUid(uid)}
                         </span>
                       </div>
                     ))}
-                    {remoteUids.length === 0 && (
-                      <div className="col-span-full flex flex-col items-center justify-center min-h-[40vh] text-white/40 w-full max-w-6xl mx-auto">
-                        <Users className="w-16 h-16 mb-3 opacity-30" />
+                    {remoteUids.length === 0 ? (
+                      <div className="col-span-full row-span-full flex min-h-[40vh] flex-col items-center justify-center text-white/40">
+                        <Users className="mb-3 h-16 w-16 opacity-30" />
                         <p className="text-sm">Đang chờ thành viên vào kênh...</p>
                       </div>
-                    )}
+                    ) : null}
                   </div>
+                  {groupTilesLayout.pageCount > 1 ? (
+                    <div className="flex shrink-0 items-center justify-center gap-6 py-2">
+                      <button
+                        type="button"
+                        disabled={groupVideoPage <= 0}
+                        onClick={() => setGroupVideoPage((p) => Math.max(0, p - 1))}
+                        className="rounded-full bg-white/10 p-2 hover:bg-white/20 disabled:pointer-events-none disabled:opacity-30"
+                        aria-label="Trang trước"
+                      >
+                        <ChevronLeft className="h-7 w-7" />
+                      </button>
+                      <span className="text-xs text-white/70">
+                        {groupVideoPage + 1} / {groupTilesLayout.pageCount}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={groupVideoPage >= groupTilesLayout.pageCount - 1}
+                        onClick={() =>
+                          setGroupVideoPage((p) => Math.min(groupTilesLayout.pageCount - 1, p + 1))
+                        }
+                        className="rounded-full bg-white/10 p-2 hover:bg-white/20 disabled:pointer-events-none disabled:opacity-30"
+                        aria-label="Trang sau"
+                      >
+                        <ChevronRight className="h-7 w-7" />
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               )}
 
@@ -1037,7 +1174,9 @@ export default function CallPage() {
       {currentCallIsVideo && (
         <motion.div
           drag
-          dragConstraints={{ left: -500, right: 500, top: -300, bottom: 300 }}
+          dragConstraints={callShellRef}
+          dragElastic={0}
+          dragMomentum={false}
           className="absolute bottom-36 right-6 w-48 aspect-video rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl cursor-move z-20 bg-gray-800"
         >
           <div ref={localVideoRef} className="w-full h-full" />

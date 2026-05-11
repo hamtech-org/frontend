@@ -317,10 +317,11 @@ function imageDisplaySrc(msg: IMessage): string {
 
 type CallLogContent =
   | {
-      kind: 'completed' | 'missed' | 'rejected';
+      kind: 'completed' | 'missed' | 'rejected' | 'cancelled';
       callType: 'audio' | 'video';
       durationSec?: number;
       scope?: string;
+      reason?: string;
     }
   | Record<string, unknown>;
 
@@ -1412,8 +1413,9 @@ export function ChatMessageList({
               const kind = (payload as any)?.kind as string | undefined;
               const callType = (payload as any)?.callType as string | undefined;
               const durationSec = Number((payload as any)?.durationSec ?? 0);
+              const isMeCall = msg.senderId === currentUserId;
               const durationLabel =
-                kind === 'missed' || kind === 'rejected'
+                kind === 'missed' || kind === 'rejected' || kind === 'cancelled'
                   ? '—'
                   : durationSec > 0
                     ? `${Math.floor(durationSec / 60)} phút ${String(durationSec % 60).padStart(2, '0')} giây`
@@ -1424,11 +1426,15 @@ export function ChatMessageList({
                   ? 'Cuộc gọi nhỡ'
                   : kind === 'rejected'
                     ? 'Cuộc gọi bị từ chối'
-                    : callType === 'video'
-                      ? 'Cuộc gọi video'
-                      : 'Cuộc gọi thoại';
-
-              const isMeCall = msg.senderId === currentUserId;
+                    : kind === 'cancelled' && isMeCall
+                      ? callType === 'video'
+                        ? 'Bạn đã hủy cuộc gọi video'
+                        : 'Bạn đã hủy cuộc gọi thoại'
+                      : kind === 'cancelled' && !isMeCall
+                        ? 'Cuộc gọi nhỡ'
+                        : callType === 'video'
+                          ? 'Cuộc gọi video'
+                          : 'Cuộc gọi thoại';
               const prevCall = index > 0 ? allMessages[index - 1] : undefined;
               const nextCall = index < allMessages.length - 1 ? allMessages[index + 1] : undefined;
               const isSameSenderAsPrevCall = !!prevCall && prevCall.senderId === msg.senderId;
