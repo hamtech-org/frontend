@@ -24,19 +24,15 @@ import {
   hideTaskAssignedCardsForTaskId,
 } from '@/store/applyMessageHiddenForMe';
 import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
-
-function isoToDatetimeLocalValue(iso?: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+import {
+  isoUtcToVietnamLocalDatetimeValue,
+  parseVietnamLocalDeadlineInput,
+} from '@/utils/vietnamDeadline';
 
 function deadlineLocalInputToJsonValue(input: string | null | undefined): string | null {
   if (!input?.trim()) return null;
-  const d = new Date(input);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  const d = parseVietnamLocalDeadlineInput(input);
+  return d ? d.toISOString() : null;
 }
 
 interface UseGroupConversationControllerParams {
@@ -716,7 +712,7 @@ export function useGroupConversationController({
       modalActions.setEditingTaskId(String(task.taskId));
       modalActions.setTaskTitle(String(task.title ?? ''));
       modalActions.setTaskNote(String(task.description ?? ''));
-      modalActions.setTaskDeadline(isoToDatetimeLocalValue(task.dueDate ?? null));
+      modalActions.setTaskDeadline(isoUtcToVietnamLocalDatetimeValue(task.dueDate ?? null));
       const assignToAll = Boolean(
         task.assignToAll ||
         task.broadcast ||
