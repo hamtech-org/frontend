@@ -1,0 +1,11 @@
+{
+  "postInteractions": [
+    { "postId": "p1", "title": "Demo bài viết A", "likes": 128, "comments": 34, "shares": 5, "views": 1200 },
+    { "postId": "p2", "title": "Ảnh nhóm đi chơi", "likes": 89, "comments": 12, "shares": 2, "views": 640 }
+  ],
+  "posts": [
+    { "postId": "p1", "title": "Demo bài viết A", "author": "Sang_2", "status": "public", "updatedAt": "2026-05-10T10:00:00Z" },
+    { "postId": "p2", "title": "Ảnh nhóm đi chơi", "author": "Minh", "status": "hidden", "updatedAt": "2026-05-09T16:00:00Z" },
+    { "postId": "p3", "title": "Bài bị gắn cờ", "author": "user_x", "status": "flagged", "updatedAt": "2026-05-08T08:00:00Z" }
+  ]
+}
