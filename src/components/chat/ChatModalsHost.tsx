@@ -113,7 +113,26 @@ export function ChatModalsHost({
   pinLimit,
   convPinLimit,
 }: ChatModalsHostProps) {
-  const { core, group, groupActions, directActions, messageActions } = useChatPageContext();
+  const { core, group, messages, groupActions, directActions, messageActions } =
+    useChatPageContext();
+
+  const pollMsgById = (pollId: string): IMessage | null => {
+    for (const m of messages ?? []) {
+      try {
+        const raw = String((m as any)?.content ?? '').trim();
+        if (!raw.startsWith('{')) continue;
+        const obj = JSON.parse(raw) as { kind?: string; poll?: { pollId?: string } };
+        if (obj?.kind === 'poll_created' && String(obj?.poll?.pollId ?? '') === String(pollId)) {
+          return m as IMessage;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  };
+
+  const isPollPinned = (pollId: string) => Boolean(pollMsgById(pollId)?.isPinned);
 
   const {
     showPollVoteModal,
@@ -156,11 +175,25 @@ export function ChatModalsHost({
       <PollVoteModal
         open={showPollVoteModal}
         onClose={() => actions.setShowPollVoteModal(false)}
-        poll={activePollId ? (group.polls.find((p) => p.pollId === activePollId) ?? null) : null}
+        poll={
+          activePollId
+            ? (() => {
+                const base = group.polls.find((p) => p.pollId === activePollId) ?? null;
+                if (!base) return null;
+                return { ...base, isPinned: isPollPinned(activePollId) };
+              })()
+            : null
+        }
         currentUserId={core.currentUserId}
         onToggleVote={(pollId, optionIndex) =>
           void groupActions.handleVotePoll(pollId, optionIndex)
         }
+        onClosePoll={(pollId) => void groupActions.handleClosePoll(pollId)}
+        onTogglePinPoll={(pollId) => {
+          const m = pollMsgById(pollId);
+          if (!m) return;
+          void messageActions.handleTogglePinMsg(m);
+        }}
       />
       <MarkReadModal open={showMarkReadModal} onClose={() => actions.setShowMarkReadModal(false)} />
       <AddFriendModal

@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { toast } from 'react-toastify';
 import { usePinMessageMutation, useUnpinMessageMutation } from '@/store/api/chatApi';
+import { chatApi } from '@/store/api/chatApi';
+import { messageReceived } from '@/store/slices/chatSlice';
 import { messagePinUpdated } from '@/store/slices/chatSlice';
 import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/chatPinConstants';
 import type { AppDispatch } from '@/store/store';
@@ -40,6 +42,39 @@ export function useMessagePinController({
   const [pinMessage] = usePinMessageMutation();
   const [unpinMessage] = useUnpinMessageMutation();
 
+  const pushLocalPinSystemLine = useCallback(
+    (params: { conversationId: string; actorLabel: string; pinned: boolean }) => {
+      const { conversationId, actorLabel, pinned } = params;
+      const sys: IMessage = {
+        messageId: `local-pin:${conversationId}:${pinned ? 'pin' : 'unpin'}:${Date.now()}`,
+        conversationId,
+        senderId: 'system',
+        senderDisplayName: 'Hệ thống',
+        type: 'system',
+        content: `${actorLabel} ${pinned ? 'đã ghim' : 'đã bỏ ghim'} một tin nhắn`,
+        mediaUrl: null,
+        thumbnailUrl: null,
+        replyTo: null,
+        replyToDetails: null,
+        isPinned: false,
+        isEdited: false,
+        isRecalled: false,
+        isDeleted: false,
+        reactions: {},
+        status: 'sent',
+        createdAt: new Date().toISOString(),
+      };
+      dispatch(
+        chatApi.util.updateQueryData('getMessages', { conversationId }, (draft) => {
+          if (!draft.data) draft.data = [];
+          draft.data.push(sys);
+        }),
+      );
+      dispatch(messageReceived(sys));
+    },
+    [dispatch],
+  );
+
   // ── Pin limit replace modal state ────────────────────────────────────
   const [pinLimitModalMsg, setPinLimitModalMsg] = useState<IMessage | null>(null);
   const [pinReplaceIndex, setPinReplaceIndex] = useState<number | null>(null);
@@ -50,6 +85,7 @@ export function useMessagePinController({
     async (msg: IMessage) => {
       try {
         const cid = msg.conversationId;
+        const actorLabel = msg.senderId === currentUserId ? 'Bạn' : 'Ai đó';
         if (msg.isPinned) {
           const myRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
           if (
@@ -79,6 +115,7 @@ export function useMessagePinController({
             ...prev,
             [cid]: (prev[cid] ?? []).filter((id) => id !== msg.messageId),
           }));
+          pushLocalPinSystemLine({ conversationId: cid, actorLabel, pinned: false });
         } else {
           const sameConv = activeConversationId && cid === activeConversationId;
           const pinCount = sameConv
@@ -125,6 +162,7 @@ export function useMessagePinController({
             ...prev,
             [cid]: [msg.messageId, ...(prev[cid] ?? []).filter((id) => id !== msg.messageId)],
           }));
+          pushLocalPinSystemLine({ conversationId: cid, actorLabel, pinned: true });
         }
         setActionMenuMsgId(null);
       } catch (e: unknown) {
@@ -136,6 +174,7 @@ export function useMessagePinController({
       pinMessage,
       unpinMessage,
       dispatch,
+      pushLocalPinSystemLine,
       patchMessageInCache,
       setPinnedMessageOrderByConv,
       activeConversationId,

@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Check, CheckSquare, Trash2, Users, X } from 'lucide-react';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
+import {
+  parseVietnamLocalDeadlineInput,
+  vietnamDateStr,
+  vietnamHmStr,
+  vietnamInstantAtCurrentMinuteStart,
+} from '@/utils/vietnamDeadline';
 
 type TaskModalProps = {
   open: boolean;
@@ -49,19 +55,17 @@ export function TaskModal({
   onDeleteTask,
   submitBusy = false,
 }: TaskModalProps) {
-  const getMinDeadlineNow = () => {
-    // datetime-local has minute precision. Lock to current minute (no past minutes/hours).
-    const now = new Date();
-    now.setSeconds(0, 0);
-    return now;
+  const isPastDeadline = (raw: string) => {
+    const picked = parseVietnamLocalDeadlineInput(raw);
+    if (!picked) return false;
+    return picked.getTime() < vietnamInstantAtCurrentMinuteStart().getTime();
   };
 
-  const isPastDeadline = (raw: string) => {
+  const parseDeadlineParts = (raw: string) => {
     const s = String(raw ?? '').trim();
-    if (!s) return false;
-    const picked = new Date(s);
-    if (Number.isNaN(picked.getTime())) return false;
-    return picked.getTime() < getMinDeadlineNow().getTime();
+    if (!s) return { date: '', time: '' };
+    const [date, time] = s.split('T');
+    return { date: date ?? '', time: (time ?? '').slice(0, 5) };
   };
 
   const labelFor = (id: string, name: string) => {
@@ -90,39 +94,25 @@ export function TaskModal({
   const hasSubtasks = subtaskRows.some((r) => r.assigneeId && r.content.trim());
   const hasAssignees = assignToAll || taskAssignees.length > 0;
   const hasDeadline = Boolean(taskDeadline?.trim());
-  const deadlineOk = hasDeadline && !isPastDeadline(taskDeadline);
-  const canSubmit =
-    taskTitle.trim().length > 0 && deadlineOk && hasAssignees && (hasSubtasks || hasAssignees);
 
-  const todayDateStr = useMemo(() => {
-    const d = new Date();
-    d.setSeconds(0, 0);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  }, []);
+  const readVietnamClock = (d = new Date()) => ({
+    dateStr: vietnamDateStr(d),
+    timeStr: vietnamHmStr(d),
+  });
 
-  const formatHm = (d: Date) => {
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
+  const [vnClock, setVnClock] = useState(() => readVietnamClock());
 
-  const [nowTimeStr, setNowTimeStr] = useState<string>(() => formatHm(getMinDeadlineNow()));
+  const todayDateStr = vnClock.dateStr;
+  const nowTimeStr = vnClock.timeStr;
 
-  // Keep "now" ticking so min time for today is always correct.
+  // Giờ/ngày theo Việt Nam, cập nhật khi mở modal và định kỳ (min giờ trong ngày hôm nay).
   useEffect(() => {
     if (!open) return;
-    const tick = () => setNowTimeStr(formatHm(getMinDeadlineNow()));
+    const tick = () => setVnClock(readVietnamClock(new Date()));
     tick();
     const t = window.setInterval(tick, 15_000);
     return () => window.clearInterval(t);
   }, [open]);
-
-  const parseDeadlineParts = (raw: string) => {
-    const s = String(raw ?? '').trim();
-    if (!s) return { date: '', time: '' };
-    const [date, time] = s.split('T');
-    return { date: date ?? '', time: (time ?? '').slice(0, 5) };
-  };
 
   const buildDeadline = (date: string, time: string) => {
     const d = String(date ?? '').trim();
@@ -138,17 +128,36 @@ export function TaskModal({
   const minDate = todayDateStr;
   const minTimeForSelectedDate = selectedDate === todayDateStr ? nowTimeStr : '00:00';
 
-  // Khi mở modal tạo mới: set deadline mặc định = hôm nay + giờ hiện tại.
+  const [timeFieldTouched, setTimeFieldTouched] = useState(false);
+  useEffect(() => {
+    if (open) setTimeFieldTouched(false);
+  }, [open]);
+
+  /** Hôm nay (VN) và giờ chọn ≤ giờ hiện tại (VN); cảnh báo khi user đã chỉnh giờ hoặc đang sửa việc. */
+  const timeOnTodayNotAfterNow =
+    Boolean(taskDeadline?.trim()) &&
+    selectedDate === todayDateStr &&
+    Boolean(selectedTime) &&
+    selectedTime <= nowTimeStr &&
+    (isEditing || timeFieldTouched);
+
+  const deadlineTimeWarning = isPastDeadline(taskDeadline) || timeOnTodayNotAfterNow;
+  const deadlineOk = hasDeadline && !deadlineTimeWarning;
+  const canSubmit =
+    taskTitle.trim().length > 0 && deadlineOk && hasAssignees && (hasSubtasks || hasAssignees);
+
+  // Khi mở modal tạo mới: set deadline mặc định = hôm nay (VN) + giờ hiện tại (VN).
   // Nếu đang mở mà deadline lỡ ở quá khứ: auto kéo lên min hợp lệ.
   useEffect(() => {
     if (!open) return;
+    const { dateStr, timeStr } = readVietnamClock(new Date());
     const hasValue = Boolean(taskDeadline && taskDeadline.trim());
     if (!hasValue && !isEditing) {
-      onTaskDeadlineChange(buildDeadline(todayDateStr, nowTimeStr));
+      onTaskDeadlineChange(buildDeadline(dateStr, timeStr));
       return;
     }
     if (hasValue && isPastDeadline(taskDeadline)) {
-      onTaskDeadlineChange(buildDeadline(todayDateStr, nowTimeStr));
+      onTaskDeadlineChange(buildDeadline(dateStr, timeStr));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -232,6 +241,7 @@ export function TaskModal({
                       value={selectedTime}
                       min={minTimeForSelectedDate}
                       onChange={(e) => {
+                        setTimeFieldTouched(true);
                         const nextTime = e.target.value;
                         const fixedTime =
                           selectedDate === todayDateStr && nextTime < nowTimeStr
@@ -245,9 +255,10 @@ export function TaskModal({
                     />
                   </div>
                 </div>
-                {taskDeadline && isPastDeadline(taskDeadline) ? (
+                {taskDeadline && deadlineTimeWarning ? (
                   <div className="mt-2 text-[12px] font-semibold text-orange-600 dark:text-orange-400 flex items-center gap-1">
-                    <span aria-hidden>⚠️</span> Thời hạn phải lớn hơn thời gian hiện tại.
+                    <span aria-hidden>⚠️</span>
+                    Thời gian đã chọn phải sau thời điểm hiện tại (giờ Việt Nam).
                   </div>
                 ) : null}
               </div>

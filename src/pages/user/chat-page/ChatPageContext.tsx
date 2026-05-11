@@ -35,6 +35,9 @@ export interface ChatPageContextValue {
     setTasks: Dispatch<SetStateAction<GroupTask[]>>;
   };
 
+  /** Messages (active conversation) — dùng cho modal/actions như ghim poll. */
+  messages: IMessage[];
+
   /** All group action handlers (stable refs via useMemo+useCallback) */
   groupActions: ReturnType<typeof useGroupConversationController>;
 
@@ -98,6 +101,7 @@ interface BuildChatPageContextParams {
   groupLoading: { polls: boolean; tasks: boolean; recap: boolean };
   groupActionLoading: GroupActionLoading;
   setGroupTasks: Dispatch<SetStateAction<GroupTask[]>>;
+  messages: IMessage[];
   groupActions: ReturnType<typeof useGroupConversationController>;
   directActions: ReturnType<typeof useDirectConversationActions>;
   messageActions: ChatPageContextValue['messageActions'];
@@ -120,6 +124,7 @@ export function useChatPageContextValue({
   groupLoading,
   groupActionLoading,
   setGroupTasks,
+  messages,
   groupActions,
   directActions,
   messageActions,
@@ -153,7 +158,7 @@ export function useChatPageContextValue({
   );
 
   return useMemo(
-    () => ({ core, group, groupActions, directActions, messageActions }),
-    [core, group, groupActions, directActions, messageActions],
+    () => ({ core, group, messages, groupActions, directActions, messageActions }),
+    [core, group, messages, groupActions, directActions, messageActions],
   );
 }

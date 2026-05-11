@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { BarChart2, Check, X } from 'lucide-react';
+import { BarChart2, Check, Lock, Pin, X } from 'lucide-react';
 
 type PollOption = { text: string; voters?: string[] };
 
@@ -9,6 +9,7 @@ export type PollVoteModalPoll = {
   options: PollOption[];
   isClosed?: boolean;
   isMultipleChoice?: boolean;
+  isPinned?: boolean;
 };
 
 type PollVoteModalProps = {
@@ -17,11 +18,20 @@ type PollVoteModalProps = {
   poll: PollVoteModalPoll | null;
   currentUserId: string;
   onToggleVote: (pollId: string, optionIndex: number) => void;
+  onClosePoll?: (pollId: string) => void;
+  onTogglePinPoll?: (pollId: string) => void;
 };
 
-export function PollVoteModal({ open, onClose, poll, currentUserId, onToggleVote }: PollVoteModalProps) {
-  const total =
-    poll?.options?.reduce((sum, option) => sum + (option.voters?.length ?? 0), 0) ?? 0;
+export function PollVoteModal({
+  open,
+  onClose,
+  poll,
+  currentUserId,
+  onToggleVote,
+  onClosePoll,
+  onTogglePinPoll,
+}: PollVoteModalProps) {
+  const total = poll?.options?.reduce((sum, option) => sum + (option.voters?.length ?? 0), 0) ?? 0;
   const userVotedIndexes = new Set<number>();
   if (poll?.options) {
     poll.options.forEach((opt, idx) => {
@@ -47,20 +57,49 @@ export function PollVoteModal({ open, onClose, poll, currentUserId, onToggleVote
                 </div>
                 <h3 className="font-bold text-[17px] text-black dark:text-white">Bình chọn</h3>
               </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {onTogglePinPoll ? (
+                  <button
+                    type="button"
+                    title={poll.isPinned ? 'Gỡ ghim bình chọn' : 'Ghim bình chọn'}
+                    onClick={() => onTogglePinPoll(poll.pollId)}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors border ${
+                      poll.isPinned
+                        ? 'bg-blue-600/10 border-blue-600/30 text-blue-600 hover:bg-blue-600/15'
+                        : 'bg-black/5 dark:bg-white/5 border-black/5 dark:border-white/10 hover:bg-black/10 dark:hover:bg-white/10'
+                    }`}
+                  >
+                    <Pin className="w-4 h-4" />
+                  </button>
+                ) : null}
+                {onClosePoll && !poll.isClosed ? (
+                  <button
+                    type="button"
+                    title="Khóa bình chọn"
+                    onClick={() => onClosePoll(poll.pollId)}
+                    className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                  >
+                    <Lock className="w-4 h-4" />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-5 custom-scrollbar space-y-4">
               <div className="rounded-xl bg-black/5 dark:bg-white/5 p-4">
-                <p className="text-[14px] font-extrabold text-black dark:text-white">{poll.question}</p>
+                <p className="text-[14px] font-extrabold text-black dark:text-white">
+                  {poll.question}
+                </p>
                 <p className="mt-1 text-[12px] text-muted-foreground">
-                  {poll.isMultipleChoice ? 'Chọn nhiều đáp án' : 'Chọn một đáp án'} • {total} lượt bình chọn
+                  {poll.isMultipleChoice ? 'Chọn nhiều đáp án' : 'Chọn một đáp án'} • {total} lượt
+                  bình chọn
                 </p>
               </div>
 
@@ -88,7 +127,9 @@ export function PollVoteModal({ open, onClose, poll, currentUserId, onToggleVote
                         <div className="flex items-start gap-3">
                           <div
                             className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center border ${
-                              checked ? 'bg-blue-600 border-blue-600' : 'border-black/20 dark:border-white/20'
+                              checked
+                                ? 'bg-blue-600 border-blue-600'
+                                : 'border-black/20 dark:border-white/20'
                             }`}
                           >
                             {checked ? <Check className="w-3.5 h-3.5 text-white" /> : null}
@@ -130,4 +171,3 @@ export function PollVoteModal({ open, onClose, poll, currentUserId, onToggleVote
     </AnimatePresence>
   );
 }
-
