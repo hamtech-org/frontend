@@ -1,7 +1,6 @@
 import { AddFriendModal } from '@/components/chat/AddFriendModal';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
 import { MarkReadModal } from '@/components/chat/MarkReadModal';
-import { ProfileModal } from '@/components/chat/ProfileModal';
 import { CreateGroupModal } from '@/components/chat/CreateGroupModal';
 import { PollModal } from '@/components/chat/PollModal';
 import { AISummaryModal } from '@/components/chat/AISummaryModal';
@@ -24,7 +23,6 @@ interface ChatModalsHostProps {
     showMarkReadModal: boolean;
     showAddFriendModal: boolean;
     addFriendQuery: string;
-    showProfileModal: boolean;
     showCreateGroupModal: boolean;
     groupName: string;
     selectedGroupMembers: string[];
@@ -60,7 +58,6 @@ interface ChatModalsHostProps {
     setAddFriendQuery: (value: string) => void;
     setShowAddFriendModal: (value: boolean) => void;
     setMessageConfirm: (value: MessageConfirmState) => void;
-    setShowProfileModal: (value: boolean) => void;
     setShowCreateGroupModal: (value: boolean) => void;
     setGroupName: (value: string) => void;
     setPollQuestion: (value: string) => void;
@@ -124,7 +121,6 @@ export function ChatModalsHost({
     showMarkReadModal,
     showAddFriendModal,
     addFriendQuery,
-    showProfileModal,
     showCreateGroupModal,
     groupName,
     selectedGroupMembers,
@@ -200,7 +196,6 @@ export function ChatModalsHost({
         }}
         onConfirm={() => void messageActions.handleMessageConfirm()}
       />
-      <ProfileModal open={showProfileModal} onClose={() => actions.setShowProfileModal(false)} />
       <CreateGroupModal
         open={showCreateGroupModal}
         onClose={() => actions.setShowCreateGroupModal(false)}
@@ -265,14 +260,19 @@ export function ChatModalsHost({
         title="Hủy công việc?"
         description={
           taskDeleteConfirm ? (
-            <>
-              Bạn sắp hủy công việc{' '}
-              <span className="font-bold text-foreground">«{taskDeleteConfirm.title}»</span>.
-              <br />
-              <br />
-              Thẻ giao việc sẽ được thu hồi cho toàn bộ nhóm (không còn hiển thị). Mọi người vẫn
-              thấy dòng nhật ký hủy việc trong khung chat.
-            </>
+            <div className="flex flex-col gap-3">
+              <div>
+                Bạn sắp hủy công việc:{' '}
+                <span className="font-bold text-foreground bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded text-[15px] inline-block mt-1">
+                  {taskDeleteConfirm.title}
+                </span>
+              </div>
+              <div className="text-[13.5px] text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg border border-red-100 dark:border-red-500/20 leading-relaxed mt-1">
+                <span className="font-bold block mb-1">Lưu ý:</span>
+                Thẻ giao việc sẽ được thu hồi cho toàn bộ nhóm và không còn hiển thị. Mọi người vẫn
+                thấy dòng nhật ký hủy việc trong khung chat.
+              </div>
+            </div>
           ) : undefined
         }
         confirmLabel="Hủy công việc"

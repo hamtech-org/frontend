@@ -1,0 +1,10 @@
+{
+  "accountModerationQueue": [
+    { "id": "mod-1", "userId": "u99", "displayName": "user_moi_01", "reason": "Đăng ký chờ duyệt", "submittedAt": "2026-05-11T02:00:00Z", "status": "pending" },
+    { "id": "mod-2", "userId": "u88", "displayName": "spam_test", "reason": "Tài khoản bị gắn cờ tự động", "submittedAt": "2026-05-10T18:20:00Z", "status": "pending" }
+  ],
+  "userReports": [
+    { "id": "rep-1", "targetUserId": "u42", "targetDisplayName": "Người A", "reporterId": "u7", "category": "Quấy rối", "status": "open", "createdAt": "2026-05-10T12:00:00Z" },
+    { "id": "rep-2", "targetUserId": "u42", "targetDisplayName": "Người A", "reporterId": "u9", "category": "Spam", "status": "in_review", "createdAt": "2026-05-09T09:15:00Z" }
+  ]
+}

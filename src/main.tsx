@@ -31,7 +31,17 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <ThemeProvider>
           <SocketProvider>
             <App />
-            <ToastContainer position="top-right" autoClose={false} />
+            <ToastContainer
+              position="top-right"
+              autoClose={5000}
+              hideProgressBar={false}
+              newestOnTop
+              closeOnClick
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+              theme="colored"
+            />
           </SocketProvider>
         </ThemeProvider>
       </TooltipProvider>

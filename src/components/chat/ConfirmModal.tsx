@@ -68,9 +68,9 @@ export function ConfirmModal({
             </div>
             {description ? (
               <div className="px-6 py-5">
-                <p className="text-[15px] text-muted-foreground leading-relaxed font-medium">
+                <div className="text-[15px] text-muted-foreground leading-relaxed font-medium">
                   {description}
-                </p>
+                </div>
               </div>
             ) : null}
             <div className="px-6 pb-5 flex items-center justify-end gap-3">

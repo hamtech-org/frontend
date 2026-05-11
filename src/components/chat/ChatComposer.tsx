@@ -24,6 +24,7 @@ import { toast } from 'react-toastify';
 import { AiQuickReplies } from '@/components/chat/AiQuickReplies';
 import { apiClient } from '@/services/api';
 import type { RootState } from '@/store/store';
+import { useTheme } from '@/contexts/ThemeContext';
 import {
   canUserCreatePollInGroup,
   canUserCreateTaskInGroup,
@@ -61,6 +62,7 @@ export function ChatComposer({
 }: ChatComposerProps) {
   type VoiceUiState = 'idle' | 'active-ui' | 'cancelled-ui';
 
+  const { theme } = useTheme();
   const currentUserId = useSelector((state: RootState) => state.auth.user?.userId ?? '');
   const [aiReplyLoading, setAiReplyLoading] = useState(false);
   const [showAiQuickReplies, setShowAiQuickReplies] = useState(true);
@@ -198,7 +200,7 @@ export function ChatComposer({
 
   if (groupDisbanded) {
     return (
-      <div className="flex shrink-0 flex-col gap-2 border-t border-black/5 bg-ethereal-bg/80 p-4 backdrop-blur-md dark:border-white/5 dark:bg-midnight-bg/80 sm:p-6">
+      <div className="relative z-20 flex shrink-0 flex-col gap-2 border-t border-black/5 bg-ethereal-bg/80 p-4 backdrop-blur-md dark:border-white/5 dark:bg-midnight-bg/80 sm:p-6">
         <p className="text-center text-[15px] font-semibold text-slate-700 dark:text-slate-200">
           Nhóm đã được giải tán
         </p>
@@ -210,7 +212,7 @@ export function ChatComposer({
   }
 
   return (
-    <div className="p-4 sm:p-6 border-t border-black/5 dark:border-white/5 shrink-0 bg-ethereal-bg/80 dark:bg-midnight-bg/80 backdrop-blur-md flex flex-col gap-3">
+    <div className="relative z-20 p-4 sm:p-6 border-t border-black/5 dark:border-white/5 shrink-0 bg-ethereal-bg/80 dark:bg-midnight-bg/80 backdrop-blur-md flex flex-col gap-3">
       {replyingTo && (
         <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 px-4 py-3 rounded-xl border-l-4 border-blue-600 animate-in slide-in-from-bottom-2 duration-200">
           <div className="flex-1 min-w-0">
@@ -363,10 +365,10 @@ export function ChatComposer({
             {showEmojiPicker && (
               <div
                 ref={emojiPanelRef}
-                className="absolute bottom-full left-0 z-50 mb-2 animate-in overflow-hidden rounded-2xl border border-border/40 bg-card shadow-2xl fade-in zoom-in-95 duration-150"
+                className="absolute bottom-full left-0 z-[200] mb-2 animate-in overflow-hidden rounded-2xl border border-border/40 bg-card shadow-2xl fade-in zoom-in-95 duration-150"
                 style={{ transform: `translateX(${emojiTranslateX}px)` }}
               >
-                <EmojiPicker onEmojiClick={onEmojiClick} theme={'auto' as any} />
+                <EmojiPicker onEmojiClick={onEmojiClick} theme={theme as any} />
               </div>
             )}
           </div>

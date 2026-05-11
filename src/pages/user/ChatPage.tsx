@@ -397,8 +397,8 @@ export default function ChatPage() {
   }, [modalActions]);
 
   const handleOpenProfile = useCallback(() => {
-    modalActions.setShowProfileModal(true);
-  }, [modalActions]);
+    navigate('/profile');
+  }, [navigate]);
 
   const handleOpenMarkRead = useCallback(() => {
     modalActions.setShowMarkReadModal(true);

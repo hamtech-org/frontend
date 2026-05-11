@@ -1,7 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, User, Users, FileText, ArrowLeft, Loader, UserPlus, UserCheck, UserX } from 'lucide-react';
+import {
+  Search,
+  User,
+  Users,
+  FileText,
+  ArrowLeft,
+  Loader,
+  UserPlus,
+  UserCheck,
+  UserX,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/utils/cn';
 import { searchService } from '@/services/search.service';
@@ -26,7 +36,7 @@ const SearchPage = () => {
   const query = searchParams.get('q') || '';
   const type = searchParams.get('type') || 'all';
   const [activeTab, setActiveTab] = useState<'all' | 'users' | 'groups' | 'posts'>(
-    (type as 'all' | 'users' | 'groups' | 'posts') || 'all'
+    (type as 'all' | 'users' | 'groups' | 'posts') || 'all',
   );
 
   // Redux mutations
@@ -43,7 +53,9 @@ const SearchPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [friendActionLoading, setFriendActionLoading] = useState<Record<string, boolean>>({});
-  const [expandedPendingReceived, setExpandedPendingReceived] = useState<Record<string, boolean>>({});
+  const [expandedPendingReceived, setExpandedPendingReceived] = useState<Record<string, boolean>>(
+    {},
+  );
 
   // Fetch data when query or tab changes
   useEffect(() => {
@@ -66,9 +78,10 @@ const SearchPage = () => {
           console.log('Current user ID:', currentUser?.userId);
 
           // Filter out current user
-          const filteredUsers = result?.users?.items?.filter(
-            (user: ISearchUserResult) => user.userId !== currentUser?.userId
-          ) || [];
+          const filteredUsers =
+            result?.users?.items?.filter(
+              (user: ISearchUserResult) => user.userId !== currentUser?.userId,
+            ) || [];
           setUsers(filteredUsers);
           setGroups(result?.groups?.items || []);
           setPosts(result?.posts?.items || []);
@@ -76,9 +89,10 @@ const SearchPage = () => {
           const result = await searchService.searchUsers({ q: query });
           console.log('searchUsers result:', result);
           // Filter out current user
-          const filteredUsers = result?.items?.filter(
-            (user: ISearchUserResult) => user.userId !== currentUser?.userId
-          ) || [];
+          const filteredUsers =
+            result?.items?.filter(
+              (user: ISearchUserResult) => user.userId !== currentUser?.userId,
+            ) || [];
           setUsers(filteredUsers);
           setGroups([]);
           setPosts([]);
@@ -113,110 +127,110 @@ const SearchPage = () => {
   // Handle friend actions
   const handleSendFriendRequest = async (e: React.MouseEvent, friendId: string) => {
     e.stopPropagation();
-    setFriendActionLoading(prev => ({ ...prev, [friendId]: true }));
+    setFriendActionLoading((prev) => ({ ...prev, [friendId]: true }));
     try {
       await sendFriendRequest({ friendId }).unwrap();
-      
+
       // Update user friendship status
-      setUsers(prevUsers =>
-        prevUsers.map(u =>
-          u.userId === friendId ? { ...u, friendshipStatus: 'pending_sent', isFriend: false } : u
-        )
+      setUsers((prevUsers) =>
+        prevUsers.map((u) =>
+          u.userId === friendId ? { ...u, friendshipStatus: 'pending_sent', isFriend: false } : u,
+        ),
       );
     } catch (err: any) {
       console.error('Error sending friend request:', err);
       const message = err?.data?.error?.message || 'Lỗi khi gửi lời kết bạn';
       alert(message);
     } finally {
-      setFriendActionLoading(prev => ({ ...prev, [friendId]: false }));
+      setFriendActionLoading((prev) => ({ ...prev, [friendId]: false }));
     }
   };
 
   const handleCancelFriendRequest = async (e: React.MouseEvent, friendId: string) => {
     e.stopPropagation();
-    setFriendActionLoading(prev => ({ ...prev, [friendId]: true }));
+    setFriendActionLoading((prev) => ({ ...prev, [friendId]: true }));
     try {
       await cancelFriendRequest({ friendId }).unwrap();
-      
-      setUsers(prevUsers =>
-        prevUsers.map(u =>
-          u.userId === friendId ? { ...u, friendshipStatus: 'none', isFriend: false } : u
-        )
+
+      setUsers((prevUsers) =>
+        prevUsers.map((u) =>
+          u.userId === friendId ? { ...u, friendshipStatus: 'none', isFriend: false } : u,
+        ),
       );
     } catch (err: any) {
       console.error('Error canceling friend request:', err);
       const message = err?.data?.error?.message || 'Lỗi khi hủy lời kết bạn';
       alert(message);
     } finally {
-      setFriendActionLoading(prev => ({ ...prev, [friendId]: false }));
+      setFriendActionLoading((prev) => ({ ...prev, [friendId]: false }));
     }
   };
 
   const handleAcceptFriendRequest = async (e: React.MouseEvent, senderId: string) => {
     e.stopPropagation();
-    setFriendActionLoading(prev => ({ ...prev, [senderId]: true }));
+    setFriendActionLoading((prev) => ({ ...prev, [senderId]: true }));
     try {
       await acceptFriendRequest({ senderId }).unwrap();
-      
-      setUsers(prevUsers =>
-        prevUsers.map(u =>
-          u.userId === senderId ? { ...u, friendshipStatus: 'friend', isFriend: true } : u
-        )
+
+      setUsers((prevUsers) =>
+        prevUsers.map((u) =>
+          u.userId === senderId ? { ...u, friendshipStatus: 'friend', isFriend: true } : u,
+        ),
       );
-      setExpandedPendingReceived(prev => ({ ...prev, [senderId]: false }));
+      setExpandedPendingReceived((prev) => ({ ...prev, [senderId]: false }));
     } catch (err: any) {
       console.error('Error accepting friend request:', err);
       const message = err?.data?.error?.message || 'Lỗi khi chấp nhận lời kết bạn';
       alert(message);
     } finally {
-      setFriendActionLoading(prev => ({ ...prev, [senderId]: false }));
+      setFriendActionLoading((prev) => ({ ...prev, [senderId]: false }));
     }
   };
 
   const handleRejectFriendRequest = async (e: React.MouseEvent, senderId: string) => {
     e.stopPropagation();
-    setFriendActionLoading(prev => ({ ...prev, [senderId]: true }));
+    setFriendActionLoading((prev) => ({ ...prev, [senderId]: true }));
     try {
       await rejectFriendRequest({ senderId }).unwrap();
-      
-      setUsers(prevUsers =>
-        prevUsers.map(u =>
-          u.userId === senderId ? { ...u, friendshipStatus: 'none', isFriend: false } : u
-        )
+
+      setUsers((prevUsers) =>
+        prevUsers.map((u) =>
+          u.userId === senderId ? { ...u, friendshipStatus: 'none', isFriend: false } : u,
+        ),
       );
-      setExpandedPendingReceived(prev => ({ ...prev, [senderId]: false }));
+      setExpandedPendingReceived((prev) => ({ ...prev, [senderId]: false }));
     } catch (err: any) {
       console.error('Error rejecting friend request:', err);
       const message = err?.data?.error?.message || 'Lỗi khi từ chối lời kết bạn';
       alert(message);
     } finally {
-      setFriendActionLoading(prev => ({ ...prev, [senderId]: false }));
+      setFriendActionLoading((prev) => ({ ...prev, [senderId]: false }));
     }
   };
 
   const handleRemoveFriend = async (e: React.MouseEvent, friendId: string) => {
     e.stopPropagation();
-    
+
     // Confirm before removing friend
     if (!window.confirm('Bạn có chắc chắn muốn hủy kết bạn với người này không?')) {
       return;
     }
-    
-    setFriendActionLoading(prev => ({ ...prev, [friendId]: true }));
+
+    setFriendActionLoading((prev) => ({ ...prev, [friendId]: true }));
     try {
       await removeFriend({ friendId }).unwrap();
-      
-      setUsers(prevUsers =>
-        prevUsers.map(u =>
-          u.userId === friendId ? { ...u, friendshipStatus: 'none', isFriend: false } : u
-        )
+
+      setUsers((prevUsers) =>
+        prevUsers.map((u) =>
+          u.userId === friendId ? { ...u, friendshipStatus: 'none', isFriend: false } : u,
+        ),
       );
     } catch (err: any) {
       console.error('Error removing friend:', err);
       const message = err?.data?.error?.message || 'Lỗi khi hủy kết bạn';
       alert(message);
     } finally {
-      setFriendActionLoading(prev => ({ ...prev, [friendId]: false }));
+      setFriendActionLoading((prev) => ({ ...prev, [friendId]: false }));
     }
   };
 
@@ -266,7 +280,10 @@ const SearchPage = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setExpandedPendingReceived(prev => ({ ...prev, [user.userId]: !prev[user.userId] }));
+                setExpandedPendingReceived((prev) => ({
+                  ...prev,
+                  [user.userId]: !prev[user.userId],
+                }));
               }}
               className="w-full px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded-lg transition-all flex items-center justify-center gap-1"
             >
@@ -343,9 +360,12 @@ const SearchPage = () => {
           <div className="flex items-center gap-4 mb-6">
             <Search className="w-8 h-8 text-blue-600" />
             <div>
-              <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-1">Kết quả tìm kiếm</h1>
+              <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-1">
+                Kết quả tìm kiếm
+              </h1>
               <p className="text-gray-600 dark:text-gray-400">
-                Tìm kiếm cho "<span className="font-semibold text-gray-900 dark:text-white">{query}</span>"
+                Tìm kiếm cho "
+                <span className="font-semibold text-gray-900 dark:text-white">{query}</span>"
               </p>
             </div>
           </div>
@@ -361,12 +381,17 @@ const SearchPage = () => {
                 'px-4 py-2 rounded-lg font-medium transition-all whitespace-nowrap flex items-center gap-2',
                 activeTab === tab.id
                   ? 'bg-blue-600/20 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white',
               )}
             >
               {tab.icon && <tab.icon className="w-4 h-4" />}
               {tab.label}
-              <span className={cn('ml-1 text-xs rounded-full px-2 py-0.5', activeTab === tab.id ? 'bg-blue-600/30' : 'bg-gray-200 dark:bg-gray-700')}>
+              <span
+                className={cn(
+                  'ml-1 text-xs rounded-full px-2 py-0.5',
+                  activeTab === tab.id ? 'bg-blue-600/30' : 'bg-gray-200 dark:bg-gray-700',
+                )}
+              >
                 {tab.total}
               </span>
             </button>
@@ -395,7 +420,11 @@ const SearchPage = () => {
 
           {/* Users Results */}
           {!loading && filteredUsers.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4"
+            >
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">Người dùng</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredUsers.map((user) => (
@@ -407,14 +436,21 @@ const SearchPage = () => {
                   >
                     <div className="flex flex-col items-center text-center">
                       <img
-                        src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.userId}`}
+                        src={
+                          user.avatar ||
+                          `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.userId}`
+                        }
                         alt={user.displayName}
                         className="w-16 h-16 rounded-full mb-3 object-cover"
                       />
-                      <h3 className="font-semibold text-gray-900 dark:text-white">{user.displayName}</h3>
+                      <h3 className="font-semibold text-gray-900 dark:text-white">
+                        {user.displayName}
+                      </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{user.email}</p>
-                      <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 mb-3">{user.bio?.substring(0, 100) || 'Chưa có tiểu sử'}</p>
-                      
+                      <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 mb-3">
+                        {user.bio?.substring(0, 100) || 'Chưa có tiểu sử'}
+                      </p>
+
                       {/* Friend status button based on friendshipStatus */}
                       {renderFriendButton(user)}
                     </div>
@@ -426,7 +462,11 @@ const SearchPage = () => {
 
           {/* Groups Results */}
           {!loading && filteredGroups.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4"
+            >
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">Cộng đồng</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredGroups.map((group) => (
@@ -459,7 +499,11 @@ const SearchPage = () => {
 
           {/* Posts Results */}
           {!loading && filteredPosts.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4"
+            >
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">Bài viết</h2>
               <div className="space-y-4">
                 {filteredPosts.map((post) => (
@@ -467,14 +511,14 @@ const SearchPage = () => {
                     key={post.postId}
                     whileHover={{ x: 4 }}
                     className="p-4 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all cursor-pointer"
-                    onClick={() => navigate(`/post/${post.postId}`)}
+                    onClick={() => navigate('/')}
                   >
                     <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Bài viết</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 line-clamp-2">{post.content?.substring(0, 100) || 'Chưa có nội dung'}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 line-clamp-2">
+                      {post.content?.substring(0, 100) || 'Chưa có nội dung'}
+                    </p>
                     <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                      <span>
-                        {new Date(post.createdAt).toLocaleDateString('vi-VN')}
-                      </span>
+                      <span>{new Date(post.createdAt).toLocaleDateString('vi-VN')}</span>
                     </div>
                   </motion.div>
                 ))}
@@ -483,19 +527,25 @@ const SearchPage = () => {
           )}
 
           {/* No Results */}
-          {!loading && filteredUsers.length === 0 && filteredGroups.length === 0 && filteredPosts.length === 0 && !error && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-center py-12"
-            >
-              <Search className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Không tìm thấy kết quả</h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Không có kết quả nào cho "<span className="font-semibold">{query}</span>"
-              </p>
-            </motion.div>
-          )}
+          {!loading &&
+            filteredUsers.length === 0 &&
+            filteredGroups.length === 0 &&
+            filteredPosts.length === 0 &&
+            !error && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center py-12"
+              >
+                <Search className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                  Không tìm thấy kết quả
+                </h3>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Không có kết quả nào cho "<span className="font-semibold">{query}</span>"
+                </p>
+              </motion.div>
+            )}
         </div>
       </div>
     </div>

@@ -93,6 +93,20 @@
 }
 
 @layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .feed-card-virtualized {
+    content-visibility: auto;
+    contain-intrinsic-size: 560px;
+  }
+
   /** Nhảy từ danh sách ghim / tìm tin — một lần, không lặp */
   .chat-msg-jump-highlight {
     animation: chat-msg-jump-flash 2.1s ease-out forwards;
@@ -125,6 +139,21 @@
   }
 }
 
+@keyframes floatUp {
+  0%   { transform: translateY(0) scale(1); opacity: 1; }
+  50%  { transform: translateY(-40px) scale(1.5); opacity: 1; }
+  100% { transform: translateY(-80px) scale(0.5); opacity: 0; }
+}
+.emoji-float { animation: floatUp 0.8s ease-out forwards; }
+
+@keyframes emojiPop {
+  0%   { transform: scale(0) translateY(4px); opacity: 0; }
+  60%  { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+.emoji-pop { animation: emojiPop 0.25s ease-out forwards; }
+
+
 @layer components {
   .glass-card {
     @apply backdrop-blur-xl bg-white/70 border border-white/20 shadow-sm;
@@ -140,6 +169,87 @@
 
   .asymmetric-grid {
     @apply grid grid-cols-12 gap-6;
+  }
+
+  .post-richtext .ProseMirror {
+    @apply outline-none whitespace-normal leading-7 text-foreground;
+  }
+
+  .post-richtext .ProseMirror > * + * {
+    @apply mt-3;
+  }
+
+  .post-richtext .ProseMirror p {
+    @apply whitespace-pre-wrap;
+  }
+
+  .post-richtext .ProseMirror ul {
+    @apply list-disc pl-6;
+  }
+
+  .post-richtext .ProseMirror ol {
+    @apply list-decimal pl-6;
+  }
+
+  .post-richtext .ProseMirror li {
+    @apply whitespace-pre-wrap;
+  }
+
+  .post-richtext .ProseMirror li p {
+    @apply m-0;
+  }
+
+  .post-richtext .ProseMirror img {
+    @apply mt-4 w-full rounded-2xl object-cover;
+  }
+
+  .post-richtext .ProseMirror br {
+    content: '';
+  }
+
+  .post-richtext .ProseMirror strong {
+    @apply font-bold;
+  }
+
+  .post-richtext .ProseMirror em {
+    @apply italic;
+  }
+
+  .post-richtext .ProseMirror s {
+    @apply line-through;
+  }
+
+  .post-richtext .ProseMirror u {
+    @apply underline;
+  }
+
+  .post-richtext .ProseMirror mark {
+    @apply rounded bg-yellow-300/50 px-1 text-foreground;
+  }
+
+  .post-richtext .ProseMirror code {
+    @apply rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.9em];
+  }
+
+  /* ── Tiptap post editor (modal) ── */
+  .tiptap-post-editor .ProseMirror {
+    @apply min-h-[140px] outline-none text-lg leading-relaxed text-foreground;
+  }
+
+  .tiptap-post-editor .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .tiptap-post-editor .ProseMirror p {
+    margin: 0;
+  }
+
+  .tiptap-post-editor .ProseMirror > * + * {
+    margin-top: 0.5rem;
   }
 }
 
