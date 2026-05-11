@@ -1,9 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Camera, Mail, Phone, FileText, User as UserIcon, Loader2, Check, X } from 'lucide-react';
+import {
+  Upload,
+  Camera,
+  Mail,
+  Phone,
+  FileText,
+  User as UserIcon,
+  Loader2,
+  Check,
+  X,
+} from 'lucide-react';
 import { useGetProfileQuery, useUpdateProfileMutation } from '@/store/api/userApi';
 import { useEnableFaceLoginMutation, useDisableFaceLoginMutation } from '@/store/api/authApi';
 import { apiClient } from '@/services/api';
@@ -11,9 +22,16 @@ import AwsFaceLivenessComponent from '@/components/AwsFaceLivenessComponent';
 
 // ── Validation Schema ──
 const updateProfileSchema = z.object({
-  displayName: z.string().min(2, 'Tên hiển thị phải có ít nhất 2 ký tự').max(50, 'Tên hiển thị không quá 50 ký tự'),
+  displayName: z
+    .string()
+    .min(2, 'Tên hiển thị phải có ít nhất 2 ký tự')
+    .max(50, 'Tên hiển thị không quá 50 ký tự'),
   bio: z.string().max(500, 'Bio không quá 500 ký tự').optional().or(z.literal('')),
-  phone: z.string().regex(/^(\+84\d{9,10})?$/, 'Số điện thoại không hợp lệ (định dạng: +84901234567)').optional().or(z.literal('')),
+  phone: z
+    .string()
+    .regex(/^(\+84\d{9,10})?$/, 'Số điện thoại không hợp lệ (định dạng: +84901234567)')
+    .optional()
+    .or(z.literal('')),
   avatar: z.string().url().optional().or(z.literal('')),
 });
 
@@ -24,7 +42,7 @@ const ProfilePage: React.FC = () => {
   const [updateProfile, { isLoading: isUpdating }] = useUpdateProfileMutation();
   const [enableFaceLogin, { isLoading: isEnablingFaceLogin }] = useEnableFaceLoginMutation();
   const [disableFaceLogin, { isLoading: isDisablingFaceLogin }] = useDisableFaceLoginMutation();
-  
+
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -116,7 +134,6 @@ const ProfilePage: React.FC = () => {
     }
   };
 
-
   const startFaceCamera = async () => {
     try {
       // Step 1: Create liveness session with AWS
@@ -144,16 +161,16 @@ const ProfilePage: React.FC = () => {
     try {
       // AWS has verified liveness and extracted reference image
       // Now complete enablement with previously entered password
-      await enableFaceLogin({ 
-        password: passwordDialog.password, 
-        livenessSessionId 
+      await enableFaceLogin({
+        password: passwordDialog.password,
+        livenessSessionId,
       }).unwrap();
-      
+
       setFaceLoginEnabled(true);
       setLivenessSessionId('');
       setShowAwsFaceLiveness(false);
       setPasswordDialog({ show: false, password: '' });
-      
+
       setMessage({
         type: 'success',
         text: 'Đăng nhập bằng khuôn mặt đã được bật!',
@@ -164,10 +181,10 @@ const ProfilePage: React.FC = () => {
       setShowAwsFaceLiveness(false);
       setLivenessSessionId('');
       setFaceLoginEnabled(false);
-      
+
       // Show error message
-      const errorMsg = 
-        (error as any)?.data?.message || 
+      const errorMsg =
+        (error as any)?.data?.message ||
         'Có lỗi xảy ra khi bật đăng nhập bằng khuôn mặt. Vui lòng thử lại.';
       setMessage({
         type: 'error',
@@ -282,12 +299,13 @@ const ProfilePage: React.FC = () => {
               className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2"
             >
               <div className="relative">
-                <button
-                  onClick={handleAvatarClick}
-                  className="relative inline-block group"
-                >
+                <button onClick={handleAvatarClick} className="relative inline-block group">
                   <img
-                    src={avatarPreview || user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.userId}`}
+                    src={
+                      avatarPreview ||
+                      user?.avatar ||
+                      `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.userId}`
+                    }
                     alt={user?.displayName}
                     className="w-32 h-32 rounded-full border-4 border-white dark:border-gray-800 object-cover"
                   />
@@ -373,9 +391,7 @@ const ProfilePage: React.FC = () => {
                   placeholder="Viết một tiểu sử ngắn về bản thân..."
                   rows={4}
                 />
-                {errors.bio && (
-                  <p className="mt-1 text-sm text-red-500">{errors.bio.message}</p>
-                )}
+                {errors.bio && <p className="mt-1 text-sm text-red-500">{errors.bio.message}</p>}
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {watch('bio')?.length || 0}/500 ký tự
                 </p>
@@ -415,7 +431,11 @@ const ProfilePage: React.FC = () => {
                       }`}
                     />
                     <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">
-                      {user?.status === 'online' ? 'Đang hoạt động' : user?.status === 'away' ? 'Vắng mặt' : 'Ngoại tuyến'}
+                      {user?.status === 'online'
+                        ? 'Đang hoạt động'
+                        : user?.status === 'away'
+                          ? 'Vắng mặt'
+                          : 'Ngoại tuyến'}
                     </span>
                   </div>
                 </div>
@@ -524,7 +544,8 @@ const ProfilePage: React.FC = () => {
           className="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4"
         >
           <p className="text-sm text-blue-800 dark:text-blue-300">
-            <strong>💡 Mẹo:</strong> Bạn có thể nhấp vào ảnh đại diện để thay đổi nó. Các thay đổi sẽ được lưu ngay khi bạn nhấp nút "Lưu thay đổi".
+            <strong>💡 Mẹo:</strong> Bạn có thể nhấp vào ảnh đại diện để thay đổi nó. Các thay đổi
+            sẽ được lưu ngay khi bạn nhấp nút "Lưu thay đổi".
           </p>
         </motion.div>
       </div>
@@ -541,80 +562,85 @@ const ProfilePage: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Password Verification Dialog */}
-      <AnimatePresence>
-        {passwordDialog.show && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 backdrop-blur-md bg-opacity-50 flex items-center justify-center z-50"
-            onClick={cancelPasswordDialog}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-                  Xác thực mật khẩu
-                </h3>
-                <button
-                  onClick={cancelPasswordDialog}
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+      {/* Portal avoids broken `fixed` inside App.tsx route `motion.div` (transform / will-change). */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            {passwordDialog.show && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[100] backdrop-blur-md bg-black/40 flex items-center justify-center p-4"
+                onClick={cancelPasswordDialog}
+              >
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
                 >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                      Xác thực mật khẩu
+                    </h3>
+                    <button
+                      onClick={cancelPasswordDialog}
+                      className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
 
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Nhập mật khẩu của bạn để bảo mật tài khoản trước khi bật đăng nhập bằng khuôn mặt.
-              </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Nhập mật khẩu của bạn để bảo mật tài khoản trước khi bật đăng nhập bằng khuôn
+                    mặt.
+                  </p>
 
-              <input
-                type="password"
-                value={passwordDialog.password}
-                onChange={(e) =>
-                  setPasswordDialog({ ...passwordDialog, password: e.target.value })
-                }
-                placeholder="Nhập mật khẩu"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    handlePasswordConfirm();
-                  }
-                }}
-              />
+                  <input
+                    type="password"
+                    value={passwordDialog.password}
+                    onChange={(e) =>
+                      setPasswordDialog({ ...passwordDialog, password: e.target.value })
+                    }
+                    placeholder="Nhập mật khẩu"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handlePasswordConfirm();
+                      }
+                    }}
+                  />
 
-              <div className="flex gap-3">
-                <button
-                  onClick={cancelPasswordDialog}
-                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-                >
-                  Hủy
-                </button>
-                <button
-                  onClick={handlePasswordConfirm}
-                  disabled={isEnablingFaceLogin}
-                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isEnablingFaceLogin ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Đang xử lý...
-                    </>
-                  ) : (
-                    'Tiếp tục'
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={cancelPasswordDialog}
+                      className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      onClick={handlePasswordConfirm}
+                      disabled={isEnablingFaceLogin}
+                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {isEnablingFaceLogin ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Đang xử lý...
+                        </>
+                      ) : (
+                        'Tiếp tục'
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
         )}
-      </AnimatePresence>
     </div>
   );
 };
