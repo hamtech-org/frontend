@@ -7,7 +7,12 @@ import { apiClient } from '@/services/api';
 import cuocGoiNho from '@/assets/ringtones/CuocGoiNho.mp3';
 import type { RootState, AppDispatch } from '@/store/store';
 import { store } from '@/store/store';
-import type { CallType, CallScope, IncomingCallData } from '@/types/call.types';
+import type {
+  CallType,
+  CallScope,
+  IncomingCallData,
+  IncomingCallDismissedPayload,
+} from '@/types/call.types';
 import {
   setOutgoingCall,
   setIncomingCall,
@@ -142,10 +147,21 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
+    const onIncomingDismissed = (data: unknown) => {
+      const p = data as IncomingCallDismissedPayload;
+      if (!p?.channelName || !p?.conversationId) return;
+      const st = store.getState().call;
+      if (st.status !== 'incoming-ringing') return;
+      if (st.channelName !== p.channelName) return;
+      if (st.conversationId !== p.conversationId) return;
+      dispatch(resetCall());
+    };
+
     socketService.on('call:incoming', onIncoming);
     socketService.on('call:accepted', onAccepted);
     socketService.on('call:rejected', onRejected);
     socketService.on('call:ended', onEnded);
+    socketService.on('call:incoming-dismissed', onIncomingDismissed);
     socketService.on('call:upgrade-request', onUpgradeRequest);
     socketService.on('call:upgrade-response', onUpgradeResponse);
 
@@ -154,6 +170,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       socketService.off('call:accepted', onAccepted);
       socketService.off('call:rejected', onRejected);
       socketService.off('call:ended', onEnded);
+      socketService.off('call:incoming-dismissed', onIncomingDismissed);
       socketService.off('call:upgrade-request', onUpgradeRequest);
       socketService.off('call:upgrade-response', onUpgradeResponse);
     };
