@@ -413,6 +413,10 @@ export function useGroupConversationController({
     if (editingId) {
       setActionBusy('updateTask', true);
       try {
+        const prevTaskRow = groupTasks.find((t) => String(t.taskId) === String(editingId)) ?? null;
+        const prevDue = String(prevTaskRow?.dueDate ?? '').trim();
+        const prevTitle = String(prevTaskRow?.title ?? '').trim();
+        const prevDesc = String(prevTaskRow?.description ?? '').trim();
         const dueDateIso = deadlineLocalInputToJsonValue(taskDeadline) ?? undefined;
         await groupApi.patchTask(activeConversationId, editingId, {
           title: taskTitle.trim(),
@@ -449,6 +453,20 @@ export function useGroupConversationController({
           assigneeUserIds,
           assigneesCount,
         });
+        const nextDue = String(dueDateIso ?? '').trim();
+        const nextTitle = taskTitle.trim();
+        const nextDesc = taskNote.trim();
+        const focus =
+          prevDue !== nextDue
+            ? 'dueDate'
+            : prevTitle !== nextTitle
+              ? 'title'
+              : prevDesc !== nextDesc
+                ? 'note'
+                : 'card';
+        // Server sẽ bắn system message `task_updated`. Tránh bơm local để khỏi bị lặp.
+        // `focus` vẫn được dùng để highlight đúng phần khi user bấm “Xem” (đọc từ system payload).
+        void focus;
         toast.success('Đã lưu thay đổi');
         modalActions.closeTaskModal();
       } catch (err) {
@@ -623,9 +641,14 @@ export function useGroupConversationController({
     async (taskId: string, opts?: { skipConfirm?: boolean }) => {
       if (!activeConversationId) return;
       const tid = String(taskId);
-      const titleFromBoard = String(
-        groupTasks.find((t) => String(t.taskId) === tid)?.title ?? '',
-      ).trim();
+      const taskRow = groupTasks.find((t) => String(t.taskId) === tid) ?? null;
+      const creatorId = String(taskRow?.creatorId ?? '').trim();
+      const isCreator = Boolean(currentUserId && creatorId && creatorId === String(currentUserId));
+      if (creatorId && !isCreator) {
+        toast.error('Chỉ người tạo mới được hủy công việc này');
+        return;
+      }
+      const titleFromBoard = String(taskRow?.title ?? '').trim();
       const titleFromEditor =
         editingTaskId && String(editingTaskId) === tid ? taskTitle.trim() : '';
       const displayTitle = (titleFromEditor || titleFromBoard || 'Công việc').trim();
@@ -662,6 +685,7 @@ export function useGroupConversationController({
       activeConversationId,
       fetchGroupTasks,
       groupTasks,
+      currentUserId,
       modalActions,
       editingTaskId,
       taskTitle,
