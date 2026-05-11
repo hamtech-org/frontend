@@ -829,6 +829,7 @@ export function ChatMessageList({
 
               return (
                 <div
+                  id={`chat-msg-${msg.messageId}`}
                   key={msg.messageId}
                   className="w-full flex flex-col items-center my-3 select-none"
                 >
@@ -851,7 +852,9 @@ export function ChatMessageList({
                             Boolean(taskCard?.taskId) &&
                             !String(taskCard.taskId).startsWith('tmp-') &&
                             !tBoard;
-                          const creatorIdForTask = (tBoard as any)?.creatorId ?? taskCard.actorId;
+                          // Chỉ người tạo task (creatorId) mới được sửa/hủy.
+                          // Không fallback sang actorId để tránh trường hợp người "cập nhật" bị hiểu nhầm là người tạo.
+                          const creatorIdForTask = (tBoard as any)?.creatorId ?? null;
                           const isTaskCreator = Boolean(
                             currentUserId &&
                             creatorIdForTask &&
@@ -1021,7 +1024,10 @@ export function ChatMessageList({
                                 </div>
 
                                 {/* Title */}
-                                <div className="text-[16px] font-black text-foreground break-words leading-snug mb-3.5 pr-2">
+                                <div
+                                  id={`task-card-${taskCard.taskId}-title`}
+                                  className="text-[16px] font-black text-foreground break-words leading-snug mb-3.5 pr-2"
+                                >
                                   {taskCard.title}
                                 </div>
 
@@ -1085,10 +1091,12 @@ export function ChatMessageList({
                                         <span className="font-semibold text-muted-foreground mr-0.5">
                                           Hạn chót:
                                         </span>
-                                        <TaskDeadlineCalendar
-                                          dateIso={taskCard.dueDate}
-                                          size="sm"
-                                        />
+                                        <div id={`task-card-${taskCard.taskId}-dueDate`}>
+                                          <TaskDeadlineCalendar
+                                            dateIso={taskCard.dueDate}
+                                            size="sm"
+                                          />
+                                        </div>
                                       </div>
                                     </div>
                                   ) : null}
@@ -1320,14 +1328,101 @@ export function ChatMessageList({
                               obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
                             );
                             const titleStr = String(obj?.task?.title ?? '').trim();
+                            const taskId = String(obj?.task?.taskId ?? '').trim();
                             return (
-                              <div className="flex items-center justify-center gap-2">
-                                <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
-                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
-                                    ' đã cập nhật công việc'}
-                                  {titleStr ? ` "${titleStr}"` : ''}
-                                </span>
+                              <div className="flex w-full items-center justify-between gap-2">
+                                <div className="min-w-0 flex items-center gap-2">
+                                  <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                                  <span className="min-w-0 truncate text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                    {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                      ' đã cập nhật công việc'}
+                                    {titleStr ? ` "${titleStr}"` : ''}
+                                  </span>
+                                </div>
+                                {taskId && onJumpToMessage ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      // Nhảy tới thẻ công việc trong khung chat + highlight border.
+                                      // Ưu tiên messageId thật đang có trong list (phòng trường hợp không phải local-task-card:*).
+                                      let targetMessageId = `local-task-card:${activeConversationId}:${taskId}`;
+                                      let focusPart: 'dueDate' | 'title' | 'note' | 'card' = 'card';
+                                      for (const m of allMessages) {
+                                        try {
+                                          if ((m as any)?.type !== 'system') continue;
+                                          const raw = String((m as any)?.content ?? '').trim();
+                                          if (!raw.startsWith('{')) continue;
+                                          const payload = JSON.parse(raw) as {
+                                            kind?: string;
+                                            task?: { taskId?: string; focus?: string };
+                                          };
+                                          if (payload?.kind === 'task_assigned') {
+                                            const tid = String(payload?.task?.taskId ?? '').trim();
+                                            if (tid && tid === taskId) {
+                                              targetMessageId = String(
+                                                (m as any)?.messageId ?? targetMessageId,
+                                              );
+                                              break;
+                                            }
+                                          }
+                                          if (payload?.kind === 'task_updated') {
+                                            const tid = String(payload?.task?.taskId ?? '').trim();
+                                            if (tid && tid === taskId) {
+                                              const f = String(payload?.task?.focus ?? '').trim();
+                                              if (
+                                                f === 'dueDate' ||
+                                                f === 'title' ||
+                                                f === 'note' ||
+                                                f === 'card'
+                                              ) {
+                                                focusPart = f;
+                                              }
+                                            }
+                                          }
+                                        } catch {
+                                          // ignore malformed payloads
+                                        }
+                                      }
+                                      onJumpToMessage(targetMessageId);
+                                      window.setTimeout(() => {
+                                        const id =
+                                          focusPart === 'dueDate'
+                                            ? `task-card-${taskId}-dueDate`
+                                            : focusPart === 'title'
+                                              ? `task-card-${taskId}-title`
+                                              : focusPart === 'note'
+                                                ? `task-card-${taskId}-note`
+                                                : `chat-msg-${targetMessageId}`;
+                                        const el = document.getElementById(id);
+                                        if (!el) return;
+                                        el.animate(
+                                          [
+                                            {
+                                              boxShadow: '0 0 0 0 rgba(59, 130, 246, 0.0)',
+                                              outline: '0px solid rgba(59, 130, 246, 0.0)',
+                                              borderRadius: '14px',
+                                            },
+                                            {
+                                              boxShadow: '0 0 0 4px rgba(59, 130, 246, 0.22)',
+                                              outline: '2px solid rgba(59, 130, 246, 0.45)',
+                                              borderRadius: '14px',
+                                            },
+                                            {
+                                              boxShadow: '0 0 0 0 rgba(59, 130, 246, 0.0)',
+                                              outline: '0px solid rgba(59, 130, 246, 0.0)',
+                                              borderRadius: '14px',
+                                            },
+                                          ],
+                                          { duration: 1400, easing: 'ease-out' },
+                                        );
+                                      }, 420);
+                                    }}
+                                    className="ml-1 inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border border-black/10 bg-black/[0.03] px-3 text-[11px] font-bold text-foreground/80 hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/80 dark:hover:bg-white/[0.10] transition-colors"
+                                  >
+                                    Xem
+                                  </button>
+                                ) : null}
                               </div>
                             );
                           }
@@ -1382,9 +1477,16 @@ export function ChatMessageList({
                         } catch {
                           // ignore
                         }
+                        const rawText = String(content ?? '').trim();
+                        const isPinNotice =
+                          rawText.includes('đã ghim') || rawText.includes('đã bỏ ghim');
                         return (
                           <div className="flex items-center justify-center gap-2">
-                            <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                            {isPinNotice ? (
+                              <Pin className="w-4 h-4 text-blue-500 shrink-0" />
+                            ) : (
+                              <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                            )}
                             <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
                               {content}
                             </span>
@@ -1393,7 +1495,16 @@ export function ChatMessageList({
                       })()
                     ) : (
                       <div className="flex items-center justify-center gap-2">
-                        <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                        {String(content ?? '')
+                          .trim()
+                          .includes('đã ghim') ||
+                        String(content ?? '')
+                          .trim()
+                          .includes('đã bỏ ghim') ? (
+                          <Pin className="w-4 h-4 text-blue-500 shrink-0" />
+                        ) : (
+                          <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                        )}
                         <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
                           {content}
                         </span>

@@ -246,6 +246,18 @@ export function formatPinnedMessagePreviewLine(msg: IMessage): string {
     }
   }
   if ((msg as { type?: string }).type === 'system') {
+    const raw = String(msg.content ?? '').trim();
+    if (raw.startsWith('{')) {
+      try {
+        const obj = JSON.parse(raw) as { kind?: string; poll?: { question?: string } };
+        if (obj?.kind === 'poll_created') {
+          const q = String(obj?.poll?.question ?? '').trim();
+          return q || 'Bình chọn';
+        }
+      } catch {
+        // ignore malformed JSON
+      }
+    }
     return 'Thông báo';
   }
   if (msg.type === 'poll') return 'Bình chọn';

@@ -440,6 +440,7 @@ export default function ChatPage() {
     groupLoading,
     groupActionLoading,
     setGroupTasks,
+    messages: messageData.allMessages,
     groupActions: groupController,
     directActions,
     messageActions,
