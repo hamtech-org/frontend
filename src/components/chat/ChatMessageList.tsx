@@ -1476,9 +1476,16 @@ export function ChatMessageList({
                         } catch {
                           // ignore
                         }
+                        const rawText = String(content ?? '').trim();
+                        const isPinNotice =
+                          rawText.includes('đã ghim') || rawText.includes('đã bỏ ghim');
                         return (
                           <div className="flex items-center justify-center gap-2">
-                            <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                            {isPinNotice ? (
+                              <Pin className="w-4 h-4 text-blue-500 shrink-0" />
+                            ) : (
+                              <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                            )}
                             <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
                               {content}
                             </span>
@@ -1487,7 +1494,16 @@ export function ChatMessageList({
                       })()
                     ) : (
                       <div className="flex items-center justify-center gap-2">
-                        <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                        {String(content ?? '')
+                          .trim()
+                          .includes('đã ghim') ||
+                        String(content ?? '')
+                          .trim()
+                          .includes('đã bỏ ghim') ? (
+                          <Pin className="w-4 h-4 text-blue-500 shrink-0" />
+                        ) : (
+                          <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                        )}
                         <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
                           {content}
                         </span>
