@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowRight, Eye, EyeOff, Loader2, User, Mail, Lock } from 'lucide-react';
+import { getApiErrorMessage } from '@/utils/apiErrorMessage';
 
 const registerSchema = z
   .object({
@@ -248,13 +249,7 @@ export const RegisterForm = ({ onSubmit, isLoading, error, onLoginClick }: Regis
       </form>
 
       {error && (
-        <div className="text-red-500 text-sm text-center mt-4">
-          {(() => {
-            console.log('📝 [DEBUG] RegisterForm - error:', error);
-            return null;
-          })()}
-          {(error as any)?.data?.message || 'Đã có lỗi xảy ra'}
-        </div>
+        <div className="text-red-500 text-sm text-center mt-4">{getApiErrorMessage(error)}</div>
       )}
 
       <div className="mt-6 flex items-center justify-between">
