@@ -113,7 +113,26 @@ export function ChatModalsHost({
   pinLimit,
   convPinLimit,
 }: ChatModalsHostProps) {
-  const { core, group, groupActions, directActions, messageActions } = useChatPageContext();
+  const { core, group, messages, groupActions, directActions, messageActions } =
+    useChatPageContext();
+
+  const pollMsgById = (pollId: string): IMessage | null => {
+    for (const m of messages ?? []) {
+      try {
+        const raw = String((m as any)?.content ?? '').trim();
+        if (!raw.startsWith('{')) continue;
+        const obj = JSON.parse(raw) as { kind?: string; poll?: { pollId?: string } };
+        if (obj?.kind === 'poll_created' && String(obj?.poll?.pollId ?? '') === String(pollId)) {
+          return m as IMessage;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  };
+
+  const isPollPinned = (pollId: string) => Boolean(pollMsgById(pollId)?.isPinned);
 
   const {
     showPollVoteModal,
@@ -156,11 +175,25 @@ export function ChatModalsHost({
       <PollVoteModal
         open={showPollVoteModal}
         onClose={() => actions.setShowPollVoteModal(false)}
-        poll={activePollId ? (group.polls.find((p) => p.pollId === activePollId) ?? null) : null}
+        poll={
+          activePollId
+            ? (() => {
+                const base = group.polls.find((p) => p.pollId === activePollId) ?? null;
+                if (!base) return null;
+                return { ...base, isPinned: isPollPinned(activePollId) };
+              })()
+            : null
+        }
         currentUserId={core.currentUserId}
         onToggleVote={(pollId, optionIndex) =>
           void groupActions.handleVotePoll(pollId, optionIndex)
         }
+        onClosePoll={(pollId) => void groupActions.handleClosePoll(pollId)}
+        onTogglePinPoll={(pollId) => {
+          const m = pollMsgById(pollId);
+          if (!m) return;
+          void messageActions.handleTogglePinMsg(m);
+        }}
       />
       <MarkReadModal open={showMarkReadModal} onClose={() => actions.setShowMarkReadModal(false)} />
       <AddFriendModal
@@ -260,14 +293,19 @@ export function ChatModalsHost({
         title="Hủy công việc?"
         description={
           taskDeleteConfirm ? (
-            <>
-              Bạn sắp hủy công việc{' '}
-              <span className="font-bold text-foreground">«{taskDeleteConfirm.title}»</span>.
-              <br />
-              <br />
-              Thẻ giao việc sẽ được thu hồi cho toàn bộ nhóm (không còn hiển thị). Mọi người vẫn
-              thấy dòng nhật ký hủy việc trong khung chat.
-            </>
+            <div className="flex flex-col gap-3">
+              <div>
+                Bạn sắp hủy công việc:{' '}
+                <span className="font-bold text-foreground bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded text-[15px] inline-block mt-1">
+                  {taskDeleteConfirm.title}
+                </span>
+              </div>
+              <div className="text-[13.5px] text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/10 p-3 rounded-lg border border-red-100 dark:border-red-500/20 leading-relaxed mt-1">
+                <span className="font-bold block mb-1">Lưu ý:</span>
+                Thẻ giao việc sẽ được thu hồi cho toàn bộ nhóm và không còn hiển thị. Mọi người vẫn
+                thấy dòng nhật ký hủy việc trong khung chat.
+              </div>
+            </div>
           ) : undefined
         }
         confirmLabel="Hủy công việc"

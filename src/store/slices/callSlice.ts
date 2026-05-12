@@ -1,5 +1,11 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import type { CallState, CallType, CallScope, IncomingCallData, ActiveGroupCallSession } from '@/types/call.types';
+import type {
+  CallState,
+  CallType,
+  CallScope,
+  IncomingCallData,
+  ActiveGroupCallSession,
+} from '@/types/call.types';
 
 const initialState: CallState = {
   status: 'idle',
@@ -76,7 +82,7 @@ const callSlice = createSlice({
     setCallEnded: (state) => {
       state.status = 'ended';
     },
-    setEndReason: (state, action: PayloadAction<'missed' | 'rejected' | null>) => {
+    setEndReason: (state, action: PayloadAction<'missed' | 'rejected' | 'busy' | null>) => {
       state.endReason = action.payload;
     },
     setReturnTo: (state, action: PayloadAction<string | null>) => {

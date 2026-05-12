@@ -1,11 +1,18 @@
 import React, { createContext, useContext, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import { socketService } from '@/services/socket';
 import { apiClient } from '@/services/api';
+import cuocGoiNho from '@/assets/ringtones/CuocGoiNho.mp3';
 import type { RootState, AppDispatch } from '@/store/store';
 import { store } from '@/store/store';
-import type { CallType, CallScope, IncomingCallData } from '@/types/call.types';
+import type {
+  CallType,
+  CallScope,
+  IncomingCallData,
+  IncomingCallDismissedPayload,
+} from '@/types/call.types';
 import {
   setOutgoingCall,
   setIncomingCall,
@@ -40,6 +47,11 @@ type ChannelReadyPayload = {
   sessionId?: string;
 };
 
+function playCuocGoiNhoTone(): void {
+  const a = new Audio(cuocGoiNho);
+  void a.play().catch(() => {});
+}
+
 function buildCallSearch(
   channelName: string,
   type: CallType,
@@ -64,7 +76,10 @@ interface CallContextValue {
   acceptCall: () => void;
   rejectCall: () => void;
   /** Cuộc gọi 1-1: gửi call:end + log. */
-  endCall: (meta?: { durationSec?: number; result?: 'completed' | 'missed' | 'rejected' }) => void;
+  endCall: (meta?: {
+    durationSec?: number;
+    result?: 'completed' | 'missed' | 'rejected' | 'cancelled';
+  }) => void;
   /** Nhóm: rời Agora, cuộc gọi tiếp tục với người khác. */
   leaveGroupCall: () => void;
   /** Nhóm: chỉ host — kết thúc cho mọi người. */
@@ -106,6 +121,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const onRejected = () => {
+      playCuocGoiNhoTone();
       dispatch(setEndReason('rejected'));
       dispatch(setCallEnded());
     };
@@ -131,10 +147,21 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
+    const onIncomingDismissed = (data: unknown) => {
+      const p = data as IncomingCallDismissedPayload;
+      if (!p?.channelName || !p?.conversationId) return;
+      const st = store.getState().call;
+      if (st.status !== 'incoming-ringing') return;
+      if (st.channelName !== p.channelName) return;
+      if (st.conversationId !== p.conversationId) return;
+      dispatch(resetCall());
+    };
+
     socketService.on('call:incoming', onIncoming);
     socketService.on('call:accepted', onAccepted);
     socketService.on('call:rejected', onRejected);
     socketService.on('call:ended', onEnded);
+    socketService.on('call:incoming-dismissed', onIncomingDismissed);
     socketService.on('call:upgrade-request', onUpgradeRequest);
     socketService.on('call:upgrade-response', onUpgradeResponse);
 
@@ -143,6 +170,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       socketService.off('call:accepted', onAccepted);
       socketService.off('call:rejected', onRejected);
       socketService.off('call:ended', onEnded);
+      socketService.off('call:incoming-dismissed', onIncomingDismissed);
       socketService.off('call:upgrade-request', onUpgradeRequest);
       socketService.off('call:upgrade-response', onUpgradeResponse);
     };
@@ -162,9 +190,22 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       dispatch(setReturnTo(location.pathname));
       const conversationId = getConversationIdFromPath(location.pathname);
       if (!conversationId) return;
-      socketService.emit('call:initiate', { calleeId, type, conversationId, scope: 'direct' });
 
-      socketService.once('call:channel-ready', (data: unknown) => {
+      const detachInitiateListeners = () => {
+        socketService.off('call:channel-ready', onChannelReady);
+        socketService.off('call:busy', onBusy);
+      };
+
+      const onBusy = (raw: unknown) => {
+        const p = raw as { conversationId?: string };
+        if (p?.conversationId !== conversationId) return;
+        detachInitiateListeners();
+        playCuocGoiNhoTone();
+        toast.info('Đang bận');
+      };
+
+      const onChannelReady = (data: unknown) => {
+        detachInitiateListeners();
         const payload = data as ChannelReadyPayload;
         dispatch(
           setOutgoingCall({
@@ -187,7 +228,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             payload.hostId,
           )}`,
         );
-      });
+      };
+
+      socketService.on('call:busy', onBusy);
+      socketService.on('call:channel-ready', onChannelReady);
+      socketService.emit('call:initiate', { calleeId, type, conversationId, scope: 'direct' });
     },
     [callState.status, dispatch, navigate, location.pathname],
   );
@@ -242,7 +287,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const acceptCall = useCallback(() => {
-    if (callState.status !== 'incoming-ringing' || !callState.channelName || !callState.callerId) return;
+    if (callState.status !== 'incoming-ringing' || !callState.channelName || !callState.callerId)
+      return;
 
     socketService.emit('call:accept', {
       channelName: callState.channelName,
@@ -280,7 +326,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [callState, dispatch]);
 
   const endCall = useCallback(
-    (meta?: { durationSec?: number; result?: 'completed' | 'missed' | 'rejected' }) => {
+    (meta?: {
+      durationSec?: number;
+      result?: 'completed' | 'missed' | 'rejected' | 'cancelled';
+    }) => {
       if (callState.callScope === 'group') return;
       const peerId = callState.callerId || callState.calleeId;
       if (!callState.channelName || !peerId || !callState.conversationId) return;
@@ -299,7 +348,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const leaveGroupCall = useCallback(() => {
-    if (callState.callScope !== 'group' || !callState.channelName || !callState.conversationId) return;
+    if (callState.callScope !== 'group' || !callState.channelName || !callState.conversationId)
+      return;
     socketService.emit('call:group-leave', {
       channelName: callState.channelName,
       conversationId: callState.conversationId,
@@ -309,7 +359,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const endGroupCallForAll = useCallback(
     (meta?: { durationSec?: number }) => {
-      if (callState.callScope !== 'group' || !callState.channelName || !callState.conversationId) return;
+      if (callState.callScope !== 'group' || !callState.channelName || !callState.conversationId)
+        return;
       if (!callState.hostId || callState.hostId !== currentUserId) return;
 
       socketService.emit('call:group-end-all', {

@@ -1,5 +1,4 @@
 import type { RefObject, SetStateAction, Dispatch, ReactNode } from 'react';
-import { Phone, Video } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { FriendsListView } from '@/components/chat/FriendsListView';
 import { FriendRequestsView } from '@/components/chat/FriendRequestsView';
@@ -92,11 +91,25 @@ export function ChatMainContent(props: ChatMainContentProps) {
   const { joinActiveGroupCall } = useCallContext();
   const activeGroupCall = useSelector((s: RootState) => s.call.activeGroupCall);
   const callStatus = useSelector((s: RootState) => s.call.status);
+  const callScope = useSelector((s: RootState) => s.call.callScope);
+  const callConversationId = useSelector((s: RootState) => s.call.conversationId);
+  const callChannelName = useSelector((s: RootState) => s.call.channelName);
+  /** Đang trong chuông / kết nối / cuộc gọi nhóm của đúng hội thoại này — ẩn nút Tham gia (đã có modal hoặc CallPage). */
+  const inThisGroupCallFlow =
+    core.activeConversation?.type === 'group' &&
+    Boolean(core.activeConversationId) &&
+    activeGroupCall?.conversationId === core.activeConversationId &&
+    callScope === 'group' &&
+    callConversationId === core.activeConversationId &&
+    ['incoming-ringing', 'outgoing-ringing', 'connecting', 'connected'].includes(callStatus) &&
+    (!activeGroupCall.channelName ||
+      !callChannelName ||
+      activeGroupCall.channelName === callChannelName);
   const showJoinGroupCall =
     core.activeConversation?.type === 'group' &&
     Boolean(core.activeConversationId) &&
     activeGroupCall?.conversationId === core.activeConversationId &&
-    (callStatus === 'idle' || callStatus === 'ended');
+    !inThisGroupCallFlow;
 
   const {
     showContactsManagement,
@@ -220,41 +233,6 @@ export function ChatMainContent(props: ChatMainContentProps) {
           />
 
           {postMessageListSlot}
-
-          {core.activeConversation?.type === 'group' &&
-            activeGroupCall?.conversationId === core.activeConversationId &&
-            !showJoinGroupCall && (
-              <div className="shrink-0 px-3 pb-2 pt-1 border-t border-border/40 bg-background">
-                <div className="rounded-2xl border border-border/40 bg-card px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
-                  <div className="flex items-start gap-2 min-w-0">
-                    {activeGroupCall.type === 'video' ? (
-                      <Video className="size-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                    ) : (
-                      <Phone className="size-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-foreground">
-                        {activeGroupCall.type === 'video'
-                          ? 'Cuộc gọi video nhóm'
-                          : 'Cuộc gọi thoại nhóm'}{' '}
-                        <span className="font-normal text-muted-foreground">đang diễn ra</span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Tham gia muộn nếu bạn chưa vào kênh — nút sẽ ẩn khi cuộc gọi kết thúc.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={callStatus !== 'idle' && callStatus !== 'ended'}
-                    onClick={() => joinActiveGroupCall()}
-                    className="shrink-0 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-45 disabled:pointer-events-none text-white text-sm font-medium"
-                  >
-                    Tham gia
-                  </button>
-                </div>
-              </div>
-            )}
 
           <ChatComposer
             activeConversation={core.activeConversation}

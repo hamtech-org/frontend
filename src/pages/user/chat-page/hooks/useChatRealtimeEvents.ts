@@ -82,6 +82,12 @@ export function useChatRealtimeEvents({
         if ((msg as { type?: string }).type !== 'system') return;
         const raw = String(msg.content ?? '').trim();
         if (!raw.startsWith('{')) return;
+        // Chỉ giữ thông báo cho ĐÚNG hội thoại đang mở. Nếu hành động xảy ra
+        // ở một nhóm khác (vd: tạo việc/bình chọn ở nhóm A trong khi user
+        // đang mở nhóm B / chat 1-1), KHÔNG bắn toast vì nó dễ bị hiểu nhầm
+        // là sự kiện của hội thoại hiện tại. Sidebar đã có badge tin chưa
+        // đọc + banner trong khung của đúng nhóm (`useChatGroupFrameNotices`).
+        if (msg.conversationId !== activeConversationIdRef.current) return;
         const parsed = JSON.parse(raw) as {
           kind?: string;
           poll?: { pollId?: string; question?: string };

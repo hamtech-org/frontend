@@ -1,4 +1,4 @@
-import { Contact, Home, MessageCircle } from 'lucide-react';
+import { Contact, Home, MessageCircle, Sparkles } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import type { NavigateFunction } from 'react-router-dom';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -11,7 +11,10 @@ type ChatNavRailProps = {
   navigate: NavigateFunction;
   onOpenProfile: () => void;
   showContactsManagement: boolean;
+  showAIAssistant: boolean;
+  onOpenMessages: () => void;
   onToggleContacts: () => void;
+  onOpenAIAssistant: () => void;
 };
 
 /** Nút icon trong nav rail — bọc sẵn Tooltip. */
@@ -54,7 +57,10 @@ export function ChatNavRail({
   navigate,
   onOpenProfile,
   showContactsManagement,
+  showAIAssistant,
+  onOpenMessages,
   onToggleContacts,
+  onOpenAIAssistant,
 }: ChatNavRailProps) {
   const isTabletOrDesktop = useBreakpoint('md');
   // Lấy avatar user từ Redux store thay vì hardcode Unsplash
@@ -63,6 +69,11 @@ export function ChatNavRail({
   const displayName = currentUser?.displayName ?? 'U';
   // Ký tự đầu tên dùng làm AvatarFallback
   const initials = displayName.trim().charAt(0).toUpperCase();
+  const activeRailItem: 'messages' | 'contacts' | 'ai' = showAIAssistant
+    ? 'ai'
+    : showContactsManagement
+      ? 'contacts'
+      : 'messages';
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -111,8 +122,8 @@ export function ChatNavRail({
           {/* Chat — active khi đang ở màn hình chat (không quản lý bạn bè) */}
           <NavRailButton
             title="Tin nhắn"
-            onClick={onToggleContacts}
-            isActive={!showContactsManagement}
+            onClick={onOpenMessages}
+            isActive={activeRailItem === 'messages'}
           >
             <MessageCircle
               className={cn('fill-primary-foreground', isTabletOrDesktop ? 'size-6' : 'size-5')}
@@ -123,7 +134,7 @@ export function ChatNavRail({
           <NavRailButton
             title="Quản lý bạn bè"
             onClick={onToggleContacts}
-            isActive={showContactsManagement}
+            isActive={activeRailItem === 'contacts'}
           >
             <Contact className={isTabletOrDesktop ? 'size-6' : 'size-5'} />
           </NavRailButton>
@@ -138,6 +149,22 @@ export function ChatNavRail({
 
           <NavRailButton title="Về Bảng Tin" onClick={() => navigate('/')}>
             <Home className={isTabletOrDesktop ? 'size-6' : 'size-5'} />
+          </NavRailButton>
+
+          {/* Separator */}
+          <div
+            className={cn(
+              'h-px shrink-0 bg-primary-foreground/20 my-1',
+              isTabletOrDesktop ? 'w-8' : 'w-7',
+            )}
+          />
+
+          <NavRailButton
+            title="Trợ lý AI"
+            onClick={onOpenAIAssistant}
+            isActive={activeRailItem === 'ai'}
+          >
+            <Sparkles className={isTabletOrDesktop ? 'size-6' : 'size-5'} />
           </NavRailButton>
         </div>
       </div>
