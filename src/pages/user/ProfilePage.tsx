@@ -14,11 +14,19 @@ import {
   Loader2,
   Check,
   X,
+  MonitorSmartphone,
+  ShieldOff,
 } from 'lucide-react';
 import { useGetProfileQuery, useUpdateProfileMutation } from '@/store/api/userApi';
-import { useEnableFaceLoginMutation, useDisableFaceLoginMutation } from '@/store/api/authApi';
+import {
+  useEnableFaceLoginMutation,
+  useDisableFaceLoginMutation,
+  useGetSessionsQuery,
+  useRevokeSessionMutation,
+} from '@/store/api/authApi';
 import { apiClient } from '@/services/api';
 import AwsFaceLivenessComponent from '@/components/AwsFaceLivenessComponent';
+import type { IAuthSessionSummary } from '@/types/auth.types';
 
 // ── Validation Schema ──
 const updateProfileSchema = z.object({
@@ -42,8 +50,11 @@ const ProfilePage: React.FC = () => {
   const [updateProfile, { isLoading: isUpdating }] = useUpdateProfileMutation();
   const [enableFaceLogin, { isLoading: isEnablingFaceLogin }] = useEnableFaceLoginMutation();
   const [disableFaceLogin, { isLoading: isDisablingFaceLogin }] = useDisableFaceLoginMutation();
+  const { data: sessionsRes, isLoading: sessionsLoading } = useGetSessionsQuery();
+  const [revokeSession] = useRevokeSessionMutation();
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [faceLoginEnabled, setFaceLoginEnabled] = useState(() => {
@@ -248,6 +259,59 @@ const ProfilePage: React.FC = () => {
           text: err?.data?.message || 'Có lỗi xảy ra khi tắt đăng nhập bằng khuôn mặt',
         });
       }
+    }
+  };
+
+  const sessions = sessionsRes?.data ?? [];
+
+  const formatSessionLocation = (loc: IAuthSessionSummary['location']) => {
+    if (!loc) return '—';
+    const parts = [loc.city, loc.region, loc.country].filter((p) => p && String(p).trim());
+    return parts.length ? parts.join(', ') : '—';
+  };
+
+  const getSessionStatus = (s: IAuthSessionSummary) => {
+    if (s.isRevoked) {
+      return {
+        label: 'Đã thu hồi',
+        className:
+          'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-800',
+      };
+    }
+    if (!s.isActive) {
+      return {
+        label: 'Hết hạn / không còn hiệu lực',
+        className:
+          'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600',
+      };
+    }
+    return {
+      label: 'Đang hoạt động',
+      className:
+        'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800',
+    };
+  };
+
+  const handleRevokeSession = async (s: IAuthSessionSummary) => {
+    if (!s.isActive || s.isRevoked) return;
+    setRevokingSessionId(s.sessionId);
+    try {
+      await revokeSession(s.sessionId).unwrap();
+      if (s.isCurrent) {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        window.location.href = '/login';
+        return;
+      }
+      setMessage({ type: 'success', text: 'Đã thu hồi truy cập thiết bị.' });
+      setTimeout(() => setMessage(null), 3000);
+    } catch (err: any) {
+      setMessage({
+        type: 'error',
+        text: err?.data?.message || err?.data?.error?.message || 'Không thể thu hồi phiên',
+      });
+    } finally {
+      setRevokingSessionId(null);
     }
   };
 
@@ -533,6 +597,100 @@ const ProfilePage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </motion.div>
+
+        {/* Sessions / thiết bị đăng nhập */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mt-8 bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden border border-gray-200 dark:border-gray-700"
+        >
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+            <MonitorSmartphone className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Thiết bị đăng nhập
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Phiên đang hoạt động và lịch sử; hiển thị IP và thiết bị tại thời điểm đăng nhập.
+                Thu hồi sẽ vô hiệu hóa refresh token trên phiên đó.
+              </p>
+            </div>
+          </div>
+          <div className="p-4 sm:p-6">
+            {sessionsLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              </div>
+            ) : sessions.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
+                Chưa có phiên đăng nhập nào được lưu.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {sessions.map((s) => {
+                  const status = getSessionStatus(s);
+                  const canRevoke = s.isActive && !s.isRevoked;
+                  return (
+                    <li
+                      key={s.sessionId}
+                      className="rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+                    >
+                      <div className="space-y-2 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-gray-900 dark:text-white">
+                            {s.deviceInfo.browser || 'Trình duyệt'} ·{' '}
+                            {s.deviceInfo.os || 'Hệ điều hành'}
+                          </span>
+                          {s.isCurrent && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
+                              Thiết bị này
+                            </span>
+                          )}
+                          <span
+                            className={`text-xs font-medium px-2 py-0.5 rounded-full ${status.className}`}
+                          >
+                            {status.label}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                          <p>
+                            <span className="text-gray-500 dark:text-gray-500">IP:</span>{' '}
+                            <span className="font-mono text-gray-800 dark:text-gray-200">
+                              {s.ipAddress || '—'}
+                            </span>
+                          </p>
+                          <p>
+                            <span className="text-gray-500 dark:text-gray-500">
+                              Vị trí ước tính:
+                            </span>{' '}
+                            {formatSessionLocation(s.location)}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-500">
+                            Đăng nhập: {new Date(s.createdAt).toLocaleString('vi-VN')}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!canRevoke || revokingSessionId !== null}
+                        onClick={() => handleRevokeSession(s)}
+                        className="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                      >
+                        {revokingSessionId === s.sessionId ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <ShieldOff className="w-4 h-4" />
+                        )}
+                        Thu hồi truy cập
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </motion.div>
 

@@ -10,6 +10,7 @@ import type {
   IResetPasswordRequest,
   IVerifyEmailRequest,
   IVerifyLoginOtpRequest,
+  IAuthSessionSummary,
 } from '@/types/auth.types';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import { baseQueryWithReauth } from './baseQuery';
@@ -17,6 +18,7 @@ import { baseQueryWithReauth } from './baseQuery';
 export const authApi = createApi({
   reducerPath: 'authApi',
   baseQuery: baseQueryWithReauth,
+  tagTypes: ['AuthSessions'],
   endpoints: (builder) => ({
     login: builder.mutation<ApiSuccessResponse<{ message: string }>, ILoginRequest>({
       query: (body) => ({ url: '/auth/login', method: 'POST', body }),
@@ -57,6 +59,14 @@ export const authApi = createApi({
     changePassword: builder.mutation<ApiSuccessResponse<null>, IChangePasswordRequest>({
       query: (body) => ({ url: '/auth/change-password', method: 'PUT', body }),
     }),
+    getSessions: builder.query<ApiSuccessResponse<IAuthSessionSummary[]>, void>({
+      query: () => ({ url: '/auth/sessions', method: 'GET' }),
+      providesTags: ['AuthSessions'],
+    }),
+    revokeSession: builder.mutation<ApiSuccessResponse<null>, string>({
+      query: (sessionId) => ({ url: `/auth/sessions/${sessionId}`, method: 'DELETE' }),
+      invalidatesTags: ['AuthSessions'],
+    }),
   }),
 });
 
@@ -74,4 +84,6 @@ export const {
   useForgotPasswordMutation,
   useResetPasswordMutation,
   useChangePasswordMutation,
+  useGetSessionsQuery,
+  useRevokeSessionMutation,
 } = authApi;
