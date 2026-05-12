@@ -12,7 +12,7 @@ import { ReactionSummary } from '@/components/common/ReactionButton/ReactionSumm
 import { MediaLightbox } from '@/features/newsfeed/components/MediaLightbox';
 import { formatRelative } from '@/utils/formatDate';
 import { cn } from '@/utils/cn';
-import { Loader2, Send } from 'lucide-react';
+import { Loader2, MessageCircle, Send } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -92,7 +92,7 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
   };
 
   return (
-    <div className={cn('flex items-start gap-2', isNested && 'ml-9')}>
+    <div className={cn('flex items-start gap-2')}>
       {/* Avatar */}
       <div
         className={cn(
@@ -202,10 +202,10 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
           {!isNested && (
             <button
               type="button"
-              className="font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setShowReplyInput((prev) => !prev)}
             >
-              Trả lời
+              <MessageCircle size={14} />
             </button>
           )}
         </div>
@@ -234,7 +234,7 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
               <button
                 type="button"
                 onClick={() => void loadReplies(replyNextCursor, true)}
-                className="ml-9 px-1 text-xs font-semibold text-muted-foreground/60 hover:text-foreground transition-colors"
+                className="px-1 text-xs font-semibold text-muted-foreground/60 hover:text-foreground transition-colors"
               >
                 Xem thêm trả lời
               </button>

@@ -10,6 +10,7 @@ import { HashtagText } from './HashtagText';
 import { MediaLightbox } from './MediaLightbox';
 import { formatRelative } from '@/utils/formatDate';
 import { cn } from '@/utils/cn';
+import { MessageCircle } from 'lucide-react';
 
 interface CommentItemProps {
   comment: IComment;
@@ -75,7 +76,7 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
   const myInitial = myName.charAt(0).toUpperCase();
 
   return (
-    <div className={cn('flex items-start gap-2', isNested && 'ml-9')}>
+    <div className={cn('flex items-start gap-2')}>
       <div
         className={cn(
           'rounded-full overflow-hidden bg-muted/60 flex items-center justify-center shrink-0',
@@ -185,10 +186,10 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
           {!isNested && (
             <button
               type="button"
-              className="font-semibold hover:text-foreground transition-colors"
+              className="hover:text-foreground transition-colors"
               onClick={() => setShowReplyInput((prev) => !prev)}
             >
-              Trả lời
+              <MessageCircle size={14} />
             </button>
           )}
         </div>
@@ -217,7 +218,7 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
               <button
                 type="button"
                 onClick={() => void loadReplies(replyNextCursor, true)}
-                className="ml-9 px-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                className="px-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
               >
                 Xem thêm trả lời
               </button>
