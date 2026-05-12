@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { FaceLivenessDetector } from '@aws-amplify/ui-react-liveness';
 import { Loader, Heading, View, Button, Text } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react-liveness/styles.css';
@@ -10,6 +11,12 @@ interface AwsFaceLivenessComponentProps {
   region?: string;
   onSuccess: () => Promise<void>;
   onCancel: () => void;
+}
+
+// App route `motion.div` breaks nested `position: fixed`; portal restores viewport anchoring.
+function portalToBody(ui: React.ReactNode) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(ui, document.body);
 }
 
 export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> = ({
@@ -34,9 +41,11 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
     } catch (err: unknown) {
       setIsAnalyzing(false);
       // Show error in modal and parent will handle it
-      const errorMsg = (err as any)?.data?.message || (err instanceof Error ? err.message : 'Không xác định được lỗi');
+      const errorMsg =
+        (err as any)?.data?.message ||
+        (err instanceof Error ? err.message : 'Không xác định được lỗi');
       setError(`Lỗi xử lý: ${errorMsg}`);
-      
+
       // Auto-close after 2 seconds on 400 validation error
       const status = (err as any)?.status;
       if (status === 400) {
@@ -57,14 +66,14 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
       const str = err.toString();
       if (str && str !== '[object Object]') return str;
     }
-    
+
     // Check if it's a string representation
     if (typeof err === 'string') return err;
-    
+
     // Parse based on error type hints
     if (err?.code) return `Lỗi (${err.code})`;
     if (err?.name) return `${err.name}`;
-    
+
     // Default
     return 'Lỗi xác thực khuôn mặt không xác định. Vui lòng thử lại.';
   };
@@ -77,8 +86,8 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
 
   // Session ID validation
   if (!sessionId) {
-    return (
-      <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-50 p-4">
+    return portalToBody(
+      <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-[100] p-4">
         <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8">
           <div className="flex justify-between items-start mb-4">
             <AlertCircle className="w-12 h-12 text-red-500" />
@@ -97,13 +106,13 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
             Hủy
           </Button>
         </View>
-      </View>
+      </View>,
     );
   }
   // Show success state
   if (successMessage) {
-    return (
-      <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-50 p-4">
+    return portalToBody(
+      <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-[100] p-4">
         <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
           <div className="flex justify-end mb-4 -mx-8 -mt-8 px-8 pt-8">
             <button
@@ -116,24 +125,23 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
           <Heading level={2} className="text-green-600 mb-4">
             {successMessage}
           </Heading>
-          <Text className="text-gray-600 dark:text-gray-300">
-            Đang hoàn tất thiết lập...
-          </Text>
+          <Text className="text-gray-600 dark:text-gray-300">Đang hoàn tất thiết lập...</Text>
         </View>
-      </View>
+      </View>,
     );
   }
 
   // Show error state
   if (error) {
-    const isNetworkError = error.toLowerCase().includes('network') || 
-                          error.toLowerCase().includes('connect') ||
-                          error.toLowerCase().includes('timeout');
-    const isCameraError = error.toLowerCase().includes('camera') || 
-                         error.toLowerCase().includes('permission');
-    
-    return (
-      <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-50 p-4">
+    const isNetworkError =
+      error.toLowerCase().includes('network') ||
+      error.toLowerCase().includes('connect') ||
+      error.toLowerCase().includes('timeout');
+    const isCameraError =
+      error.toLowerCase().includes('camera') || error.toLowerCase().includes('permission');
+
+    return portalToBody(
+      <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-[100] p-4">
         <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8">
           <div className="flex justify-end mb-4">
             <button
@@ -150,9 +158,7 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
                 <Heading level={5} className="text-red-800 dark:text-red-300">
                   Lỗi Xác Thực
                 </Heading>
-                <Text className="text-sm text-red-700 dark:text-red-400 mt-1">
-                  {error}
-                </Text>
+                <Text className="text-sm text-red-700 dark:text-red-400 mt-1">{error}</Text>
               </div>
             </div>
           </View>
@@ -161,13 +167,20 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
           <View className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
             <Text className="text-xs text-blue-700 dark:text-blue-300">
               {isNetworkError && (
-                <>💡 <strong>Mẹo:</strong> Hãy kiểm tra kết nối internet của bạn và thử lại.</>
+                <>
+                  💡 <strong>Mẹo:</strong> Hãy kiểm tra kết nối internet của bạn và thử lại.
+                </>
               )}
               {isCameraError && (
-                <>💡 <strong>Mẹo:</strong> Hãy kiểm tra quyền truy cập camera trong cài đặt trình duyệt.</>
+                <>
+                  💡 <strong>Mẹo:</strong> Hãy kiểm tra quyền truy cập camera trong cài đặt trình
+                  duyệt.
+                </>
               )}
               {!isNetworkError && !isCameraError && (
-                <>💡 <strong>Mẹo:</strong> Hãy thử lại hoặc liên hệ hỗ trợ nếu vấn đề vẫn tiếp diễn.</>
+                <>
+                  💡 <strong>Mẹo:</strong> Hãy thử lại hoặc liên hệ hỗ trợ nếu vấn đề vẫn tiếp diễn.
+                </>
               )}
             </Text>
           </View>
@@ -191,14 +204,14 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
             </button>
           </View>
         </View>
-      </View>
+      </View>,
     );
   }
 
   // Show analyzing state
   if (isAnalyzing) {
-    return (
-      <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-50 p-4">
+    return portalToBody(
+      <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-[100] p-4">
         <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
           <div className="flex justify-end mb-4 -mx-8 -mt-8 px-8 pt-8">
             <button
@@ -216,13 +229,13 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
             Vui lòng chờ trong khi chúng tôi xác minh...
           </Text>
         </View>
-      </View>
+      </View>,
     );
   }
 
   // Main liveness detection UI
-  return (
-    <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-50 p-4">
+  return portalToBody(
+    <View className="fixed inset-0 backdrop-blur-sm bg-black/50 flex items-center justify-center z-[100] p-4">
       <View className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
         {/* Header with close button */}
         <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-6 text-white flex items-start justify-between">
@@ -261,7 +274,7 @@ export const AwsFaceLivenessComponent: React.FC<AwsFaceLivenessComponentProps> =
           </Text>
         </View>
       </View>
-    </View>
+    </View>,
   );
 };
 

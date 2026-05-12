@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { ChatNavRail } from '@/components/chat/ChatNavRail';
 import { ConversationListPanel } from '@/components/chat/ConversationListPanel';
 import { ChatMainContent } from '@/components/chat/ChatMainContent';
+import { AIAssistantPanel } from '@/components/chat/AIAssistantPanel';
 import { ChatSideInfoRail } from '@/components/chat/ChatSideInfoRail';
 import { ConversationInfoPanel } from '@/components/chat/ConversationInfoPanel';
 import { ChatModalsHost } from '@/components/chat/ChatModalsHost';
@@ -119,6 +120,7 @@ export default function ChatPage() {
   const currentUserRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
 
   const { state: modalState, actions: modalActions } = useChatModalController();
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [focusTaskNonce, setFocusTaskNonce] = useState(0);
   const {
@@ -377,9 +379,21 @@ export default function ChatPage() {
     [directActions],
   );
 
+  const handleOpenMessages = useCallback(() => {
+    setShowAIAssistant(false);
+    modalActions.setShowContactsManagement(false);
+  }, [modalActions]);
+
   const handleToggleContacts = useCallback(() => {
+    setShowAIAssistant(false);
     modalActions.setShowContactsManagement((v) => !v);
     modalActions.setContactsTab('friends');
+  }, [modalActions]);
+
+  const handleOpenAIAssistant = useCallback(() => {
+    setShowAIAssistant(true);
+    modalActions.setShowContactsManagement(false);
+    modalActions.setShowInfo(false);
   }, [modalActions]);
 
   const handleOpenProfile = useCallback(() => {
@@ -540,20 +554,25 @@ export default function ChatPage() {
           navigate={navigate}
           onOpenProfile={handleOpenProfile}
           showContactsManagement={modalState.showContactsManagement}
+          showAIAssistant={showAIAssistant}
+          onOpenMessages={handleOpenMessages}
           onToggleContacts={handleToggleContacts}
+          onOpenAIAssistant={handleOpenAIAssistant}
         />
 
-        <div className="hidden md:flex md:shrink-0">
-          <ConversationListPanel {...convListPanelProps} />
-        </div>
+        {!showAIAssistant && (
+          <div className="hidden md:flex md:shrink-0">
+            <ConversationListPanel {...convListPanelProps} />
+          </div>
+        )}
 
-        {!isTabletOrDesktop && mobileView === 'list' && (
+        {!showAIAssistant && !isTabletOrDesktop && mobileView === 'list' && (
           <div className="flex-1 flex flex-col min-w-0 min-h-0">
             <ConversationListPanel {...convListPanelProps} />
           </div>
         )}
 
-        {!isTabletOrDesktop && (
+        {!showAIAssistant && !isTabletOrDesktop && (
           <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
             <SheetContent
               side="left"
@@ -565,58 +584,69 @@ export default function ChatPage() {
           </Sheet>
         )}
 
-        {(isTabletOrDesktop || mobileView === 'chat') && (
-          <ChatMainContent
-            showContactsManagement={modalState.showContactsManagement}
-            contactsTab={modalState.contactsTab}
-            showInfo={modalState.showInfo}
-            onToggleShowInfo={handleToggleShowInfo}
-            onOpenConversationList={undefined}
-            typingUsers={typingUsers}
-            pinned={{
-              pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
-              pinnedMessageCount: activeConversation?.pinnedMessageCount ?? 0,
-              onScrollToMessage: scrollToMessageBubble,
-              onTogglePin: pinController.handleTogglePinMsg,
+        {showAIAssistant ? (
+          <AIAssistantPanel
+            onOpenDirectChat={async (otherUserId, otherDisplayName) => {
+              await directActions.handleFriendClick(otherUserId, otherDisplayName);
+              setShowAIAssistant(false);
             }}
-            scroll={{
-              containerRef: messagesContainerRef,
-              endRef: messagesEndRef,
-              allMessages: messageData.allMessages,
-              unreadIncomingCount,
-              onJumpToLatest: handleJumpToLatest,
-            }}
-            jumpHighlightMessageId={jumpHighlightMessageId}
-            jumpFlashNonce={jumpFlashNonce}
-            onJumpToMessage={scrollToMessageBubble}
-            actionMenuMsgId={modalState.actionMenuMsgId}
-            onActionMenuMsgIdChange={modalActions.setActionMenuMsgId}
-            onStartEdit={handleStartEdit}
-            onOpenPoll={() => modalActions.setShowPollModal(true)}
-            onOpenTask={groupController.openCreateTaskModal}
-            onSearchMessages={activeConversationId ? requestOpenConversationSearch : undefined}
-            resolvedMemberCount={
-              activeConversation?.type === 'group' && groupMembers.length > 0
-                ? groupMembers.length
-                : undefined
-            }
-            onFriendClick={handleFriendClick}
-            shareTargetConversations={conversations}
-            onForwardMediaMessage={handleForwardMediaMessage}
-            onBack={!isTabletOrDesktop ? handleBackToList : undefined}
-            onEditGroupTask={(id) => groupController.openEditTaskFromGroupTask(id)}
-            onDeleteGroupTask={(id) => void groupController.handleDeleteGroupTask(id)}
-            postMessageListSlot={null}
           />
+        ) : (
+          (isTabletOrDesktop || mobileView === 'chat') && (
+            <ChatMainContent
+              showContactsManagement={modalState.showContactsManagement}
+              contactsTab={modalState.contactsTab}
+              showInfo={modalState.showInfo}
+              onToggleShowInfo={handleToggleShowInfo}
+              onOpenConversationList={undefined}
+              typingUsers={typingUsers}
+              pinned={{
+                pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
+                pinnedMessageCount: activeConversation?.pinnedMessageCount ?? 0,
+                onScrollToMessage: scrollToMessageBubble,
+                onTogglePin: pinController.handleTogglePinMsg,
+              }}
+              scroll={{
+                containerRef: messagesContainerRef,
+                endRef: messagesEndRef,
+                allMessages: messageData.allMessages,
+                unreadIncomingCount,
+                onJumpToLatest: handleJumpToLatest,
+              }}
+              jumpHighlightMessageId={jumpHighlightMessageId}
+              jumpFlashNonce={jumpFlashNonce}
+              onJumpToMessage={scrollToMessageBubble}
+              actionMenuMsgId={modalState.actionMenuMsgId}
+              onActionMenuMsgIdChange={modalActions.setActionMenuMsgId}
+              onStartEdit={handleStartEdit}
+              onOpenPoll={() => modalActions.setShowPollModal(true)}
+              onOpenTask={groupController.openCreateTaskModal}
+              onSearchMessages={activeConversationId ? requestOpenConversationSearch : undefined}
+              resolvedMemberCount={
+                activeConversation?.type === 'group' && groupMembers.length > 0
+                  ? groupMembers.length
+                  : undefined
+              }
+              onFriendClick={handleFriendClick}
+              shareTargetConversations={conversations}
+              onForwardMediaMessage={handleForwardMediaMessage}
+              onBack={!isTabletOrDesktop ? handleBackToList : undefined}
+              onEditGroupTask={(id) => groupController.openEditTaskFromGroupTask(id)}
+              onDeleteGroupTask={(id) => void groupController.handleDeleteGroupTask(id)}
+              postMessageListSlot={null}
+            />
+          )
         )}
 
-        <ChatSideInfoRail
-          showInfo={modalState.showInfo}
-          showContactsManagement={modalState.showContactsManagement}
-          onClose={handleCloseInfo}
-        >
-          {conversationInfoPanel}
-        </ChatSideInfoRail>
+        {!showAIAssistant && (
+          <ChatSideInfoRail
+            showInfo={modalState.showInfo}
+            showContactsManagement={modalState.showContactsManagement}
+            onClose={handleCloseInfo}
+          >
+            {conversationInfoPanel}
+          </ChatSideInfoRail>
+        )}
 
         <ChatModalsHost
           state={modalState}
