@@ -102,36 +102,38 @@ export const ReelCommentsSheet = ({ reelId, onClose }: Props) => {
   const authorInitial = authorName.charAt(0).toUpperCase();
 
   return (
-    <div className="w-95 shrink-0 flex flex-col bg-[hsl(0,0%,7%)] border-l border-white/10 animate-in slide-in-from-right duration-200">
+    <div className="w-95 shrink-0 h-full flex flex-col bg-background border-l border-border animate-in slide-in-from-right duration-200">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
-        <span className="text-base font-bold text-white">Bình luận ({allComments.length})</span>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        <span className="text-base font-bold text-foreground">
+          Bình luận ({allComments.length})
+        </span>
         <button
           type="button"
           onClick={onClose}
           className="size-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
           aria-label="Đóng bình luận"
         >
-          <X className="size-4 text-white/70" />
+          <X className="size-4 text-muted-foreground" />
         </button>
       </div>
 
       {/* Comments list */}
-      <ScrollArea className="flex-1 px-4">
+      <ScrollArea className="flex-1 min-h-0 px-4">
         {isLoading ? (
           <div className="py-4 flex flex-col gap-4">
             {[0, 1, 2].map((i) => (
               <div key={i} className="flex items-start gap-2 animate-pulse">
-                <Skeleton className="size-7 rounded-full shrink-0 bg-white/10" />
+                <Skeleton className="size-7 rounded-full shrink-0 bg-muted" />
                 <div className="flex-1 space-y-1.5">
-                  <Skeleton className="h-2.5 w-20 rounded bg-white/10" />
-                  <Skeleton className="h-8 w-3/4 rounded-xl bg-white/10" />
+                  <Skeleton className="h-2.5 w-20 rounded bg-muted" />
+                  <Skeleton className="h-8 w-3/4 rounded-xl bg-muted" />
                 </div>
               </div>
             ))}
           </div>
         ) : allComments.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-white/40">
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
             <p className="text-sm">Chưa có bình luận nào</p>
             <p className="text-xs mt-1">Hãy là người đầu tiên bình luận!</p>
           </div>
@@ -144,7 +146,7 @@ export const ReelCommentsSheet = ({ reelId, onClose }: Props) => {
             {/* Load more */}
             {isFetchingMore && (
               <div className="flex items-center justify-center py-2">
-                <Loader2 className="size-5 text-white/40 animate-spin" />
+                <Loader2 className="size-5 text-muted-foreground animate-spin" />
               </div>
             )}
             {effectiveHasMore && !isFetchingMore && (
@@ -161,19 +163,20 @@ export const ReelCommentsSheet = ({ reelId, onClose }: Props) => {
       </ScrollArea>
 
       {/* Input */}
-      <div className="border-t border-white/10 shrink-0">
+      <div className="border-t border-border shrink-0">
         {/* Reply chip */}
         {replyTo && (
-          <div className="flex items-center justify-between px-4 py-1.5 bg-white/5">
-            <span className="text-xs text-white/50">
-              Đang trả lời <span className="font-semibold text-white/80">{replyTo.authorName}</span>
+          <div className="flex items-center justify-between px-4 py-1.5 bg-muted/30">
+            <span className="text-xs text-muted-foreground">
+              Đang trả lời{' '}
+              <span className="font-semibold text-foreground/80">{replyTo.authorName}</span>
             </span>
             <button
               type="button"
               onClick={() => setReplyTo(null)}
               className="size-5 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
             >
-              <X className="size-3 text-white/50" />
+              <X className="size-3 text-muted-foreground" />
             </button>
           </div>
         )}
@@ -183,7 +186,7 @@ export const ReelCommentsSheet = ({ reelId, onClose }: Props) => {
             {currentUser?.avatar && (
               <AvatarImage src={currentUser.avatar} referrerPolicy="no-referrer" />
             )}
-            <AvatarFallback className="text-[10px] bg-white/10 text-white">
+            <AvatarFallback className="text-[10px] bg-muted text-foreground">
               {authorInitial}
             </AvatarFallback>
           </Avatar>
@@ -192,7 +195,7 @@ export const ReelCommentsSheet = ({ reelId, onClose }: Props) => {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={replyTo ? `Trả lời ${replyTo.authorName}...` : 'Viết bình luận...'}
-            className="flex-1 rounded-xl bg-white/10 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-white/30"
+            className="flex-1 rounded-xl bg-muted border-input text-foreground placeholder:text-muted-foreground focus-visible:ring-ring"
             disabled={isSending}
           />
           <Button

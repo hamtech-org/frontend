@@ -96,7 +96,7 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
       {/* Avatar */}
       <div
         className={cn(
-          'rounded-full overflow-hidden bg-white/10 flex items-center justify-center shrink-0',
+          'rounded-full overflow-hidden bg-muted flex items-center justify-center shrink-0',
           isNested ? 'size-6' : 'size-7',
         )}
       >
@@ -108,7 +108,12 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
             referrerPolicy="no-referrer"
           />
         ) : (
-          <span className={cn('font-bold text-white/70', isNested ? 'text-[9px]' : 'text-[10px]')}>
+          <span
+            className={cn(
+              'font-bold text-muted-foreground',
+              isNested ? 'text-[9px]' : 'text-[10px]',
+            )}
+          >
             {authorInitial}
           </span>
         )}
@@ -118,7 +123,7 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
         {/* Tên tác giả ngoài bubble */}
         <p
           className={cn(
-            'mb-0.5 px-1 font-semibold text-white/90',
+            'mb-0.5 px-1 font-semibold text-foreground/90',
             isNested ? 'text-[11px]' : 'text-xs',
           )}
         >
@@ -127,8 +132,8 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
 
         {/* Bubble — chỉ render khi có text */}
         {!!comment.content && (
-          <div className="w-fit max-w-full rounded-xl bg-white/10 px-3 py-2">
-            <p className="text-sm text-white/90 leading-5 break-words">{comment.content}</p>
+          <div className="w-fit max-w-full rounded-xl bg-muted px-3 py-2">
+            <p className="text-sm text-foreground/90 leading-5 break-words">{comment.content}</p>
           </div>
         )}
 
@@ -164,7 +169,7 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
         )}
 
         {/* Metadata row: time, reactions, reply */}
-        <div className="mt-0.5 flex items-center gap-3 px-1 text-[11px] text-white/50">
+        <div className="mt-0.5 flex items-center gap-3 px-1 text-[11px] text-muted-foreground">
           <span>{formatRelative(comment.createdAt)}</span>
 
           <div className="flex items-center gap-1 relative">
@@ -197,7 +202,7 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
           {!isNested && (
             <button
               type="button"
-              className="font-semibold text-white/60 hover:text-white transition-colors"
+              className="font-semibold text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setShowReplyInput((prev) => !prev)}
             >
               Trả lời
@@ -229,7 +234,7 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
               <button
                 type="button"
                 onClick={() => void loadReplies(replyNextCursor, true)}
-                className="ml-9 px-1 text-xs font-semibold text-white/40 hover:text-white/70 transition-colors"
+                className="ml-9 px-1 text-xs font-semibold text-muted-foreground/60 hover:text-foreground transition-colors"
               >
                 Xem thêm trả lời
               </button>
@@ -244,7 +249,7 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
               {currentUser?.avatar && (
                 <AvatarImage src={currentUser.avatar} referrerPolicy="no-referrer" />
               )}
-              <AvatarFallback className="text-[9px] bg-white/10 text-white">
+              <AvatarFallback className="text-[9px] bg-muted text-foreground">
                 {(currentUser?.displayName ?? 'B').charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
@@ -258,7 +263,7 @@ export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) =>
                 }
               }}
               placeholder={`Trả lời ${authorName}...`}
-              className="flex-1 h-8 rounded-xl bg-white/10 border-white/20 text-white placeholder:text-white/40 text-sm"
+              className="flex-1 h-8 rounded-xl bg-muted border-input text-foreground placeholder:text-muted-foreground text-sm"
               disabled={isSendingReply}
               autoFocus
             />
