@@ -1,8 +1,25 @@
 import { useState, useCallback, useRef } from 'react';
-import { ThumbsUp, MessageCircle, Share2, MoreHorizontal, Bookmark, Flag, Eye } from 'lucide-react';
+import {
+  ThumbsUp,
+  MessageCircle,
+  Share2,
+  MoreHorizontal,
+  Bookmark,
+  Flag,
+  Eye,
+  Trash2,
+} from 'lucide-react';
 import { Player } from '@lottiefiles/react-lottie-player';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useReactToReelMutation, useToggleSaveReelMutation } from '@/store/api/newsfeedApi';
+import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import type { RootState } from '@/store/store';
+import {
+  useReactToReelMutation,
+  useToggleSaveReelMutation,
+  useDeleteReelMutation,
+} from '@/store/api/newsfeedApi';
 import { REACTION_META } from '@/types/reaction.types';
 import type { ReactionType } from '@/types/reaction.types';
 import { FloatingEmoji } from '@/components/common/ReactionButton/FloatingEmoji';
@@ -64,6 +81,10 @@ const ReactionPickerItem = ({
 export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }: Props) => {
   const [reactToReel] = useReactToReelMutation();
   const [toggleSave] = useToggleSaveReelMutation();
+  const [deleteReel] = useDeleteReelMutation();
+  const currentUserId = useSelector((state: RootState) => state.auth.user?.userId);
+  const navigate = useNavigate();
+  const isAuthor = reel.author?.userId === currentUserId;
 
   const [liked, setLiked] = useState<ReactionType | null>(reel.currentUserReaction ?? null);
   const [likeCount, setLikeCount] = useState(totalReactions(reel.reactionsCount));
@@ -154,6 +175,27 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }
     }
   }, [saved, saveCount, reel.reelId, toggleSave]);
 
+  const handleShare = useCallback(async () => {
+    const url = `${window.location.origin}/reels/${reel.reelId}`;
+    if (navigator.share) {
+      await navigator.share({ title: reel.caption ?? 'Reel', url });
+    } else {
+      await navigator.clipboard.writeText(url);
+      toast.success('Đã copy link reel');
+    }
+  }, [reel.reelId, reel.caption]);
+
+  const handleDelete = useCallback(async () => {
+    if (!window.confirm('Xóa reel này? Hành động không thể hoàn tác.')) return;
+    try {
+      await deleteReel(reel.reelId).unwrap();
+      toast.success('Đã xóa reel');
+      navigate('/reels');
+    } catch {
+      toast.error('Không thể xóa reel');
+    }
+  }, [reel.reelId, deleteReel, navigate]);
+
   const currentMeta = liked ? REACTION_META[liked] : null;
 
   return (
@@ -173,20 +215,29 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }
     >
       {/* Avatar */}
       <div className="relative mb-1">
-        {reel.author?.avatar ? (
-          <img
-            src={reel.author.avatar}
-            alt={reel.author.displayName}
-            className="size-12 rounded-full border-2 border-white/80 object-cover"
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <div className="size-12 rounded-full border-2 border-white/80 bg-primary/80 flex items-center justify-center">
-            <span className="text-sm font-bold text-white">
-              {reel.author?.displayName?.charAt(0)?.toUpperCase() ?? '?'}
-            </span>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (reel.author?.userId) navigate(`/profile/${reel.author.userId}`);
+          }}
+          className="block"
+        >
+          {reel.author?.avatar ? (
+            <img
+              src={reel.author.avatar}
+              alt={reel.author.displayName}
+              className="size-12 rounded-full border-2 border-white/80 object-cover"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="size-12 rounded-full border-2 border-white/80 bg-primary/80 flex items-center justify-center">
+              <span className="text-sm font-bold text-white">
+                {reel.author?.displayName?.charAt(0)?.toUpperCase() ?? '?'}
+              </span>
+            </div>
+          )}
+        </button>
         <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 size-5 rounded-full bg-primary flex items-center justify-center">
           <span className="text-white text-xs font-bold leading-none">+</span>
         </div>
@@ -289,6 +340,7 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }
         type="button"
         onClick={(e) => {
           e.stopPropagation();
+          void handleShare();
         }}
         className="flex flex-col items-center gap-1 group"
         aria-label="Chia sẻ"
@@ -352,6 +404,18 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }
             <Flag className="size-4" />
             Báo cáo
           </button>
+          {isAuthor && (
+            <button
+              onClick={() => {
+                setMoreOpen(false);
+                void handleDelete();
+              }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted text-destructive"
+            >
+              <Trash2 className="size-4" />
+              Xóa reel
+            </button>
+          )}
           <div className="flex items-center gap-2.5 px-3 py-2 text-sm text-muted-foreground">
             <Eye className="size-4" />
             {formatCount(reel.viewsCount)} lượt xem

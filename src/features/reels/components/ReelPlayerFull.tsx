@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Play, Volume2, VolumeX } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useRecordReelViewMutation } from '@/store/api/newsfeedApi';
 import type { IReel } from '@/types/newsfeed.types';
 
@@ -51,6 +52,7 @@ export const ReelPlayerFull = ({
   onMutedChange,
   onVideoRectChange,
 }: Props) => {
+  const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -267,9 +269,13 @@ export const ReelPlayerFull = ({
         >
           {/* Author row */}
           <div className="flex items-center gap-2.5 mb-2">
-            <span className="text-white font-bold text-[15px] drop-shadow-md">
+            <button
+              type="button"
+              onClick={() => reel.author?.userId && navigate(`/profile/${reel.author.userId}`)}
+              className="text-white font-bold text-[15px] drop-shadow-md hover:underline"
+            >
               {reel.author?.displayName ?? 'Người dùng'}
-            </span>
+            </button>
           </div>
 
           {/* Caption + hashtags */}
@@ -297,9 +303,14 @@ export const ReelPlayerFull = ({
           {reel.hashtags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-1">
               {reel.hashtags.map((tag) => (
-                <span key={tag} className="text-[13px] font-semibold text-blue-300 drop-shadow-sm">
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => navigate(`/search?q=%23${tag}`)}
+                  className="text-[13px] font-semibold text-blue-300 drop-shadow-sm hover:text-blue-200"
+                >
                   #{tag}
-                </span>
+                </button>
               ))}
             </div>
           )}
