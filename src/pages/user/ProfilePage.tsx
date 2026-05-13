@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -262,7 +262,13 @@ const ProfilePage: React.FC = () => {
     }
   };
 
-  const sessions = sessionsRes?.data ?? [];
+  const sessions = useMemo(() => {
+    const rows = sessionsRes?.data ?? [];
+    return [...rows].sort((a, b) => {
+      if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [sessionsRes?.data]);
 
   const formatSessionLocation = (loc: IAuthSessionSummary['location']) => {
     if (!loc) return '—';
