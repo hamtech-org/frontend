@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useDispatch } from 'react-redux';
 import { socketService } from '@/services/socket';
 import {
   attachCallGroupSocketToRedux,
@@ -6,6 +7,8 @@ import {
 } from '@/services/callGroupReduxSync';
 import { useAuth } from '@/hooks/useAuth';
 import { GlobalChatSocketBridge } from '@/components/GlobalChatSocketBridge';
+import { authApi } from '@/store/api/authApi';
+import type { AppDispatch } from '@/store/store';
 
 interface SocketContextValue {
   isConnected: boolean;
@@ -16,6 +19,7 @@ const SocketContext = createContext<SocketContextValue>({ isConnected: false });
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const { accessToken } = useAuth();
+  const dispatch = useDispatch<AppDispatch>();
 
   useEffect(() => {
     if (!accessToken) {
@@ -45,9 +49,14 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     };
 
+    const handleAuthSessionsChanged = () => {
+      dispatch(authApi.util.invalidateTags(['AuthSessions']));
+    };
+
     socketService.on('connect', handleSocketConnect);
     socketService.on('disconnect', handleSocketDisconnect);
     socketService.on('auth:force_logout', handleForceLogout);
+    socketService.on('auth:sessions_changed', handleAuthSessionsChanged);
 
     try {
       if (socketService.getSocket().connected) {
@@ -61,10 +70,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       socketService.off('connect', handleSocketConnect);
       socketService.off('disconnect', handleSocketDisconnect);
       socketService.off('auth:force_logout', handleForceLogout);
+      socketService.off('auth:sessions_changed', handleAuthSessionsChanged);
       resetCallGroupSocketReduxAttachment();
       socketService.disconnect();
     };
-  }, [accessToken]);
+  }, [accessToken, dispatch]);
 
   return (
     <SocketContext.Provider value={{ isConnected }}>
