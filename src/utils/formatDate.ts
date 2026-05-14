@@ -10,6 +10,55 @@ export const formatRelative = (date: string): string => dayjs(date).fromNow();
 export const formatTime = (date: string): string => dayjs(date).format('HH:mm');
 export const formatDateOnly = (date: string): string => dayjs(date).format('DD/MM/YYYY');
 
+/** Giờ trên pill thông báo giữa khung chat (VD 7:00, 10:00) — đặt trước mốc ngày. */
+export function formatChatSystemPillTime(iso: string): string {
+  const t = dayjs(iso);
+  if (!t.isValid()) return '';
+  return t.format('H:mm');
+}
+
+/** Mốc ngày trên pill / chip danh sách: Hôm nay | Hôm qua | DD/MM/YYYY — cùng logic lịch máy với mobile (`toDateString`). */
+export function formatChatSystemPillDateLabel(iso: string, now: Date = new Date()): string {
+  const raw = String(iso ?? '').trim();
+  if (!raw) return '';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  const today = new Date(now);
+  const yesterday = new Date(now);
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return 'Hôm nay';
+  if (date.toDateString() === yesterday.toDateString()) return 'Hôm qua';
+  const t = dayjs(raw);
+  return t.isValid() ? t.format('DD/MM/YYYY') : '';
+}
+
+/** Hiện chip mốc ngày khi đổi ngày lịch (theo timezone trình duyệt — `toDateString`, đồng bộ mobile). */
+export function chatSystemPillShowDateLine(
+  prevCreatedAt: string | undefined | null,
+  currCreatedAt: string | undefined | null,
+): boolean {
+  const curr = String(currCreatedAt ?? '').trim();
+  if (!curr) return false;
+  const c = new Date(curr);
+  if (Number.isNaN(c.getTime())) return true;
+  const prev = String(prevCreatedAt ?? '').trim();
+  if (!prev) return true;
+  const p = new Date(prev);
+  if (Number.isNaN(p.getTime())) return true;
+  return p.toDateString() !== c.toDateString();
+}
+
+/** Cùng ngày lịch local (gom chuỗi bubble / tên người gửi). */
+export function chatMessagesSameLocalDay(
+  a: string | undefined | null,
+  b: string | undefined | null,
+): boolean {
+  const da = new Date(String(a ?? '').trim());
+  const db = new Date(String(b ?? '').trim());
+  if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return false;
+  return da.toDateString() === db.toDateString();
+}
+
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
