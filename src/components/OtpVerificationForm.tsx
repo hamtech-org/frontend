@@ -2,6 +2,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
+import { getApiErrorMessage } from '@/utils/apiErrorMessage';
 
 const otpSchema = z.object({
   otp: z.string().length(6, 'OTP phải có 6 chữ số').regex(/^\d+$/, 'OTP chỉ được chứa chữ số'),
@@ -59,11 +60,7 @@ export const OtpVerificationForm = ({
         {errors.otp && <p className="mt-1 text-sm text-red-500">{errors.otp.message}</p>}
       </div>
 
-      {error && (
-        <div className="text-red-500 text-sm text-center">
-          {(error as any)?.data?.message || 'Đã có lỗi xảy ra'}
-        </div>
-      )}
+      {error && <div className="text-red-500 text-sm text-center">{getApiErrorMessage(error)}</div>}
 
       <div className="flex gap-3">
         <button

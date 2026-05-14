@@ -26,6 +26,7 @@ import {
   type ResetPasswordFormValues,
 } from '../../components';
 import { X, Loader2 } from 'lucide-react';
+import { getApiErrorMessage } from '@/utils/apiErrorMessage';
 
 const LoginPage = () => {
   const [isRegister, setIsRegister] = useState(false);
@@ -64,7 +65,7 @@ const LoginPage = () => {
       setLoginEmail(data.email);
       setIsLoginOtpPending(true);
     } catch (err) {
-      console.error('Failed to login:', err);
+      console.error('Failed to login:', getApiErrorMessage(err, 'Đăng nhập thất bại'));
     }
   };
 

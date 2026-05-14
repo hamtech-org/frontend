@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { ShieldCheck, Lock, Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
+import { getApiErrorMessage } from '@/utils/apiErrorMessage';
 
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
 const passwordMsg = 'Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt';
@@ -120,11 +121,7 @@ export const ResetPasswordForm = ({
         )}
       </div>
 
-      {error && (
-        <div className="text-red-500 text-sm text-center">
-          {(error as any)?.data?.message || 'Đã có lỗi xảy ra'}
-        </div>
-      )}
+      {error && <div className="text-red-500 text-sm text-center">{getApiErrorMessage(error)}</div>}
 
       <div className="flex gap-3">
         <button

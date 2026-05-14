@@ -19,6 +19,30 @@ export interface ILoginResponse extends IAuthTokens {
   userId: string;
 }
 
+export interface ISessionDeviceInfo {
+  userAgent: string;
+  os?: string;
+  browser?: string;
+}
+
+export interface IAuthSessionSummary {
+  sessionId: string;
+  deviceInfo: ISessionDeviceInfo;
+  ipAddress: string;
+  location: {
+    city: string;
+    region: string;
+    country: string;
+    countryCode: string;
+  } | null;
+  expiresAt: number;
+  isRevoked: boolean;
+  createdAt: string;
+  updatedAt: string;
+  isCurrent: boolean;
+  isActive: boolean;
+}
+
 export interface IFaceLoginRequest {
   email: string;
   livenessSessionId: string;
