@@ -142,7 +142,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 ) : null}
                 <p className="mt-3">
                   <Link to="/profile" className="font-semibold underline underline-offset-4">
-                    Mở trang Hồ sơ (/profile)
+                    Mở trang Hồ sơ
                   </Link>{' '}
                   để xem danh sách phiên và thu hồi nếu cần.
                 </p>
