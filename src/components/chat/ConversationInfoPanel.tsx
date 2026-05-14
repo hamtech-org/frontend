@@ -1521,13 +1521,11 @@ export function ConversationInfoPanel({
               onClick={() => setBulletinAccordionOpen((v) => !v)}
               className="flex w-full items-center justify-between gap-2 p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 dark:hover:bg-white/5"
             >
-              <span className="flex min-w-0 flex-1 items-center gap-2">
-                <ChevronDown
-                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${bulletinAccordionOpen ? '' : '-rotate-90'}`}
-                  aria-hidden
-                />
-                Bảng tin nhóm
-              </span>
+              <span className="min-w-0 flex-1">Bảng tin nhóm</span>
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${bulletinAccordionOpen ? '' : '-rotate-90'}`}
+                aria-hidden
+              />
             </button>
             {bulletinAccordionOpen && (
               <div className="pb-2">
