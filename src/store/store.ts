@@ -7,6 +7,7 @@ import newsfeedReducer from './slices/newsfeedSlice';
 import notificationReducer from './slices/notificationSlice';
 import uiReducer from './slices/uiSlice';
 import callReducer from './slices/callSlice';
+import { reelUploadReducer } from './slices/reelUploadSlice';
 import { authApi } from './api/authApi';
 import { userApi } from './api/userApi';
 import { chatApi } from './api/chatApi';
@@ -24,6 +25,7 @@ export const store = configureStore({
     notification: notificationReducer,
     ui: uiReducer,
     call: callReducer,
+    reelUpload: reelUploadReducer,
     [authApi.reducerPath]: authApi.reducer,
     [userApi.reducerPath]: userApi.reducer,
     [chatApi.reducerPath]: chatApi.reducer,

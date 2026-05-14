@@ -1,16 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { AnimatePresence, motion } from 'motion/react';
-import { Video, X, Loader2, Globe, Users, Lock, ChevronDown, Hash, Type } from 'lucide-react';
+import { Video, X, Globe, Users, Lock, ChevronDown, Hash, Type } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { store } from '@/store/store';
 import type { RootState } from '@/store/store';
-import { useCreateReelMutation } from '@/store/api/newsfeedApi';
-import { useUploadMediaMutation } from '@/store/api/mediaApi';
+import { newsfeedApi } from '@/store/api/newsfeedApi';
+import {
+  uploadStarted,
+  setProgress,
+  uploadCompleted,
+  uploadFailed,
+} from '@/store/slices/reelUploadSlice';
 import type { PostVisibility } from '@/types/newsfeed.types';
 
 const VISIBILITY_CONFIG = {
@@ -46,10 +52,8 @@ export function CreateReelModal({ isOpen, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [uploadMedia, { isLoading: uploading }] = useUploadMediaMutation();
-  const [createReel, { isLoading: creating }] = useCreateReelMutation();
-
-  const busy = uploading || creating;
+  const uploadStatus = useSelector((s: RootState) => s.reelUpload.status);
+  const isUploading = uploadStatus === 'uploading';
 
   // Reset on open/close
   useEffect(() => {
@@ -107,70 +111,106 @@ export function CreateReelModal({ isOpen, onClose }: Props) {
     }
   }, []);
 
-  // Submit
-  const handleSubmit = useCallback(async () => {
-    if (!videoFile || busy) return;
+  // Submit — close modal immediately, upload in background via XHR
+  const handleSubmit = useCallback(() => {
+    if (!videoFile || isUploading) return;
 
-    try {
-      // 1. Upload video
-      const videoResult = await uploadMedia({
-        file: videoFile,
-        mediaType: 'video',
-        deliveryScope: 'general',
-      }).unwrap();
-      const uploadedVideoUrl = videoResult.data?.url;
-      if (!uploadedVideoUrl) throw new Error('Video upload failed');
+    // Snapshot all state before modal closes/unmounts
+    const file = videoFile;
+    const thumbDataUrl = thumbnailUrl;
+    const caption_ = caption;
+    const hashtagsText_ = hashtagsText;
+    const videoDuration_ = videoDuration;
+    const videoWidth_ = videoWidth;
+    const videoHeight_ = videoHeight;
+    const visibility_ = visibility;
 
-      // 2. Upload thumbnail (if generated)
-      let uploadedThumbnailUrl = '';
-      if (thumbnailUrl) {
-        // Convert dataURL to File
-        const res = await fetch(thumbnailUrl);
-        const blob = await res.blob();
-        const thumbFile = new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' });
-        const thumbResult = await uploadMedia({
-          file: thumbFile,
-          mediaType: 'image',
-          deliveryScope: 'general',
-        }).unwrap();
-        uploadedThumbnailUrl = thumbResult.data?.url ?? '';
+    store.dispatch(uploadStarted());
+    onClose(); // close modal immediately
+
+    const formData = new FormData();
+    formData.append('mediaType', 'video');
+    formData.append('deliveryScope', 'general');
+    formData.append('file', file);
+
+    const token = localStorage.getItem('accessToken');
+    const apiBase =
+      (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:3000/api/v1';
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${apiBase}/media/upload`);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) {
+        store.dispatch(setProgress((e.loaded / e.total) * 0.85));
       }
+    };
 
-      // 3. Parse hashtags
-      const hashtags = hashtagsText
-        .split(/[,\s#]+/)
-        .map((t) => t.trim())
-        .filter(Boolean);
+    xhr.onload = () => {
+      void (async () => {
+        try {
+          const res = JSON.parse(xhr.responseText) as { data?: { url?: string } };
+          const videoUrl = res?.data?.url;
+          if (!videoUrl) throw new Error('Video upload failed');
 
-      // 4. Determine aspect ratio
-      const ratio =
-        videoWidth && videoHeight
-          ? videoWidth / videoHeight < 0.7
-            ? ('9:16' as const)
-            : videoWidth / videoHeight < 0.9
-              ? ('4:5' as const)
-              : ('1:1' as const)
-          : ('9:16' as const);
+          // Upload thumbnail via fetch (small file, no progress needed)
+          let thumbUrl: string | undefined;
+          if (thumbDataUrl) {
+            const blob = await fetch(thumbDataUrl).then((r) => r.blob());
+            const thumbFile = new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' });
+            const tf = new FormData();
+            tf.append('mediaType', 'image');
+            tf.append('deliveryScope', 'general');
+            tf.append('file', thumbFile);
+            const tRes = (await fetch(`${apiBase}/media/upload`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${localStorage.getItem('accessToken') ?? ''}` },
+              body: tf,
+            }).then((r) => r.json())) as { data?: { url?: string } };
+            thumbUrl = tRes?.data?.url ?? undefined;
+          }
+          store.dispatch(setProgress(0.95));
 
-      // 5. Create reel
-      await createReel({
-        videoUrl: uploadedVideoUrl,
-        thumbnailUrl: uploadedThumbnailUrl,
-        caption: `${caption}${hashtags.length > 0 ? '\n' + hashtags.map((h) => `#${h}`).join(' ') : ''}`,
-        durationMs: videoDuration,
-        width: videoWidth,
-        height: videoHeight,
-        aspectRatio: ratio,
-        visibility,
-      }).unwrap();
+          const hashtags = hashtagsText_
+            .split(/[,\s#]+/)
+            .map((t) => t.trim())
+            .filter(Boolean);
+          const ratio =
+            videoWidth_ && videoHeight_
+              ? videoWidth_ / videoHeight_ < 0.7
+                ? ('9:16' as const)
+                : videoWidth_ / videoHeight_ < 0.9
+                  ? ('4:5' as const)
+                  : ('1:1' as const)
+              : ('9:16' as const);
 
-      onClose();
-    } catch (e) {
-      console.error('Create reel error:', e);
-    }
+          const result = await store.dispatch(
+            newsfeedApi.endpoints.createReel.initiate({
+              videoUrl,
+              thumbnailUrl: thumbUrl,
+              caption: `${caption_}${hashtags.length > 0 ? '\n' + hashtags.map((h) => `#${h}`).join(' ') : ''}`,
+              durationMs: videoDuration_,
+              width: videoWidth_,
+              height: videoHeight_,
+              aspectRatio: ratio,
+              visibility: visibility_,
+            }),
+          );
+
+          if ('error' in result) throw new Error('Create reel failed');
+          store.dispatch(uploadCompleted());
+        } catch (e) {
+          store.dispatch(uploadFailed(e instanceof Error ? e.message : 'Lỗi không xác định'));
+        }
+      })();
+    };
+
+    xhr.onerror = () => store.dispatch(uploadFailed('Lỗi kết nối mạng'));
+    xhr.send(formData);
   }, [
     videoFile,
-    busy,
+    isUploading,
     thumbnailUrl,
     caption,
     hashtagsText,
@@ -178,8 +218,6 @@ export function CreateReelModal({ isOpen, onClose }: Props) {
     videoWidth,
     videoHeight,
     visibility,
-    uploadMedia,
-    createReel,
     onClose,
   ]);
 
@@ -198,8 +236,7 @@ export function CreateReelModal({ isOpen, onClose }: Props) {
           <DialogTitle className="text-[17px] font-bold tracking-tight">Tạo Reel mới</DialogTitle>
           <button
             onClick={onClose}
-            disabled={busy}
-            className="absolute right-3 flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground disabled:opacity-40"
+            className="absolute right-3 flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground"
           >
             <X className="h-5 w-5" />
           </button>
@@ -351,30 +388,18 @@ export function CreateReelModal({ isOpen, onClose }: Props) {
         {/* Footer */}
         <div className="border-t border-border/50 px-4 py-3">
           <button
-            disabled={!videoFile || busy}
-            onClick={() => void handleSubmit()}
+            disabled={!videoFile || isUploading}
+            onClick={handleSubmit}
             className={`h-10 w-full rounded-xl text-[15px] font-bold transition-all ${
-              !videoFile || busy
+              !videoFile || isUploading
                 ? 'cursor-not-allowed bg-muted text-muted-foreground'
                 : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
             }`}
           >
             <AnimatePresence mode="wait">
-              {busy ? (
-                <motion.span
-                  key="loading"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex items-center justify-center gap-2"
-                >
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {uploading ? 'Đang tải video...' : 'Đang tạo reel...'}
-                </motion.span>
-              ) : (
-                <motion.span key="label" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                  Đăng Reel
-                </motion.span>
-              )}
+              <motion.span key="label" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                Đăng Reel
+              </motion.span>
             </AnimatePresence>
           </button>
         </div>

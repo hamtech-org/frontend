@@ -1,6 +1,7 @@
 import IncomingCallModal from '@/components/call/IncomingCallModal';
 import AppHeader from '@/components/layout/AppHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
+import { ReelUploadToast } from '@/components/layout/ReelUploadToast';
 import { ShellMain, ShellRoot } from '@/components/layout/ShellPrimitives';
 import GlobalSearchBox from '@/components/search/GlobalSearchBox';
 import { CallProvider } from '@/contexts/CallContext';
@@ -199,6 +200,7 @@ const App: React.FC = () => {
           </AnimatePresence>
         </div>
       </ShellMain>
+      <ReelUploadToast />
     </ShellRoot>
   );
 };
