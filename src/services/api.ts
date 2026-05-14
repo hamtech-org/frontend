@@ -1,5 +1,8 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import type { ApiErrorResponse, ApiSuccessResponse } from '@/types/api.types';
+import type { IAuthTokens } from '@/types/auth.types';
+import { store } from '@/store/store';
+import { sessionTokensRefreshed } from '@/store/authSession.actions';
 
 // Prefer explicit backend base URL from env.
 // Fallback to relative path (works only if dev proxy is configured).
@@ -66,15 +69,21 @@ apiClient.interceptors.response.use(
         }
 
         // Call refresh-token endpoint
-        const response = await axios.post<ApiSuccessResponse<{ accessToken: string }>>(
+        const response = await axios.post<ApiSuccessResponse<IAuthTokens>>(
           `${API_BASE_URL}/auth/refresh-token`,
           { refreshToken },
           { timeout: 15000 },
         );
 
-        const newAccessToken = response.data?.data?.accessToken;
-        if (newAccessToken) {
+        const tokenPayload = response.data?.data;
+        const newAccessToken = tokenPayload?.accessToken;
+        const newRefreshToken = tokenPayload?.refreshToken;
+        if (newAccessToken && newRefreshToken) {
           localStorage.setItem('accessToken', newAccessToken);
+          localStorage.setItem('refreshToken', newRefreshToken);
+          store.dispatch(
+            sessionTokensRefreshed({ accessToken: newAccessToken, refreshToken: newRefreshToken }),
+          );
           apiClient.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
           originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
           processQueue(null, newAccessToken);

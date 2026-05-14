@@ -2,6 +2,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Mail, ArrowRight, Loader2, KeyRound } from 'lucide-react';
+import { getApiErrorMessage } from '@/utils/apiErrorMessage';
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
@@ -60,11 +61,7 @@ export const ForgotPasswordForm = ({
         {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email.message}</p>}
       </div>
 
-      {error && (
-        <div className="text-red-500 text-sm text-center">
-          {(error as any)?.data?.message || 'Đã có lỗi xảy ra'}
-        </div>
-      )}
+      {error && <div className="text-red-500 text-sm text-center">{getApiErrorMessage(error)}</div>}
 
       <div className="flex gap-3">
         <button

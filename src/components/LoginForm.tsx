@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { ArrowRight, Eye, EyeOff, Loader2, Mail, Lock } from 'lucide-react';
+import { getApiErrorMessage } from '@/utils/apiErrorMessage';
 
 const loginSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
@@ -85,11 +86,7 @@ export const LoginForm = ({
         {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password.message}</p>}
       </div>
 
-      {error && (
-        <div className="text-red-500 text-sm text-center">
-          {(error as any)?.data?.message || 'Đã có lỗi xảy ra'}
-        </div>
-      )}
+      {error && <div className="text-red-500 text-sm text-center">{getApiErrorMessage(error)}</div>}
 
       <button
         type="submit"
