@@ -25,18 +25,22 @@ export const authApi = createApi({
     }),
     verifyLoginOtp: builder.mutation<ApiSuccessResponse<ILoginResponse>, IVerifyLoginOtpRequest>({
       query: (body) => ({ url: '/auth/verify-login-otp', method: 'POST', body }),
+      invalidatesTags: ['AuthSessions'],
     }),
     register: builder.mutation<ApiSuccessResponse<{ message: string }>, IRegisterRequest>({
       query: (body) => ({ url: '/auth/register', method: 'POST', body }),
     }),
     verifyEmail: builder.mutation<ApiSuccessResponse<ILoginResponse>, IVerifyEmailRequest>({
       query: (body) => ({ url: '/auth/verify-email', method: 'POST', body }),
+      invalidatesTags: ['AuthSessions'],
     }),
     logout: builder.mutation<ApiSuccessResponse<null>, void>({
       query: () => ({ url: '/auth/logout', method: 'POST' }),
+      invalidatesTags: ['AuthSessions'],
     }),
     faceLogin: builder.mutation<ApiSuccessResponse<ILoginResponse>, IFaceLoginRequest>({
       query: (body) => ({ url: '/auth/face-login', method: 'POST', body }),
+      invalidatesTags: ['AuthSessions'],
     }),
     enableFaceLogin: builder.mutation<ApiSuccessResponse<null>, IEnableFaceLoginRequest>({
       query: (body) => ({ url: '/auth/face-login/enable', method: 'POST', body }),
@@ -49,6 +53,7 @@ export const authApi = createApi({
     }),
     logoutAll: builder.mutation<ApiSuccessResponse<null>, void>({
       query: () => ({ url: '/auth/logout-all', method: 'POST' }),
+      invalidatesTags: ['AuthSessions'],
     }),
     forgotPassword: builder.mutation<ApiSuccessResponse<null>, IForgotPasswordRequest>({
       query: (body) => ({ url: '/auth/forgot-password', method: 'POST', body }),
@@ -58,6 +63,7 @@ export const authApi = createApi({
     }),
     changePassword: builder.mutation<ApiSuccessResponse<null>, IChangePasswordRequest>({
       query: (body) => ({ url: '/auth/change-password', method: 'PUT', body }),
+      invalidatesTags: ['AuthSessions'],
     }),
     getSessions: builder.query<ApiSuccessResponse<IAuthSessionSummary[]>, void>({
       query: () => ({ url: '/auth/sessions', method: 'GET' }),

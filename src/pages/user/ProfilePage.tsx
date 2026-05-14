@@ -50,7 +50,12 @@ const ProfilePage: React.FC = () => {
   const [updateProfile, { isLoading: isUpdating }] = useUpdateProfileMutation();
   const [enableFaceLogin, { isLoading: isEnablingFaceLogin }] = useEnableFaceLoginMutation();
   const [disableFaceLogin, { isLoading: isDisablingFaceLogin }] = useDisableFaceLoginMutation();
-  const { data: sessionsRes, isLoading: sessionsLoading } = useGetSessionsQuery();
+  const { data: sessionsRes, isLoading: sessionsLoading } = useGetSessionsQuery(undefined, {
+    // Không có WebSocket: làm mới khi quay lại tab / mạng, và định kỳ (thiết bị khác đăng nhập).
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+    pollingInterval: 45_000,
+  });
   const [revokeSession] = useRevokeSessionMutation();
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -621,7 +626,9 @@ const ProfilePage: React.FC = () => {
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Phiên đang hoạt động và lịch sử; hiển thị IP và thiết bị tại thời điểm đăng nhập.
-                Thu hồi sẽ vô hiệu hóa refresh token trên phiên đó.
+                Thu hồi sẽ vô hiệu hóa refresh token trên phiên đó. Danh sách tự làm mới khoảng 45
+                giây hoặc khi bạn chuyển lại tab này (không phải cập nhật tức thì giữa các thiết
+                bị).
               </p>
             </div>
           </div>
