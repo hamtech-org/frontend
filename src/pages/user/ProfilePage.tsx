@@ -625,10 +625,7 @@ const ProfilePage: React.FC = () => {
                 Thiết bị đăng nhập
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Phiên đang hoạt động và lịch sử; hiển thị IP và thiết bị tại thời điểm đăng nhập.
-                Thu hồi sẽ vô hiệu hóa refresh token trên phiên đó. Danh sách tự làm mới khoảng 45
-                giây hoặc khi bạn chuyển lại tab này (không phải cập nhật tức thì giữa các thiết
-                bị).
+                Phiên đang hoạt động và lịch sử, hiển thị IP và thiết bị tại thời điểm đăng nhập.
               </p>
             </div>
           </div>
@@ -705,19 +702,6 @@ const ProfilePage: React.FC = () => {
               </ul>
             )}
           </div>
-        </motion.div>
-
-        {/* Additional Info */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4"
-        >
-          <p className="text-sm text-blue-800 dark:text-blue-300">
-            <strong>💡 Mẹo:</strong> Bạn có thể nhấp vào ảnh đại diện để thay đổi nó. Các thay đổi
-            sẽ được lưu ngay khi bạn nhấp nút "Lưu thay đổi".
-          </p>
         </motion.div>
       </div>
 
