@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, type Ref } from 'react';
+import { useState, useCallback, useEffect, Fragment, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   AlarmClock,
@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   Phone,
   Pin,
+  PinOff,
   Pencil,
   Reply,
   RotateCcw,
@@ -27,7 +28,13 @@ import {
 } from 'lucide-react';
 import type { IConversation, IMessage, IReplyToDetails, MessageStatus } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/types/chat.types';
-import { formatTime, formatDate } from '@/utils/formatDate';
+import {
+  formatTime,
+  formatChatSystemPillTime,
+  formatChatSystemPillDateLabel,
+  chatSystemPillShowDateLine,
+  chatMessagesSameLocalDay,
+} from '@/utils/formatDate';
 import { isTaskJoinDeadlinePassed, typingLabel } from '@/utils/chatUtils';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
@@ -98,6 +105,23 @@ function OutgoingDeliveryTicks({
       strokeWidth={2.5}
       aria-label="Đã xem"
     />
+  );
+}
+
+/** Mốc ngày giữa các tin (đồng bộ mobile `DateSeparator`): Hôm nay | Hôm qua | DD/MM/YYYY. */
+function ChatDayListSeparator({ dateIso, now }: { dateIso: string; now: Date }) {
+  const label = formatChatSystemPillDateLabel(dateIso, now);
+  if (!label) return null;
+  return (
+    <div
+      className="flex w-full min-h-[28px] shrink-0 justify-center py-2"
+      role="separator"
+      aria-label={label}
+    >
+      <span className="rounded-full bg-muted/60 px-3 py-1 text-[11px] font-semibold text-foreground/80 shadow-sm dark:bg-white/15 dark:text-white/85">
+        {label}
+      </span>
+    </div>
   );
 }
 
@@ -423,6 +447,23 @@ export function ChatMessageList({
   /** Tin nhắn đã bấm tải file về máy trong phiên (hiện “Đã có trên máy”). */
   const [downloadedMediaIds, setDownloadedMediaIds] = useState<Set<string>>(() => new Set());
 
+  const [calendarNow, setCalendarNow] = useState(() => new Date());
+  useEffect(() => {
+    const tick = () => setCalendarNow(new Date());
+    const id = window.setInterval(tick, 60_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    const onFocus = () => tick();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
   const [taskDetailOpen, setTaskDetailOpen] = useState(false);
   const [taskDetailTaskId, setTaskDetailTaskId] = useState<string | null>(null);
   const [taskDetail, setTaskDetail] = useState<{
@@ -666,14 +707,16 @@ export function ChatMessageList({
               }
               // Show date above bubble if first system message of the day or first message
               const prevMsg = index > 0 ? allMessages[index - 1] : undefined;
-              const prevDate = prevMsg ? prevMsg.createdAt?.slice(0, 10) : null;
-              const currDate = msg.createdAt?.slice(0, 10);
-              const showDate = !prevMsg || prevDate !== currDate;
-              // Show 'Hôm nay' if date is today
-              const todayStr = new Date().toISOString().slice(0, 10);
-              const isToday = currDate === todayStr;
-              const dateLabel = showDate ? (isToday ? 'Hôm nay' : formatDate(msg.createdAt)) : '';
-              const timeLabel = formatTime(msg.createdAt);
+              const showDate = chatSystemPillShowDateLine(prevMsg?.createdAt, msg.createdAt);
+              const dateLabel = showDate
+                ? formatChatSystemPillDateLabel(msg.createdAt, calendarNow)
+                : '';
+              const timeLabel = formatChatSystemPillTime(msg.createdAt);
+              const isGroupConv =
+                activeConversation?.type === 'group' ||
+                ((groupMembers?.length ?? 0) > 0 && activeConversation?.type !== 'direct');
+              /** Nhóm: chip mốc ngày giữa luồng (đồng bộ tin thường) — pill chỉ còn giờ để không lặp «Hôm nay». */
+              const daySepAboveSystem = isGroupConv && showDate;
               // Nếu là thông báo hệ thống do chính mình thực hiện thì xưng "Bạn" (chỉ phía người cập nhật).
               let content = msg.content;
               // Giữ logic cũ (case avatar nhóm) để tránh thay đổi hành vi đang ổn định.
@@ -827,691 +870,679 @@ export function ChatMessageList({
                 seenTaskAssignedIds.add(id);
               }
 
+              const isSysJumpHighlight = jumpHighlightMessageId === msg.messageId;
+
               return (
-                <div
-                  id={`chat-msg-${msg.messageId}`}
-                  key={msg.messageId}
-                  className="w-full flex flex-col items-center my-3 select-none"
-                >
-                  <span className="mb-2 bg-black/10 dark:bg-white/10 text-black/60 dark:text-white/60 text-xs px-3 py-1 rounded-full font-medium">
-                    {showDate ? `${timeLabel} ${dateLabel}` : timeLabel}
-                  </span>
+                <Fragment key={msg.messageId}>
+                  {daySepAboveSystem ? (
+                    <ChatDayListSeparator dateIso={msg.createdAt} now={calendarNow} />
+                  ) : null}
                   <div
-                    className={`bg-white dark:bg-zinc-800/95 rounded-2xl shadow-sm border border-black/[0.06] dark:border-white/10 ${
-                      taskCard ? 'overflow-hidden' : 'px-3 py-2'
-                    }`}
-                    style={{ minWidth: 280, maxWidth: 480 }}
+                    id={`chat-msg-${msg.messageId}`}
+                    className="w-full flex flex-col items-center my-3 select-none"
                   >
-                    {taskCard ? (
-                      <div className="w-full">
-                        {(() => {
-                          const tBoard = (groupTasks ?? []).find(
-                            (x: any) => String(x?.taskId) === String(taskCard?.taskId),
-                          );
-                          const taskMissingFromBoard =
-                            Boolean(taskCard?.taskId) &&
-                            !String(taskCard.taskId).startsWith('tmp-') &&
-                            !tBoard;
-                          // Chỉ người tạo task (creatorId) mới được sửa/hủy.
-                          // Không fallback sang actorId để tránh trường hợp người "cập nhật" bị hiểu nhầm là người tạo.
-                          const creatorIdForTask = (tBoard as any)?.creatorId ?? null;
-                          const isTaskCreator = Boolean(
-                            currentUserId &&
-                            creatorIdForTask &&
-                            String(creatorIdForTask) === String(currentUserId),
-                          );
+                    <span className="mb-2 bg-black/10 dark:bg-white/10 text-black/60 dark:text-white/60 text-xs px-3 py-1 rounded-full font-medium">
+                      {daySepAboveSystem
+                        ? timeLabel
+                        : showDate
+                          ? `${timeLabel} ${dateLabel}`
+                          : timeLabel}
+                    </span>
+                    <div className="relative" style={{ minWidth: 280, maxWidth: 480 }}>
+                      <div
+                        className={`relative z-[2] bg-white dark:bg-zinc-800/95 rounded-2xl shadow-sm ${
+                          isSysJumpHighlight
+                            ? 'border-2 border-blue-500'
+                            : 'border border-black/[0.06] dark:border-white/10'
+                        } ${taskCard ? 'overflow-hidden' : 'px-3 py-2'}`}
+                      >
+                        {taskCard ? (
+                          <div className="w-full">
+                            {(() => {
+                              const tBoard = (groupTasks ?? []).find(
+                                (x: any) => String(x?.taskId) === String(taskCard?.taskId),
+                              );
+                              const taskMissingFromBoard =
+                                Boolean(taskCard?.taskId) &&
+                                !String(taskCard.taskId).startsWith('tmp-') &&
+                                !tBoard;
+                              // Chỉ người tạo task (creatorId) mới được sửa/hủy.
+                              // Không fallback sang actorId để tránh trường hợp người "cập nhật" bị hiểu nhầm là người tạo.
+                              const creatorIdForTask = (tBoard as any)?.creatorId ?? null;
+                              const isTaskCreator = Boolean(
+                                currentUserId &&
+                                creatorIdForTask &&
+                                String(creatorIdForTask) === String(currentUserId),
+                              );
 
-                          // Nếu task đã bị hủy/xóa và không còn trên board, chỉ hiển thị dòng hệ thống `task_deleted`
-                          // (tránh hiện thêm "thẻ công việc đã hủy" to gây rối).
-                          if (taskMissingFromBoard) {
-                            const titleStr = String(taskCard?.title ?? '').trim();
-                            return (
-                              <div className="flex items-center justify-center gap-2">
-                                <AlarmClockOff
-                                  className="h-4 w-4 shrink-0 text-muted-foreground/85"
-                                  strokeWidth={1.75}
-                                  aria-hidden
-                                />
-                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {'Công việc đã bị hủy'}
-                                  {titleStr ? ` "${titleStr}"` : ''}
-                                </span>
-                              </div>
-                            );
-                          }
-
-                          const byId = new Map(
-                            (groupMembers ?? []).map((m) => [
-                              String(m.userId),
-                              String(m.displayName ?? (m as any)?.name ?? m.userId ?? '').trim(),
-                            ]),
-                          );
-                          const t = tBoard;
-                          const assignees = Array.isArray((t as any)?.assignees)
-                            ? ((t as any).assignees as string[])
-                            : [];
-                          const subsBoard = Array.isArray((t as any)?.subtasks)
-                            ? ((t as any).subtasks as any[])
-                            : [];
-                          const subsFromMsg = Array.isArray(taskCard.subtasksFromMessage)
-                            ? taskCard.subtasksFromMessage
-                            : [];
-                          const subs = subsBoard.length > 0 ? subsBoard : subsFromMsg;
-                          const subAssigneeIds = subs
-                            .map((s) => String(s?.assigneeId ?? '').trim())
-                            .filter(Boolean);
-                          const labelRaw = String(taskCard.assigneeLabel ?? '');
-                          const labelNorm = labelRaw
-                            .toLowerCase()
-                            .normalize('NFD')
-                            // strip Vietnamese accents/diacritics
-                            .replace(/[\u0300-\u036f]/g, '');
-                          const labelLooksLikeGroup =
-                            labelNorm.includes('ca nhom') ||
-                            labelNorm.includes('group') ||
-                            labelNorm.includes('all');
-                          const participants = Array.isArray((t as any)?.participants)
-                            ? ((t as any).participants as string[])
-                            : [];
-                          const joined = participants.includes(currentUserId);
-                          const isSubtaskAssignee = subAssigneeIds.includes(String(currentUserId));
-                          const topIds =
-                            taskCard.assigneeUserIds.length > 0
-                              ? taskCard.assigneeUserIds
-                              : assignees;
-                          const isTopLevelAssignee = topIds
-                            .map(String)
-                            .includes(String(currentUserId));
-                          const explicitAssignToAll =
-                            Boolean((t as any)?.assignToAll) ||
-                            Boolean((t as any)?.broadcast) ||
-                            Boolean(taskCard.assignToAll) ||
-                            Boolean(taskCard.broadcast);
-                          const hasTopLevelAssignees = topIds.length > 0;
-                          const hasSubtasksAssignees = subAssigneeIds.length > 0;
-                          const canJoinThisTask = hasSubtasksAssignees
-                            ? isSubtaskAssignee
-                            : explicitAssignToAll ||
-                              // legacy: không có assignees/subtasks mà label ghi "cả nhóm"
-                              (!hasTopLevelAssignees &&
-                                !hasSubtasksAssignees &&
-                                labelLooksLikeGroup) ||
-                              // legacy: không có assignees/subtasks → coi như cả nhóm
-                              (!hasTopLevelAssignees && !hasSubtasksAssignees) ||
-                              isTopLevelAssignee;
-                          const dueForJoin =
-                            (t as any)?.dueDate != null && String((t as any).dueDate).trim() !== ''
-                              ? String((t as any).dueDate)
-                              : taskCard.dueDate;
-                          const joinDeadlinePassed = isTaskJoinDeadlinePassed(
-                            dueForJoin ?? undefined,
-                          );
-                          const showJoin = !joined;
-                          return (
-                            <div className="flex flex-col gap-0 w-full text-left bg-transparent relative group">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const tt = tBoard as any;
-                                  const subs = Array.isArray(tt?.subtasks)
-                                    ? (tt.subtasks as any[])
-                                    : [];
-                                  const participantIds = Array.isArray(tt?.participants)
-                                    ? (tt.participants as unknown[]).map((x) => String(x))
-                                    : [];
-                                  const subAssigneeIds = Array.from(
-                                    new Set(
-                                      subs
-                                        .map((s) => String(s?.assigneeId ?? '').trim())
-                                        .filter(Boolean),
-                                    ),
-                                  );
-                                  const topIds =
-                                    taskCard.assigneeUserIds.length > 0
-                                      ? taskCard.assigneeUserIds
-                                      : Array.isArray(tt?.assignees)
-                                        ? (tt.assignees as unknown[])
-                                            .map((x) => String(x))
-                                            .filter(Boolean)
-                                        : [];
-                                  const isAll =
-                                    Boolean(tt?.assignToAll) ||
-                                    Boolean(tt?.broadcast) ||
-                                    Boolean(taskCard.assignToAll) ||
-                                    Boolean(taskCard.broadcast);
-                                  const assigneeDisplay = isAll
-                                    ? 'Cả nhóm'
-                                    : (subs.length > 0 ? subAssigneeIds : topIds).length > 0
-                                      ? (subs.length > 0 ? subAssigneeIds : topIds)
-                                          .map((id) => byId.get(String(id)) ?? String(id))
-                                          .join(', ')
-                                      : taskCard.assigneeLabel;
-                                  setTaskDetailTaskId(String(taskCard.taskId));
-                                  setTaskDetail({
-                                    title: taskCard.title,
-                                    note: taskCard.note,
-                                    dueDate: taskCard.dueDate,
-                                    assigneeLabel: assigneeDisplay,
-                                    participantsCount: participantIds.length,
-                                    participantIds,
-                                    actorLabel:
-                                      (taskCard.actorId && taskCard.actorId === currentUserId
-                                        ? 'Bạn'
-                                        : taskCard.actorName) + ' đã giao việc',
-                                    subtasks: subs.map((s) => {
-                                      const assigneeId = String(s?.assigneeId ?? '').trim();
-                                      const nameRaw = String(s?.assigneeName ?? '').trim();
-                                      const name =
-                                        nameRaw ||
-                                        (assigneeId ? (byId.get(assigneeId) ?? assigneeId) : '');
-                                      return {
-                                        assigneeName: name,
-                                        content: String(s?.content ?? ''),
-                                        done: Boolean(s?.done),
-                                      };
-                                    }),
-                                  });
-                                  setTaskDetailOpen(true);
-                                }}
-                                className="px-4 py-4 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors w-full text-left rounded-t-2xl outline-none"
-                              >
-                                {/* Task Info Header */}
-                                <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-2 flex items-center gap-1.5">
-                                  <ClipboardList className="w-3.5 h-3.5" />
-                                  {(taskCard.actorId && taskCard.actorId === currentUserId
-                                    ? 'Bạn'
-                                    : taskCard.actorName) + ' đã giao việc'}
-                                </div>
-
-                                {/* Title */}
-                                <div
-                                  id={`task-card-${taskCard.taskId}-title`}
-                                  className="text-[16px] font-black text-foreground break-words leading-snug mb-3.5 pr-2"
-                                >
-                                  {taskCard.title}
-                                </div>
-
-                                {/* Assignees & Deadline */}
-                                <div className="space-y-2.5">
-                                  <div className="flex items-center gap-2.5 text-[13px]">
-                                    <Users className="w-4 h-4 text-muted-foreground shrink-0" />
-                                    <div className="min-w-0 flex-1 flex items-center flex-wrap gap-1">
-                                      <span className="font-semibold text-muted-foreground mr-0.5">
-                                        Giao cho:
-                                      </span>
-                                      {(() => {
-                                        const subs = Array.isArray((tBoard as any)?.subtasks)
-                                          ? ((tBoard as any).subtasks as any[])
-                                          : [];
-                                        const subAssignees =
-                                          subs.length > 0
-                                            ? Array.from(
-                                                new Set(
-                                                  subs
-                                                    .map((s) => String(s?.assigneeId ?? '').trim())
-                                                    .filter(Boolean),
-                                                ),
-                                              )
-                                            : [];
-                                        const topIds =
-                                          taskCard.assigneeUserIds.length > 0
-                                            ? taskCard.assigneeUserIds
-                                            : Array.isArray((tBoard as any)?.assignees)
-                                              ? (
-                                                  ((tBoard as any).assignees as unknown[]) ?? []
-                                                ).map((x) => String(x))
-                                              : [];
-                                        const ids = subs.length > 0 ? subAssignees : topIds;
-                                        const display =
-                                          Boolean((tBoard as any)?.assignToAll) ||
-                                          Boolean((tBoard as any)?.broadcast) ||
-                                          Boolean(taskCard.assignToAll) ||
-                                          Boolean(taskCard.broadcast)
-                                            ? 'Cả nhóm'
-                                            : ids.length > 0
-                                              ? ids
-                                                  .map((id) => byId.get(String(id)) ?? String(id))
-                                                  .join(', ')
-                                              : taskCard.assigneeLabel;
-                                        return (
-                                          <span
-                                            className="font-bold text-foreground truncate"
-                                            title={display}
-                                          >
-                                            {display}
-                                          </span>
-                                        );
-                                      })()}
-                                    </div>
+                              // Nếu task đã bị hủy/xóa và không còn trên board, chỉ hiển thị dòng hệ thống `task_deleted`
+                              // (tránh hiện thêm "thẻ công việc đã hủy" to gây rối).
+                              if (taskMissingFromBoard) {
+                                const titleStr = String(taskCard?.title ?? '').trim();
+                                return (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <AlarmClockOff
+                                      className="h-4 w-4 shrink-0 text-muted-foreground/85"
+                                      strokeWidth={1.75}
+                                      aria-hidden
+                                    />
+                                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                      {'Công việc đã bị hủy'}
+                                      {titleStr ? ` "${titleStr}"` : ''}
+                                    </span>
                                   </div>
-                                  {taskCard.dueDate ? (
-                                    <div className="flex items-center gap-2.5 text-[13px]">
-                                      <AlarmClock className="w-4 h-4 text-muted-foreground shrink-0" />
-                                      <div className="min-w-0 flex-1 flex items-center flex-wrap gap-1.5">
-                                        <span className="font-semibold text-muted-foreground mr-0.5">
-                                          Hạn chót:
-                                        </span>
-                                        <div id={`task-card-${taskCard.taskId}-dueDate`}>
-                                          <TaskDeadlineCalendar
-                                            dateIso={taskCard.dueDate}
-                                            size="sm"
-                                          />
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ) : null}
-                                </div>
+                                );
+                              }
 
-                                {/* Subtasks Preview */}
-                                {(() => {
-                                  const subs = Array.isArray((tBoard as any)?.subtasks)
-                                    ? ((tBoard as any).subtasks as any[])
-                                    : [];
-                                  if (subs.length === 0) return null;
-                                  const completedCount = subs.filter((s) => s?.done).length;
-                                  const totalCount = subs.length;
-                                  const progress = Math.round((completedCount / totalCount) * 100);
-
-                                  return (
-                                    <div className="mt-4 flex items-center gap-3 text-[12px] text-muted-foreground/90 font-medium bg-black/[0.02] dark:bg-white/[0.02] p-2.5 rounded-xl border border-black/5 dark:border-white/5">
-                                      <div className="flex-1 h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
-                                        <div
-                                          className={`h-full rounded-full transition-all ${progress === 100 ? 'bg-emerald-500' : 'bg-indigo-500'}`}
-                                          style={{ width: `${progress}%` }}
-                                        />
-                                      </div>
-                                      <span className="shrink-0 font-bold">
-                                        {completedCount}/{totalCount} mục
-                                      </span>
-                                    </div>
-                                  );
-                                })()}
-                              </button>
-
-                              {/* Action Bar (Footer) */}
-                              <div className="border-t border-black/5 dark:border-white/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3 bg-black/[0.015] dark:bg-white/[0.015] rounded-b-2xl">
-                                <div className="flex items-center gap-2">
-                                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-zinc-800 border border-black/5 dark:border-white/10 px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground shadow-sm">
-                                    <span aria-hidden>👥</span>
-                                    <span>
-                                      {participants.length > 0
-                                        ? `${participants.length} đã tham gia`
-                                        : 'Chưa có ai'}
-                                    </span>
-                                  </span>
-                                  {joined ? (
-                                    <span className="px-3 py-1.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20">
-                                      Đã tham gia
-                                    </span>
-                                  ) : joinDeadlinePassed ? (
-                                    <span
-                                      className="px-3 py-1.5 rounded-full text-[11px] font-bold bg-black/5 text-muted-foreground dark:bg-white/10 border border-black/5 dark:border-white/10"
-                                      title="Đã quá hạn công việc"
-                                    >
-                                      Chưa tham gia
-                                    </span>
-                                  ) : showJoin ? (
-                                    <button
-                                      type="button"
-                                      disabled={!canJoinThisTask}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (!canJoinThisTask) return;
-                                        onTaskJoined?.(taskCard.taskId);
-                                      }}
-                                      className={
-                                        !canJoinThisTask
-                                          ? 'px-3 py-1.5 rounded-full text-[11px] font-bold bg-black/5 dark:bg-white/10 text-muted-foreground cursor-not-allowed border border-black/5 dark:border-white/5'
-                                          : 'px-3 py-1.5 rounded-full text-[11px] font-bold bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm transition-colors'
-                                      }
-                                    >
-                                      Xác nhận tham gia
-                                    </button>
-                                  ) : null}
-                                </div>
-
-                                {isTaskCreator && (onEditGroupTask || onDeleteGroupTask) ? (
-                                  <div className="flex items-center gap-0.5">
-                                    {onEditGroupTask && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onEditGroupTask(String(taskCard.taskId));
-                                        }}
-                                        className="px-2.5 py-1.5 text-[12px] font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors flex items-center gap-1.5"
-                                      >
-                                        <Pencil className="w-3.5 h-3.5" />
-                                        <span className="hidden sm:inline">Sửa</span>
-                                      </button>
-                                    )}
-                                    {onDeleteGroupTask && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onDeleteGroupTask(String(taskCard.taskId));
-                                        }}
-                                        className="px-2.5 py-1.5 text-[12px] font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1.5"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                        <span className="hidden sm:inline">Hủy</span>
-                                      </button>
-                                    )}
-                                  </div>
-                                ) : null}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    ) : taskJoinedLine ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <CheckCheck className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
-                        <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                          {(taskJoinedLine.actorId && taskJoinedLine.actorId === currentUserId
-                            ? 'Bạn'
-                            : taskJoinedLine.actorName) + ' đã tham gia công việc'}
-                          {taskJoinedLine.title ? ` "${taskJoinedLine.title}"` : ''}
-                        </span>
-                      </div>
-                    ) : typeof content === 'string' && content.trim().startsWith('{') ? (
-                      (() => {
-                        try {
-                          const obj = JSON.parse(content) as any;
-                          if (obj?.kind === 'poll_created') {
-                            const actorName = String(
-                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
-                            );
-                            const question = String(obj?.poll?.question ?? '').trim();
-                            const pollId = String(obj?.poll?.pollId ?? '').trim();
-                            return (
-                              <div className="flex items-center justify-center gap-2">
-                                <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
-                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
-                                    ' đã tạo một bình chọn'}
-                                  {question ? `: ${question}` : ''}
-                                </span>
-                                {pollId && onOpenPollVote ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => onOpenPollVote(pollId)}
-                                    className="ml-1 px-2 py-1 rounded-full text-[11px] font-bold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
-                                  >
-                                    Bình chọn
-                                  </button>
-                                ) : null}
-                              </div>
-                            );
-                          }
-                          if (obj?.kind === 'poll_voted') {
-                            const actorName = String(
-                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
-                            );
-                            const optionText = String(obj?.poll?.optionText ?? '').trim();
-                            return (
-                              <div className="flex items-center justify-center gap-2">
-                                <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
-                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
-                                    ' đã bình chọn'}
-                                  {optionText ? `: ${optionText}` : ''}
-                                </span>
-                              </div>
-                            );
-                          }
-                          if (obj?.kind === 'poll_vote_changed') {
-                            const actorName = String(
-                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
-                            );
-                            const optionText = String(obj?.poll?.optionText ?? '').trim();
-                            return (
-                              <div className="flex items-center justify-center gap-2">
-                                <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
-                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
-                                    ' đã thay đổi bình chọn'}
-                                  {optionText ? `: ${optionText}` : ''}
-                                </span>
-                              </div>
-                            );
-                          }
-                          if (obj?.kind === 'poll_unvoted') {
-                            const actorName = String(
-                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
-                            );
-                            const optionText = String(obj?.poll?.optionText ?? '').trim();
-                            return (
-                              <div className="flex items-center justify-center gap-2">
-                                <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
-                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
-                                    ' đã rút phiếu'}
-                                  {optionText ? `: ${optionText}` : ''}
-                                </span>
-                              </div>
-                            );
-                          }
-                          if (obj?.kind === 'poll_option_added') {
-                            const actorName = String(
-                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
-                            );
-                            const optionText = String(obj?.poll?.optionText ?? '').trim();
-                            return (
-                              <div className="flex items-center justify-center gap-2">
-                                <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
-                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
-                                    ' đã thêm lựa chọn'}
-                                  {optionText ? `: ${optionText}` : ''}
-                                </span>
-                              </div>
-                            );
-                          }
-                          if (obj?.kind === 'poll_closed') {
-                            const actorName = String(
-                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
-                            );
-                            const question = String(obj?.poll?.question ?? '').trim();
-                            return (
-                              <div className="flex items-center justify-center gap-2">
-                                <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
-                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
-                                    ' đã đóng bình chọn'}
-                                  {question ? `: ${question}` : ''}
-                                </span>
-                              </div>
-                            );
-                          }
-                          if (obj?.kind === 'task_updated') {
-                            const actorName = String(
-                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
-                            );
-                            const titleStr = String(obj?.task?.title ?? '').trim();
-                            const taskId = String(obj?.task?.taskId ?? '').trim();
-                            return (
-                              <div className="flex w-full items-center justify-between gap-2">
-                                <div className="min-w-0 flex items-center gap-2">
-                                  <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
-                                  <span className="min-w-0 truncate text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                    {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
-                                      ' đã cập nhật công việc'}
-                                    {titleStr ? ` "${titleStr}"` : ''}
-                                  </span>
-                                </div>
-                                {taskId && onJumpToMessage ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      // Nhảy tới thẻ công việc trong khung chat + highlight border.
-                                      // Ưu tiên messageId thật đang có trong list (phòng trường hợp không phải local-task-card:*).
-                                      let targetMessageId = `local-task-card:${activeConversationId}:${taskId}`;
-                                      let focusPart: 'dueDate' | 'title' | 'note' | 'card' = 'card';
-                                      for (const m of allMessages) {
-                                        try {
-                                          if ((m as any)?.type !== 'system') continue;
-                                          const raw = String((m as any)?.content ?? '').trim();
-                                          if (!raw.startsWith('{')) continue;
-                                          const payload = JSON.parse(raw) as {
-                                            kind?: string;
-                                            task?: { taskId?: string; focus?: string };
-                                          };
-                                          if (payload?.kind === 'task_assigned') {
-                                            const tid = String(payload?.task?.taskId ?? '').trim();
-                                            if (tid && tid === taskId) {
-                                              targetMessageId = String(
-                                                (m as any)?.messageId ?? targetMessageId,
-                                              );
-                                              break;
-                                            }
-                                          }
-                                          if (payload?.kind === 'task_updated') {
-                                            const tid = String(payload?.task?.taskId ?? '').trim();
-                                            if (tid && tid === taskId) {
-                                              const f = String(payload?.task?.focus ?? '').trim();
-                                              if (
-                                                f === 'dueDate' ||
-                                                f === 'title' ||
-                                                f === 'note' ||
-                                                f === 'card'
-                                              ) {
-                                                focusPart = f;
-                                              }
-                                            }
-                                          }
-                                        } catch {
-                                          // ignore malformed payloads
-                                        }
-                                      }
-                                      onJumpToMessage(targetMessageId);
-                                      window.setTimeout(() => {
-                                        const id =
-                                          focusPart === 'dueDate'
-                                            ? `task-card-${taskId}-dueDate`
-                                            : focusPart === 'title'
-                                              ? `task-card-${taskId}-title`
-                                              : focusPart === 'note'
-                                                ? `task-card-${taskId}-note`
-                                                : `chat-msg-${targetMessageId}`;
-                                        const el = document.getElementById(id);
-                                        if (!el) return;
-                                        el.animate(
-                                          [
-                                            {
-                                              boxShadow: '0 0 0 0 rgba(59, 130, 246, 0.0)',
-                                              outline: '0px solid rgba(59, 130, 246, 0.0)',
-                                              borderRadius: '14px',
-                                            },
-                                            {
-                                              boxShadow: '0 0 0 4px rgba(59, 130, 246, 0.22)',
-                                              outline: '2px solid rgba(59, 130, 246, 0.45)',
-                                              borderRadius: '14px',
-                                            },
-                                            {
-                                              boxShadow: '0 0 0 0 rgba(59, 130, 246, 0.0)',
-                                              outline: '0px solid rgba(59, 130, 246, 0.0)',
-                                              borderRadius: '14px',
-                                            },
-                                          ],
-                                          { duration: 1400, easing: 'ease-out' },
-                                        );
-                                      }, 420);
-                                    }}
-                                    className="ml-1 inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border border-black/10 bg-black/[0.03] px-3 text-[11px] font-bold text-foreground/80 hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/80 dark:hover:bg-white/[0.10] transition-colors"
-                                  >
-                                    Xem
-                                  </button>
-                                ) : null}
-                              </div>
-                            );
-                          }
-                          if (obj?.kind === 'task_deleted') {
-                            const actorName = String(
-                              obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
-                            );
-                            const titleStr = String(obj?.task?.title ?? '').trim();
-                            return (
-                              <div className="flex items-center justify-center gap-2">
-                                <AlarmClockOff
-                                  className="h-4 w-4 shrink-0 text-muted-foreground/85"
-                                  strokeWidth={1.75}
-                                  aria-hidden
-                                />
-                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
-                                    ' đã hủy công việc'}
-                                  {titleStr ? ` "${titleStr}"` : ''}
-                                </span>
-                              </div>
-                            );
-                          }
-                          if (obj?.kind === 'task_due') {
-                            const titleStr = String(obj?.task?.title ?? '').trim();
-                            const taskId = String(obj?.task?.taskId ?? '').trim();
-                            return (
-                              <div className="flex w-full items-center justify-between gap-2">
-                                <div className="min-w-0 flex items-center gap-2">
-                                  <AlarmClock
-                                    className="h-4 w-4 shrink-0 text-orange-500"
-                                    aria-hidden
-                                  />
-                                  <span className="min-w-0 truncate text-[12px] font-medium text-[#666] dark:text-zinc-300">
-                                    {titleStr ? `Đến hạn: "${titleStr}"` : 'Đến hạn công việc'}
-                                  </span>
-                                </div>
-                                {taskId ? (
+                              const byId = new Map(
+                                (groupMembers ?? []).map((m) => [
+                                  String(m.userId),
+                                  String(
+                                    m.displayName ?? (m as any)?.name ?? m.userId ?? '',
+                                  ).trim(),
+                                ]),
+                              );
+                              const t = tBoard;
+                              const assignees = Array.isArray((t as any)?.assignees)
+                                ? ((t as any).assignees as string[])
+                                : [];
+                              const subsBoard = Array.isArray((t as any)?.subtasks)
+                                ? ((t as any).subtasks as any[])
+                                : [];
+                              const subsFromMsg = Array.isArray(taskCard.subtasksFromMessage)
+                                ? taskCard.subtasksFromMessage
+                                : [];
+                              const subs = subsBoard.length > 0 ? subsBoard : subsFromMsg;
+                              const subAssigneeIds = subs
+                                .map((s) => String(s?.assigneeId ?? '').trim())
+                                .filter(Boolean);
+                              const labelRaw = String(taskCard.assigneeLabel ?? '');
+                              const labelNorm = labelRaw
+                                .toLowerCase()
+                                .normalize('NFD')
+                                // strip Vietnamese accents/diacritics
+                                .replace(/[\u0300-\u036f]/g, '');
+                              const labelLooksLikeGroup =
+                                labelNorm.includes('ca nhom') ||
+                                labelNorm.includes('group') ||
+                                labelNorm.includes('all');
+                              const participants = Array.isArray((t as any)?.participants)
+                                ? ((t as any).participants as string[])
+                                : [];
+                              const joined = participants.includes(currentUserId);
+                              const isSubtaskAssignee = subAssigneeIds.includes(
+                                String(currentUserId),
+                              );
+                              const topIds =
+                                taskCard.assigneeUserIds.length > 0
+                                  ? taskCard.assigneeUserIds
+                                  : assignees;
+                              const isTopLevelAssignee = topIds
+                                .map(String)
+                                .includes(String(currentUserId));
+                              const explicitAssignToAll =
+                                Boolean((t as any)?.assignToAll) ||
+                                Boolean((t as any)?.broadcast) ||
+                                Boolean(taskCard.assignToAll) ||
+                                Boolean(taskCard.broadcast);
+                              const hasTopLevelAssignees = topIds.length > 0;
+                              const hasSubtasksAssignees = subAssigneeIds.length > 0;
+                              const canJoinThisTask = hasSubtasksAssignees
+                                ? isSubtaskAssignee
+                                : explicitAssignToAll ||
+                                  // legacy: không có assignees/subtasks mà label ghi "cả nhóm"
+                                  (!hasTopLevelAssignees &&
+                                    !hasSubtasksAssignees &&
+                                    labelLooksLikeGroup) ||
+                                  // legacy: không có assignees/subtasks → coi như cả nhóm
+                                  (!hasTopLevelAssignees && !hasSubtasksAssignees) ||
+                                  isTopLevelAssignee;
+                              const dueForJoin =
+                                (t as any)?.dueDate != null &&
+                                String((t as any).dueDate).trim() !== ''
+                                  ? String((t as any).dueDate)
+                                  : taskCard.dueDate;
+                              const joinDeadlinePassed = isTaskJoinDeadlinePassed(
+                                dueForJoin ?? undefined,
+                              );
+                              const showJoin = !joined;
+                              return (
+                                <div className="flex flex-col gap-0 w-full text-left bg-transparent relative group">
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      openTaskDetailById(taskId);
+                                      const tt = tBoard as any;
+                                      const subs = Array.isArray(tt?.subtasks)
+                                        ? (tt.subtasks as any[])
+                                        : [];
+                                      const participantIds = Array.isArray(tt?.participants)
+                                        ? (tt.participants as unknown[]).map((x) => String(x))
+                                        : [];
+                                      const subAssigneeIds = Array.from(
+                                        new Set(
+                                          subs
+                                            .map((s) => String(s?.assigneeId ?? '').trim())
+                                            .filter(Boolean),
+                                        ),
+                                      );
+                                      const topIds =
+                                        taskCard.assigneeUserIds.length > 0
+                                          ? taskCard.assigneeUserIds
+                                          : Array.isArray(tt?.assignees)
+                                            ? (tt.assignees as unknown[])
+                                                .map((x) => String(x))
+                                                .filter(Boolean)
+                                            : [];
+                                      const isAll =
+                                        Boolean(tt?.assignToAll) ||
+                                        Boolean(tt?.broadcast) ||
+                                        Boolean(taskCard.assignToAll) ||
+                                        Boolean(taskCard.broadcast);
+                                      const assigneeDisplay = isAll
+                                        ? 'Cả nhóm'
+                                        : (subs.length > 0 ? subAssigneeIds : topIds).length > 0
+                                          ? (subs.length > 0 ? subAssigneeIds : topIds)
+                                              .map((id) => byId.get(String(id)) ?? String(id))
+                                              .join(', ')
+                                          : taskCard.assigneeLabel;
+                                      setTaskDetailTaskId(String(taskCard.taskId));
+                                      setTaskDetail({
+                                        title: taskCard.title,
+                                        note: taskCard.note,
+                                        dueDate: taskCard.dueDate,
+                                        assigneeLabel: assigneeDisplay,
+                                        participantsCount: participantIds.length,
+                                        participantIds,
+                                        actorLabel:
+                                          (taskCard.actorId && taskCard.actorId === currentUserId
+                                            ? 'Bạn'
+                                            : taskCard.actorName) + ' đã giao việc',
+                                        subtasks: subs.map((s) => {
+                                          const assigneeId = String(s?.assigneeId ?? '').trim();
+                                          const nameRaw = String(s?.assigneeName ?? '').trim();
+                                          const name =
+                                            nameRaw ||
+                                            (assigneeId
+                                              ? (byId.get(assigneeId) ?? assigneeId)
+                                              : '');
+                                          return {
+                                            assigneeName: name,
+                                            content: String(s?.content ?? ''),
+                                            done: Boolean(s?.done),
+                                          };
+                                        }),
+                                      });
+                                      setTaskDetailOpen(true);
                                     }}
-                                    className="ml-1 inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border border-black/10 bg-black/[0.03] px-3 text-[11px] font-bold text-foreground/80 hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/80 dark:hover:bg-white/[0.10] transition-colors"
+                                    className="px-4 py-4 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors w-full text-left rounded-t-2xl outline-none"
                                   >
-                                    Mở công việc
+                                    {/* Task Info Header */}
+                                    <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-2 flex items-center gap-1.5">
+                                      <ClipboardList className="w-3.5 h-3.5" />
+                                      {(taskCard.actorId && taskCard.actorId === currentUserId
+                                        ? 'Bạn'
+                                        : taskCard.actorName) + ' đã giao việc'}
+                                    </div>
+
+                                    {/* Title */}
+                                    <div
+                                      id={`task-card-${taskCard.taskId}-title`}
+                                      className="text-[16px] font-black text-foreground break-words leading-snug mb-3.5 pr-2"
+                                    >
+                                      {taskCard.title}
+                                    </div>
+
+                                    {/* Assignees & Deadline */}
+                                    <div className="space-y-2.5">
+                                      <div className="flex items-center gap-2.5 text-[13px]">
+                                        <Users className="w-4 h-4 text-muted-foreground shrink-0" />
+                                        <div className="min-w-0 flex-1 flex items-center flex-wrap gap-1">
+                                          <span className="font-semibold text-muted-foreground mr-0.5">
+                                            Giao cho:
+                                          </span>
+                                          {(() => {
+                                            const subs = Array.isArray((tBoard as any)?.subtasks)
+                                              ? ((tBoard as any).subtasks as any[])
+                                              : [];
+                                            const subAssignees =
+                                              subs.length > 0
+                                                ? Array.from(
+                                                    new Set(
+                                                      subs
+                                                        .map((s) =>
+                                                          String(s?.assigneeId ?? '').trim(),
+                                                        )
+                                                        .filter(Boolean),
+                                                    ),
+                                                  )
+                                                : [];
+                                            const topIds =
+                                              taskCard.assigneeUserIds.length > 0
+                                                ? taskCard.assigneeUserIds
+                                                : Array.isArray((tBoard as any)?.assignees)
+                                                  ? (
+                                                      ((tBoard as any).assignees as unknown[]) ?? []
+                                                    ).map((x) => String(x))
+                                                  : [];
+                                            const ids = subs.length > 0 ? subAssignees : topIds;
+                                            const display =
+                                              Boolean((tBoard as any)?.assignToAll) ||
+                                              Boolean((tBoard as any)?.broadcast) ||
+                                              Boolean(taskCard.assignToAll) ||
+                                              Boolean(taskCard.broadcast)
+                                                ? 'Cả nhóm'
+                                                : ids.length > 0
+                                                  ? ids
+                                                      .map(
+                                                        (id) => byId.get(String(id)) ?? String(id),
+                                                      )
+                                                      .join(', ')
+                                                  : taskCard.assigneeLabel;
+                                            return (
+                                              <span
+                                                className="font-bold text-foreground truncate"
+                                                title={display}
+                                              >
+                                                {display}
+                                              </span>
+                                            );
+                                          })()}
+                                        </div>
+                                      </div>
+                                      {taskCard.dueDate ? (
+                                        <div className="flex items-center gap-2.5 text-[13px]">
+                                          <AlarmClock className="w-4 h-4 text-muted-foreground shrink-0" />
+                                          <div className="min-w-0 flex-1 flex items-center flex-wrap gap-1.5">
+                                            <span className="font-semibold text-muted-foreground mr-0.5">
+                                              Hạn chót:
+                                            </span>
+                                            <div id={`task-card-${taskCard.taskId}-dueDate`}>
+                                              <TaskDeadlineCalendar
+                                                dateIso={taskCard.dueDate}
+                                                size="sm"
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ) : null}
+                                    </div>
+
+                                    {/* Subtasks Preview */}
+                                    {(() => {
+                                      const subs = Array.isArray((tBoard as any)?.subtasks)
+                                        ? ((tBoard as any).subtasks as any[])
+                                        : [];
+                                      if (subs.length === 0) return null;
+                                      const completedCount = subs.filter((s) => s?.done).length;
+                                      const totalCount = subs.length;
+                                      const progress = Math.round(
+                                        (completedCount / totalCount) * 100,
+                                      );
+
+                                      return (
+                                        <div className="mt-4 flex items-center gap-3 text-[12px] text-muted-foreground/90 font-medium bg-black/[0.02] dark:bg-white/[0.02] p-2.5 rounded-xl border border-black/5 dark:border-white/5">
+                                          <div className="flex-1 h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                                            <div
+                                              className={`h-full rounded-full transition-all ${progress === 100 ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+                                              style={{ width: `${progress}%` }}
+                                            />
+                                          </div>
+                                          <span className="shrink-0 font-bold">
+                                            {completedCount}/{totalCount} mục
+                                          </span>
+                                        </div>
+                                      );
+                                    })()}
                                   </button>
-                                ) : null}
+
+                                  {/* Action Bar (Footer) */}
+                                  <div className="border-t border-black/5 dark:border-white/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3 bg-black/[0.015] dark:bg-white/[0.015] rounded-b-2xl">
+                                    <div className="flex items-center gap-2">
+                                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white dark:bg-zinc-800 border border-black/5 dark:border-white/10 px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground shadow-sm">
+                                        <span aria-hidden>👥</span>
+                                        <span>
+                                          {participants.length > 0
+                                            ? `${participants.length} đã tham gia`
+                                            : 'Chưa có ai'}
+                                        </span>
+                                      </span>
+                                      {joined ? (
+                                        <span className="px-3 py-1.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20">
+                                          Đã tham gia
+                                        </span>
+                                      ) : joinDeadlinePassed ? (
+                                        <span
+                                          className="px-3 py-1.5 rounded-full text-[11px] font-bold bg-black/5 text-muted-foreground dark:bg-white/10 border border-black/5 dark:border-white/10"
+                                          title="Đã quá hạn công việc"
+                                        >
+                                          Chưa tham gia
+                                        </span>
+                                      ) : showJoin ? (
+                                        <button
+                                          type="button"
+                                          disabled={!canJoinThisTask}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (!canJoinThisTask) return;
+                                            onTaskJoined?.(taskCard.taskId);
+                                          }}
+                                          className={
+                                            !canJoinThisTask
+                                              ? 'px-3 py-1.5 rounded-full text-[11px] font-bold bg-black/5 dark:bg-white/10 text-muted-foreground cursor-not-allowed border border-black/5 dark:border-white/5'
+                                              : 'px-3 py-1.5 rounded-full text-[11px] font-bold bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm transition-colors'
+                                          }
+                                        >
+                                          Xác nhận tham gia
+                                        </button>
+                                      ) : null}
+                                    </div>
+
+                                    {isTaskCreator && (onEditGroupTask || onDeleteGroupTask) ? (
+                                      <div className="flex items-center gap-0.5">
+                                        {onEditGroupTask && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              onEditGroupTask(String(taskCard.taskId));
+                                            }}
+                                            className="px-2.5 py-1.5 text-[12px] font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors flex items-center gap-1.5"
+                                          >
+                                            <Pencil className="w-3.5 h-3.5" />
+                                            <span className="hidden sm:inline">Sửa</span>
+                                          </button>
+                                        )}
+                                        {onDeleteGroupTask && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              onDeleteGroupTask(String(taskCard.taskId));
+                                            }}
+                                            className="px-2.5 py-1.5 text-[12px] font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1.5"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                            <span className="hidden sm:inline">Hủy</span>
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        ) : taskJoinedLine ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <CheckCheck className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
+                            <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                              {(taskJoinedLine.actorId && taskJoinedLine.actorId === currentUserId
+                                ? 'Bạn'
+                                : taskJoinedLine.actorName) + ' đã tham gia công việc'}
+                              {taskJoinedLine.title ? ` "${taskJoinedLine.title}"` : ''}
+                            </span>
+                          </div>
+                        ) : typeof content === 'string' && content.trim().startsWith('{') ? (
+                          (() => {
+                            try {
+                              const obj = JSON.parse(content) as any;
+                              if (obj?.kind === 'poll_created') {
+                                const actorName = String(
+                                  obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                                );
+                                const question = String(obj?.poll?.question ?? '').trim();
+                                const pollId = String(obj?.poll?.pollId ?? '').trim();
+                                return (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
+                                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                      {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                        ' đã tạo một bình chọn'}
+                                      {question ? `: ${question}` : ''}
+                                    </span>
+                                    {pollId && onOpenPollVote ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => onOpenPollVote(pollId)}
+                                        className="ml-1 px-2 py-1 rounded-full text-[11px] font-bold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+                                      >
+                                        Bình chọn
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                );
+                              }
+                              if (obj?.kind === 'poll_voted') {
+                                const actorName = String(
+                                  obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                                );
+                                const optionText = String(obj?.poll?.optionText ?? '').trim();
+                                return (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
+                                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                      {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                        ' đã bình chọn'}
+                                      {optionText ? `: ${optionText}` : ''}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              if (obj?.kind === 'poll_vote_changed') {
+                                const actorName = String(
+                                  obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                                );
+                                const optionText = String(obj?.poll?.optionText ?? '').trim();
+                                return (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <BarChart2 className="w-4 h-4 text-blue-600 shrink-0" />
+                                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                      {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                        ' đã thay đổi bình chọn'}
+                                      {optionText ? `: ${optionText}` : ''}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              if (obj?.kind === 'poll_unvoted') {
+                                const actorName = String(
+                                  obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                                );
+                                const optionText = String(obj?.poll?.optionText ?? '').trim();
+                                return (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                      {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                        ' đã rút phiếu'}
+                                      {optionText ? `: ${optionText}` : ''}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              if (obj?.kind === 'poll_option_added') {
+                                const actorName = String(
+                                  obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                                );
+                                const optionText = String(obj?.poll?.optionText ?? '').trim();
+                                return (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <BarChart2 className="w-4 h-4 text-orange-500 shrink-0" />
+                                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                      {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                        ' đã thêm lựa chọn'}
+                                      {optionText ? `: ${optionText}` : ''}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              if (obj?.kind === 'poll_closed') {
+                                const actorName = String(
+                                  obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                                );
+                                const question = String(obj?.poll?.question ?? '').trim();
+                                return (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <BarChart2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                      {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                        ' đã đóng bình chọn'}
+                                      {question ? `: ${question}` : ''}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              if (obj?.kind === 'task_updated') {
+                                const actorName = String(
+                                  obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                                );
+                                const titleStr = String(obj?.task?.title ?? '').trim();
+                                const taskId = String(obj?.task?.taskId ?? '').trim();
+                                return (
+                                  <div className="flex w-full items-center justify-between gap-2">
+                                    <div className="min-w-0 flex items-center gap-2">
+                                      <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                                      <span className="min-w-0 truncate text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                        {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                          ' đã cập nhật công việc'}
+                                        {titleStr ? ` "${titleStr}"` : ''}
+                                      </span>
+                                    </div>
+                                    {taskId && onJumpToMessage ? (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          // Nhảy tới thẻ công việc trong khung chat + highlight border.
+                                          // Ưu tiên messageId thật đang có trong list (phòng trường hợp không phải local-task-card:*).
+                                          let targetMessageId = `local-task-card:${activeConversationId}:${taskId}`;
+                                          for (const m of allMessages) {
+                                            try {
+                                              if ((m as any)?.type !== 'system') continue;
+                                              const raw = String((m as any)?.content ?? '').trim();
+                                              if (!raw.startsWith('{')) continue;
+                                              const payload = JSON.parse(raw) as {
+                                                kind?: string;
+                                                task?: { taskId?: string };
+                                              };
+                                              if (payload?.kind === 'task_assigned') {
+                                                const tid = String(
+                                                  payload?.task?.taskId ?? '',
+                                                ).trim();
+                                                if (tid && tid === taskId) {
+                                                  targetMessageId = String(
+                                                    (m as any)?.messageId ?? targetMessageId,
+                                                  );
+                                                  break;
+                                                }
+                                              }
+                                            } catch {
+                                              // ignore malformed payloads
+                                            }
+                                          }
+                                          onJumpToMessage(targetMessageId);
+                                        }}
+                                        className="ml-1 inline-flex h-7 shrink-0 items-center justify-center whitespace-nowrap rounded-full border-2 border-blue-500 px-3 text-[11px] font-bold text-blue-600 dark:text-blue-400"
+                                      >
+                                        Xem
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                );
+                              }
+                              if (obj?.kind === 'task_deleted') {
+                                const actorName = String(
+                                  obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                                );
+                                const titleStr = String(obj?.task?.title ?? '').trim();
+                                return (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <AlarmClockOff
+                                      className="h-4 w-4 shrink-0 text-muted-foreground/85"
+                                      strokeWidth={1.75}
+                                      aria-hidden
+                                    />
+                                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                      {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                        ' đã hủy công việc'}
+                                      {titleStr ? ` "${titleStr}"` : ''}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              if (obj?.kind === 'task_due') {
+                                const titleStr = String(obj?.task?.title ?? '').trim();
+                                const taskId = String(obj?.task?.taskId ?? '').trim();
+                                return (
+                                  <div className="flex w-full items-center justify-between gap-2">
+                                    <div className="min-w-0 flex items-center gap-2">
+                                      <AlarmClock
+                                        className="h-4 w-4 shrink-0 text-orange-500"
+                                        aria-hidden
+                                      />
+                                      <span className="min-w-0 truncate text-[12px] font-medium text-[#666] dark:text-zinc-300">
+                                        {titleStr ? `Đến hạn: "${titleStr}"` : 'Đến hạn công việc'}
+                                      </span>
+                                    </div>
+                                    {taskId ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          openTaskDetailById(taskId);
+                                        }}
+                                        className="ml-1 inline-flex h-7 shrink-0 items-center whitespace-nowrap rounded-full border border-black/10 bg-black/[0.03] px-3 text-[11px] font-bold text-foreground/80 hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/[0.06] dark:text-white/80 dark:hover:bg-white/[0.10] transition-colors"
+                                      >
+                                        Mở công việc
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                );
+                              }
+                            } catch {
+                              // ignore
+                            }
+                            const rawText = String(content ?? '').trim();
+                            const isUnpinNotice = rawText.includes('đã bỏ ghim');
+                            const isPinNotice = rawText.includes('đã ghim') || isUnpinNotice;
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                {isPinNotice ? (
+                                  isUnpinNotice ? (
+                                    <PinOff className="w-4 h-4 text-blue-500 shrink-0" />
+                                  ) : (
+                                    <Pin className="w-4 h-4 text-blue-500 shrink-0" />
+                                  )
+                                ) : (
+                                  <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                                )}
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {content}
+                                </span>
                               </div>
                             );
-                          }
-                        } catch {
-                          // ignore
-                        }
-                        const rawText = String(content ?? '').trim();
-                        const isPinNotice =
-                          rawText.includes('đã ghim') || rawText.includes('đã bỏ ghim');
-                        return (
+                          })()
+                        ) : (
                           <div className="flex items-center justify-center gap-2">
-                            {isPinNotice ? (
-                              <Pin className="w-4 h-4 text-blue-500 shrink-0" />
-                            ) : (
-                              <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
-                            )}
+                            {(() => {
+                              const pinLine = String(content ?? '').trim();
+                              const unpin = pinLine.includes('đã bỏ ghim');
+                              const pinRow = pinLine.includes('đã ghim') || unpin;
+                              if (!pinRow) {
+                                return <Pencil className="w-4 h-4 text-blue-400 shrink-0" />;
+                              }
+                              return unpin ? (
+                                <PinOff className="w-4 h-4 text-blue-500 shrink-0" />
+                              ) : (
+                                <Pin className="w-4 h-4 text-blue-500 shrink-0" />
+                              );
+                            })()}
                             <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
                               {content}
                             </span>
                           </div>
-                        );
-                      })()
-                    ) : (
-                      <div className="flex items-center justify-center gap-2">
-                        {String(content ?? '')
-                          .trim()
-                          .includes('đã ghim') ||
-                        String(content ?? '')
-                          .trim()
-                          .includes('đã bỏ ghim') ? (
-                          <Pin className="w-4 h-4 text-blue-500 shrink-0" />
-                        ) : (
-                          <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
                         )}
-                        <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                          {content}
-                        </span>
                       </div>
-                    )}
+                    </div>
                   </div>
-                </div>
+                </Fragment>
               );
             }
             if (msg.type === 'call') {
@@ -1548,638 +1579,665 @@ export function ChatMessageList({
                           : 'Cuộc gọi thoại';
               const prevCall = index > 0 ? allMessages[index - 1] : undefined;
               const nextCall = index < allMessages.length - 1 ? allMessages[index + 1] : undefined;
-              const isSameSenderAsPrevCall = !!prevCall && prevCall.senderId === msg.senderId;
-              const isSameSenderAsNextCall = !!nextCall && nextCall.senderId === msg.senderId;
+              const isSameSenderAsPrevCall =
+                !!prevCall &&
+                prevCall.senderId === msg.senderId &&
+                chatMessagesSameLocalDay(prevCall.createdAt, msg.createdAt);
+              const isSameSenderAsNextCall =
+                !!nextCall &&
+                nextCall.senderId === msg.senderId &&
+                chatMessagesSameLocalDay(nextCall.createdAt, msg.createdAt);
               const showAvatarCall = !isMeCall && !isSameSenderAsNextCall;
               const showMetaCall = !isSameSenderAsNextCall;
+              const showDaySepCall = chatSystemPillShowDateLine(prevCall?.createdAt, msg.createdAt);
 
               return (
-                <motion.div
-                  id={`chat-msg-${msg.messageId}`}
-                  key={msg.messageId}
-                  initial={{ opacity: 0, y: 8, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.18, ease: 'easeOut' }}
-                  className={`flex items-end gap-2 group/msg ${isMeCall ? 'flex-row-reverse' : 'flex-row'} ${isSameSenderAsPrevCall ? 'mt-0' : 'mt-1'}`}
-                >
-                  {showAvatarCall ? (
-                    <ZaloStyleAvatar
-                      userId={msg.senderId}
-                      displayName={msg.senderDisplayName ?? msg.senderId}
-                      avatarUrl={memberAvatarMap.get(msg.senderId) ?? directOtherAvatar}
-                      className="w-8 h-8 shadow-sm mb-0.5"
-                    />
-                  ) : isMeCall ? null : (
-                    <div className="w-8 shrink-0" aria-hidden />
-                  )}
-
-                  <div
-                    className={`flex flex-col max-w-[55%] sm:max-w-[45%] ${isMeCall ? 'items-end' : 'items-start'}`}
+                <Fragment key={msg.messageId}>
+                  {showDaySepCall ? (
+                    <ChatDayListSeparator dateIso={msg.createdAt} now={calendarNow} />
+                  ) : null}
+                  <motion.div
+                    id={`chat-msg-${msg.messageId}`}
+                    initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                    className={`flex items-end gap-2 group/msg ${isMeCall ? 'flex-row-reverse' : 'flex-row'} ${isSameSenderAsPrevCall ? 'mt-0' : 'mt-1'}`}
                   >
-                    {!isMeCall &&
-                      activeConversation?.type === 'group' &&
-                      !isSameSenderAsPrevCall && (
-                        <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
-                          {msg.senderDisplayName ?? msg.senderId}
-                        </p>
-                      )}
+                    {showAvatarCall ? (
+                      <ZaloStyleAvatar
+                        userId={msg.senderId}
+                        displayName={msg.senderDisplayName ?? msg.senderId}
+                        avatarUrl={memberAvatarMap.get(msg.senderId) ?? directOtherAvatar}
+                        className="w-8 h-8 shadow-sm mb-0.5"
+                      />
+                    ) : isMeCall ? null : (
+                      <div className="w-8 shrink-0" aria-hidden />
+                    )}
 
                     <div
-                      className={
-                        isMeCall
-                          ? 'min-w-[200px] max-w-full rounded-2xl rounded-br-sm px-4 py-3 shadow-sm bg-linear-to-br from-blue-500 to-blue-600 text-white'
-                          : 'min-w-[200px] max-w-full rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground'
-                      }
+                      className={`flex flex-col max-w-[55%] sm:max-w-[45%] ${isMeCall ? 'items-end' : 'items-start'}`}
                     >
-                      <div
-                        className={`flex items-center gap-2 ${isMeCall ? 'justify-end' : 'justify-start'} flex-wrap`}
-                      >
-                        {callType === 'video' ? (
-                          <Video
-                            className={`w-4 h-4 shrink-0 ${isMeCall ? 'text-blue-100' : 'text-blue-600 dark:text-blue-400'}`}
-                          />
-                        ) : (
-                          <Phone
-                            className={`w-4 h-4 shrink-0 ${isMeCall ? 'text-blue-100' : 'text-blue-600 dark:text-blue-400'}`}
-                          />
+                      {!isMeCall &&
+                        activeConversation?.type === 'group' &&
+                        !isSameSenderAsPrevCall && (
+                          <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
+                            {msg.senderDisplayName ?? msg.senderId}
+                          </p>
                         )}
-                        <p
-                          className={`text-sm font-bold ${isMeCall ? 'text-white' : 'text-foreground'}`}
+
+                      <div
+                        className={
+                          isMeCall
+                            ? 'min-w-[200px] max-w-full rounded-2xl rounded-br-sm px-4 py-3 shadow-sm bg-linear-to-br from-blue-500 to-blue-600 text-white'
+                            : 'min-w-[200px] max-w-full rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground'
+                        }
+                      >
+                        <div
+                          className={`flex items-center gap-2 ${isMeCall ? 'justify-end' : 'justify-start'} flex-wrap`}
                         >
-                          {title}
+                          {callType === 'video' ? (
+                            <Video
+                              className={`w-4 h-4 shrink-0 ${isMeCall ? 'text-blue-100' : 'text-blue-600 dark:text-blue-400'}`}
+                            />
+                          ) : (
+                            <Phone
+                              className={`w-4 h-4 shrink-0 ${isMeCall ? 'text-blue-100' : 'text-blue-600 dark:text-blue-400'}`}
+                            />
+                          )}
+                          <p
+                            className={`text-sm font-bold ${isMeCall ? 'text-white' : 'text-foreground'}`}
+                          >
+                            {title}
+                          </p>
+                        </div>
+                        <p
+                          className={`text-xs mt-1 ${isMeCall ? 'text-blue-100/90 text-right' : 'text-muted-foreground'}`}
+                        >
+                          {durationLabel}
                         </p>
                       </div>
-                      <p
-                        className={`text-xs mt-1 ${isMeCall ? 'text-blue-100/90 text-right' : 'text-muted-foreground'}`}
-                      >
-                        {durationLabel}
-                      </p>
-                    </div>
 
-                    {showMetaCall && (
-                      <div
-                        className={`flex items-center gap-1 mt-1 px-1 ${isMeCall ? 'flex-row-reverse' : 'flex-row'}`}
-                      >
-                        <span className="text-[10px] text-muted-foreground/70">
-                          {formatTime(msg.createdAt)}
-                        </span>
-                        {isMeCall && <CheckCheck className="w-3 h-3 text-blue-400" />}
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
+                      {showMetaCall && (
+                        <div
+                          className={`flex items-center gap-1 mt-1 px-1 ${isMeCall ? 'flex-row-reverse' : 'flex-row'}`}
+                        >
+                          <span className="text-[10px] text-muted-foreground/70">
+                            {formatTime(msg.createdAt)}
+                          </span>
+                          {isMeCall && <CheckCheck className="w-3 h-3 text-blue-400" />}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                </Fragment>
               );
             }
 
             const isMe = msg.senderId === currentUserId;
             const prevMsg = index > 0 ? allMessages[index - 1] : undefined;
             const nextMsg = index < allMessages.length - 1 ? allMessages[index + 1] : undefined;
-            const isSameSenderAsPrev = !!prevMsg && prevMsg.senderId === msg.senderId;
-            const isSameSenderAsNext = !!nextMsg && nextMsg.senderId === msg.senderId;
+            const isSameSenderAsPrev =
+              !!prevMsg &&
+              prevMsg.senderId === msg.senderId &&
+              chatMessagesSameLocalDay(prevMsg.createdAt, msg.createdAt);
+            const isSameSenderAsNext =
+              !!nextMsg &&
+              nextMsg.senderId === msg.senderId &&
+              chatMessagesSameLocalDay(nextMsg.createdAt, msg.createdAt);
             const showAvatar = !isMe && !isSameSenderAsNext;
             const showMeta = !isSameSenderAsNext;
+            const showDaySepMsg = chatSystemPillShowDateLine(prevMsg?.createdAt, msg.createdAt);
             const isMediaMsg = isRichMediaMessage(msg);
             const isWideMediaBubble = msg.type === 'image' || msg.type === 'video';
             const showCaption = messageHasCaption(msg);
             const mediaSavedOnDevice = downloadedMediaIds.has(msg.messageId);
             const isJumpHighlight = jumpHighlightMessageId === msg.messageId;
             return (
-              <motion.div
-                id={`chat-msg-${msg.messageId}`}
-                key={msg.messageId}
-                initial={{ opacity: 0, y: 8, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.18, ease: 'easeOut' }}
-                className={`flex items-end gap-2 group/msg relative ${isMe ? 'flex-row-reverse' : 'flex-row'} ${isSameSenderAsPrev ? 'mt-0' : 'mt-1'}`}
-              >
-                {isJumpHighlight && (
-                  <div
-                    key={jumpFlashNonce}
-                    className="absolute -inset-x-1 -inset-y-0.5 z-[1] rounded-2xl pointer-events-none chat-msg-jump-highlight"
-                    aria-hidden
-                  />
-                )}
-                {showAvatar ? (
-                  <ZaloStyleAvatar
-                    userId={msg.senderId}
-                    displayName={msg.senderDisplayName ?? msg.senderId}
-                    avatarUrl={memberAvatarMap.get(msg.senderId) ?? directOtherAvatar}
-                    className="relative z-[2] w-8 h-8 shadow-sm mb-0.5"
-                  />
-                ) : isMe ? null : (
-                  <div className="relative z-[2] w-8 shrink-0" aria-hidden />
-                )}
-
-                <div
-                  className={`relative z-[2] flex flex-col ${
-                    isWideMediaBubble
-                      ? 'w-full max-w-[min(96vw,44rem)] sm:max-w-[min(92%,42rem)]'
-                      : 'max-w-[85%] md:max-w-[75%] lg:max-w-[65%]'
-                  } ${isMe ? 'items-end' : 'items-start'}`}
+              <Fragment key={msg.messageId}>
+                {showDaySepMsg ? (
+                  <ChatDayListSeparator dateIso={msg.createdAt} now={calendarNow} />
+                ) : null}
+                <motion.div
+                  id={`chat-msg-${msg.messageId}`}
+                  initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className={`flex items-end gap-2 group/msg relative ${isMe ? 'flex-row-reverse' : 'flex-row'} ${isSameSenderAsPrev ? 'mt-0' : 'mt-1'}`}
                 >
-                  {!isMe && activeConversation?.type === 'group' && !isSameSenderAsPrev && (
-                    <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
-                      {msg.senderDisplayName ?? msg.senderId}
-                    </p>
+                  {isJumpHighlight && (
+                    <div
+                      key={jumpFlashNonce}
+                      className="absolute -inset-x-1 -inset-y-0.5 z-[1] rounded-2xl pointer-events-none chat-msg-jump-highlight"
+                      aria-hidden
+                    />
+                  )}
+                  {showAvatar ? (
+                    <ZaloStyleAvatar
+                      userId={msg.senderId}
+                      displayName={msg.senderDisplayName ?? msg.senderId}
+                      avatarUrl={memberAvatarMap.get(msg.senderId) ?? directOtherAvatar}
+                      className="relative z-[2] w-8 h-8 shadow-sm mb-0.5"
+                    />
+                  ) : isMe ? null : (
+                    <div className="relative z-[2] w-8 shrink-0" aria-hidden />
                   )}
 
                   <div
-                    className={`relative flex max-w-full min-w-0 items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.reactions && Object.keys(msg.reactions).length > 0 ? 'mb-3.5' : ''}`}
+                    className={`relative z-[2] flex flex-col ${
+                      isWideMediaBubble
+                        ? 'w-full max-w-[min(96vw,44rem)] sm:max-w-[min(92%,42rem)]'
+                        : 'max-w-[85%] md:max-w-[75%] lg:max-w-[65%]'
+                    } ${isMe ? 'items-end' : 'items-start'}`}
                   >
-                    {msg.isDeleted ? (
-                      <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
-                        Tin nhắn đã bị xóa
-                      </div>
-                    ) : msg.isRecalled ? (
-                      <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
-                        Tin nhắn đã được thu hồi
-                      </div>
-                    ) : (
-                      <div
-                        className={
-                          isMediaMsg
-                            ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none break-words whitespace-pre-wrap bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
-                                isMe ? 'items-end' : 'items-start'
-                              }`
-                            : `relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm min-w-0 break-words whitespace-pre-wrap selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
-                                isMe
-                                  ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
-                                  : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
-                              }`
-                        }
-                      >
-                        {msg.replyToDetails && (
-                          <ReplyQuoteStrip
-                            details={msg.replyToDetails}
-                            isMe={isMe}
-                            isMediaMsg={isMediaMsg}
-                            isWideMediaBubble={isWideMediaBubble}
-                            onNavigate={() => scrollToMessage(msg.replyToDetails!.messageId)}
-                          />
-                        )}
-                        {msg.type === 'image' && (msg.mediaUrl || msg.thumbnailUrl) && (
-                          <div
-                            className={`w-full ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
-                          >
-                            <div
-                              className={`w-full overflow-hidden rounded-2xl border shadow-md ${
-                                isMe
-                                  ? 'border-blue-200/50 bg-blue-50/90 dark:border-blue-800/50 dark:bg-blue-950/35'
-                                  : 'border-black/10 bg-slate-50/95 dark:border-white/10 dark:bg-zinc-900/50'
-                              }`}
-                            >
-                              <button
-                                type="button"
-                                aria-label="Xem ảnh lớn"
-                                className="relative block w-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMediaLightbox({ src: imageDisplaySrc(msg), kind: 'image' });
-                                }}
-                                onContextMenu={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setMediaContextMenu({
-                                    x: e.clientX,
-                                    y: e.clientY,
-                                    msg,
-                                    kind: 'image',
-                                  });
-                                  onActionMenuMsgIdChange(null);
-                                }}
-                              >
-                                <AuthenticatedMedia
-                                  src={imageDisplaySrc(msg)}
-                                  kind="image"
-                                  className="block w-full h-auto max-h-[min(78vh,640px)] object-contain bg-black/[0.04] dark:bg-black/40"
-                                  alt="Ảnh đính kèm"
-                                />
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                        {msg.type === 'video' && msg.mediaUrl && (
-                          <div
-                            className={`w-full min-w-0 ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
-                          >
-                            <div
-                              className={`w-full overflow-hidden rounded-2xl border shadow-md ${
-                                isMe
-                                  ? 'border-blue-200/50 bg-blue-50/90 dark:border-blue-800/50 dark:bg-blue-950/35'
-                                  : 'border-black/10 bg-slate-50/95 dark:border-white/10 dark:bg-zinc-900/50'
-                              }`}
-                            >
-                              <div
-                                className="relative w-full aspect-video max-h-[min(78vh,640px)] bg-zinc-950"
-                                onContextMenuCapture={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setMediaContextMenu({
-                                    x: e.clientX,
-                                    y: e.clientY,
-                                    msg,
-                                    kind: 'video',
-                                  });
-                                  onActionMenuMsgIdChange(null);
-                                }}
-                              >
-                                <AuthenticatedMedia
-                                  src={msg.mediaUrl}
-                                  kind="video"
-                                  className="absolute inset-0 h-full w-full object-contain bg-black"
-                                />
-                                <button
-                                  type="button"
-                                  aria-label="Xem video toàn màn hình"
-                                  title="Xem toàn màn hình"
-                                  className="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-lg bg-black/65 hover:bg-black/80 text-white text-[11px] font-semibold px-2.5 py-1.5 backdrop-blur-sm shadow-lg border border-white/15"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setMediaLightbox({
-                                      src: msg.mediaUrl as string,
-                                      kind: 'video',
-                                    });
-                                  }}
-                                >
-                                  <Maximize2 className="w-3.5 h-3.5 shrink-0" />
-                                  <span className="hidden sm:inline pr-0.5">Toàn màn hình</span>
-                                </button>
-                              </div>
-                              <div className="flex items-center gap-2.5 px-3 py-2.5 border-t border-black/5 dark:border-white/10 bg-white/90 dark:bg-zinc-950/80">
-                                <div className="shrink-0 rounded-lg bg-violet-100 dark:bg-violet-900/40 p-2">
-                                  <Video
-                                    className="w-5 h-5 text-violet-600 dark:text-violet-400"
-                                    aria-hidden
-                                  />
-                                </div>
-                                <div className="min-w-0 flex-1 text-left">
-                                  <p className="text-[13px] font-semibold text-foreground truncate">
-                                    {msg.mediaOriginalName?.trim() || 'Video'}
-                                  </p>
-                                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                    {msg.mediaSize != null && msg.mediaSize > 0 ? (
-                                      <span className="text-[11px] text-muted-foreground">
-                                        {formatFileSize(msg.mediaSize)}
-                                      </span>
-                                    ) : null}
-                                    {mediaSavedOnDevice && (
-                                      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                                        <CircleCheck className="w-3.5 h-3.5 shrink-0" aria-hidden />
-                                        Đã có trên máy
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    type="button"
-                                    aria-label="Gợi ý thư mục tải xuống"
-                                    title="Thư mục Tải xuống"
-                                    className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openDownloadsFolderHint();
-                                    }}
-                                  >
-                                    <FolderOpen className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    aria-label="Tải video xuống"
-                                    title="Tải xuống"
-                                    className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void handleMediaDownload(
-                                        msg.messageId,
-                                        msg.mediaUrl as string,
-                                        msg.mediaOriginalName?.trim() || 'video.mp4',
-                                      );
-                                    }}
-                                  >
-                                    <Download className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        {msg.type === 'file' && msg.mediaUrl && (
-                          <div
-                            className={`flex w-full max-w-[min(100%,20rem)] items-center gap-2 rounded-lg px-2.5 py-2 min-w-0 ${
-                              showCaption || msg.replyToDetails ? 'mb-1.5' : ''
-                            } ${
-                              isMe
-                                ? 'bg-black/8 dark:bg-white/10'
-                                : 'bg-black/6 dark:bg-white/10 border border-black/8 dark:border-white/10'
-                            }`}
-                          >
-                            <FileText
-                              className="w-8 h-8 shrink-0 text-muted-foreground"
-                              aria-hidden
-                            />
-                            <div className="min-w-0 flex-1">
-                              <p
-                                className="text-xs font-semibold text-foreground truncate"
-                                title={msg.mediaOriginalName?.trim() || 'Tệp đính kèm'}
-                              >
-                                {msg.mediaOriginalName?.trim() || 'Tệp đính kèm'}
-                              </p>
-                              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                {msg.mediaSize != null && msg.mediaSize > 0 ? (
-                                  <span className="text-[10px] text-muted-foreground">
-                                    {formatFileSize(msg.mediaSize)}
-                                  </span>
-                                ) : null}
-                                {mediaSavedOnDevice && (
-                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                                    <CircleCheck className="w-3 h-3 shrink-0" aria-hidden />
-                                    Đã có trên máy
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-0.5 shrink-0">
-                              <button
-                                type="button"
-                                aria-label="Gợi ý thư mục tải xuống"
-                                title="Thư mục Tải xuống"
-                                onClick={() => openDownloadsFolderHint()}
-                                className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-                              >
-                                <FolderOpen className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                aria-label="Tải xuống"
-                                title="Tải xuống"
-                                onClick={() =>
-                                  void handleMediaDownload(
-                                    msg.messageId,
-                                    msg.mediaUrl as string,
-                                    msg.mediaOriginalName?.trim() || 'file',
-                                  )
-                                }
-                                className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-                              >
-                                <Download className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                        {isMediaMsg && showCaption && (
-                          <div
-                            className={`mt-0.5 w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'} px-2.5 py-1.5 rounded-lg text-[13px] break-words whitespace-pre-wrap ${
-                              isMe
-                                ? 'bg-black/6 dark:bg-white/10 text-foreground'
-                                : 'bg-black/5 dark:bg-white/10 text-foreground'
-                            }`}
-                          >
-                            {msg.content}
-                          </div>
-                        )}
-                        {!isMediaMsg && showCaption && (
-                          <span className="break-words whitespace-pre-wrap">{msg.content}</span>
-                        )}
-                        {msg.isEdited && (
-                          <span
-                            className={`ml-1.5 text-[10px] ${
-                              isMe && !isMediaMsg ? 'text-blue-100/70' : 'text-muted-foreground/70'
-                            }`}
-                          >
-                            (đã sửa)
-                          </span>
-                        )}
-
-                        {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                          <div
-                            className={`absolute -bottom-3 ${isMe ? '-left-2' : '-right-2 flex-row-reverse'} flex flex-wrap gap-1 z-10`}
-                          >
-                            {Object.entries(msg.reactions).map(([emoji, userIds]) => (
-                              <div
-                                key={emoji}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onReact(msg, emoji);
-                                }}
-                                className={`px-1.5 py-0.5 rounded-full bg-white dark:bg-zinc-800 ${userIds.includes(currentUserId) ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/40 text-blue-600' : 'border-black/10 dark:border-white/10 text-foreground'} text-[14px] shadow-sm flex items-center gap-1 cursor-pointer select-non hover:bg-gray-100 dark:hover:bg-gray-700`}
-                                title={userIds.length > 0 ? `${userIds.length} người` : ''}
-                              >
-                                <span className="leading-none">{emoji}</span>
-                                {userIds.length > 1 && (
-                                  <span className="text-[10px] font-semibold opacity-70">
-                                    {userIds.length}
-                                  </span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                    {!isMe && activeConversation?.type === 'group' && !isSameSenderAsPrev && (
+                      <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
+                        {msg.senderDisplayName ?? msg.senderId}
+                      </p>
                     )}
 
-                    {!msg.isDeleted && !msg.isRecalled && (
-                      <div
-                        className={`flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-all duration-150 shrink-0 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
-                      >
-                        <div
-                          className="relative group/reactbtn"
-                          onMouseLeave={() => {
-                            if (hiddenReactPopupId === msg.messageId) setHiddenReactPopupId(null);
-                          }}
-                        >
-                          <button
-                            type="button"
-                            title="Thả cảm xúc"
-                            className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
-                          >
-                            <SmilePlus className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
-                          </button>
-                          <div
-                            className={`absolute bottom-full ${isMe ? 'right-0' : 'left-0'} mb-1 p-1.5 rounded-full bg-white dark:bg-zinc-800 shadow-xl border border-black/10 dark:border-white/10 flex items-center gap-1 transition-all translate-y-2 z-50 after:content-[''] after:absolute after:left-0 after:-bottom-5 after:w-full after:h-5 ${hiddenReactPopupId === msg.messageId ? 'hidden' : 'opacity-0 pointer-events-none group-hover/reactbtn:opacity-100 group-hover/reactbtn:pointer-events-auto group-hover/reactbtn:translate-y-0'}`}
-                          >
-                            {['❤️', '👍', '😂', '😮', '😢', '😡'].map((emoji) => (
-                              <button
-                                key={emoji}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onReact(msg, emoji);
-                                  setHiddenReactPopupId(msg.messageId);
-                                }}
-                                className="text-xl hover:scale-125 transition-transform px-1"
-                                title={emoji}
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
+                    <div
+                      className={`relative flex max-w-full min-w-0 items-end gap-1.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${msg.reactions && Object.keys(msg.reactions).length > 0 ? 'mb-3.5' : ''}`}
+                    >
+                      {msg.isDeleted ? (
+                        <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
+                          Tin nhắn đã bị xóa
                         </div>
-
-                        <button
-                          type="button"
-                          title="Trả lời"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onReply(msg);
-                          }}
-                          className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
+                      ) : msg.isRecalled ? (
+                        <div className="px-3 py-2 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-muted-foreground text-xs italic select-none">
+                          Tin nhắn đã được thu hồi
+                        </div>
+                      ) : (
+                        <div
+                          className={
+                            isMediaMsg
+                              ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none break-words whitespace-pre-wrap bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                                  isMe ? 'items-end' : 'items-start'
+                                }`
+                              : `relative px-3 py-2 rounded-xl text-[13px] leading-snug shadow-sm min-w-0 break-words whitespace-pre-wrap selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
+                                  isMe
+                                    ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
+                                    : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
+                                }`
+                          }
                         >
-                          <Reply className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
-                        </button>
-                        {canPinMessage(msg) && (
+                          {msg.replyToDetails && (
+                            <ReplyQuoteStrip
+                              details={msg.replyToDetails}
+                              isMe={isMe}
+                              isMediaMsg={isMediaMsg}
+                              isWideMediaBubble={isWideMediaBubble}
+                              onNavigate={() => scrollToMessage(msg.replyToDetails!.messageId)}
+                            />
+                          )}
+                          {msg.type === 'image' && (msg.mediaUrl || msg.thumbnailUrl) && (
+                            <div
+                              className={`w-full ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
+                            >
+                              <div
+                                className={`w-full overflow-hidden rounded-2xl border shadow-md ${
+                                  isMe
+                                    ? 'border-blue-200/50 bg-blue-50/90 dark:border-blue-800/50 dark:bg-blue-950/35'
+                                    : 'border-black/10 bg-slate-50/95 dark:border-white/10 dark:bg-zinc-900/50'
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  aria-label="Xem ảnh lớn"
+                                  className="relative block w-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMediaLightbox({ src: imageDisplaySrc(msg), kind: 'image' });
+                                  }}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setMediaContextMenu({
+                                      x: e.clientX,
+                                      y: e.clientY,
+                                      msg,
+                                      kind: 'image',
+                                    });
+                                    onActionMenuMsgIdChange(null);
+                                  }}
+                                >
+                                  <AuthenticatedMedia
+                                    src={imageDisplaySrc(msg)}
+                                    kind="image"
+                                    className="block w-full h-auto max-h-[min(78vh,640px)] object-contain bg-black/[0.04] dark:bg-black/40"
+                                    alt="Ảnh đính kèm"
+                                  />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          {msg.type === 'video' && msg.mediaUrl && (
+                            <div
+                              className={`w-full min-w-0 ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
+                            >
+                              <div
+                                className={`w-full overflow-hidden rounded-2xl border shadow-md ${
+                                  isMe
+                                    ? 'border-blue-200/50 bg-blue-50/90 dark:border-blue-800/50 dark:bg-blue-950/35'
+                                    : 'border-black/10 bg-slate-50/95 dark:border-white/10 dark:bg-zinc-900/50'
+                                }`}
+                              >
+                                <div
+                                  className="relative w-full aspect-video max-h-[min(78vh,640px)] bg-zinc-950"
+                                  onContextMenuCapture={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setMediaContextMenu({
+                                      x: e.clientX,
+                                      y: e.clientY,
+                                      msg,
+                                      kind: 'video',
+                                    });
+                                    onActionMenuMsgIdChange(null);
+                                  }}
+                                >
+                                  <AuthenticatedMedia
+                                    src={msg.mediaUrl}
+                                    kind="video"
+                                    className="absolute inset-0 h-full w-full object-contain bg-black"
+                                  />
+                                  <button
+                                    type="button"
+                                    aria-label="Xem video toàn màn hình"
+                                    title="Xem toàn màn hình"
+                                    className="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-lg bg-black/65 hover:bg-black/80 text-white text-[11px] font-semibold px-2.5 py-1.5 backdrop-blur-sm shadow-lg border border-white/15"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setMediaLightbox({
+                                        src: msg.mediaUrl as string,
+                                        kind: 'video',
+                                      });
+                                    }}
+                                  >
+                                    <Maximize2 className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="hidden sm:inline pr-0.5">Toàn màn hình</span>
+                                  </button>
+                                </div>
+                                <div className="flex items-center gap-2.5 px-3 py-2.5 border-t border-black/5 dark:border-white/10 bg-white/90 dark:bg-zinc-950/80">
+                                  <div className="shrink-0 rounded-lg bg-violet-100 dark:bg-violet-900/40 p-2">
+                                    <Video
+                                      className="w-5 h-5 text-violet-600 dark:text-violet-400"
+                                      aria-hidden
+                                    />
+                                  </div>
+                                  <div className="min-w-0 flex-1 text-left">
+                                    <p className="text-[13px] font-semibold text-foreground truncate">
+                                      {msg.mediaOriginalName?.trim() || 'Video'}
+                                    </p>
+                                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                      {msg.mediaSize != null && msg.mediaSize > 0 ? (
+                                        <span className="text-[11px] text-muted-foreground">
+                                          {formatFileSize(msg.mediaSize)}
+                                        </span>
+                                      ) : null}
+                                      {mediaSavedOnDevice && (
+                                        <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                                          <CircleCheck
+                                            className="w-3.5 h-3.5 shrink-0"
+                                            aria-hidden
+                                          />
+                                          Đã có trên máy
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      aria-label="Gợi ý thư mục tải xuống"
+                                      title="Thư mục Tải xuống"
+                                      className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openDownloadsFolderHint();
+                                      }}
+                                    >
+                                      <FolderOpen className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      aria-label="Tải video xuống"
+                                      title="Tải xuống"
+                                      className="shrink-0 p-2.5 rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-zinc-900 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void handleMediaDownload(
+                                          msg.messageId,
+                                          msg.mediaUrl as string,
+                                          msg.mediaOriginalName?.trim() || 'video.mp4',
+                                        );
+                                      }}
+                                    >
+                                      <Download className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {msg.type === 'file' && msg.mediaUrl && (
+                            <div
+                              className={`flex w-full max-w-[min(100%,20rem)] items-center gap-2 rounded-lg px-2.5 py-2 min-w-0 ${
+                                showCaption || msg.replyToDetails ? 'mb-1.5' : ''
+                              } ${
+                                isMe
+                                  ? 'bg-black/8 dark:bg-white/10'
+                                  : 'bg-black/6 dark:bg-white/10 border border-black/8 dark:border-white/10'
+                              }`}
+                            >
+                              <FileText
+                                className="w-8 h-8 shrink-0 text-muted-foreground"
+                                aria-hidden
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  className="text-xs font-semibold text-foreground truncate"
+                                  title={msg.mediaOriginalName?.trim() || 'Tệp đính kèm'}
+                                >
+                                  {msg.mediaOriginalName?.trim() || 'Tệp đính kèm'}
+                                </p>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                  {msg.mediaSize != null && msg.mediaSize > 0 ? (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {formatFileSize(msg.mediaSize)}
+                                    </span>
+                                  ) : null}
+                                  {mediaSavedOnDevice && (
+                                    <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                                      <CircleCheck className="w-3 h-3 shrink-0" aria-hidden />
+                                      Đã có trên máy
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-0.5 shrink-0">
+                                <button
+                                  type="button"
+                                  aria-label="Gợi ý thư mục tải xuống"
+                                  title="Thư mục Tải xuống"
+                                  onClick={() => openDownloadsFolderHint()}
+                                  className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
+                                >
+                                  <FolderOpen className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="Tải xuống"
+                                  title="Tải xuống"
+                                  onClick={() =>
+                                    void handleMediaDownload(
+                                      msg.messageId,
+                                      msg.mediaUrl as string,
+                                      msg.mediaOriginalName?.trim() || 'file',
+                                    )
+                                  }
+                                  className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          {isMediaMsg && showCaption && (
+                            <div
+                              className={`mt-0.5 w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'} px-2.5 py-1.5 rounded-lg text-[13px] break-words whitespace-pre-wrap ${
+                                isMe
+                                  ? 'bg-black/6 dark:bg-white/10 text-foreground'
+                                  : 'bg-black/5 dark:bg-white/10 text-foreground'
+                              }`}
+                            >
+                              {msg.content}
+                            </div>
+                          )}
+                          {!isMediaMsg && showCaption && (
+                            <span className="break-words whitespace-pre-wrap">{msg.content}</span>
+                          )}
+                          {msg.isEdited && (
+                            <span
+                              className={`ml-1.5 text-[10px] ${
+                                isMe && !isMediaMsg
+                                  ? 'text-blue-100/70'
+                                  : 'text-muted-foreground/70'
+                              }`}
+                            >
+                              (đã sửa)
+                            </span>
+                          )}
+
+                          {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                            <div
+                              className={`absolute -bottom-3 ${isMe ? '-left-2' : '-right-2 flex-row-reverse'} flex flex-wrap gap-1 z-10`}
+                            >
+                              {Object.entries(msg.reactions).map(([emoji, userIds]) => (
+                                <div
+                                  key={emoji}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onReact(msg, emoji);
+                                  }}
+                                  className={`px-1.5 py-0.5 rounded-full bg-white dark:bg-zinc-800 ${userIds.includes(currentUserId) ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/40 text-blue-600' : 'border-black/10 dark:border-white/10 text-foreground'} text-[14px] shadow-sm flex items-center gap-1 cursor-pointer select-non hover:bg-gray-100 dark:hover:bg-gray-700`}
+                                  title={userIds.length > 0 ? `${userIds.length} người` : ''}
+                                >
+                                  <span className="leading-none">{emoji}</span>
+                                  {userIds.length > 1 && (
+                                    <span className="text-[10px] font-semibold opacity-70">
+                                      {userIds.length}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!msg.isDeleted && !msg.isRecalled && (
+                        <div
+                          className={`flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-all duration-150 shrink-0 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
+                        >
+                          <div
+                            className="relative group/reactbtn"
+                            onMouseLeave={() => {
+                              if (hiddenReactPopupId === msg.messageId) setHiddenReactPopupId(null);
+                            }}
+                          >
+                            <button
+                              type="button"
+                              title="Thả cảm xúc"
+                              className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
+                            >
+                              <SmilePlus className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
+                            </button>
+                            <div
+                              className={`absolute bottom-full ${isMe ? 'right-0' : 'left-0'} mb-1 p-1.5 rounded-full bg-white dark:bg-zinc-800 shadow-xl border border-black/10 dark:border-white/10 flex items-center gap-1 transition-all translate-y-2 z-50 after:content-[''] after:absolute after:left-0 after:-bottom-5 after:w-full after:h-5 ${hiddenReactPopupId === msg.messageId ? 'hidden' : 'opacity-0 pointer-events-none group-hover/reactbtn:opacity-100 group-hover/reactbtn:pointer-events-auto group-hover/reactbtn:translate-y-0'}`}
+                            >
+                              {['❤️', '👍', '😂', '😮', '😢', '😡'].map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onReact(msg, emoji);
+                                    setHiddenReactPopupId(msg.messageId);
+                                  }}
+                                  className="text-xl hover:scale-125 transition-transform px-1"
+                                  title={emoji}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
                           <button
                             type="button"
-                            title={msg.isPinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'}
+                            title="Trả lời"
                             onClick={(e) => {
                               e.stopPropagation();
-                              void onTogglePin(msg);
+                              onReply(msg);
                             }}
                             className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
                           >
-                            <Pin
-                              className={`w-3.5 h-3.5 ${
-                                msg.isPinned
-                                  ? 'text-[#0068ff] dark:text-blue-400 fill-blue-500/25'
-                                  : 'text-muted-foreground hover:text-[#0068ff] dark:hover:text-blue-400'
-                              }`}
-                              strokeWidth={msg.isPinned ? 2.25 : 2}
-                            />
+                            <Reply className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
                           </button>
-                        )}
-                        {isMe && (
-                          <div className="relative">
+                          {canPinMessage(msg) && (
                             <button
                               type="button"
-                              title="Thao tác"
+                              title={msg.isPinned ? 'Bỏ ghim tin nhắn' : 'Ghim tin nhắn'}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onActionMenuMsgIdChange(
-                                  actionMenuMsgId === msg.messageId ? null : msg.messageId,
-                                );
+                                void onTogglePin(msg);
                               }}
                               className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
                             >
-                              <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
+                              <Pin
+                                className={`w-3.5 h-3.5 ${
+                                  msg.isPinned
+                                    ? 'text-[#0068ff] dark:text-blue-400 fill-blue-500/25'
+                                    : 'text-muted-foreground hover:text-[#0068ff] dark:hover:text-blue-400'
+                                }`}
+                                strokeWidth={msg.isPinned ? 2.25 : 2}
+                              />
                             </button>
-                            {actionMenuMsgId === msg.messageId && (
-                              <div
-                                className={`absolute z-50 min-w-[156px] rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl py-1 ${isMe ? 'right-0 bottom-full mb-1' : 'left-0 bottom-full mb-1'}`}
-                                onClick={(e) => e.stopPropagation()}
+                          )}
+                          {isMe && (
+                            <div className="relative">
+                              <button
+                                type="button"
+                                title="Thao tác"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onActionMenuMsgIdChange(
+                                    actionMenuMsgId === msg.messageId ? null : msg.messageId,
+                                  );
+                                }}
+                                className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
                               >
-                                {canShowEditInMessageOverflowMenu(msg) && (
+                                <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
+                              </button>
+                              {actionMenuMsgId === msg.messageId && (
+                                <div
+                                  className={`absolute z-50 min-w-[156px] rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl py-1 ${isMe ? 'right-0 bottom-full mb-1' : 'left-0 bottom-full mb-1'}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {canShowEditInMessageOverflowMenu(msg) && (
+                                    <button
+                                      type="button"
+                                      className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2"
+                                      onClick={() => {
+                                        onStartEdit(msg);
+                                        onActionMenuMsgIdChange(null);
+                                      }}
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 shrink-0" /> Sửa
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2"
-                                    onClick={() => {
-                                      onStartEdit(msg);
-                                      onActionMenuMsgIdChange(null);
-                                    }}
+                                    onClick={() => void onRecall(msg)}
                                   >
-                                    <Pencil className="w-3.5 h-3.5 shrink-0" /> Sửa
+                                    <RotateCcw className="w-3.5 h-3.5 shrink-0" /> Thu hồi
                                   </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2"
-                                  onClick={() => void onRecall(msg)}
-                                >
-                                  <RotateCcw className="w-3.5 h-3.5 shrink-0" /> Thu hồi
-                                </button>
-                                <button
-                                  type="button"
-                                  className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-red-500/10 text-red-600 flex items-center gap-2"
-                                  onClick={() => void onDelete(msg)}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5 shrink-0" /> Xóa
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {!isMe && (
-                          <div className="relative">
-                            <button
-                              type="button"
-                              title="Thao tác"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onActionMenuMsgIdChange(
-                                  actionMenuMsgId === msg.messageId ? null : msg.messageId,
-                                );
-                              }}
-                              className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
-                            >
-                              <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
-                            </button>
-                            {actionMenuMsgId === msg.messageId && (
-                              <div
-                                className="absolute z-50 min-w-[168px] rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl py-1 left-0 bottom-full mb-1"
-                                onClick={(e) => e.stopPropagation()}
+                                  <button
+                                    type="button"
+                                    className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-red-500/10 text-red-600 flex items-center gap-2"
+                                    onClick={() => void onDelete(msg)}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 shrink-0" /> Xóa
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {!isMe && (
+                            <div className="relative">
+                              <button
+                                type="button"
+                                title="Thao tác"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onActionMenuMsgIdChange(
+                                    actionMenuMsgId === msg.messageId ? null : msg.messageId,
+                                  );
+                                }}
+                                className="p-1.5 rounded-full bg-black/5 dark:bg-white/8 hover:bg-blue-500/15 transition-colors"
                               >
-                                <button
-                                  type="button"
-                                  className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-red-500/10 text-red-600 flex items-center gap-2"
-                                  onClick={() => void onDelete(msg)}
+                                <MoreHorizontal className="w-3.5 h-3.5 text-muted-foreground hover:text-blue-600" />
+                              </button>
+                              {actionMenuMsgId === msg.messageId && (
+                                <div
+                                  className="absolute z-50 min-w-[168px] rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl py-1 left-0 bottom-full mb-1"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  <Trash2 className="w-3.5 h-3.5 shrink-0" /> Xóa
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                                  <button
+                                    type="button"
+                                    className="w-full px-3 py-2 text-left text-xs font-medium hover:bg-red-500/10 text-red-600 flex items-center gap-2"
+                                    onClick={() => void onDelete(msg)}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 shrink-0" /> Xóa
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {showMeta && (
+                      <div
+                        className={`mt-1 px-1 ${isMe ? 'flex flex-col items-end gap-0.5' : 'flex flex-row items-center gap-1'}`}
+                      >
+                        <div
+                          className={`flex items-center gap-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
+                        >
+                          <span className="text-[10px] text-muted-foreground/70">
+                            {formatTime(msg.createdAt)}
+                          </span>
+                          {isMe && !msg.isRecalled && !msg.isDeleted && (
+                            <OutgoingDeliveryTicks
+                              status={msg.status}
+                              convIsDirect={activeConversation?.type === 'direct'}
+                              isMe={isMe}
+                            />
+                          )}
+                        </div>
+                        {isMe &&
+                          !msg.isRecalled &&
+                          !msg.isDeleted &&
+                          msg.readBy &&
+                          msg.readBy.length > 0 && (
+                            <div
+                              className="flex flex-wrap items-center justify-end gap-x-1 gap-y-0 max-w-[min(100%,280px)]"
+                              title={msg.readBy
+                                .map((r) => (r.displayName?.trim() ? r.displayName : 'Thành viên'))
+                                .join(', ')}
+                            >
+                              <span className="text-[10px] text-white/65 shrink-0">Đã xem</span>
+                              {msg.readBy.slice(0, 6).map((r) => (
+                                <span
+                                  key={r.userId}
+                                  className="text-[10px] font-semibold text-white/90 truncate max-w-[100px]"
+                                >
+                                  {r.displayName?.trim() || 'Người dùng'}
+                                </span>
+                              ))}
+                              {msg.readBy.length > 6 ? (
+                                <span className="text-[10px] text-white/65">
+                                  +{msg.readBy.length - 6}
+                                </span>
+                              ) : null}
+                            </div>
+                          )}
                       </div>
                     )}
                   </div>
-
-                  {showMeta && (
-                    <div
-                      className={`mt-1 px-1 ${isMe ? 'flex flex-col items-end gap-0.5' : 'flex flex-row items-center gap-1'}`}
-                    >
-                      <div
-                        className={`flex items-center gap-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
-                      >
-                        <span className="text-[10px] text-muted-foreground/70">
-                          {formatTime(msg.createdAt)}
-                        </span>
-                        {isMe && !msg.isRecalled && !msg.isDeleted && (
-                          <OutgoingDeliveryTicks
-                            status={msg.status}
-                            convIsDirect={activeConversation?.type === 'direct'}
-                            isMe={isMe}
-                          />
-                        )}
-                      </div>
-                      {isMe &&
-                        !msg.isRecalled &&
-                        !msg.isDeleted &&
-                        msg.readBy &&
-                        msg.readBy.length > 0 && (
-                          <div
-                            className="flex flex-wrap items-center justify-end gap-x-1 gap-y-0 max-w-[min(100%,280px)]"
-                            title={msg.readBy
-                              .map((r) => (r.displayName?.trim() ? r.displayName : 'Thành viên'))
-                              .join(', ')}
-                          >
-                            <span className="text-[10px] text-white/65 shrink-0">Đã xem</span>
-                            {msg.readBy.slice(0, 6).map((r) => (
-                              <span
-                                key={r.userId}
-                                className="text-[10px] font-semibold text-white/90 truncate max-w-[100px]"
-                              >
-                                {r.displayName?.trim() || 'Người dùng'}
-                              </span>
-                            ))}
-                            {msg.readBy.length > 6 ? (
-                              <span className="text-[10px] text-white/65">
-                                +{msg.readBy.length - 6}
-                              </span>
-                            ) : null}
-                          </div>
-                        )}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
+                </motion.div>
+              </Fragment>
             );
           })}
 
