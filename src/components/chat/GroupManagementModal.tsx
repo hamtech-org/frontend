@@ -158,7 +158,9 @@ export function GroupManagementModal({
       {isFetching && !gs ? (
         <div className="px-4 py-8 text-center text-sm text-muted-foreground">Đang tải cài đặt…</div>
       ) : !member || !admin ? (
-        <div className="px-4 py-8 text-center text-sm text-red-500">Không tải được cài đặt nhóm.</div>
+        <div className="px-4 py-8 text-center text-sm text-red-500">
+          Không tải được cài đặt nhóm.
+        </div>
       ) : (
         <>
           <div className="px-4 pt-2 pb-1">
@@ -168,7 +170,10 @@ export function GroupManagementModal({
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-zinc-900/40">
               {(
                 [
-                  { key: 'changeNameAvatar' as const, label: 'Thay đổi tên & ảnh đại diện của nhóm' },
+                  {
+                    key: 'changeNameAvatar' as const,
+                    label: 'Thay đổi tên & ảnh đại diện của nhóm',
+                  },
                   {
                     key: 'pinMessages' as const,
                     label: 'Ghim tin nhắn, ghi chú, bình chọn lên đầu hội thoại',
@@ -182,7 +187,9 @@ export function GroupManagementModal({
                 <label
                   key={row.key}
                   className={`flex items-start justify-between gap-3 px-3 py-3 ${
-                    canEdit ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-800/60' : 'opacity-80'
+                    canEdit
+                      ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-800/60'
+                      : 'opacity-80'
                   }`}
                 >
                   <div className="min-w-0 pt-0.5">
@@ -208,13 +215,6 @@ export function GroupManagementModal({
           </div>
 
           <div className="px-4 py-3 space-y-0">
-            <ToggleRow
-              label="Chế độ phê duyệt thành viên mới"
-              help="Khi bật, người mới xin vào phải được duyệt."
-              checked={admin.approvalRequired}
-              disabled={!canEdit || busy}
-              onChange={(v) => void patchAdmin('approvalRequired', v)}
-            />
             <ToggleRow
               label="Đánh dấu tin nhắn từ trưởng/phó nhóm"
               checked={admin.highlightLeaderMessages}
@@ -322,7 +322,10 @@ export function GroupManagementModal({
             <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
               <Settings className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             </div>
-            <h3 id={`${baseId}-gmtitle`} className="font-bold text-[17px] text-black dark:text-white truncate">
+            <h3
+              id={`${baseId}-gmtitle`}
+              className="font-bold text-[17px] text-black dark:text-white truncate"
+            >
               Quản lý nhóm
             </h3>
           </div>
