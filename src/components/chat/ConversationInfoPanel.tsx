@@ -1502,7 +1502,7 @@ export function ConversationInfoPanel({
                   }}
                   className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                 >
-                  Quản lý thành viên ({activeConversation.memberCount})
+                  Quản lý thành viên
                   <div className="flex items-center gap-2">
                     {(numRequests ?? 0) > 0 && (
                       <div className="w-[20px] h-[20px] rounded-full bg-red-500 flex items-center justify-center text-[10px] text-white font-bold">
