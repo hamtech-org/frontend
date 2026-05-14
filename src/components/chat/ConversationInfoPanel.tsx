@@ -1488,8 +1488,18 @@ export function ConversationInfoPanel({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => openMemberModalHere('list')}
-                  onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('list')}
+                  onClick={() =>
+                    openMemberModalHere(
+                      canModerateMembers && (numRequests ?? 0) > 0 ? 'pending' : 'list',
+                    )
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      openMemberModalHere(
+                        canModerateMembers && (numRequests ?? 0) > 0 ? 'pending' : 'list',
+                      );
+                    }
+                  }}
                   className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                 >
                   Quản lý thành viên ({activeConversation.memberCount})
@@ -1500,33 +1510,6 @@ export function ConversationInfoPanel({
                       </div>
                     )}
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                </div>
-                <div className="px-4 pb-4 space-y-1">
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openMemberModalHere('pending')}
-                    onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('pending')}
-                    className="flex items-center justify-between group/wait cursor-pointer p-2 -mx-2 rounded-lg hover:bg-blue-600/10 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground group-hover/wait:text-blue-600 font-medium transition-colors">
-                      <UserPlus className="w-4 h-4 opacity-70" /> Duyệt người vào nhóm
-                    </div>
-                    {(numRequests ?? 0) > 0 && (
-                      <div className="w-[22px] h-[22px] rounded-full bg-red-500 shadow-md shadow-red-500/20 flex items-center justify-center text-[10px] text-white font-bold">
-                        {numRequests}
-                      </div>
-                    )}
-                  </div>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openMemberModalHere('list')}
-                    onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('list')}
-                    className="flex items-center gap-3 text-sm text-muted-foreground hover:text-red-500 cursor-pointer hover:bg-red-500/10 p-2 -mx-2 rounded-lg transition-colors font-medium"
-                  >
-                    <Users className="w-4 h-4 opacity-70" /> Mời ra khỏi nhóm
                   </div>
                 </div>
               </div>
