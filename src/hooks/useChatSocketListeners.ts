@@ -13,19 +13,24 @@ import {
   typingStarted,
   typingStopped,
   bumpGroupBoardRefresh,
+  setActiveConversation,
 } from '@/store/slices/chatSlice';
 import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
-import type {
-  ConversationType,
-  IConversation,
-  IGroupSettings,
-  IMessage,
-  MessageStatus,
-} from '@/types/chat.types';
+import type { ConversationType, IGroupSettings, IMessage, MessageStatus } from '@/types/chat.types';
 import {
   lastMessagePreviewContentFromMessage,
   sortConversationsForSidebar,
 } from '@/utils/chatUtils';
+import {
+  applyKickedFromGroupRealtime,
+  applyRejoinedGroupMemberRealtime,
+  messagePassesJoinCutoff,
+} from '@/utils/chatMembershipRealtime';
+import {
+  groupProfilePatchFromPayload,
+  patchGroupProfileInConversationsCache,
+  patchGroupSettingsInCaches,
+} from '@/utils/groupRealtimeCache';
 
 function applyMessageStatusPatch(
   dispatch: AppDispatch,
@@ -91,8 +96,11 @@ export function useChatSocketListeners(
 
     const handleNewMessage = (data: unknown) => {
       const msg = data as IMessage;
-      dispatch(messageReceived(msg));
       const cid = String(msg.conversationId ?? '').trim();
+      const cutoff = store.getState().chat.messageJoinCutoffMsByConversation[cid];
+      if (!messagePassesJoinCutoff(msg, cutoff)) return;
+
+      dispatch(messageReceived(msg));
       const mid = String(msg.messageId ?? '').trim();
       if (cid && mid) {
         try {
@@ -238,20 +246,13 @@ export function useChatSocketListeners(
       const conversationId = p?.conversationId;
       const groupSettings = p?.groupSettings;
       if (!conversationId || !groupSettings) return;
-      dispatch(bumpGroupBoardRefresh({ conversationId: String(conversationId) }));
+      patchGroupSettingsInCaches(dispatch, conversationId, groupSettings);
       dispatch(
-        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
-          if (!draft?.data) return;
-          const c = draft.data.find((x) => x.conversationId === conversationId);
-          if (c) (c as IConversation).groupSettings = groupSettings;
-        }),
+        chatApi.util.invalidateTags([
+          { type: 'GroupSettings', id: conversationId },
+          { type: 'Messages', id: conversationId },
+        ]),
       );
-      dispatch(
-        chatApi.util.updateQueryData('getGroupSettings', conversationId, (draft) => {
-          if (draft) draft.data = groupSettings;
-        }),
-      );
-      dispatch(chatApi.util.invalidateTags([{ type: 'GroupSettings', id: conversationId }]));
     };
 
     const handleGroupDisbanded = (data: unknown) => {
@@ -270,20 +271,16 @@ export function useChatSocketListeners(
     const handleGroupUpdate = (data: any) => {
       // Khi có thay đổi về nhóm (member, role, poll, task, etc.)
       // Server có thể emit `groupId` hoặc `conversationId` tùy nơi gọi.
-      // Giữ code cũ nhưng fallback để đảm bảo invalidate đúng.
-      const groupId = data?.groupId ?? data?.conversationId;
+      const profileFromPayload = groupProfilePatchFromPayload(data);
+      const groupId = profileFromPayload?.conversationId ?? data?.groupId ?? data?.conversationId;
       if (groupId) {
         dispatch(bumpGroupBoardRefresh({ conversationId: String(groupId) }));
       }
-      const memberCountFromSocket =
-        typeof data?.memberCount === 'number' ? data.memberCount : undefined;
-      if (groupId && memberCountFromSocket !== undefined) {
-        dispatch(
-          chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
-            if (!draft?.data) return;
-            const c = draft.data.find((x) => x.conversationId === groupId);
-            if (c) c.memberCount = memberCountFromSocket;
-          }),
+      if (profileFromPayload) {
+        patchGroupProfileInConversationsCache(
+          dispatch,
+          profileFromPayload.conversationId,
+          profileFromPayload.patch,
         );
       }
       if (!groupId) {
@@ -308,14 +305,52 @@ export function useChatSocketListeners(
     };
 
     /** Cùng ref cho on/off — không dùng `off(event)` không handler (sẽ xóa cả listener của ChatPage / module khác). */
-    const onGroupMemberJoinedGU = (data: unknown) =>
-      handleGroupUpdate({ ...(data as object), type: 'member' });
+    const onGroupMemberJoinedGU = (data: unknown) => onGroupMemberJoinedSelfGU(data);
     const onGroupMemberLeftGU = (data: unknown) =>
       handleGroupUpdate({ ...(data as object), type: 'member' });
     const onGroupMembersAddedGU = (data: unknown) =>
       handleGroupUpdate({ ...(data as object), type: 'member' });
-    const onGroupMemberRemovedGU = (data: unknown) =>
+    const onGroupMemberRemovedGU = (data: unknown) => {
+      const p = data as {
+        userId?: string;
+        conversationId?: string;
+        groupId?: string;
+      };
+      const gid = String(p.conversationId ?? p.groupId ?? '').trim();
+      if (gid && p.userId && p.userId === currentUserId) {
+        applyKickedFromGroupRealtime(dispatch, gid);
+        if (activeConversationIdRef.current === gid) {
+          dispatch(setActiveConversation(null));
+        }
+      }
       handleGroupUpdate({ ...(data as object), type: 'member' });
+    };
+    const onGroupRequestApprovedGU = (data: unknown) => {
+      const p = data as {
+        userId?: string;
+        conversationId?: string;
+        groupId?: string;
+        joinedAt?: string;
+      };
+      const gid = String(p.conversationId ?? p.groupId ?? '').trim();
+      if (gid && p.userId === currentUserId && p.joinedAt) {
+        applyRejoinedGroupMemberRealtime(dispatch, gid, p.joinedAt);
+      }
+      handleGroupUpdate({ ...(data as object), type: 'member' });
+    };
+    const onGroupMemberJoinedSelfGU = (data: unknown) => {
+      const p = data as {
+        userId?: string;
+        conversationId?: string;
+        groupId?: string;
+        joinedAt?: string;
+      };
+      const gid = String(p.conversationId ?? p.groupId ?? '').trim();
+      if (gid && p.userId === currentUserId && p.joinedAt) {
+        applyRejoinedGroupMemberRealtime(dispatch, gid, p.joinedAt);
+      }
+      handleGroupUpdate({ ...(data as object), type: 'member' });
+    };
     const onGroupRoleChangedGU = (data: unknown) =>
       handleGroupUpdate({ ...(data as object), type: 'member' });
     const onGroupJoinRequestNewGU = (data: unknown) =>
@@ -353,7 +388,24 @@ export function useChatSocketListeners(
     socketService.on('group:member_joined', onGroupMemberJoinedGU);
     socketService.on('group:member_left', onGroupMemberLeftGU);
     socketService.on('group:members_added', onGroupMembersAddedGU);
+    const onGroupMembershipRevokedGU = (data: unknown) => {
+      const p = data as {
+        userId?: string;
+        conversationId?: string;
+        groupId?: string;
+      };
+      const gid = String(p.conversationId ?? p.groupId ?? '').trim();
+      if (gid && p.userId === currentUserId) {
+        applyKickedFromGroupRealtime(dispatch, gid);
+        if (activeConversationIdRef.current === gid) {
+          dispatch(setActiveConversation(null));
+        }
+      }
+    };
+
     socketService.on('group:member_removed', onGroupMemberRemovedGU);
+    socketService.on('group:membership_revoked', onGroupMembershipRevokedGU);
+    socketService.on('group:request_approved', onGroupRequestApprovedGU);
     socketService.on('group:role_changed', onGroupRoleChangedGU);
     socketService.on('group:join_request_new', onGroupJoinRequestNewGU);
     socketService.on('group:join_request_updated', onGroupJoinRequestUpdatedGU);
@@ -382,6 +434,8 @@ export function useChatSocketListeners(
       socketService.off('group:member_left', onGroupMemberLeftGU);
       socketService.off('group:members_added', onGroupMembersAddedGU);
       socketService.off('group:member_removed', onGroupMemberRemovedGU);
+      socketService.off('group:membership_revoked', onGroupMembershipRevokedGU);
+      socketService.off('group:request_approved', onGroupRequestApprovedGU);
       socketService.off('group:role_changed', onGroupRoleChangedGU);
       socketService.off('group:join_request_new', onGroupJoinRequestNewGU);
       socketService.off('group:join_request_updated', onGroupJoinRequestUpdatedGU);
