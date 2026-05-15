@@ -287,25 +287,6 @@ export function GroupManagementModal({
               disabled={!onNavigateToMembers}
               onClick={() => {
                 if (!onNavigateToMembers) {
-                  toast.info('Tính năng đang phát triển');
-                  return;
-                }
-                if (!canKickMembers) {
-                  toast.info('Chỉ trưởng nhóm mới có thể mời thành viên ra khỏi nhóm');
-                  return;
-                }
-                onNavigateToMembers({ tab: 'list' });
-              }}
-            >
-              <Ban className="w-5 h-5 text-slate-500 shrink-0" />
-              Chặn khỏi nhóm
-            </button>
-            <button
-              type="button"
-              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 disabled:opacity-45"
-              disabled={!onNavigateToMembers}
-              onClick={() => {
-                if (!onNavigateToMembers) {
                   toast.info('Dùng mục Quản lý thành viên để xem vai trò');
                   return;
                 }
