@@ -54,7 +54,6 @@ type ChatComposerProps = {
   onOpenTask: () => void;
   onOpenAISummary?: () => void;
   groupMembers?: GroupMember[];
-  onLearnMoreSendRestriction?: () => void;
 };
 
 export function ChatComposer({
@@ -65,7 +64,6 @@ export function ChatComposer({
   onOpenTask,
   onOpenAISummary,
   groupMembers = [],
-  onLearnMoreSendRestriction,
 }: ChatComposerProps) {
   type VoiceUiState = 'idle' | 'active-ui' | 'cancelled-ui';
 
@@ -235,7 +233,7 @@ export function ChatComposer({
   }
 
   if (!canSendInGroup) {
-    return <GroupMemberSendRestrictedBar onLearnMore={onLearnMoreSendRestriction} />;
+    return <GroupMemberSendRestrictedBar />;
   }
 
   return (
