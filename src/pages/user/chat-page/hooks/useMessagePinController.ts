@@ -9,6 +9,7 @@ import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/chatPinConstants'
 import type { AppDispatch } from '@/store/store';
 import type { IConversation, IMessage } from '@/types/chat.types';
 import type { GroupMember } from '@/types/chat.group.types';
+import { canUserPinMessageInGroup } from '@/utils/groupConversationPermissions';
 
 interface UseMessagePinControllerParams {
   dispatch: AppDispatch;
@@ -89,10 +90,12 @@ export function useMessagePinController({
         if (msg.isPinned) {
           const myRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
           if (
-            activeConversation?.type === 'group' &&
-            myRole === 'member' &&
-            activeConversation.groupSettings &&
-            !activeConversation.groupSettings.memberPermissions.pinMessages
+            !canUserPinMessageInGroup({
+              conversation: activeConversation,
+              userRole: myRole,
+              userId: currentUserId,
+              members: groupMembers,
+            })
           ) {
             toast.error('Nhóm không cho phép thành viên bỏ/ghim tin nhắn.');
             setActionMenuMsgId(null);
@@ -136,10 +139,12 @@ export function useMessagePinController({
           }
           const myRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
           if (
-            activeConversation?.type === 'group' &&
-            myRole === 'member' &&
-            activeConversation.groupSettings &&
-            !activeConversation.groupSettings.memberPermissions.pinMessages
+            !canUserPinMessageInGroup({
+              conversation: activeConversation,
+              userRole: myRole,
+              userId: currentUserId,
+              members: groupMembers,
+            })
           ) {
             toast.error('Nhóm không cho phép thành viên ghim tin nhắn.');
             setActionMenuMsgId(null);
