@@ -35,7 +35,11 @@ import {
   chatSystemPillShowDateLine,
   chatMessagesSameLocalDay,
 } from '@/utils/formatDate';
-import { isTaskJoinDeadlinePassed, typingLabel } from '@/utils/chatUtils';
+import {
+  isTaskJoinDeadlinePassed,
+  lastMessageLineFromSystemJson,
+  typingLabel,
+} from '@/utils/chatUtils';
 import { formatGroupSystemChatLine } from '@/utils/groupSystemMessage';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
@@ -719,6 +723,7 @@ export function ChatMessageList({
               /** Nhóm: chip mốc ngày giữa luồng (đồng bộ tin thường) — pill chỉ còn giờ để không lặp «Hôm nay». */
               const daySepAboveSystem = isGroupConv && showDate;
               // Tin nhóm (mời / tham gia / mời ra): JSON → câu tiếng Việt, xưng "Bạn" theo userId.
+              const systemJsonRaw = typeof msg.content === 'string' ? msg.content.trim() : '';
               let content = msg.content;
               if (typeof content === 'string') {
                 const groupLine = formatGroupSystemChatLine(content, currentUserId);
@@ -746,7 +751,9 @@ export function ChatMessageList({
                   content = content.replace(name, 'Bạn');
                 }
               }
-              if (typeof content === 'string') {
+              // Không thay `null`/`undefined` trong payload JSON — sẽ thành JSON không hợp lệ
+              // (vd. `"note": null` → `"note": Thành viên`) và UI lộ chuỗi JSON thô.
+              if (typeof content === 'string' && !content.trim().startsWith('{')) {
                 content = content
                   .replace(/\bundefined\b/g, 'Thành viên')
                   .replace(/\bnull\b/g, 'Thành viên');
@@ -779,9 +786,9 @@ export function ChatMessageList({
               // "Công việc đã bị hủy" / "Đến hạn công việc" trong chat riêng
               // cho task vốn thuộc về một nhóm khác.
               const isDirectChat = activeConversation?.type === 'direct';
-              if (isDirectChat && typeof content === 'string' && content.trim().startsWith('{')) {
+              if (isDirectChat && systemJsonRaw.startsWith('{')) {
                 try {
-                  const probe = JSON.parse(content) as { kind?: string };
+                  const probe = JSON.parse(systemJsonRaw) as { kind?: string };
                   const k = String(probe?.kind ?? '');
                   if (
                     k === 'task_assigned' ||
@@ -813,11 +820,10 @@ export function ChatMessageList({
                 !isDirectChat &&
                 typeof msg.messageId === 'string' &&
                 msg.messageId.startsWith('local-task-card:') &&
-                typeof content === 'string' &&
-                content.trim().startsWith('{')
+                systemJsonRaw.startsWith('{')
               ) {
                 try {
-                  const probe = JSON.parse(content) as {
+                  const probe = JSON.parse(systemJsonRaw) as {
                     kind?: string;
                     task?: { taskId?: string };
                   };
@@ -837,9 +843,9 @@ export function ChatMessageList({
                 }
               }
 
-              if (typeof content === 'string' && content.trim().startsWith('{')) {
+              if (systemJsonRaw.startsWith('{')) {
                 try {
-                  const obj = JSON.parse(content) as any;
+                  const obj = JSON.parse(systemJsonRaw) as any;
                   if (obj?.kind === 'task_assigned' && obj?.task?.title) {
                     const rawIds = obj?.task?.assigneeUserIds;
                     const assigneeUserIds = Array.isArray(rawIds)
@@ -1292,10 +1298,10 @@ export function ChatMessageList({
                               {taskJoinedLine.title ? ` "${taskJoinedLine.title}"` : ''}
                             </span>
                           </div>
-                        ) : typeof content === 'string' && content.trim().startsWith('{') ? (
+                        ) : systemJsonRaw.startsWith('{') ? (
                           (() => {
                             try {
-                              const obj = JSON.parse(content) as any;
+                              const obj = JSON.parse(systemJsonRaw) as any;
                               if (obj?.kind === 'poll_created') {
                                 const actorName = String(
                                   obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
@@ -1508,12 +1514,36 @@ export function ChatMessageList({
                                   </div>
                                 );
                               }
+                              if (obj?.kind === 'task_assigned') {
+                                const actorName = String(
+                                  obj?.actor?.name ?? msg.senderDisplayName ?? 'Ai đó',
+                                );
+                                const titleStr = String(obj?.task?.title ?? '').trim();
+                                return (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <ClipboardList className="w-4 h-4 text-indigo-500 shrink-0" />
+                                    <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                      {(msg.senderId === currentUserId ? 'Bạn' : actorName) +
+                                        ' đã giao việc'}
+                                      {titleStr ? ` "${titleStr}"` : ''}
+                                    </span>
+                                  </div>
+                                );
+                              }
                             } catch {
                               // ignore
                             }
-                            const rawText = String(content ?? '').trim();
-                            const isUnpinNotice = rawText.includes('đã bỏ ghim');
-                            const isPinNotice = rawText.includes('đã ghim') || isUnpinNotice;
+                            const rawText = systemJsonRaw || String(content ?? '').trim();
+                            const friendlyJsonLine =
+                              rawText.startsWith('{') &&
+                              lastMessageLineFromSystemJson(rawText, {
+                                currentUserId,
+                                senderId: String(msg.senderId ?? ''),
+                                senderDisplayName: msg.senderDisplayName ?? null,
+                              });
+                            const displayText = friendlyJsonLine || rawText || 'Thông báo nhóm';
+                            const isUnpinNotice = displayText.includes('đã bỏ ghim');
+                            const isPinNotice = displayText.includes('đã ghim') || isUnpinNotice;
                             return (
                               <div className="flex items-center justify-center gap-2">
                                 {isPinNotice ? (
@@ -1526,30 +1556,39 @@ export function ChatMessageList({
                                   <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
                                 )}
                                 <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                                  {content}
+                                  {displayText}
                                 </span>
                               </div>
                             );
                           })()
                         ) : (
-                          <div className="flex items-center justify-center gap-2">
-                            {(() => {
-                              const pinLine = String(content ?? '').trim();
-                              const unpin = pinLine.includes('đã bỏ ghim');
-                              const pinRow = pinLine.includes('đã ghim') || unpin;
-                              if (!pinRow) {
-                                return <Pencil className="w-4 h-4 text-blue-400 shrink-0" />;
-                              }
-                              return unpin ? (
-                                <PinOff className="w-4 h-4 text-blue-500 shrink-0" />
-                              ) : (
-                                <Pin className="w-4 h-4 text-blue-500 shrink-0" />
-                              );
-                            })()}
-                            <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
-                              {content}
-                            </span>
-                          </div>
+                          (() => {
+                            const pinLine = systemJsonRaw || String(content ?? '').trim();
+                            const friendlyJsonLine =
+                              pinLine.startsWith('{') &&
+                              lastMessageLineFromSystemJson(pinLine, {
+                                currentUserId,
+                                senderId: String(msg.senderId ?? ''),
+                                senderDisplayName: msg.senderDisplayName ?? null,
+                              });
+                            const displayLine = friendlyJsonLine || pinLine || 'Thông báo nhóm';
+                            const unpin = displayLine.includes('đã bỏ ghim');
+                            const pinRow = displayLine.includes('đã ghim') || unpin;
+                            return (
+                              <div className="flex items-center justify-center gap-2">
+                                {!pinRow ? (
+                                  <Pencil className="w-4 h-4 text-blue-400 shrink-0" />
+                                ) : unpin ? (
+                                  <PinOff className="w-4 h-4 text-blue-500 shrink-0" />
+                                ) : (
+                                  <Pin className="w-4 h-4 text-blue-500 shrink-0" />
+                                )}
+                                <span className="text-[12px] font-medium text-[#666] dark:text-zinc-300 whitespace-pre-line text-center">
+                                  {displayLine}
+                                </span>
+                              </div>
+                            );
+                          })()
                         )}
                       </div>
                     </div>
