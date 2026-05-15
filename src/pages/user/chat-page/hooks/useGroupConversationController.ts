@@ -28,6 +28,7 @@ import {
   isoUtcToVietnamLocalDatetimeValue,
   parseVietnamLocalDeadlineInput,
 } from '@/utils/vietnamDeadline';
+import { buildClientMediaDownloadUrl } from '@/utils/mediaUrls';
 
 function deadlineLocalInputToJsonValue(input: string | null | undefined): string | null {
   if (!input?.trim()) return null;
@@ -42,8 +43,12 @@ interface UseGroupConversationControllerParams {
   currentUserDisplayName?: string;
   currentUserRole?: 'owner' | 'admin' | 'member';
   dispatch: AppDispatch;
-  uploadMedia: (payload: { file: File; mediaType: 'image' }) => {
-    unwrap: () => Promise<{ data: { url?: string } }>;
+  uploadMedia: (payload: {
+    file: File;
+    mediaType: 'image';
+    deliveryScope?: 'chat' | 'general';
+  }) => {
+    unwrap: () => Promise<{ data: { url?: string; mediaId?: string } }>;
   };
   groupState: {
     groupMembers: GroupMember[];
@@ -206,8 +211,12 @@ export function useGroupConversationController({
         const uploadResult = await uploadMedia({
           file: editGroupAvatarFile,
           mediaType: 'image',
+          deliveryScope: 'general',
         }).unwrap();
-        nextAvatar = uploadResult.data.url ?? previousAvatar;
+        const mid = uploadResult.data.mediaId?.trim();
+        nextAvatar = mid
+          ? buildClientMediaDownloadUrl(mid)
+          : (uploadResult.data.url ?? previousAvatar);
       } catch (err) {
         console.error('Avatar upload failed:', err);
         toast.error('Không thể tải lên ảnh đại diện mới');
@@ -1249,27 +1258,26 @@ export function useGroupConversationController({
 
   const handleKickMember = useCallback(
     async (userId: string) => {
-      if (!activeConversationId) return;
+      if (!activeConversationId) {
+        throw Object.assign(new Error('No active conversation'), { response: { status: 400 } });
+      }
       const roleFromMembers = groupMembers.find((m) => m.userId === currentUserId)?.role;
       const effectiveRole = (currentUserRole ?? roleFromMembers ?? 'member') as
         | 'owner'
         | 'admin'
         | 'member';
       if (effectiveRole !== 'owner') {
-        toast.error('Bạn không có quyền mời thành viên ra khỏi nhóm');
-        return;
+        throw Object.assign(new Error('Forbidden'), { response: { status: 403 } });
       }
-      if (!window.confirm('Bạn có chắc muốn mời người này ra khỏi nhóm?')) return;
       setActionBusy('removeMember', true);
       const before = groupMembers;
       setGroupMembers((prev) => prev.filter((m) => m.userId !== userId));
       try {
         await groupApi.removeMember(activeConversationId, userId);
-        toast.success('Đã xóa thành viên');
       } catch (err) {
         setGroupMembers(before);
-        toast.error('Không thể xóa thành viên');
         console.error('Failed to kick member:', err);
+        throw err;
       } finally {
         setActionBusy('removeMember', false);
       }
