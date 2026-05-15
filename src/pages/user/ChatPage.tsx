@@ -126,8 +126,9 @@ export default function ChatPage() {
       resolveGroupMemberRole({
         userId: currentUserId,
         members: groupMembers,
+        conversationCreatorId: activeConversation?.creatorId,
       }),
-    [currentUserId, groupMembers],
+    [currentUserId, groupMembers, activeConversation?.creatorId],
   );
 
   const { state: modalState, actions: modalActions } = useChatModalController();
