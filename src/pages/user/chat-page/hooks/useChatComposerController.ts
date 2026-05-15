@@ -25,6 +25,8 @@ export function useChatComposerController(
   activeConversationId: string | null,
   activeConversation?: IConversation,
   currentUserRole?: GroupMemberRole,
+  currentUserId?: string,
+  groupMembers?: Array<{ userId?: string; role?: string }>,
 ) {
   const dispatch = useDispatch<AppDispatch>();
 
@@ -119,9 +121,10 @@ export function useChatComposerController(
         !canUserSendMessageInGroup({
           conversation: activeConversation,
           userRole: currentUserRole,
+          userId: currentUserId,
+          members: groupMembers,
         })
       ) {
-        toast.error('Nhóm không cho phép thành viên gửi tin nhắn');
         return;
       }
 
@@ -181,6 +184,8 @@ export function useChatComposerController(
       activeConversation,
       activeConversationId,
       currentUserRole,
+      currentUserId,
+      groupMembers,
       inputText,
       isSending,
       mediaUploading,
