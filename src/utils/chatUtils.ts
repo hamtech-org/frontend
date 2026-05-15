@@ -1,4 +1,5 @@
 import type { IConversation, IMessage, MessageType, TypingUserEntry } from '@/types/chat.types';
+import { formatGroupSystemChatLine } from '@/utils/groupSystemMessage';
 
 export function decodeJwtUserId(token: string | null): string | null {
   if (!token) return null;
@@ -49,6 +50,8 @@ export function lastMessageLineFromSystemJson(
 ): string | null {
   const trimmed = (raw ?? '').trim();
   if (!trimmed.startsWith('{')) return null;
+  const groupLine = formatGroupSystemChatLine(trimmed, ctx.currentUserId);
+  if (groupLine) return groupLine;
   try {
     const obj = JSON.parse(trimmed) as Record<string, unknown> & {
       kind?: string;
