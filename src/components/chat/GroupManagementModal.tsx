@@ -228,12 +228,6 @@ export function GroupManagementModal({
 
           <div className="px-4 py-3 space-y-0">
             <ToggleRow
-              label="Đánh dấu tin nhắn từ trưởng/phó nhóm"
-              checked={admin.highlightLeaderMessages}
-              disabled={!canEdit || busy}
-              onChange={(v) => void patchAdmin('highlightLeaderMessages', v)}
-            />
-            <ToggleRow
               label="Cho phép thành viên mới đọc tin nhắn gần nhất"
               checked={admin.newMembersReadRecent}
               disabled={!canEdit || busy}
@@ -244,13 +238,6 @@ export function GroupManagementModal({
               checked={admin.allowJoinLink}
               disabled={!canEdit || busy}
               onChange={(v) => void patchAdmin('allowJoinLink', v)}
-            />
-            <ToggleRow
-              label="Phê duyệt thành viên mới vào nhóm"
-              checked={admin.approvalRequired}
-              disabled={!canEdit || busy}
-              onChange={(v) => void patchAdmin('approvalRequired', v)}
-              help="Khi bật, người được mời hoặc xin vào nhóm cần được trưởng/phó nhóm duyệt trước khi tham gia."
             />
           </div>
 
@@ -342,7 +329,7 @@ export function GroupManagementModal({
 
           {!canEdit && (
             <p className="px-4 pb-4 text-[12px] text-center text-slate-500">
-              Bạn chỉ xem được cài đặt. Chỉ trưởng/phó nhóm mới chỉnh sửa.
+              Bạn chỉ xem được cài đặt. Chỉ trưởng nhóm mới chỉnh được cài đặt.
             </p>
           )}
         </>
@@ -354,27 +341,6 @@ export function GroupManagementModal({
     if (!open) return null;
     return (
       <div className="h-full w-full min-h-0 flex flex-col bg-white dark:bg-[#1a1a1a]">
-        <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
-              <Settings className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            </div>
-            <h3
-              id={`${baseId}-gmtitle`}
-              className="font-bold text-[17px] text-black dark:text-white truncate"
-            >
-              Quản lý nhóm
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors shrink-0"
-            title="Quay lại thông tin"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
         <div
           className="flex-1 overflow-y-auto min-h-0 custom-scrollbar"
           role="region"
