@@ -33,7 +33,10 @@ import type { ApiSuccessResponse } from '@/types/api.types';
 import { apiClient } from '@/services/api';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MemberManagementModal } from '@/components/chat/MemberManagementModal';
-import { GroupManagementModal } from '@/components/chat/GroupManagementModal';
+import {
+  GroupManagementModal,
+  type GroupManagementMembersNavigateOpts,
+} from '@/components/chat/GroupManagementModal';
 import { ConversationSearchPanel } from '@/components/chat/ConversationSearchPanel';
 import type { ConversationSearchMemberRow } from '@/components/chat/ConversationSearchPanel';
 import {
@@ -547,6 +550,7 @@ export function ConversationInfoPanel({
   const leaveMinMembersHint = `Nhóm cần còn tối thiểu ${MIN_GROUP_MEMBERS} thành viên sau khi có người rời (hiện ${effectiveMemberCount} người). Hãy mời thêm thành viên hoặc giải tán nhóm.`;
 
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
+  const [memberLeadersOnly, setMemberLeadersOnly] = useState(false);
   const [showInlineMembers, setShowInlineMembers] = useState(false);
   const [showGroupManagement, setShowGroupManagement] = useState(false);
   const [showConversationSearch, setShowConversationSearch] = useState(false);
@@ -637,8 +641,9 @@ export function ConversationInfoPanel({
   }, []);
 
   const openMemberModalHere = useCallback(
-    (tab: 'list' | 'pending') => {
+    (tab: 'list' | 'pending', leadersOnly = false) => {
       setMemberTab(tab);
+      setMemberLeadersOnly(leadersOnly);
       setShowInlineMembers(true);
       setShowGroupManagement(false);
       setShowConversationSearch(false);
@@ -647,6 +652,13 @@ export function ConversationInfoPanel({
       onOpenMemberModal?.(tab);
     },
     [onOpenMemberModal],
+  );
+
+  const openMembersFromGroupManagement = useCallback(
+    (opts: GroupManagementMembersNavigateOpts) => {
+      openMemberModalHere(opts.tab, !!opts.leadersOnly);
+    },
+    [openMemberModalHere],
   );
 
   const memberNameById = useMemo(() => {
@@ -938,7 +950,11 @@ export function ConversationInfoPanel({
         <div className="flex-1 min-h-0">
           <MemberManagementModal
             open={true}
-            onClose={() => setShowInlineMembers(false)}
+            onClose={() => {
+              setShowInlineMembers(false);
+              setMemberLeadersOnly(false);
+            }}
+            leadersOnly={memberLeadersOnly}
             memberTab={memberTab}
             onMemberTabChange={setMemberTab}
             members={members}
@@ -1299,7 +1315,9 @@ export function ConversationInfoPanel({
             open
             onClose={() => setShowGroupManagement(false)}
             conversationId={activeConversation.conversationId}
-            canEdit={currentUserRole === 'owner'}
+            canEdit={canModerateMembers}
+            canKickMembers={canKickMembers}
+            onNavigateToMembers={openMembersFromGroupManagement}
           />
         </div>
       ) : (
