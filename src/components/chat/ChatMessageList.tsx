@@ -739,6 +739,11 @@ export function ChatMessageList({
                   }
                 }
               }
+              if (typeof content === 'string') {
+                content = content
+                  .replace(/\bundefined\b/g, 'Thành viên')
+                  .replace(/\bnull\b/g, 'Thành viên');
+              }
 
               // Task assigned card payload (JSON) -> render modern card UI.
               let taskCard: null | {
