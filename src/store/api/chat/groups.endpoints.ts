@@ -1,6 +1,7 @@
 import type { ChatEndpointBuilder } from '@/store/api/chat/endpointBuilder';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import type { IGroupSettings } from '@/types/chat.types';
+import { normalizeGroupSettings } from '@/utils/normalizeGroupSettings';
 import type {
   AddMembersRequest,
   ChangeMemberRoleRequest,
@@ -45,14 +46,25 @@ export function buildGroupsEndpoints(builder: ChatEndpointBuilder) {
 
     getGroupSettings: builder.query<ApiSuccessResponse<IGroupSettings>, string>({
       query: (groupId) => `/chat/groups/${groupId}/settings`,
+      transformResponse: (response: ApiSuccessResponse<IGroupSettings>) => ({
+        ...response,
+        data: normalizeGroupSettings(response.data),
+      }),
       providesTags: (_result, _error, groupId) => [{ type: 'GroupSettings', id: groupId }],
     }),
 
-    updateGroupSettings: builder.mutation<ApiSuccessResponse<IGroupSettings>, UpdateGroupSettingsRequest>({
+    updateGroupSettings: builder.mutation<
+      ApiSuccessResponse<IGroupSettings>,
+      UpdateGroupSettingsRequest
+    >({
       query: ({ groupId, ...body }) => ({
         url: `/chat/groups/${groupId}/settings`,
         method: 'PATCH',
         body,
+      }),
+      transformResponse: (response: ApiSuccessResponse<IGroupSettings>) => ({
+        ...response,
+        data: normalizeGroupSettings(response.data),
       }),
       invalidatesTags: (_result, _error, { groupId }) => [
         { type: 'GroupSettings', id: groupId },
@@ -65,7 +77,10 @@ export function buildGroupsEndpoints(builder: ChatEndpointBuilder) {
         method: 'POST',
         body,
       }),
-      invalidatesTags: ['Conversations'],
+      invalidatesTags: (_r, _e, { groupId }) => [
+        'Conversations',
+        { type: 'GroupRequests', id: groupId },
+      ],
     }),
     removeMember: builder.mutation<ApiSuccessResponse<null>, { groupId: string; userId: string }>({
       query: ({ groupId, userId }) => ({
