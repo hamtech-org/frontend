@@ -28,7 +28,9 @@ function isElevated(role: GroupMemberRole | undefined): boolean {
 type RoleLookupMember = { userId?: string; role?: string };
 
 /** Chỉ cần type + groupSettings khi kiểm tra quyền thành viên. */
-export type GroupPermissionConversation = Pick<IConversation, 'type' | 'groupSettings'>;
+export type GroupPermissionConversation = Pick<IConversation, 'type' | 'groupSettings'> & {
+  creatorId?: string | null;
+};
 
 /** Suy ra vai trò nhóm — fallback creatorId khi bản ghi MEMBER# thiếu role. */
 export function resolveGroupMemberRole(args: {
@@ -68,6 +70,7 @@ function resolveRoleForCheck(args: {
     resolveGroupMemberRole({
       userId: args.userId,
       members: args.members,
+      conversationCreatorId: args.conversation?.creatorId,
     })
   );
 }
@@ -120,7 +123,7 @@ export function canUserCreateTaskInGroup(args: {
   return mergedMemberPermissions(conversation.groupSettings).createNotesReminders;
 }
 
-/** Đổi tên/ảnh nhóm — owner/admin luôn được; member cần `changeNameAvatar`. */
+/** Đổi tên/ảnh nhóm — chỉ trưởng nhóm luôn được; phó/member cần `changeNameAvatar`. */
 export function canUserChangeGroupProfileInGroup(args: {
   conversation?: GroupPermissionConversation | null;
   userRole?: GroupMemberRole;
@@ -131,7 +134,7 @@ export function canUserChangeGroupProfileInGroup(args: {
   if (conversation?.type !== 'group') return false;
   const role = resolveRoleForCheck(args);
   if (role == null) return false;
-  if (isElevated(role)) return true;
+  if (role === 'owner') return true;
   return mergedMemberPermissions(conversation.groupSettings).changeNameAvatar;
 }
 
