@@ -15,22 +15,10 @@ export function GroupMemberSendRestrictedBar({ onLearnMore }: GroupMemberSendRes
           aria-hidden
         />
         <p className="min-w-0 flex-1 text-[14px] leading-[1.45] text-[#65676b] dark:text-zinc-400">
-          Chỉ{' '}
-          <button
-            type="button"
-            onClick={onLearnMore}
-            className="font-semibold text-[#0068FF] hover:underline"
-          >
-            trưởng nhóm và phó nhóm
-          </button>{' '}
-          được gửi tin nhắn vào nhóm.{' '}
-          <button
-            type="button"
-            onClick={onLearnMore}
-            className="font-semibold text-[#0068FF] hover:underline"
-          >
-            Tìm hiểu thêm
-          </button>
+          Chỉ
+          <b className="text-[#0068FF]"> trưởng nhóm</b> và{' '}
+          <b className="text-[#0068FF]">phó nhóm </b>
+          được gửi tin nhắn vào nhóm.
         </p>
       </div>
     </div>
