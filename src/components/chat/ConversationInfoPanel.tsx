@@ -52,6 +52,7 @@ import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
 import {
   canUserCreatePollInGroup,
   canUserCreateTaskInGroup,
+  canUserChangeGroupProfileInGroup,
 } from '@/utils/groupConversationPermissions';
 
 type GroupPoll = {
@@ -518,22 +519,18 @@ export function ConversationInfoPanel({
   const canKickMembers = currentUserRole === 'owner';
   const canDisbandGroup = currentUserRole === 'owner';
 
-  const canCreatePollFromBulletin = useMemo(
-    () =>
-      canUserCreatePollInGroup({
-        conversation: activeConversation ?? undefined,
-        userRole: currentUserRole,
-      }),
-    [activeConversation, currentUserRole],
+  const permArgs = useMemo(
+    () => ({
+      conversation: activeConversation ?? undefined,
+      userId: effectiveUserId,
+      members: members as Array<{ userId?: string; role?: string }>,
+    }),
+    [activeConversation, effectiveUserId, members],
   );
-  const canCreateTaskFromBulletin = useMemo(
-    () =>
-      canUserCreateTaskInGroup({
-        conversation: activeConversation ?? undefined,
-        userRole: currentUserRole,
-      }),
-    [activeConversation, currentUserRole],
-  );
+
+  const canCreatePollFromBulletin = useMemo(() => canUserCreatePollInGroup(permArgs), [permArgs]);
+  const canCreateTaskFromBulletin = useMemo(() => canUserCreateTaskInGroup(permArgs), [permArgs]);
+  const canEditGroupProfile = useMemo(() => canUserChangeGroupProfileInGroup(permArgs), [permArgs]);
 
   const busyMemberActionsResolved = busyMemberActions ?? {
     approving: false,
@@ -573,6 +570,7 @@ export function ConversationInfoPanel({
   );
   const showBulletinPollAdd = Boolean(onOpenPollModalFromPanel && canCreatePollFromBulletin);
   const showBulletinTaskAdd = Boolean(onOpenTaskModalFromPanel && canCreateTaskFromBulletin);
+  const showRemindersTaskAdd = bulletinModalMode === 'reminders' && showBulletinTaskAdd;
   const showBulletinAddMenu =
     bulletinModalMode === 'notesPolls' && (showBulletinPollAdd || showBulletinTaskAdd);
   const [bulletinTab, setBulletinTab] = useState<BulletinTab>('all');
@@ -900,14 +898,24 @@ export function ConversationInfoPanel({
           Thông tin {activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}
         </div>
 
-        <div className="flex w-10 justify-end">
-          {bulletinModalMode !== null && showBulletinAddMenu ? (
+        <div className="flex min-w-10 justify-end">
+          {showRemindersTaskAdd ? (
+            <button
+              type="button"
+              onClick={() => onOpenTaskModalFromPanel?.()}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/5 text-muted-foreground transition-colors hover:bg-black/10 hover:text-foreground dark:bg-white/5 dark:hover:bg-white/10"
+              aria-label="Tạo công việc hoặc nhắc hẹn"
+              title="Tạo công việc / nhắc hẹn"
+            >
+              <Plus className="h-5 w-5" strokeWidth={2.2} />
+            </button>
+          ) : bulletinModalMode !== null && showBulletinAddMenu ? (
             <div className="relative flex justify-end" ref={bulletinAddRef}>
               <button
                 type="button"
                 onClick={() => setBulletinAddOpen((v) => !v)}
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-black/5 text-muted-foreground transition-colors hover:bg-black/10 hover:text-foreground dark:bg-white/5 dark:hover:bg-white/10"
-                aria-label="Thêm bình chọn hoặc công việc"
+                aria-label="Thêm bình chọn"
                 aria-expanded={bulletinAddOpen}
                 title="Thêm"
               >
@@ -925,18 +933,6 @@ export function ConversationInfoPanel({
                       }}
                     >
                       Tạo bình chọn
-                    </button>
-                  ) : null}
-                  {showBulletinTaskAdd ? (
-                    <button
-                      type="button"
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
-                      onClick={() => {
-                        onOpenTaskModalFromPanel?.();
-                        setBulletinAddOpen(false);
-                      }}
-                    >
-                      Tạo công việc
                     </button>
                   ) : null}
                 </div>
@@ -1080,9 +1076,11 @@ export function ConversationInfoPanel({
                 {loading?.tasks && reminderFeedItems.length === 0 ? (
                   <p className="py-6 text-center text-sm text-muted-foreground">Đang tải...</p>
                 ) : reminderFeedItems.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    Chưa có nhắc hẹn hay công việc.
-                  </p>
+                  <div className="flex flex-col items-center gap-4 py-8">
+                    <p className="text-center text-sm text-muted-foreground">
+                      Chưa có nhắc hẹn hay công việc.
+                    </p>
+                  </div>
                 ) : (
                   reminderFeedItems.map((item) => (
                     <BulletinCardRow
@@ -1338,15 +1336,17 @@ export function ConversationInfoPanel({
             </div>
             <h3 className="font-bold text-lg text-center leading-tight flex items-center gap-2">
               {activeConversation?.name ?? 'Hội thoại'}
-              <button
-                type="button"
-                onClick={() => (onEditGroup ?? groupActions.openEditGroupModal)()}
-                disabled={!!loading?.updateGroup}
-                className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-                title="Chỉnh sửa nhóm"
-              >
-                <Edit3 className="w-3 h-3 text-muted-foreground" />
-              </button>
+              {canEditGroupProfile ? (
+                <button
+                  type="button"
+                  onClick={() => (onEditGroup ?? groupActions.openEditGroupModal)()}
+                  disabled={!!loading?.updateGroup}
+                  className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                  title="Chỉnh sửa nhóm"
+                >
+                  <Edit3 className="w-3 h-3 text-muted-foreground" />
+                </button>
+              ) : null}
             </h3>
             {activeConversation?.type === 'group' && (
               <p className="text-sm text-muted-foreground mt-1 text-center font-medium opacity-80">
