@@ -238,6 +238,7 @@ export function ChatMainContent(props: ChatMainContentProps) {
             activeConversation={core.activeConversation}
             activeConversationId={core.activeConversationId}
             currentUserRole={core.currentUserRole}
+            groupMembers={group.members}
             onOpenPoll={onOpenPoll}
             onOpenTask={onOpenTask}
             onOpenAISummary={groupActions.openAISummaryFromPanel}

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import EmojiPicker from 'emoji-picker-react';
 import {
@@ -28,7 +28,10 @@ import { useTheme } from '@/contexts/ThemeContext';
 import {
   canUserCreatePollInGroup,
   canUserCreateTaskInGroup,
+  canUserSendMessageInGroup,
 } from '@/utils/groupConversationPermissions';
+import { GroupMemberSendRestrictedBar } from '@/components/chat/GroupMemberSendRestrictedBar';
+import type { GroupMember } from '@/types/chat.group.types';
 
 export type PendingAttachment = {
   localId: string;
@@ -50,6 +53,7 @@ type ChatComposerProps = {
   onOpenPoll: () => void;
   onOpenTask: () => void;
   onOpenAISummary?: () => void;
+  groupMembers?: GroupMember[];
 };
 
 export function ChatComposer({
@@ -59,6 +63,7 @@ export function ChatComposer({
   onOpenPoll,
   onOpenTask,
   onOpenAISummary,
+  groupMembers = [],
 }: ChatComposerProps) {
   type VoiceUiState = 'idle' | 'active-ui' | 'cancelled-ui';
 
@@ -81,7 +86,13 @@ export function ChatComposer({
     clearReply,
     mediaUploading,
     composerStatusMessage,
-  } = useChatComposerController(activeConversationId);
+  } = useChatComposerController(
+    activeConversationId,
+    activeConversation,
+    currentUserRole,
+    currentUserId,
+    groupMembers,
+  );
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
@@ -198,6 +209,16 @@ export function ChatComposer({
 
   const groupDisbanded = activeConversation?.type === 'group' && !!activeConversation.isDeleted;
 
+  const canSendInGroup = useMemo(() => {
+    if (activeConversation?.type !== 'group') return true;
+    return canUserSendMessageInGroup({
+      conversation: activeConversation,
+      userRole: currentUserRole,
+      userId: currentUserId,
+      members: groupMembers,
+    });
+  }, [activeConversation, currentUserRole, currentUserId, groupMembers]);
+
   if (groupDisbanded) {
     return (
       <div className="relative z-20 flex shrink-0 flex-col gap-2 border-t border-black/5 bg-ethereal-bg/80 p-4 backdrop-blur-md dark:border-white/5 dark:bg-midnight-bg/80 sm:p-6">
@@ -209,6 +230,10 @@ export function ChatComposer({
         </p>
       </div>
     );
+  }
+
+  if (!canSendInGroup) {
+    return <GroupMemberSendRestrictedBar />;
   }
 
   return (
@@ -483,6 +508,7 @@ export function ChatComposer({
                     !canUserCreatePollInGroup({
                       conversation: activeConversation,
                       userRole: currentUserRole,
+                      userId: currentUserId,
                     })
                   ) {
                     toast.error('Nhóm không cho phép thành viên tạo bình chọn.');
@@ -502,6 +528,7 @@ export function ChatComposer({
                     !canUserCreateTaskInGroup({
                       conversation: activeConversation,
                       userRole: currentUserRole,
+                      userId: currentUserId,
                     })
                   ) {
                     toast.error('Nhóm không cho phép thành viên tạo công việc / nhắc hẹn.');

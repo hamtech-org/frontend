@@ -27,6 +27,8 @@ import { useChatMobileLayout } from '@/pages/user/chat-page/hooks/useChatMobileL
 import { useMessageJumpNavigation } from '@/pages/user/chat-page/hooks/useMessageJumpNavigation';
 import { useConversationPreferences } from '@/pages/user/chat-page/hooks/useConversationPreferences';
 import { useMessagePinController } from '@/pages/user/chat-page/hooks/useMessagePinController';
+import { useConversationWithFreshGroupSettings } from '@/pages/user/chat-page/hooks/useConversationWithFreshGroupSettings';
+import { resolveGroupMemberRole } from '@/utils/groupConversationPermissions';
 import { useDueTaskNotifications } from '@/pages/user/chat-page/hooks/useDueTaskNotifications';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
@@ -75,6 +77,8 @@ export default function ChatPage() {
 
   const activeConversationId = useSelector((state: RootState) => state.chat.activeConversationId);
   const activeConversation = conversations.find((c) => c.conversationId === activeConversationId);
+  const activeConversationForPermissions =
+    useConversationWithFreshGroupSettings(activeConversation);
 
   const typingUsers = useSelector((state: RootState) => {
     if (!activeConversationId) return EMPTY_TYPING_USERS;
@@ -117,7 +121,15 @@ export default function ChatPage() {
     refetchConversations,
     isSocketReady: isConnected,
   });
-  const currentUserRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
+  const currentUserRole = useMemo(
+    () =>
+      resolveGroupMemberRole({
+        userId: currentUserId,
+        members: groupMembers,
+        conversationCreatorId: activeConversation?.creatorId,
+      }),
+    [currentUserId, groupMembers, activeConversation?.creatorId],
+  );
 
   const { state: modalState, actions: modalActions } = useChatModalController();
   const [showAIAssistant, setShowAIAssistant] = useState(false);
@@ -144,7 +156,7 @@ export default function ChatPage() {
   const pinController = useMessagePinController({
     dispatch,
     activeConversationId,
-    activeConversation,
+    activeConversation: activeConversationForPermissions,
     currentUserId,
     groupMembers,
     pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
@@ -176,7 +188,7 @@ export default function ChatPage() {
 
   const groupController = useGroupConversationController({
     activeConversationId,
-    activeConversation,
+    activeConversation: activeConversationForPermissions,
     currentUserId,
     currentUserDisplayName: currentUser?.displayName,
     currentUserRole,
@@ -431,7 +443,7 @@ export default function ChatPage() {
     currentUserId,
     currentUserRole,
     activeConversationId,
-    activeConversation,
+    activeConversation: activeConversationForPermissions,
     groupMembers,
     groupRequests,
     groupPolls,
@@ -476,7 +488,7 @@ export default function ChatPage() {
   const conversationInfoPanel = (
     <ConversationInfoPanel
       numRequests={groupRequests.length}
-      activeConversation={activeConversation}
+      activeConversation={activeConversationForPermissions}
       onOpenAISummaryFromPanel={groupController.openAISummaryFromPanel}
       onEditGroup={groupController.openEditGroupModal}
       onAddMembers={groupController.openAddMembersModal}

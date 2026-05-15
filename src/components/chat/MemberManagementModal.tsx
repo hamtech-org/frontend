@@ -35,6 +35,8 @@ type MemberManagementModalProps = {
   canKick?: boolean;
   onAddMembersClick?: () => void;
   groupId?: string;
+  /** Chỉ hiển thị trưởng & phó nhóm (từ Quản lý nhóm). */
+  leadersOnly?: boolean;
 };
 
 export function MemberManagementModal({
@@ -55,6 +57,7 @@ export function MemberManagementModal({
   canKick = false,
   onAddMembersClick,
   groupId,
+  leadersOnly = false,
 }: MemberManagementModalProps) {
   const [brokenAvatars, setBrokenAvatars] = useState<Record<string, true>>({});
   const [kickConfirmUserId, setKickConfirmUserId] = useState<string | null>(null);
@@ -106,6 +109,16 @@ export function MemberManagementModal({
     if (!demoteConfirmUserId) return null;
     return members.find((m) => m.userId === demoteConfirmUserId) ?? null;
   }, [demoteConfirmUserId, members]);
+
+  const listMembers = useMemo(() => {
+    if (!leadersOnly) return members;
+    return members.filter((m) => m.role === 'owner' || m.role === 'admin');
+  }, [leadersOnly, members]);
+
+  const memberTabs = useMemo(() => {
+    if (leadersOnly) return ['list'] as const;
+    return ['list', ...(canModerate ? (['pending'] as const) : [])] as const;
+  }, [canModerate, leadersOnly]);
 
   useEffect(() => {
     if (!actionMenuUserId) return;
@@ -166,22 +179,22 @@ export function MemberManagementModal({
     return (
       <div className="h-full w-full flex flex-col bg-white dark:bg-[#1a1a1a]">
         <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            {onAddMembersClick && (
+          <div className="flex min-w-0">
+            {onAddMembersClick && !leadersOnly ? (
               <button
                 type="button"
                 onClick={onAddMembersClick}
-                className="px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[13px] font-bold text-blue-600 dark:text-blue-400 transition-colors"
+                className="ml-auto px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-[13px] font-bold text-blue-600 dark:text-blue-400 transition-colors shrink-0"
                 title="Thêm thành viên"
               >
                 + Thêm thành viên
               </button>
-            )}
+            ) : null}
           </div>
         </div>
 
         <div className="flex px-5 pt-4 gap-1 shrink-0">
-          {(['list', ...(canModerate ? (['pending'] as const) : [])] as const).map((tab) => (
+          {memberTabs.map((tab) => (
             <button
               key={tab}
               type="button"
@@ -190,7 +203,10 @@ export function MemberManagementModal({
             >
               {tab === 'list' ? (
                 <>
-                  <Users className="w-3.5 h-3.5" /> Thành viên ({members.length})
+                  <Users className="w-3.5 h-3.5" />{' '}
+                  {leadersOnly
+                    ? `Trưởng & phó (${listMembers.length})`
+                    : `Thành viên (${listMembers.length})`}
                 </>
               ) : (
                 <>
@@ -207,11 +223,19 @@ export function MemberManagementModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-2">
-          {memberTab === 'list'
-            ? members.map((member) => {
+          {memberTab === 'list' ? (
+            listMembers.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                {leadersOnly ? 'Chưa có phó nhóm.' : 'Chưa có thành viên.'}
+              </p>
+            ) : (
+              listMembers.map((member) => {
                 const menuOpen = actionMenuUserId === member.userId;
-                const canAct = canKick && member.role !== 'owner';
                 const canDemote = canKick && member.role === 'admin';
+                const canAct =
+                  canKick &&
+                  member.role !== 'owner' &&
+                  (leadersOnly ? member.role === 'admin' : true);
                 return (
                   <div
                     key={member.userId}
@@ -274,18 +298,20 @@ export function MemberManagementModal({
                                 Hạ phó nhóm xuống thành viên
                               </button>
                             ) : null}
-                            <button
-                              type="button"
-                              role="menuitem"
-                              disabled={busy?.removing}
-                              onClick={() => {
-                                setActionMenuUserId(null);
-                                setKickConfirmUserId(member.userId);
-                              }}
-                              className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
-                            >
-                              Kick
-                            </button>
+                            {!leadersOnly ? (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={busy?.removing}
+                                onClick={() => {
+                                  setActionMenuUserId(null);
+                                  setKickConfirmUserId(member.userId);
+                                }}
+                                className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
+                              >
+                                Kick
+                              </button>
+                            ) : null}
                           </div>
                         )}
                       </div>
@@ -293,105 +319,106 @@ export function MemberManagementModal({
                   </div>
                 );
               })
-            : !canModerate
-              ? null
-              : requests.map((person) => {
-                  const displayName = displayNameFor(
-                    person.userId,
-                    (person.name ?? person.displayName ?? person.userId) as string,
-                  );
-                  const subtitle =
-                    person.status === 'invited' ? 'Được mời vào nhóm' : 'Yêu cầu tham gia';
-                  const menuOpen = actionMenuUserId === person.userId;
-                  return (
-                    <div
-                      key={person.userId}
-                      className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 hover:border-blue-600/20 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {renderAvatar({
-                          userId: person.userId,
-                          name: displayName,
-                          avatar: person.avatar,
-                        })}
-                        <div className="min-w-0">
-                          <p
-                            className="font-bold text-[14px] text-black dark:text-white truncate"
-                            title={displayName}
-                          >
-                            {displayName}
-                          </p>
-                          <p className="text-[12px] text-muted-foreground font-medium truncate">
-                            {subtitle}
-                          </p>
-                        </div>
-                      </div>
+            )
+          ) : !canModerate || leadersOnly ? null : (
+            requests.map((person) => {
+              const displayName = displayNameFor(
+                person.userId,
+                (person.name ?? person.displayName ?? person.userId) as string,
+              );
+              const subtitle =
+                person.status === 'invited' ? 'Được mời vào nhóm' : 'Yêu cầu tham gia';
+              const menuOpen = actionMenuUserId === person.userId;
+              return (
+                <div
+                  key={person.userId}
+                  className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 hover:border-blue-600/20 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {renderAvatar({
+                      userId: person.userId,
+                      name: displayName,
+                      avatar: person.avatar,
+                    })}
+                    <div className="min-w-0">
+                      <p
+                        className="font-bold text-[14px] text-black dark:text-white truncate"
+                        title={displayName}
+                      >
+                        {displayName}
+                      </p>
+                      <p className="text-[12px] text-muted-foreground font-medium truncate">
+                        {subtitle}
+                      </p>
+                    </div>
+                  </div>
 
-                      <div className="relative shrink-0">
+                  <div className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActionMenuUserId((prev) =>
+                          prev === person.userId ? null : person.userId,
+                        );
+                      }}
+                      className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
+                      title="Tùy chọn"
+                      aria-label="Tùy chọn"
+                    >
+                      ⋯
+                    </button>
+
+                    {menuOpen && (
+                      <div
+                        role="menu"
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute right-0 top-10 w-40 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
+                      >
+                        {!person.isFriend && (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setActionMenuUserId(null);
+                              void addFriend(person.userId);
+                            }}
+                            className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-blue-700 dark:text-blue-300"
+                          >
+                            Kết bạn
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActionMenuUserId((prev) =>
-                              prev === person.userId ? null : person.userId,
-                            );
+                          role="menuitem"
+                          disabled={busy?.rejecting}
+                          onClick={() => {
+                            setActionMenuUserId(null);
+                            void reject(person.userId);
                           }}
-                          className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
-                          title="Tùy chọn"
-                          aria-label="Tùy chọn"
+                          className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
                         >
-                          ⋯
+                          Từ chối
                         </button>
-
-                        {menuOpen && (
-                          <div
-                            role="menu"
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute right-0 top-10 w-40 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
-                          >
-                            {!person.isFriend && (
-                              <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  setActionMenuUserId(null);
-                                  void addFriend(person.userId);
-                                }}
-                                className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-blue-700 dark:text-blue-300"
-                              >
-                                Kết bạn
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              role="menuitem"
-                              disabled={busy?.rejecting}
-                              onClick={() => {
-                                setActionMenuUserId(null);
-                                void reject(person.userId);
-                              }}
-                              className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
-                            >
-                              Từ chối
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              disabled={busy?.approving}
-                              onClick={() => {
-                                setActionMenuUserId(null);
-                                void approve(person.userId);
-                              }}
-                              className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
-                            >
-                              Duyệt
-                            </button>
-                          </div>
-                        )}
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={busy?.approving}
+                          onClick={() => {
+                            setActionMenuUserId(null);
+                            void approve(person.userId);
+                          }}
+                          className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
+                        >
+                          Duyệt
+                        </button>
                       </div>
-                    </div>
-                  );
-                })}
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
 
         <ConfirmModal

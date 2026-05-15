@@ -33,7 +33,10 @@ import type { ApiSuccessResponse } from '@/types/api.types';
 import { apiClient } from '@/services/api';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MemberManagementModal } from '@/components/chat/MemberManagementModal';
-import { GroupManagementModal } from '@/components/chat/GroupManagementModal';
+import {
+  GroupManagementModal,
+  type GroupManagementMembersNavigateOpts,
+} from '@/components/chat/GroupManagementModal';
 import { ConversationSearchPanel } from '@/components/chat/ConversationSearchPanel';
 import type { ConversationSearchMemberRow } from '@/components/chat/ConversationSearchPanel';
 import {
@@ -49,6 +52,7 @@ import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
 import {
   canUserCreatePollInGroup,
   canUserCreateTaskInGroup,
+  canUserChangeGroupProfileInGroup,
 } from '@/utils/groupConversationPermissions';
 
 type GroupPoll = {
@@ -515,22 +519,18 @@ export function ConversationInfoPanel({
   const canKickMembers = currentUserRole === 'owner';
   const canDisbandGroup = currentUserRole === 'owner';
 
-  const canCreatePollFromBulletin = useMemo(
-    () =>
-      canUserCreatePollInGroup({
-        conversation: activeConversation ?? undefined,
-        userRole: currentUserRole,
-      }),
-    [activeConversation, currentUserRole],
+  const permArgs = useMemo(
+    () => ({
+      conversation: activeConversation ?? undefined,
+      userId: effectiveUserId,
+      members: members as Array<{ userId?: string; role?: string }>,
+    }),
+    [activeConversation, effectiveUserId, members],
   );
-  const canCreateTaskFromBulletin = useMemo(
-    () =>
-      canUserCreateTaskInGroup({
-        conversation: activeConversation ?? undefined,
-        userRole: currentUserRole,
-      }),
-    [activeConversation, currentUserRole],
-  );
+
+  const canCreatePollFromBulletin = useMemo(() => canUserCreatePollInGroup(permArgs), [permArgs]);
+  const canCreateTaskFromBulletin = useMemo(() => canUserCreateTaskInGroup(permArgs), [permArgs]);
+  const canEditGroupProfile = useMemo(() => canUserChangeGroupProfileInGroup(permArgs), [permArgs]);
 
   const busyMemberActionsResolved = busyMemberActions ?? {
     approving: false,
@@ -547,6 +547,7 @@ export function ConversationInfoPanel({
   const leaveMinMembersHint = `Nhóm cần còn tối thiểu ${MIN_GROUP_MEMBERS} thành viên sau khi có người rời (hiện ${effectiveMemberCount} người). Hãy mời thêm thành viên hoặc giải tán nhóm.`;
 
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
+  const [memberLeadersOnly, setMemberLeadersOnly] = useState(false);
   const [showInlineMembers, setShowInlineMembers] = useState(false);
   const [showGroupManagement, setShowGroupManagement] = useState(false);
   const [showConversationSearch, setShowConversationSearch] = useState(false);
@@ -569,6 +570,7 @@ export function ConversationInfoPanel({
   );
   const showBulletinPollAdd = Boolean(onOpenPollModalFromPanel && canCreatePollFromBulletin);
   const showBulletinTaskAdd = Boolean(onOpenTaskModalFromPanel && canCreateTaskFromBulletin);
+  const showRemindersTaskAdd = bulletinModalMode === 'reminders' && showBulletinTaskAdd;
   const showBulletinAddMenu =
     bulletinModalMode === 'notesPolls' && (showBulletinPollAdd || showBulletinTaskAdd);
   const [bulletinTab, setBulletinTab] = useState<BulletinTab>('all');
@@ -637,8 +639,9 @@ export function ConversationInfoPanel({
   }, []);
 
   const openMemberModalHere = useCallback(
-    (tab: 'list' | 'pending') => {
+    (tab: 'list' | 'pending', leadersOnly = false) => {
       setMemberTab(tab);
+      setMemberLeadersOnly(leadersOnly);
       setShowInlineMembers(true);
       setShowGroupManagement(false);
       setShowConversationSearch(false);
@@ -647,6 +650,13 @@ export function ConversationInfoPanel({
       onOpenMemberModal?.(tab);
     },
     [onOpenMemberModal],
+  );
+
+  const openMembersFromGroupManagement = useCallback(
+    (opts: GroupManagementMembersNavigateOpts) => {
+      openMemberModalHere(opts.tab, !!opts.leadersOnly);
+    },
+    [openMemberModalHere],
   );
 
   const memberNameById = useMemo(() => {
@@ -888,14 +898,24 @@ export function ConversationInfoPanel({
           Thông tin {activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}
         </div>
 
-        <div className="flex w-10 justify-end">
-          {bulletinModalMode !== null && showBulletinAddMenu ? (
+        <div className="flex min-w-10 justify-end">
+          {showRemindersTaskAdd ? (
+            <button
+              type="button"
+              onClick={() => onOpenTaskModalFromPanel?.()}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/5 text-muted-foreground transition-colors hover:bg-black/10 hover:text-foreground dark:bg-white/5 dark:hover:bg-white/10"
+              aria-label="Tạo công việc hoặc nhắc hẹn"
+              title="Tạo công việc / nhắc hẹn"
+            >
+              <Plus className="h-5 w-5" strokeWidth={2.2} />
+            </button>
+          ) : bulletinModalMode !== null && showBulletinAddMenu ? (
             <div className="relative flex justify-end" ref={bulletinAddRef}>
               <button
                 type="button"
                 onClick={() => setBulletinAddOpen((v) => !v)}
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-black/5 text-muted-foreground transition-colors hover:bg-black/10 hover:text-foreground dark:bg-white/5 dark:hover:bg-white/10"
-                aria-label="Thêm bình chọn hoặc công việc"
+                aria-label="Thêm bình chọn"
                 aria-expanded={bulletinAddOpen}
                 title="Thêm"
               >
@@ -915,18 +935,6 @@ export function ConversationInfoPanel({
                       Tạo bình chọn
                     </button>
                   ) : null}
-                  {showBulletinTaskAdd ? (
-                    <button
-                      type="button"
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
-                      onClick={() => {
-                        onOpenTaskModalFromPanel?.();
-                        setBulletinAddOpen(false);
-                      }}
-                    >
-                      Tạo công việc
-                    </button>
-                  ) : null}
                 </div>
               )}
             </div>
@@ -938,7 +946,11 @@ export function ConversationInfoPanel({
         <div className="flex-1 min-h-0">
           <MemberManagementModal
             open={true}
-            onClose={() => setShowInlineMembers(false)}
+            onClose={() => {
+              setShowInlineMembers(false);
+              setMemberLeadersOnly(false);
+            }}
+            leadersOnly={memberLeadersOnly}
             memberTab={memberTab}
             onMemberTabChange={setMemberTab}
             members={members}
@@ -1064,9 +1076,11 @@ export function ConversationInfoPanel({
                 {loading?.tasks && reminderFeedItems.length === 0 ? (
                   <p className="py-6 text-center text-sm text-muted-foreground">Đang tải...</p>
                 ) : reminderFeedItems.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    Chưa có nhắc hẹn hay công việc.
-                  </p>
+                  <div className="flex flex-col items-center gap-4 py-8">
+                    <p className="text-center text-sm text-muted-foreground">
+                      Chưa có nhắc hẹn hay công việc.
+                    </p>
+                  </div>
                 ) : (
                   reminderFeedItems.map((item) => (
                     <BulletinCardRow
@@ -1299,7 +1313,9 @@ export function ConversationInfoPanel({
             open
             onClose={() => setShowGroupManagement(false)}
             conversationId={activeConversation.conversationId}
-            canEdit={currentUserRole === 'owner'}
+            canEdit={isOwnerEffective}
+            canKickMembers={canKickMembers}
+            onNavigateToMembers={openMembersFromGroupManagement}
           />
         </div>
       ) : (
@@ -1320,19 +1336,21 @@ export function ConversationInfoPanel({
             </div>
             <h3 className="font-bold text-lg text-center leading-tight flex items-center gap-2">
               {activeConversation?.name ?? 'Hội thoại'}
-              <button
-                type="button"
-                onClick={() => (onEditGroup ?? groupActions.openEditGroupModal)()}
-                disabled={!!loading?.updateGroup}
-                className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-                title="Chỉnh sửa nhóm"
-              >
-                <Edit3 className="w-3 h-3 text-muted-foreground" />
-              </button>
+              {canEditGroupProfile ? (
+                <button
+                  type="button"
+                  onClick={() => (onEditGroup ?? groupActions.openEditGroupModal)()}
+                  disabled={!!loading?.updateGroup}
+                  className="p-1 rounded-full bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                  title="Chỉnh sửa nhóm"
+                >
+                  <Edit3 className="w-3 h-3 text-muted-foreground" />
+                </button>
+              ) : null}
             </h3>
             {activeConversation?.type === 'group' && (
               <p className="text-sm text-muted-foreground mt-1 text-center font-medium opacity-80">
-                {activeConversation.memberCount} thành viên
+                {effectiveMemberCount} thành viên
               </p>
             )}
 
@@ -1488,11 +1506,21 @@ export function ConversationInfoPanel({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => openMemberModalHere('list')}
-                  onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('list')}
+                  onClick={() =>
+                    openMemberModalHere(
+                      canModerateMembers && (numRequests ?? 0) > 0 ? 'pending' : 'list',
+                    )
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      openMemberModalHere(
+                        canModerateMembers && (numRequests ?? 0) > 0 ? 'pending' : 'list',
+                      );
+                    }
+                  }}
                   className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                 >
-                  Quản lý thành viên ({activeConversation.memberCount})
+                  Quản lý thành viên
                   <div className="flex items-center gap-2">
                     {(numRequests ?? 0) > 0 && (
                       <div className="w-[20px] h-[20px] rounded-full bg-red-500 flex items-center justify-center text-[10px] text-white font-bold">
@@ -1500,33 +1528,6 @@ export function ConversationInfoPanel({
                       </div>
                     )}
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                </div>
-                <div className="px-4 pb-4 space-y-1">
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openMemberModalHere('pending')}
-                    onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('pending')}
-                    className="flex items-center justify-between group/wait cursor-pointer p-2 -mx-2 rounded-lg hover:bg-blue-600/10 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground group-hover/wait:text-blue-600 font-medium transition-colors">
-                      <UserPlus className="w-4 h-4 opacity-70" /> Duyệt người vào nhóm
-                    </div>
-                    {(numRequests ?? 0) > 0 && (
-                      <div className="w-[22px] h-[22px] rounded-full bg-red-500 shadow-md shadow-red-500/20 flex items-center justify-center text-[10px] text-white font-bold">
-                        {numRequests}
-                      </div>
-                    )}
-                  </div>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openMemberModalHere('list')}
-                    onKeyDown={(e) => e.key === 'Enter' && openMemberModalHere('list')}
-                    className="flex items-center gap-3 text-sm text-muted-foreground hover:text-red-500 cursor-pointer hover:bg-red-500/10 p-2 -mx-2 rounded-lg transition-colors font-medium"
-                  >
-                    <Users className="w-4 h-4 opacity-70" /> Mời ra khỏi nhóm
                   </div>
                 </div>
               </div>
@@ -1538,13 +1539,11 @@ export function ConversationInfoPanel({
               onClick={() => setBulletinAccordionOpen((v) => !v)}
               className="flex w-full items-center justify-between gap-2 p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 dark:hover:bg-white/5"
             >
-              <span className="flex min-w-0 flex-1 items-center gap-2">
-                <ChevronDown
-                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${bulletinAccordionOpen ? '' : '-rotate-90'}`}
-                  aria-hidden
-                />
-                Bảng tin nhóm
-              </span>
+              <span className="min-w-0 flex-1">Bảng tin nhóm</span>
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${bulletinAccordionOpen ? '' : '-rotate-90'}`}
+                aria-hidden
+              />
             </button>
             {bulletinAccordionOpen && (
               <div className="pb-2">

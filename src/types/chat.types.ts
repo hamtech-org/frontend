@@ -62,6 +62,8 @@ export interface IConversation {
   pinnedMessageCount?: number;
   /** Nhóm: đồng bộ từ API + socket `group:settings_updated`. */
   groupSettings?: IGroupSettings;
+  /** Nhóm: người tạo / trưởng nhóm (META). */
+  creatorId?: string;
   /** Nhóm đã giải tán (META); không còn thành viên trong GSI — có thể chỉ còn khi cache chưa refetch. */
   isDeleted?: boolean;
 }

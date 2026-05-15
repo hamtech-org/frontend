@@ -121,6 +121,9 @@ export function useChatGroupFrameNotices({
           actor?: { userId?: string; name?: string };
         };
         const kind = String(obj?.kind ?? '');
+        if (kind === 'message_pinned' || kind === 'message_unpinned') {
+          return;
+        }
         const atIso = String(obj?.createdAt ?? msg.createdAt ?? new Date().toISOString());
 
         // Human-friendly preview line (reuse the same wording as sidebar/system message renderer)
@@ -244,6 +247,7 @@ export function useChatGroupFrameNotices({
         },
       );
       void fetchGroupMembers(String(activeConversationIdRef.current));
+      void fetchGroupRequests(String(activeConversationIdRef.current));
     };
 
     const onMemberLeft = (data: unknown) => {
@@ -253,6 +257,7 @@ export function useChatGroupFrameNotices({
         variant: 'task_assigned',
       });
       void fetchGroupMembers(String(activeConversationIdRef.current));
+      void fetchGroupRequests(String(activeConversationIdRef.current));
     };
 
     const onMemberRemoved = (data: unknown) => {
@@ -266,6 +271,7 @@ export function useChatGroupFrameNotices({
         },
       );
       void fetchGroupMembers(String(activeConversationIdRef.current));
+      void fetchGroupRequests(String(activeConversationIdRef.current));
     };
 
     const onJoinRequestNew = (data: unknown) => {
