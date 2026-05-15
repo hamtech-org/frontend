@@ -81,7 +81,7 @@ export function ChatComposer({
     clearReply,
     mediaUploading,
     composerStatusMessage,
-  } = useChatComposerController(activeConversationId);
+  } = useChatComposerController(activeConversationId, activeConversation, currentUserRole);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
@@ -483,6 +483,7 @@ export function ChatComposer({
                     !canUserCreatePollInGroup({
                       conversation: activeConversation,
                       userRole: currentUserRole,
+                      userId: currentUserId,
                     })
                   ) {
                     toast.error('Nhóm không cho phép thành viên tạo bình chọn.');
@@ -502,6 +503,7 @@ export function ChatComposer({
                     !canUserCreateTaskInGroup({
                       conversation: activeConversation,
                       userRole: currentUserRole,
+                      userId: currentUserId,
                     })
                   ) {
                     toast.error('Nhóm không cho phép thành viên tạo công việc / nhắc hẹn.');
