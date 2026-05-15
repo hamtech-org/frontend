@@ -1,15 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import {
-  Ban,
-  Copy,
-  KeyRound,
-  Lock,
-  RefreshCw,
-  Settings,
-  Share2,
-  HelpCircle,
-  X,
-} from 'lucide-react';
+import { Ban, Copy, KeyRound, Lock, RefreshCw, Share2, HelpCircle, X } from 'lucide-react';
 import { useId } from 'react';
 import { toast } from 'react-toastify';
 import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/PinLimitModal';
