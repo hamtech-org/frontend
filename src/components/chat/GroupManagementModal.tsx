@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Ban, Copy, KeyRound, Lock, RefreshCw, Share2, HelpCircle, X } from 'lucide-react';
+import { Copy, KeyRound, Lock, RefreshCw, Share2, HelpCircle, X } from 'lucide-react';
 import { useId } from 'react';
 import { toast } from 'react-toastify';
 import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/PinLimitModal';
@@ -26,8 +26,6 @@ type GroupManagementModalProps = {
   variant?: GroupManagementUiVariant;
   /** Mở quản lý thành viên (kick / vai trò). */
   onNavigateToMembers?: (opts: GroupManagementMembersNavigateOpts) => void;
-  /** Chỉ trưởng nhóm mới kick được — dùng cho mục «Chặn khỏi nhóm». */
-  canKickMembers?: boolean;
 };
 
 function ToggleRow({
@@ -90,7 +88,6 @@ export function GroupManagementModal({
   canEdit,
   variant = 'modal',
   onNavigateToMembers,
-  canKickMembers = false,
 }: GroupManagementModalProps) {
   const baseId = useId();
   const { data: settingsRes, isFetching } = useGetGroupSettingsQuery(conversationId!, {
