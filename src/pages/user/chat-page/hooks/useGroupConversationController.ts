@@ -178,7 +178,9 @@ export function useGroupConversationController({
         members: groupMembers,
       })
     ) {
-      toast.error('Nhóm không cho phép thành viên đổi tên hoặc ảnh đại diện nhóm');
+      toast.error(
+        'Nhóm không cho phép thành viên đổi tên hoặc ảnh đại diện. Chỉ trưởng nhóm có thể chỉnh sửa',
+      );
       return;
     }
     if (editGroupAvatarPreview?.startsWith('blob:')) {
@@ -227,7 +229,9 @@ export function useGroupConversationController({
         members: groupMembers,
       })
     ) {
-      toast.error('Nhóm không cho phép thành viên đổi tên hoặc ảnh đại diện nhóm');
+      toast.error(
+        'Nhóm không cho phép thành viên đổi tên hoặc ảnh đại diện. Chỉ trưởng nhóm có thể chỉnh sửa',
+      );
       return;
     }
 
@@ -340,7 +344,7 @@ export function useGroupConversationController({
       | 'admin'
       | 'member';
     if (effectiveRole !== 'owner') {
-      toast.error('Bạn không có quyền giải tán nhóm');
+      toast.error('Chỉ trưởng nhóm mới có quyền giải tán nhóm');
       return;
     }
     if (!window.confirm('Giải tán nhóm?')) return;
