@@ -1,6 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AutoSizer, List, type ListRowRenderer } from 'react-virtualized';
+import {
+  AutoSizer,
+  CellMeasurer,
+  CellMeasurerCache,
+  List,
+  type ListRowRenderer,
+} from 'react-virtualized';
 import {
   BellOff,
   ChevronDown,
@@ -176,6 +182,46 @@ export function ConversationListPanel({
       rows.push({ kind: 'conversation', key: `c:${c.conversationId}`, conv: c });
     return rows;
   }, [normalConversations, pinnedConversations]);
+
+  const mainRowCacheRef = useRef<CellMeasurerCache | null>(null);
+  if (mainRowCacheRef.current == null) {
+    mainRowCacheRef.current = new CellMeasurerCache({
+      fixedWidth: true,
+      defaultHeight: 96,
+      minHeight: 24,
+    });
+  }
+  const mainListRef = useRef<List | null>(null);
+
+  const mutedRowCacheRef = useRef<CellMeasurerCache | null>(null);
+  if (mutedRowCacheRef.current == null) {
+    mutedRowCacheRef.current = new CellMeasurerCache({
+      fixedWidth: true,
+      defaultHeight: 96,
+    });
+  }
+  const mutedListRef = useRef<List | null>(null);
+
+  const mainRowsMeasuringKey = useMemo(
+    () => mainRows.map((r) => (r.kind === 'header' ? r.key : r.conv.conversationId)).join('|'),
+    [mainRows],
+  );
+
+  const mutedMeasuringKey = useMemo(
+    () => mutedConversations.map((c) => c.conversationId).join('|'),
+    [mutedConversations],
+  );
+
+  useEffect(() => {
+    mainRowCacheRef.current?.clearAll();
+    mainListRef.current?.recomputeRowHeights(0);
+  }, [mainRowsMeasuringKey, activeConversationId]);
+
+  useEffect(() => {
+    if (!mutedExpanded) return;
+    mutedRowCacheRef.current?.clearAll();
+    mutedListRef.current?.recomputeRowHeights(0);
+  }, [mutedExpanded, mutedMeasuringKey, activeConversationId]);
 
   const filteredConversations = useMemo(() => {
     if (!q) return [];
@@ -402,8 +448,9 @@ export function ConversationListPanel({
               {(() => {
                 const renderConversationCard = (
                   conv: IConversation,
-                  key: string,
+                  _rowKey: string,
                   style: React.CSSProperties,
+                  measureRef?: (element: HTMLElement | null) => void,
                 ) => {
                   const isActive = activeConversationId === conv.conversationId;
                   const hasUnread = (conv.unreadCount ?? 0) > 0;
@@ -431,7 +478,7 @@ export function ConversationListPanel({
                   const showMuteToggle = isMuted && !!onToggleConversationMute;
 
                   return (
-                    <div key={key} style={style} className="px-2 pb-0.5">
+                    <div ref={measureRef} style={style} className="px-2 pb-0.5">
                       <motion.div
                         whileTap={{ scale: 0.98 }}
                         className={`w-full p-2.5 rounded-2xl flex items-center gap-2 transition-colors group ${
@@ -603,42 +650,66 @@ export function ConversationListPanel({
                   );
                 };
 
-                const renderMainRow: ListRowRenderer = ({ index, key, style }) => {
+                const renderMainRow: ListRowRenderer = ({ index, key, parent, style }) => {
                   const row = mainRows[index];
                   if (!row) return null;
 
-                  if (row.kind === 'header') {
-                    const isPinnedHeader = row.key === 'h:pinned';
-                    const isChatsHeader = row.key === 'h:chats';
-                    return (
-                      <div key={key} style={style} className="pt-2 pb-1">
-                        <div className="px-3 flex items-center justify-between">
-                          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                            {isPinnedHeader ? <Pin className="size-3.5" aria-hidden /> : null}
-                            {isChatsHeader ? (
-                              <MessageCircle className="size-3.5" aria-hidden />
-                            ) : null}
-                            <span>{row.title}</span>
-                          </p>
-                          {typeof row.count === 'number' ? (
-                            <span className="text-[10px] tabular-nums text-muted-foreground/60">
-                              {isPinnedHeader ? `${row.count}/5` : row.count}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  }
+                  return (
+                    <CellMeasurer
+                      key={key}
+                      cache={mainRowCacheRef.current!}
+                      columnIndex={0}
+                      parent={parent}
+                      rowIndex={index}
+                    >
+                      {({ registerChild }) => {
+                        if (row.kind === 'header') {
+                          const isPinnedHeader = row.key === 'h:pinned';
+                          const isChatsHeader = row.key === 'h:chats';
+                          return (
+                            <div ref={registerChild} style={style} className="pt-2 pb-1">
+                              <div className="px-3 flex items-center justify-between">
+                                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                  {isPinnedHeader ? <Pin className="size-3.5" aria-hidden /> : null}
+                                  {isChatsHeader ? (
+                                    <MessageCircle className="size-3.5" aria-hidden />
+                                  ) : null}
+                                  <span>{row.title}</span>
+                                </p>
+                                {typeof row.count === 'number' ? (
+                                  <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                                    {isPinnedHeader ? `${row.count}/5` : row.count}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        }
 
-                  return renderConversationCard(row.conv, key, style);
+                        return renderConversationCard(row.conv, key, style, registerChild);
+                      }}
+                    </CellMeasurer>
+                  );
                 };
 
                 const renderMutedRow =
                   (list: IConversation[]): ListRowRenderer =>
-                  ({ index, key, style }) => {
+                  ({ index, key, parent, style }) => {
                     const conv = list[index];
                     if (!conv) return null;
-                    return renderConversationCard(conv, key, style);
+                    return (
+                      <CellMeasurer
+                        key={key}
+                        cache={mutedRowCacheRef.current!}
+                        columnIndex={0}
+                        parent={parent}
+                        rowIndex={index}
+                      >
+                        {({ registerChild }) =>
+                          renderConversationCard(conv, key, style, registerChild)
+                        }
+                      </CellMeasurer>
+                    );
                   };
 
                 return (
@@ -647,13 +718,13 @@ export function ConversationListPanel({
                       <AutoSizer>
                         {({ width, height }) => (
                           <List
+                            ref={mainListRef}
                             width={width}
                             height={height}
                             rowCount={mainRows.length}
+                            deferredMeasurementCache={mainRowCacheRef.current!}
+                            rowHeight={(info) => mainRowCacheRef.current!.rowHeight(info)}
                             rowRenderer={renderMainRow}
-                            rowHeight={({ index }) =>
-                              mainRows[index]?.kind === 'header' ? 34 : 72
-                            }
                             overscanRowCount={10}
                             className="custom-scrollbar"
                           />
@@ -704,11 +775,13 @@ export function ConversationListPanel({
                             <AutoSizer>
                               {({ width, height }) => (
                                 <List
+                                  ref={mutedListRef}
                                   width={width}
                                   height={height}
                                   rowCount={mutedConversations.length}
+                                  deferredMeasurementCache={mutedRowCacheRef.current!}
+                                  rowHeight={(info) => mutedRowCacheRef.current!.rowHeight(info)}
                                   rowRenderer={renderMutedRow(mutedConversations)}
-                                  rowHeight={72}
                                   overscanRowCount={6}
                                   className="custom-scrollbar"
                                 />

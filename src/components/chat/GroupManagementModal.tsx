@@ -1,15 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import {
-  Ban,
-  Copy,
-  KeyRound,
-  Lock,
-  RefreshCw,
-  Settings,
-  Share2,
-  HelpCircle,
-  X,
-} from 'lucide-react';
+import { Ban, Copy, KeyRound, Lock, RefreshCw, Share2, HelpCircle, X } from 'lucide-react';
 import { useId } from 'react';
 import { toast } from 'react-toastify';
 import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/PinLimitModal';
@@ -22,12 +12,22 @@ export type GroupAdminSettings = IGroupAdminSettings;
 
 type GroupManagementUiVariant = 'modal' | 'inline';
 
+export type GroupManagementMembersNavigateOpts = {
+  tab: 'list' | 'pending';
+  /** Chỉ hiển thị trưởng & phó nhóm. */
+  leadersOnly?: boolean;
+};
+
 type GroupManagementModalProps = {
   open: boolean;
   onClose: () => void;
   conversationId: string | undefined;
   canEdit: boolean;
   variant?: GroupManagementUiVariant;
+  /** Mở quản lý thành viên (kick / vai trò). */
+  onNavigateToMembers?: (opts: GroupManagementMembersNavigateOpts) => void;
+  /** Chỉ trưởng nhóm mới kick được — dùng cho mục «Chặn khỏi nhóm». */
+  canKickMembers?: boolean;
 };
 
 function ToggleRow({
@@ -89,6 +89,8 @@ export function GroupManagementModal({
   conversationId,
   canEdit,
   variant = 'modal',
+  onNavigateToMembers,
+  canKickMembers = false,
 }: GroupManagementModalProps) {
   const baseId = useId();
   const { data: settingsRes, isFetching } = useGetGroupSettingsQuery(conversationId!, {
@@ -158,7 +160,9 @@ export function GroupManagementModal({
       {isFetching && !gs ? (
         <div className="px-4 py-8 text-center text-sm text-muted-foreground">Đang tải cài đặt…</div>
       ) : !member || !admin ? (
-        <div className="px-4 py-8 text-center text-sm text-red-500">Không tải được cài đặt nhóm.</div>
+        <div className="px-4 py-8 text-center text-sm text-red-500">
+          Không tải được cài đặt nhóm.
+        </div>
       ) : (
         <>
           <div className="px-4 pt-2 pb-1">
@@ -168,10 +172,13 @@ export function GroupManagementModal({
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-zinc-900/40">
               {(
                 [
-                  { key: 'changeNameAvatar' as const, label: 'Thay đổi tên & ảnh đại diện của nhóm' },
+                  {
+                    key: 'changeNameAvatar' as const,
+                    label: 'Thay đổi tên & ảnh đại diện của nhóm',
+                  },
                   {
                     key: 'pinMessages' as const,
-                    label: 'Ghim tin nhắn, ghi chú, bình chọn lên đầu hội thoại',
+                    label: 'Ghim tin nhắn, bình chọn lên đầu hội thoại',
                     hint: `Tối đa ${MAX_PINNED_PER_CONVERSATION} tin ghim mỗi cuộc trò chuyện.`,
                   },
                   { key: 'createNotesReminders' as const, label: 'Tạo mới ghi chú, nhắc hẹn' },
@@ -182,7 +189,9 @@ export function GroupManagementModal({
                 <label
                   key={row.key}
                   className={`flex items-start justify-between gap-3 px-3 py-3 ${
-                    canEdit ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-800/60' : 'opacity-80'
+                    canEdit
+                      ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-800/60'
+                      : 'opacity-80'
                   }`}
                 >
                   <div className="min-w-0 pt-0.5">
@@ -208,19 +217,6 @@ export function GroupManagementModal({
           </div>
 
           <div className="px-4 py-3 space-y-0">
-            <ToggleRow
-              label="Chế độ phê duyệt thành viên mới"
-              help="Khi bật, người mới xin vào phải được duyệt."
-              checked={admin.approvalRequired}
-              disabled={!canEdit || busy}
-              onChange={(v) => void patchAdmin('approvalRequired', v)}
-            />
-            <ToggleRow
-              label="Đánh dấu tin nhắn từ trưởng/phó nhóm"
-              checked={admin.highlightLeaderMessages}
-              disabled={!canEdit || busy}
-              onChange={(v) => void patchAdmin('highlightLeaderMessages', v)}
-            />
             <ToggleRow
               label="Cho phép thành viên mới đọc tin nhắn gần nhất"
               checked={admin.newMembersReadRecent}
@@ -287,16 +283,34 @@ export function GroupManagementModal({
           <div className="px-4 pb-4 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2">
             <button
               type="button"
-              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 opacity-60"
-              onClick={() => toast.info('Tính năng đang phát triển')}
+              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 disabled:opacity-45"
+              disabled={!onNavigateToMembers}
+              onClick={() => {
+                if (!onNavigateToMembers) {
+                  toast.info('Tính năng đang phát triển');
+                  return;
+                }
+                if (!canKickMembers) {
+                  toast.info('Chỉ trưởng nhóm mới có thể mời thành viên ra khỏi nhóm');
+                  return;
+                }
+                onNavigateToMembers({ tab: 'list' });
+              }}
             >
               <Ban className="w-5 h-5 text-slate-500 shrink-0" />
               Chặn khỏi nhóm
             </button>
             <button
               type="button"
-              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 opacity-60"
-              onClick={() => toast.info('Dùng mục Quản lý thành viên để xem vai trò')}
+              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 disabled:opacity-45"
+              disabled={!onNavigateToMembers}
+              onClick={() => {
+                if (!onNavigateToMembers) {
+                  toast.info('Dùng mục Quản lý thành viên để xem vai trò');
+                  return;
+                }
+                onNavigateToMembers({ tab: 'list', leadersOnly: true });
+              }}
             >
               <KeyRound className="w-5 h-5 text-slate-500 shrink-0" />
               Trưởng &amp; phó nhóm
@@ -305,7 +319,7 @@ export function GroupManagementModal({
 
           {!canEdit && (
             <p className="px-4 pb-4 text-[12px] text-center text-slate-500">
-              Bạn chỉ xem được cài đặt. Chỉ trưởng/phó nhóm mới chỉnh sửa.
+              Bạn chỉ xem được cài đặt. Chỉ trưởng nhóm mới chỉnh được cài đặt.
             </p>
           )}
         </>
@@ -317,24 +331,6 @@ export function GroupManagementModal({
     if (!open) return null;
     return (
       <div className="h-full w-full min-h-0 flex flex-col bg-white dark:bg-[#1a1a1a]">
-        <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
-              <Settings className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            </div>
-            <h3 id={`${baseId}-gmtitle`} className="font-bold text-[17px] text-black dark:text-white truncate">
-              Quản lý nhóm
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors shrink-0"
-            title="Quay lại thông tin"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
         <div
           className="flex-1 overflow-y-auto min-h-0 custom-scrollbar"
           role="region"

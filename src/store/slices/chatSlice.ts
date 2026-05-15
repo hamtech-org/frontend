@@ -10,6 +10,8 @@ interface ChatState {
   replyingTo: IMessage | null;
   /** Tăng khi socket báo thay đổi nhóm; ChatPage refetch members/tasks/polls/requests (không cần F5). */
   groupBoardRefreshTickByConversationId: Record<string, number>;
+  /** Tin cũ hơn mốc này không hiển thị (member mới / vào lại sau kick). */
+  messageJoinCutoffMsByConversation: Record<string, number>;
 }
 
 const initialState: ChatState = {
@@ -19,6 +21,7 @@ const initialState: ChatState = {
   typingUsers: {},
   replyingTo: null,
   groupBoardRefreshTickByConversationId: {},
+  messageJoinCutoffMsByConversation: {},
 };
 
 const chatSlice = createSlice({
@@ -43,6 +46,11 @@ const chatSlice = createSlice({
     // ─── Socket event: tin nhắn mới nhận từ server ────────────────────────
     messageReceived: (state, action: PayloadAction<IMessage>) => {
       const msg = action.payload;
+      const cutoff = state.messageJoinCutoffMsByConversation[msg.conversationId];
+      if (cutoff != null) {
+        const t = Date.parse(msg.createdAt);
+        if (Number.isFinite(t) && t < cutoff) return;
+      }
       if (!state.messages[msg.conversationId]) {
         state.messages[msg.conversationId] = [];
       }
@@ -254,6 +262,25 @@ const chatSlice = createSlice({
       const prev = state.groupBoardRefreshTickByConversationId[id] ?? 0;
       state.groupBoardRefreshTickByConversationId[id] = prev + 1;
     },
+
+    setMessageJoinCutoff: (
+      state,
+      action: PayloadAction<{ conversationId: string; minCreatedAtMs: number | null }>,
+    ) => {
+      const id = String(action.payload.conversationId ?? '').trim();
+      if (!id) return;
+      if (action.payload.minCreatedAtMs == null) {
+        delete state.messageJoinCutoffMsByConversation[id];
+        return;
+      }
+      state.messageJoinCutoffMsByConversation[id] = action.payload.minCreatedAtMs;
+    },
+
+    clearConversationMessages: (state, action: PayloadAction<string>) => {
+      const id = String(action.payload ?? '').trim();
+      if (!id) return;
+      delete state.messages[id];
+    },
   },
 });
 
@@ -278,6 +305,8 @@ export const {
   setReplyingTo,
   clearReplyingTo,
   bumpGroupBoardRefresh,
+  setMessageJoinCutoff,
+  clearConversationMessages,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;
