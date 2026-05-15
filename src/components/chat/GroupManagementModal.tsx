@@ -188,7 +188,7 @@ export function GroupManagementModal({
                   },
                   {
                     key: 'pinMessages' as const,
-                    label: 'Ghim tin nhắn, ghi chú, bình chọn lên đầu hội thoại',
+                    label: 'Ghim tin nhắn, bình chọn lên đầu hội thoại',
                     hint: `Tối đa ${MAX_PINNED_PER_CONVERSATION} tin ghim mỗi cuộc trò chuyện.`,
                   },
                   { key: 'createNotesReminders' as const, label: 'Tạo mới ghi chú, nhắc hẹn' },
