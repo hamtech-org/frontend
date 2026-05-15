@@ -8,7 +8,9 @@ import {
   roughMaxBytesForFile,
 } from '@/constants/chat-page.constants';
 import type { PendingAttachment } from '@/components/chat/ChatComposer';
-import type { MessageType } from '@/types/chat.types';
+import type { IConversation, MessageType } from '@/types/chat.types';
+import type { GroupMemberRole } from '@/types/chat.group.types';
+import { canUserSendMessageInGroup } from '@/utils/groupConversationPermissions';
 import type { AppDispatch, RootState } from '@/store/store';
 import { clearReplyingTo } from '@/store/slices/chatSlice';
 import { useSendMessageMutation } from '@/store/api/chatApi';
@@ -19,7 +21,11 @@ import { useUploadMediaMultiMutation } from '@/store/api/mediaApi';
  * Internally calls RTK mutations and reads Redux state.
  * Only needs `activeConversationId` from the caller.
  */
-export function useChatComposerController(activeConversationId: string | null) {
+export function useChatComposerController(
+  activeConversationId: string | null,
+  activeConversation?: IConversation,
+  currentUserRole?: GroupMemberRole,
+) {
   const dispatch = useDispatch<AppDispatch>();
 
   // ── RTK mutations ──
@@ -109,6 +115,16 @@ export function useChatComposerController(activeConversationId: string | null) {
 
       if (!activeConversationId || isSending || mediaUploading) return;
 
+      if (
+        !canUserSendMessageInGroup({
+          conversation: activeConversation,
+          userRole: currentUserRole,
+        })
+      ) {
+        toast.error('Nhóm không cho phép thành viên gửi tin nhắn');
+        return;
+      }
+
       if (pendingAttachments.length > 0) {
         const files = pendingAttachments.map((p) => p.file);
         setMediaUploading(true);
@@ -162,7 +178,9 @@ export function useChatComposerController(activeConversationId: string | null) {
       }
     },
     [
+      activeConversation,
       activeConversationId,
+      currentUserRole,
       inputText,
       isSending,
       mediaUploading,
