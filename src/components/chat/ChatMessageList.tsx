@@ -36,6 +36,7 @@ import {
   chatMessagesSameLocalDay,
 } from '@/utils/formatDate';
 import { isTaskJoinDeadlinePassed, typingLabel } from '@/utils/chatUtils';
+import { formatGroupSystemChatLine } from '@/utils/groupSystemMessage';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { MediaLightbox } from '@/components/chat/MediaLightbox';
@@ -717,26 +718,32 @@ export function ChatMessageList({
                 ((groupMembers?.length ?? 0) > 0 && activeConversation?.type !== 'direct');
               /** Nhóm: chip mốc ngày giữa luồng (đồng bộ tin thường) — pill chỉ còn giờ để không lặp «Hôm nay». */
               const daySepAboveSystem = isGroupConv && showDate;
-              // Nếu là thông báo hệ thống do chính mình thực hiện thì xưng "Bạn" (chỉ phía người cập nhật).
+              // Tin nhóm (mời / tham gia / mời ra): JSON → câu tiếng Việt, xưng "Bạn" theo userId.
               let content = msg.content;
+              if (typeof content === 'string') {
+                const groupLine = formatGroupSystemChatLine(content, currentUserId);
+                if (groupLine) {
+                  content = groupLine;
+                }
+              }
               // Giữ logic cũ (case avatar nhóm) để tránh thay đổi hành vi đang ổn định.
               if (
-                msg.content?.includes('đã cập nhật ảnh đại diện nhóm') &&
+                typeof content === 'string' &&
+                content.includes('đã cập nhật ảnh đại diện nhóm') &&
                 msg.senderId === currentUserId
               ) {
                 content = 'Bạn đã cập nhật ảnh đại diện nhóm';
               }
-              // Bổ sung: các system message khác có format "Tên đã ..." thì thay "Tên" -> "Bạn" khi chính mình là sender.
-              // Không đụng tới nội dung phía người nhận (senderId != currentUserId) nên người nhận vẫn thấy đúng tên người cập nhật.
-              if (msg.senderId === currentUserId && msg.senderDisplayName) {
+              // Plain text legacy: thay tên người gửi → "Bạn" (không đụng JSON task/poll).
+              if (
+                msg.senderId === currentUserId &&
+                msg.senderDisplayName &&
+                typeof content === 'string' &&
+                !content.trim().startsWith('{')
+              ) {
                 const name = msg.senderDisplayName.trim();
                 if (name) {
-                  // Chỉ replace 1 lần để tránh "Tên" xuất hiện ở chỗ khác trong câu.
-                  // Quan trọng: KHÔNG replace trong JSON system payload (task/poll/...) vì sẽ làm hỏng dữ liệu (vd: title/assigneeLabel).
-                  const raw = typeof content === 'string' ? content.trim() : '';
-                  if (!raw.startsWith('{')) {
-                    content = content.replace(name, 'Bạn');
-                  }
+                  content = content.replace(name, 'Bạn');
                 }
               }
               if (typeof content === 'string') {
