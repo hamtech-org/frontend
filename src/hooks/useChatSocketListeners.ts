@@ -246,6 +246,11 @@ export function useChatSocketListeners(
           if (c) (c as IConversation).groupSettings = groupSettings;
         }),
       );
+      dispatch(
+        chatApi.util.updateQueryData('getGroupSettings', conversationId, (draft) => {
+          if (draft) draft.data = groupSettings;
+        }),
+      );
       dispatch(chatApi.util.invalidateTags([{ type: 'GroupSettings', id: conversationId }]));
     };
 
