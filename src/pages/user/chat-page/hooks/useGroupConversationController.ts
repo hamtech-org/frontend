@@ -9,6 +9,7 @@ import type { IMessage, IConversation } from '@/types/chat.types';
 import {
   canUserCreatePollInGroup,
   canUserCreateTaskInGroup,
+  canUserChangeGroupProfileInGroup,
 } from '@/utils/groupConversationPermissions';
 import type {
   GroupActionLoading,
@@ -169,6 +170,17 @@ export function useGroupConversationController({
 
   const openEditGroupModal = useCallback(() => {
     if (activeConversation?.type !== 'group') return;
+    if (
+      !canUserChangeGroupProfileInGroup({
+        conversation: activeConversation,
+        userRole: currentUserRole,
+        userId: currentUserId,
+        members: groupMembers,
+      })
+    ) {
+      toast.error('Nhóm không cho phép thành viên đổi tên hoặc ảnh đại diện nhóm');
+      return;
+    }
     if (editGroupAvatarPreview?.startsWith('blob:')) {
       URL.revokeObjectURL(editGroupAvatarPreview);
     }
@@ -176,7 +188,14 @@ export function useGroupConversationController({
     modalActions.setEditGroupAvatarFile(null);
     modalActions.setEditGroupAvatarPreview(activeConversation.avatar ?? null);
     modalActions.setShowEditGroupModal(true);
-  }, [activeConversation, editGroupAvatarPreview, modalActions]);
+  }, [
+    activeConversation,
+    currentUserRole,
+    currentUserId,
+    groupMembers,
+    editGroupAvatarPreview,
+    modalActions,
+  ]);
 
   const handleEditGroupAvatarFileChange = useCallback(
     (file: File | null) => {
@@ -198,6 +217,17 @@ export function useGroupConversationController({
     const nextName = editGroupName.trim();
     if (!nextName) {
       toast.error('Tên nhóm không được để trống');
+      return;
+    }
+    if (
+      !canUserChangeGroupProfileInGroup({
+        conversation: activeConversation,
+        userRole: currentUserRole,
+        userId: currentUserId,
+        members: groupMembers,
+      })
+    ) {
+      toast.error('Nhóm không cho phép thành viên đổi tên hoặc ảnh đại diện nhóm');
       return;
     }
 
@@ -412,6 +442,8 @@ export function useGroupConversationController({
         !canUserCreateTaskInGroup({
           conversation: activeConversation,
           userRole: currentUserRole,
+          userId: currentUserId,
+          members: groupMembers,
         })
       ) {
         toast.error('Nhóm không cho phép thành viên tạo công việc / nhắc hẹn.');
@@ -715,6 +747,8 @@ export function useGroupConversationController({
       !canUserCreateTaskInGroup({
         conversation: activeConversation,
         userRole: currentUserRole,
+        userId: currentUserId,
+        members: groupMembers,
       })
     ) {
       toast.error('Nhóm không cho phép thành viên tạo công việc / nhắc hẹn.');
@@ -1069,6 +1103,8 @@ export function useGroupConversationController({
       !canUserCreatePollInGroup({
         conversation: activeConversation,
         userRole: currentUserRole,
+        userId: currentUserId,
+        members: groupMembers,
       })
     ) {
       toast.error('Nhóm không cho phép thành viên tạo bình chọn.');
@@ -1274,7 +1310,10 @@ export function useGroupConversationController({
       setGroupMembers((prev) => prev.filter((m) => m.userId !== userId));
       try {
         await groupApi.removeMember(activeConversationId, userId);
-        await Promise.all([fetchGroupMembers(activeConversationId), refetchConversations()]);
+        await Promise.all([
+          fetchGroupMembers(activeConversationId),
+          refetchConversations?.() ?? Promise.resolve(),
+        ]);
       } catch (err) {
         setGroupMembers(before);
         console.error('Failed to kick member:', err);
