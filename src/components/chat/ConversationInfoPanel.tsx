@@ -1332,7 +1332,7 @@ export function ConversationInfoPanel({
             </h3>
             {activeConversation?.type === 'group' && (
               <p className="text-sm text-muted-foreground mt-1 text-center font-medium opacity-80">
-                {activeConversation.memberCount} thành viên
+                {effectiveMemberCount} thành viên
               </p>
             )}
 
