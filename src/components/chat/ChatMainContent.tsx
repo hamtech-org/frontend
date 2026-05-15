@@ -239,9 +239,6 @@ export function ChatMainContent(props: ChatMainContentProps) {
             activeConversationId={core.activeConversationId}
             currentUserRole={core.currentUserRole}
             groupMembers={group.members}
-            onLearnMoreSendRestriction={() => {
-              if (!showInfo) onToggleShowInfo();
-            }}
             onOpenPoll={onOpenPoll}
             onOpenTask={onOpenTask}
             onOpenAISummary={groupActions.openAISummaryFromPanel}
