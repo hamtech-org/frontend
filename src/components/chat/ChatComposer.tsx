@@ -215,10 +215,11 @@ export function ChatComposer({
     if (activeConversation?.type !== 'group') return true;
     return canUserSendMessageInGroup({
       conversation: activeConversation,
+      userRole: currentUserRole,
       userId: currentUserId,
       members: groupMembers,
     });
-  }, [activeConversation, currentUserId, groupMembers]);
+  }, [activeConversation, currentUserRole, currentUserId, groupMembers]);
 
   if (groupDisbanded) {
     return (
