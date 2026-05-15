@@ -1274,6 +1274,7 @@ export function useGroupConversationController({
       setGroupMembers((prev) => prev.filter((m) => m.userId !== userId));
       try {
         await groupApi.removeMember(activeConversationId, userId);
+        await Promise.all([fetchGroupMembers(activeConversationId), refetchConversations()]);
       } catch (err) {
         setGroupMembers(before);
         console.error('Failed to kick member:', err);
@@ -1286,7 +1287,9 @@ export function useGroupConversationController({
       activeConversationId,
       currentUserId,
       currentUserRole,
+      fetchGroupMembers,
       groupMembers,
+      refetchConversations,
       setActionBusy,
       setGroupMembers,
     ],
