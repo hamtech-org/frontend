@@ -179,10 +179,7 @@ export function MemberManagementModal({
     return (
       <div className="h-full w-full flex flex-col bg-white dark:bg-[#1a1a1a]">
         <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <h3 className="font-bold text-[17px] text-black dark:text-white truncate">
-              {leadersOnly ? 'Trưởng & phó nhóm' : 'Quản lý thành viên'}
-            </h3>
+          <div className="flex min-w-0">
             {onAddMembersClick && !leadersOnly ? (
               <button
                 type="button"
