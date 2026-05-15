@@ -22,12 +22,22 @@ export type GroupAdminSettings = IGroupAdminSettings;
 
 type GroupManagementUiVariant = 'modal' | 'inline';
 
+export type GroupManagementMembersNavigateOpts = {
+  tab: 'list' | 'pending';
+  /** Chỉ hiển thị trưởng & phó nhóm. */
+  leadersOnly?: boolean;
+};
+
 type GroupManagementModalProps = {
   open: boolean;
   onClose: () => void;
   conversationId: string | undefined;
   canEdit: boolean;
   variant?: GroupManagementUiVariant;
+  /** Mở quản lý thành viên (kick / vai trò). */
+  onNavigateToMembers?: (opts: GroupManagementMembersNavigateOpts) => void;
+  /** Chỉ trưởng nhóm mới kick được — dùng cho mục «Chặn khỏi nhóm». */
+  canKickMembers?: boolean;
 };
 
 function ToggleRow({
@@ -89,6 +99,8 @@ export function GroupManagementModal({
   conversationId,
   canEdit,
   variant = 'modal',
+  onNavigateToMembers,
+  canKickMembers = false,
 }: GroupManagementModalProps) {
   const baseId = useId();
   const { data: settingsRes, isFetching } = useGetGroupSettingsQuery(conversationId!, {
@@ -233,6 +245,13 @@ export function GroupManagementModal({
               disabled={!canEdit || busy}
               onChange={(v) => void patchAdmin('allowJoinLink', v)}
             />
+            <ToggleRow
+              label="Phê duyệt thành viên mới vào nhóm"
+              checked={admin.approvalRequired}
+              disabled={!canEdit || busy}
+              onChange={(v) => void patchAdmin('approvalRequired', v)}
+              help="Khi bật, người được mời hoặc xin vào nhóm cần được trưởng/phó nhóm duyệt trước khi tham gia."
+            />
           </div>
 
           {admin.allowJoinLink && (
@@ -287,16 +306,34 @@ export function GroupManagementModal({
           <div className="px-4 pb-4 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2">
             <button
               type="button"
-              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 opacity-60"
-              onClick={() => toast.info('Tính năng đang phát triển')}
+              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 disabled:opacity-45"
+              disabled={!onNavigateToMembers}
+              onClick={() => {
+                if (!onNavigateToMembers) {
+                  toast.info('Tính năng đang phát triển');
+                  return;
+                }
+                if (!canKickMembers) {
+                  toast.info('Chỉ trưởng nhóm mới có thể mời thành viên ra khỏi nhóm');
+                  return;
+                }
+                onNavigateToMembers({ tab: 'list' });
+              }}
             >
               <Ban className="w-5 h-5 text-slate-500 shrink-0" />
               Chặn khỏi nhóm
             </button>
             <button
               type="button"
-              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 opacity-60"
-              onClick={() => toast.info('Dùng mục Quản lý thành viên để xem vai trò')}
+              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 disabled:opacity-45"
+              disabled={!onNavigateToMembers}
+              onClick={() => {
+                if (!onNavigateToMembers) {
+                  toast.info('Dùng mục Quản lý thành viên để xem vai trò');
+                  return;
+                }
+                onNavigateToMembers({ tab: 'list', leadersOnly: true });
+              }}
             >
               <KeyRound className="w-5 h-5 text-slate-500 shrink-0" />
               Trưởng &amp; phó nhóm
