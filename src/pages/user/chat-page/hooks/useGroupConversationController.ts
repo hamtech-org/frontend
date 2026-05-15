@@ -20,7 +20,6 @@ import type {
 import type { AppDispatch } from '@/store/store';
 import { messageReceived } from '@/store/slices/chatSlice';
 import {
-  applyMessageHiddenForMe,
   patchTaskAssignedSystemMessages,
   hideTaskAssignedCardsForTaskId,
 } from '@/store/applyMessageHiddenForMe';
@@ -559,7 +558,7 @@ export function useGroupConversationController({
     };
     setGroupTasks((prev) => [optimisticTask, ...prev]);
     try {
-      const createRes = await groupApi.createTask(activeConversationId, {
+      await groupApi.createTask(activeConversationId, {
         title: taskTitle.trim(),
         description: taskNote.trim(),
         assignees: isGroupOptIn ? [] : taskAssignees,
@@ -567,92 +566,9 @@ export function useGroupConversationController({
         dueDate: dueDateIso,
         subtasks: cleanSubtaskRows.length > 0 ? cleanSubtaskRows : undefined,
       });
-      const ax = createRes as { data?: { data?: { taskId?: string }; taskId?: string } };
-      const createdTaskId = ax?.data?.data?.taskId ?? ax?.data?.taskId ?? null;
       toast.success('Đã tạo công việc');
       await fetchGroupTasks(activeConversationId);
-      applyMessageHiddenForMe(
-        dispatch,
-        activeConversationId,
-        `local-task-card:${activeConversationId}:${optimisticTask.taskId}`,
-      );
-
-      const byId = new Map(
-        groupMembers.map((m) => [m.userId, m.displayName ?? m.name ?? m.userId]),
-      );
-      const subtasks =
-        optimisticTask.subtasks?.map((s) => ({
-          id: s.id,
-          assigneeId: s.assigneeId,
-          assigneeName: String(byId.get(s.assigneeId) ?? s.assigneeId),
-          content: s.content,
-          done: false,
-          completedAt: null,
-        })) ?? [];
-      const assigneeLabel =
-        subtasks.length > 0
-          ? subtasks.map((s) => s.assigneeName).join(', ')
-          : isGroupOptIn
-            ? 'Cả nhóm'
-            : taskAssignees.map((id) => String(byId.get(id) ?? id)).join(', ') || 'cả nhóm';
-      const assigneeUserIds =
-        subtasks.length > 0
-          ? subtasks.map((s) => String(s.assigneeId))
-          : isGroupOptIn
-            ? []
-            : taskAssignees.map((id) => String(id));
-      const assigneesCount = isGroupOptIn ? groupMembers.length : assigneeUserIds.length;
-      const content = JSON.stringify({
-        kind: 'task_assigned',
-        actor: { userId: currentUserId, name: currentUserDisplayName?.trim() ?? 'Bạn' },
-        task: {
-          taskId: createdTaskId ? String(createdTaskId) : optimisticTask.taskId,
-          title: optimisticTask.title,
-          dueDate: optimisticTask.dueDate ?? null,
-          note: optimisticTask.description?.trim() ? optimisticTask.description.trim() : null,
-          assigneeLabel,
-          assignToAll: isGroupOptIn,
-          broadcast: isGroupOptIn,
-          assigneesCount,
-          assigneeUserIds,
-          subtasks: subtasks.length > 0 ? subtasks : undefined,
-        },
-      });
-      const taskIdForCard = createdTaskId ? String(createdTaskId) : optimisticTask.taskId;
-      const systemMsg: IMessage = {
-        messageId: `local-task-card:${activeConversationId}:${taskIdForCard}`,
-        conversationId: activeConversationId,
-        senderId: 'system',
-        senderDisplayName: 'Hệ thống',
-        type: 'system',
-        content,
-        mediaUrl: null,
-        thumbnailUrl: null,
-        replyTo: null,
-        replyToDetails: null,
-        isPinned: false,
-        isEdited: false,
-        isRecalled: false,
-        isDeleted: false,
-        reactions: {},
-        status: 'sent',
-        createdAt: new Date().toISOString(),
-      };
-      dispatch(
-        chatApi.util.updateQueryData(
-          'getMessages',
-          { conversationId: activeConversationId },
-          (draft) => {
-            if (!draft.data) draft.data = [];
-            if (!draft.data.some((m) => String(m.messageId) === String(systemMsg.messageId))) {
-              draft.data.push(systemMsg);
-            }
-          },
-        ),
-      );
-      dispatch(messageReceived(systemMsg));
-      socketService.emit('message:new', systemMsg);
-
+      // Server đã `createAndBroadcastSystemMessage` (`task_assigned`) — không bơm local / emit socket (tránh banner đúp).
       modalActions.closeTaskModal();
     } catch (err) {
       setGroupTasks((prev) => prev.filter((task) => task.taskId !== optimisticTask.taskId));

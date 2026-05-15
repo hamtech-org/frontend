@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Ban, Copy, KeyRound, Lock, RefreshCw, Share2, HelpCircle, X } from 'lucide-react';
+import { Copy, KeyRound, Lock, RefreshCw, Share2, HelpCircle, X } from 'lucide-react';
 import { useId } from 'react';
 import { toast } from 'react-toastify';
 import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/PinLimitModal';
@@ -26,8 +26,6 @@ type GroupManagementModalProps = {
   variant?: GroupManagementUiVariant;
   /** Mở quản lý thành viên (kick / vai trò). */
   onNavigateToMembers?: (opts: GroupManagementMembersNavigateOpts) => void;
-  /** Chỉ trưởng nhóm mới kick được — dùng cho mục «Chặn khỏi nhóm». */
-  canKickMembers?: boolean;
 };
 
 function ToggleRow({
@@ -90,7 +88,6 @@ export function GroupManagementModal({
   canEdit,
   variant = 'modal',
   onNavigateToMembers,
-  canKickMembers = false,
 }: GroupManagementModalProps) {
   const baseId = useId();
   const { data: settingsRes, isFetching } = useGetGroupSettingsQuery(conversationId!, {
@@ -281,25 +278,6 @@ export function GroupManagementModal({
           )}
 
           <div className="px-4 pb-4 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2">
-            <button
-              type="button"
-              className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 disabled:opacity-45"
-              disabled={!onNavigateToMembers}
-              onClick={() => {
-                if (!onNavigateToMembers) {
-                  toast.info('Tính năng đang phát triển');
-                  return;
-                }
-                if (!canKickMembers) {
-                  toast.info('Chỉ trưởng nhóm mới có thể mời thành viên ra khỏi nhóm');
-                  return;
-                }
-                onNavigateToMembers({ tab: 'list' });
-              }}
-            >
-              <Ban className="w-5 h-5 text-slate-500 shrink-0" />
-              Chặn khỏi nhóm
-            </button>
             <button
               type="button"
               className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 disabled:opacity-45"

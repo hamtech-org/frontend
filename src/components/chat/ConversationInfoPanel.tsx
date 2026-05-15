@@ -1314,7 +1314,6 @@ export function ConversationInfoPanel({
             onClose={() => setShowGroupManagement(false)}
             conversationId={activeConversation.conversationId}
             canEdit={isOwnerEffective}
-            canKickMembers={canKickMembers}
             onNavigateToMembers={openMembersFromGroupManagement}
           />
         </div>
