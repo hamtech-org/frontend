@@ -1,5 +1,6 @@
 import type { IConversation, IMessage, MessageType, TypingUserEntry } from '@/types/chat.types';
 import { formatGroupSystemChatLine } from '@/utils/groupSystemMessage';
+import { formatGroupJoinLinkListPreview } from '@/utils/groupJoinLinkMessage';
 
 export function decodeJwtUserId(token: string | null): string | null {
   if (!token) return null;
@@ -323,9 +324,11 @@ export function formatConversationListLastPreview(
     return systemPreview;
   }
 
+  const joinLinkPreview = lm.type === 'text' ? formatGroupJoinLinkListPreview(content) : null;
+
   const previewText = normalizeLastMessagePreview(
     lm.type,
-    lm.type === 'call' ? formatCallPreview() : content,
+    lm.type === 'call' ? formatCallPreview() : (joinLinkPreview ?? content),
   );
   if (currentUserId && lm.senderId === currentUserId) {
     return `Bạn: ${previewText}`;

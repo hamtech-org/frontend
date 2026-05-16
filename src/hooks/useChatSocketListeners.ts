@@ -144,8 +144,11 @@ export function useChatSocketListeners(
             };
             conv.lastMessageAt = msg.createdAt;
             conv.updatedAt = msg.createdAt;
-            // Nếu user chưa mở cuộc trò chuyện này thì tăng unreadCount
-            if (activeConversationIdRef.current !== msg.conversationId) {
+            // Chỉ tăng badge khi người khác gửi và user chưa mở hội thoại đó
+            if (
+              msg.senderId !== currentUserId &&
+              activeConversationIdRef.current !== msg.conversationId
+            ) {
               conv.unreadCount = (conv.unreadCount ?? 0) + 1;
             }
           }

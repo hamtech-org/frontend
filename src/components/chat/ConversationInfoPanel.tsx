@@ -1313,6 +1313,8 @@ export function ConversationInfoPanel({
             open
             onClose={() => setShowGroupManagement(false)}
             conversationId={activeConversation.conversationId}
+            groupName={activeConversation.name ?? 'Nhóm chat'}
+            groupAvatar={activeConversation.avatar}
             canEdit={isOwnerEffective}
             onNavigateToMembers={openMembersFromGroupManagement}
           />
