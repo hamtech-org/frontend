@@ -18,12 +18,14 @@ const AdminResourcesPage = React.lazy(() => import('@/pages/admin/sections/Admin
 const AdminAiFilterPage = React.lazy(() => import('@/pages/admin/sections/AdminAiFilterPage'));
 const AdminAnalytics = React.lazy(() => import('@/pages/admin/AdminAnalytics'));
 const ComponentsDemoPage = React.lazy(() => import('@/pages/user/ComponentsDemoPage'));
+const JoinGroupPage = React.lazy(() => import('@/pages/user/JoinGroupPage'));
 
 export const appRouteElements = (
   <>
     <Route path="/" element={<HomePage />} />
     <Route path="/community" element={<ContactsPage />} />
     <Route path="/studio" element={<StudioPage />} />
+    <Route path="/join/:suffix" element={<JoinGroupPage />} />
     <Route path="/chat/:conversationId" element={<ChatPage />} />
     <Route path="/chat" element={<ChatPage />} />
     <Route path="/search" element={<SearchPage />} />
