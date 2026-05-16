@@ -60,7 +60,7 @@ const chatSlice = createSlice({
         state.messages[msg.conversationId].push(msg);
       }
 
-      // Cập nhật lastMessage / unread chỉ khi tin chưa xử lý (tránh conv+user emit trùng)
+      // Sidebar unread do RTK getConversations + socket listener xử lý (không bump ở đây).
       const conv = state.conversations.find((c) => c.conversationId === msg.conversationId);
       if (conv && !exists) {
         conv.lastMessage = {
@@ -71,9 +71,6 @@ const chatSlice = createSlice({
           createdAt: msg.createdAt,
           senderDisplayName: msg.senderDisplayName?.trim() ?? null,
         };
-        if (state.activeConversationId !== msg.conversationId) {
-          conv.unreadCount = (conv.unreadCount ?? 0) + 1;
-        }
       }
     },
 
