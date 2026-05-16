@@ -8,6 +8,7 @@ export function patchConversationsFromNewMessage(
   dispatch: AppDispatch,
   msg: IMessage,
   activeConversationId: string | null,
+  currentUserId: string | null,
 ): void {
   dispatch(
     chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
@@ -39,7 +40,12 @@ export function patchConversationsFromNewMessage(
       };
       conv.lastMessageAt = msg.createdAt;
       conv.updatedAt = msg.createdAt;
-      if (msg.conversationId !== activeConversationId && !alreadySamePreview) {
+      const isIncomingFromOther = Boolean(currentUserId) && msg.senderId !== currentUserId;
+      if (
+        isIncomingFromOther &&
+        msg.conversationId !== activeConversationId &&
+        !alreadySamePreview
+      ) {
         conv.unreadCount = (conv.unreadCount ?? 0) + 1;
       }
       draft.data = sortConversationsForSidebar(draft.data);

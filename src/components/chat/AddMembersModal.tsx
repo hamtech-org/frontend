@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Check, Search, UserPlus, X } from 'lucide-react';
+import { Check, Link2, Search, Share2, UserPlus, X } from 'lucide-react';
+import type { GroupJoinLinkModalData } from '@/contexts/GroupJoinLinkModalContext';
 import { useGetFriendsQuery } from '@/store/api/contactApi';
 
 type AddMembersModalProps = {
@@ -11,6 +12,9 @@ type AddMembersModalProps = {
   onToggleSelect: (userId: string, checked: boolean) => void;
   onConfirm: () => void;
   isSubmitting?: boolean;
+  joinLink?: GroupJoinLinkModalData | null;
+  onOpenJoinLinkModal?: () => void;
+  onOpenShareLinkModal?: () => void;
 };
 
 type Friend = {
@@ -29,6 +33,9 @@ export function AddMembersModal({
   onToggleSelect,
   onConfirm,
   isSubmitting = false,
+  joinLink,
+  onOpenJoinLinkModal,
+  onOpenShareLinkModal,
 }: AddMembersModalProps) {
   const [query, setQuery] = useState('');
   const { data: friendsRes, isLoading } = useGetFriendsQuery();
@@ -91,7 +98,31 @@ export function AddMembersModal({
               </button>
             </div>
 
-            <div className="px-5 py-4 border-b border-black/5 dark:border-white/5">
+            <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 space-y-3">
+              {joinLink && (onOpenJoinLinkModal || onOpenShareLinkModal) ? (
+                <div className="flex gap-2">
+                  {onOpenJoinLinkModal ? (
+                    <button
+                      type="button"
+                      onClick={onOpenJoinLinkModal}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#0068ff]/30 bg-sky-50/90 dark:bg-sky-950/30 text-[#0068ff] text-sm font-semibold hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
+                    >
+                      <Link2 className="w-4 h-4" />
+                      Link nhóm
+                    </button>
+                  ) : null}
+                  {onOpenShareLinkModal ? (
+                    <button
+                      type="button"
+                      onClick={onOpenShareLinkModal}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#0068ff]/30 bg-sky-50/90 dark:bg-sky-950/30 text-[#0068ff] text-sm font-semibold hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      Chia sẻ link
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
@@ -106,7 +137,9 @@ export function AddMembersModal({
 
             <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-2">
               {isLoading ? (
-                <p className="text-center text-sm text-muted-foreground py-6">Đang tải danh sách...</p>
+                <p className="text-center text-sm text-muted-foreground py-6">
+                  Đang tải danh sách...
+                </p>
               ) : rows.length === 0 ? (
                 <p className="text-center text-sm text-muted-foreground py-6">
                   {friends.length === 0 ? 'Chưa có bạn bè để thêm' : 'Không có người dùng phù hợp'}
@@ -120,7 +153,7 @@ export function AddMembersModal({
                       key={friend.userId}
                       className={`flex items-center gap-3 p-3 rounded-xl ${
                         isInGroup
-                          ? 'opacity-70 cursor-default'
+                          ? 'opacity-80 cursor-default'
                           : 'hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer'
                       }`}
                     >
@@ -138,7 +171,11 @@ export function AddMembersModal({
                       )}
                       <div className="w-10 h-10 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center">
                         {friend.avatar ? (
-                          <img src={friend.avatar} alt={friend.displayName ?? ''} className="w-full h-full object-cover" />
+                          <img
+                            src={friend.avatar}
+                            alt={friend.displayName ?? ''}
+                            className="w-full h-full object-cover"
+                          />
                         ) : (
                           <span className="text-blue-600 font-bold text-xs">
                             {(friend.displayName?.slice(0, 1) ?? 'U').toUpperCase()}
@@ -146,7 +183,9 @@ export function AddMembersModal({
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate">{friend.displayName ?? friend.userId}</p>
+                        <p className="text-sm font-semibold truncate">
+                          {friend.displayName ?? friend.userId}
+                        </p>
                         <p className="text-xs text-muted-foreground truncate">
                           {isInGroup ? 'Đã tham gia' : (friend.email ?? friend.phone ?? '')}
                         </p>
@@ -158,7 +197,9 @@ export function AddMembersModal({
             </div>
 
             <div className="px-5 py-4 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground">Đã chọn {selectedIds.length} người</span>
+              <span className="text-sm text-muted-foreground">
+                Đã chọn {selectedIds.length} người
+              </span>
               <button
                 type="button"
                 disabled={selectedIds.length === 0 || isSubmitting}

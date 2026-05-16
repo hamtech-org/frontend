@@ -5,6 +5,7 @@ import { ReelUploadToast } from '@/components/layout/ReelUploadToast';
 import { ShellMain, ShellRoot } from '@/components/layout/ShellPrimitives';
 import GlobalSearchBox from '@/components/search/GlobalSearchBox';
 import { CallProvider } from '@/contexts/CallContext';
+import { GroupJoinLinkModalProvider } from '@/contexts/GroupJoinLinkModalContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAppShellState } from '@/hooks/app/useAppShellState';
 import { useLogoutFlow } from '@/hooks/app/useLogoutFlow';
@@ -32,11 +33,12 @@ const App: React.FC = () => {
 
   const isGuestRoute = GUEST_ROUTES.includes(location.pathname);
   const isCallRoute = location.pathname === '/call';
+  const isJoinRoute = location.pathname.startsWith('/join/');
   const isChatRoute = location.pathname.startsWith('/chat');
   const isReelsRoute = location.pathname.startsWith('/reels');
   const isImmersiveRoute = isChatRoute || isReelsRoute;
   const routeTransitionKey = isChatRoute ? 'chat' : location.pathname;
-  const shouldRenderAppShell = !isGuestRoute && !isCallRoute && !isChatRoute;
+  const shouldRenderAppShell = !isGuestRoute && !isCallRoute && !isChatRoute && !isJoinRoute;
   const {
     isMobileViewport,
     isMobileSidebarOpen,
@@ -192,8 +194,10 @@ const App: React.FC = () => {
             >
               <Suspense fallback={<PageLoader />}>
                 <CallProvider>
-                  <IncomingCallModal />
-                  <Routes>{appRouteElements}</Routes>
+                  <GroupJoinLinkModalProvider>
+                    <IncomingCallModal />
+                    <Routes>{appRouteElements}</Routes>
+                  </GroupJoinLinkModalProvider>
                 </CallProvider>
               </Suspense>
             </motion.div>

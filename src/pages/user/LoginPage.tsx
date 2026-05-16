@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   useLoginMutation,
   useVerifyLoginOtpMutation,
@@ -45,6 +45,8 @@ const LoginPage = () => {
   const [showAwsFaceLiveness, setShowAwsFaceLiveness] = useState(false);
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const postLoginPath = searchParams.get('redirect')?.trim() || '/';
 
   // Mutations
   const [login, { isLoading: isLoggingIn, error: loginError }] = useLoginMutation();
@@ -75,7 +77,7 @@ const LoginPage = () => {
         email: loginEmail,
         otp: data.otp,
       }).unwrap();
-      navigate('/');
+      navigate(postLoginPath.startsWith('/') ? postLoginPath : '/');
     } catch (err) {
       console.error('Failed to verify login OTP:', err);
     }

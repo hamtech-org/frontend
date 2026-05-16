@@ -7,7 +7,8 @@ type ChatTagTypes =
   | 'Polls'
   | 'Tasks'
   | 'GroupRequests'
-  | 'GroupSettings';
+  | 'GroupSettings'
+  | 'GroupJoinPreview';
 
 export type ChatEndpointBuilder = EndpointBuilder<
   BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError>,
