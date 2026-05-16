@@ -41,6 +41,8 @@ import {
   typingLabel,
 } from '@/utils/chatUtils';
 import { formatGroupSystemChatLine } from '@/utils/groupSystemMessage';
+import { resolveGroupJoinLinkFromMessageContent } from '@/utils/groupJoinLinkMessage';
+import { GroupJoinLinkCard } from '@/components/chat/GroupJoinLinkCard';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { MediaLightbox } from '@/components/chat/MediaLightbox';
@@ -1743,6 +1745,11 @@ export function ChatMessageList({
             const showCaption = messageHasCaption(msg);
             const mediaSavedOnDevice = downloadedMediaIds.has(msg.messageId);
             const isJumpHighlight = jumpHighlightMessageId === msg.messageId;
+            const joinLinkPayload =
+              !isMediaMsg && msg.type === 'text'
+                ? resolveGroupJoinLinkFromMessageContent(msg.content ?? '')
+                : null;
+            const isJoinLinkMsg = Boolean(joinLinkPayload);
             return (
               <Fragment key={msg.messageId}>
                 {showDaySepMsg ? (
@@ -1778,7 +1785,7 @@ export function ChatMessageList({
                       isWideMediaBubble
                         ? 'w-full max-w-[min(96vw,44rem)] sm:max-w-[min(92%,42rem)]'
                         : 'max-w-[85%] md:max-w-[75%] lg:max-w-[65%]'
-                    } ${isMe ? 'items-end' : 'items-start'}`}
+                    } ${isJoinLinkMsg ? 'min-w-[min(100%,340px)]' : ''} ${isMe ? 'items-end' : 'items-start'}`}
                   >
                     {!isMe && activeConversation?.type === 'group' && !isSameSenderAsPrev && (
                       <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
@@ -1800,7 +1807,7 @@ export function ChatMessageList({
                       ) : (
                         <div
                           className={
-                            isMediaMsg
+                            isMediaMsg || isJoinLinkMsg
                               ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none break-words whitespace-pre-wrap bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
                                   isMe ? 'items-end' : 'items-start'
                                 }`
@@ -2044,7 +2051,8 @@ export function ChatMessageList({
                               {msg.content}
                             </div>
                           )}
-                          {!isMediaMsg && showCaption && (
+                          {joinLinkPayload ? <GroupJoinLinkCard payload={joinLinkPayload} /> : null}
+                          {!isMediaMsg && showCaption && !joinLinkPayload && (
                             <span className="break-words whitespace-pre-wrap">{msg.content}</span>
                           )}
                           {msg.isEdited && (
