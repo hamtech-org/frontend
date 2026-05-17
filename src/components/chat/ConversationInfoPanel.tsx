@@ -53,6 +53,8 @@ import {
   canUserCreatePollInGroup,
   canUserCreateTaskInGroup,
   canUserChangeGroupProfileInGroup,
+  isGroupAdminSlotsFull,
+  MAX_GROUP_ADMINS,
 } from '@/utils/groupConversationPermissions';
 
 type GroupPoll = {
@@ -384,7 +386,10 @@ type ConversationInfoPanelProps = {
   onOpenMemberModal?: (tab: 'list' | 'pending') => void;
   onLeaveGroup?: (opts?: { newOwnerUserId?: string }) => void | Promise<void>;
   /** Chuyển quyền trưởng nhóm (không rời nhóm) — giống mobile. */
-  onTransferGroupOwner?: (newOwnerUserId: string) => void | Promise<void>;
+  onTransferGroupOwner?: (
+    newOwnerUserId: string,
+    currentOwnerNewRole: Extract<GroupMemberRole, 'admin' | 'member'>,
+  ) => void | Promise<void>;
   onDeleteGroup?: () => void;
   onEditGroup?: () => void;
   onAddMembers?: () => void;
@@ -437,6 +442,8 @@ type ConversationInfoPanelProps = {
   onKickMember?: (userId: string) => void | Promise<void>;
   /** Owner-only: hạ phó nhóm (admin) xuống member. */
   onDemoteAdminToMember?: (userId: string) => void | Promise<void>;
+  /** Owner-only: bổ nhiệm thành viên thường làm phó nhóm. */
+  onPromoteMemberToAdmin?: (userId: string) => void | Promise<void>;
 
   /** Tin đã tải trong hội thoại — tìm trong phạm vi client. */
   conversationMessages?: IMessage[];
@@ -486,6 +493,7 @@ export function ConversationInfoPanel({
   onRejectMember,
   onKickMember,
   onDemoteAdminToMember,
+  onPromoteMemberToAdmin,
   busyMemberActions,
   conversationMessages = [],
   conversationSearchRequestTick = 0,
@@ -515,9 +523,9 @@ export function ConversationInfoPanel({
   // Nghiệp vụ:
   // - owner: full quản trị
   // - admin (phó nhóm): chỉ duyệt/từ chối yêu cầu vào nhóm
-  const canModerateMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
-  const canKickMembers = currentUserRole === 'owner';
-  const canDisbandGroup = currentUserRole === 'owner';
+  const canModerateMembers = isOwnerEffective || currentUserRole === 'admin';
+  const canKickMembers = isOwnerEffective;
+  const canDisbandGroup = isOwnerEffective;
 
   const permArgs = useMemo(
     () => ({
@@ -546,6 +554,11 @@ export function ConversationInfoPanel({
   const leaveBlockedByMinMembers = effectiveMemberCount <= MIN_GROUP_MEMBERS;
   const leaveMinMembersHint = `Nhóm cần còn tối thiểu ${MIN_GROUP_MEMBERS} thành viên sau khi có người rời (hiện ${effectiveMemberCount} người). Hãy mời thêm thành viên hoặc giải tán nhóm.`;
 
+  const adminSlotsFull = useMemo(
+    () => isGroupAdminSlotsFull(members as Array<{ role?: string }>),
+    [members],
+  );
+
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
   const [memberLeadersOnly, setMemberLeadersOnly] = useState(false);
   const [showInlineMembers, setShowInlineMembers] = useState(false);
@@ -558,7 +571,14 @@ export function ConversationInfoPanel({
   const [leaveOwnerTransferOpen, setLeaveOwnerTransferOpen] = useState(false);
   const [transferOwnerOpen, setTransferOwnerOpen] = useState(false);
   const [selectedSuccessorId, setSelectedSuccessorId] = useState<string | null>(null);
+  const [currentOwnerNewRole, setCurrentOwnerNewRole] =
+    useState<Extract<GroupMemberRole, 'admin' | 'member'>>('member');
   const [successorSearchQuery, setSuccessorSearchQuery] = useState('');
+  useEffect(() => {
+    if (transferOwnerOpen && adminSlotsFull && currentOwnerNewRole === 'admin') {
+      setCurrentOwnerNewRole('member');
+    }
+  }, [transferOwnerOpen, adminSlotsFull, currentOwnerNewRole]);
   const [deleteGroupModalOpen, setDeleteGroupModalOpen] = useState(false);
   const [bulletinAccordionOpen, setBulletinAccordionOpen] = useState(true);
   const [galleryKind, setGalleryKind] = useState<MessageGalleryKind | null>(null);
@@ -707,7 +727,6 @@ export function ConversationInfoPanel({
     !!selectedSuccessorId &&
     filteredSuccessorCandidates.some((c) => c.userId === selectedSuccessorId);
   const canConfirmOwnerTransfer = canConfirmOwnerLeave;
-
   const memberAvatarById = useMemo(() => {
     const m = new Map<string, string>();
     for (const row of members as Array<{ userId?: string; avatar?: string }>) {
@@ -960,6 +979,8 @@ export function ConversationInfoPanel({
             onReject={onRejectMember}
             onKick={onKickMember}
             onDemoteAdminToMember={onDemoteAdminToMember}
+            onPromoteMemberToAdmin={onPromoteMemberToAdmin}
+            onBrowseMembersForPromote={() => setMemberLeadersOnly(false)}
             busy={busyMemberActionsResolved}
             variant="inline"
             canModerate={canModerateMembers}
@@ -1507,16 +1528,10 @@ export function ConversationInfoPanel({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() =>
-                    openMemberModalHere(
-                      canModerateMembers && (numRequests ?? 0) > 0 ? 'pending' : 'list',
-                    )
-                  }
+                  onClick={() => openMemberModalHere('list')}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      openMemberModalHere(
-                        canModerateMembers && (numRequests ?? 0) > 0 ? 'pending' : 'list',
-                      );
+                      openMemberModalHere('list');
                     }
                   }}
                   className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
@@ -1642,6 +1657,7 @@ export function ConversationInfoPanel({
                     }
                     setSuccessorSearchQuery('');
                     setSelectedSuccessorId(successorCandidates[0]!.userId);
+                    setCurrentOwnerNewRole('admin');
                     setTransferOwnerOpen(true);
                   }}
                   disabled={!onTransferGroupOwner || busyMemberActionsResolved.changingRole}
@@ -1733,7 +1749,7 @@ export function ConversationInfoPanel({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.15 }}
-              className="max-h-[min(520px,85vh)] w-full max-w-[440px] overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-[#1a1a1a]"
+              className="flex max-h-[min(640px,88vh)] w-full max-w-[440px] flex-col overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-[#1a1a1a]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-black/5 px-6 py-4 dark:border-white/5">
@@ -1856,7 +1872,7 @@ export function ConversationInfoPanel({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.15 }}
-              className="max-h-[min(520px,85vh)] w-full max-w-[440px] overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-[#1a1a1a]"
+              className="flex max-h-[min(640px,88vh)] w-full max-w-[440px] flex-col overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-[#1a1a1a]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-black/5 px-6 py-4 dark:border-white/5">
@@ -1872,13 +1888,43 @@ export function ConversationInfoPanel({
                   <X className="h-6 w-6 stroke-[1.5]" />
                 </button>
               </div>
-              <div className="px-6 pt-3">
+              <div className="shrink-0 px-6 pt-3">
                 <p className="text-[13px] text-muted-foreground">
-                  Bạn sẽ trở thành <span className="font-bold text-foreground">phó nhóm</span> sau
-                  khi chuyển quyền.
+                  Bạn sẽ mất quyền trưởng nhóm sau khi xác nhận. Chọn vai trò mới của bạn:
                 </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[
+                    { value: 'admin' as const, label: 'Phó nhóm' },
+                    { value: 'member' as const, label: 'Thành viên' },
+                  ].map((option) => (
+                    <label
+                      key={option.value}
+                      className="flex cursor-pointer items-center gap-2 rounded-xl border border-black/10 px-3 py-2 text-[13px] font-bold text-foreground hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
+                    >
+                      <input
+                        type="radio"
+                        name="current-owner-new-role"
+                        value={option.value}
+                        checked={currentOwnerNewRole === option.value}
+                        onChange={() => setCurrentOwnerNewRole(option.value)}
+                        disabled={
+                          busyMemberActionsResolved.changingRole ||
+                          (option.value === 'admin' && adminSlotsFull)
+                        }
+                        className="h-4 w-4 shrink-0 accent-[#0068ff]"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+                {adminSlotsFull ? (
+                  <p className="mt-2 text-[12px] text-amber-600 dark:text-amber-400">
+                    Nhóm đã đủ {MAX_GROUP_ADMINS} phó nhóm — sau khi chuyển quyền bạn chỉ có thể là
+                    thành viên.
+                  </p>
+                ) : null}
               </div>
-              <div className="px-6 pb-2 pt-3">
+              <div className="shrink-0 px-6 pb-2 pt-3">
                 <div className="relative">
                   <Search
                     className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -1896,7 +1942,7 @@ export function ConversationInfoPanel({
                   />
                 </div>
               </div>
-              <div className="max-h-[min(340px,50vh)] overflow-y-auto px-6 py-2">
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-2">
                 <fieldset className="space-y-1">
                   <legend className="sr-only">Chọn thành viên nhận quyền trưởng nhóm</legend>
                   {filteredSuccessorCandidates.length === 0 ? (
@@ -1934,38 +1980,40 @@ export function ConversationInfoPanel({
                   )}
                 </fieldset>
               </div>
-              <div className="flex items-center justify-end gap-3 border-t border-black/5 px-6 py-4 dark:border-white/5">
-                <button
-                  type="button"
-                  disabled={busyMemberActionsResolved.changingRole}
-                  onClick={() => setTransferOwnerOpen(false)}
-                  className="rounded-lg bg-black/5 px-6 py-2.5 text-[15px] font-bold text-black transition-colors hover:bg-black/10 disabled:opacity-50 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    busyMemberActionsResolved.changingRole ||
-                    !canConfirmOwnerTransfer ||
-                    !onTransferGroupOwner ||
-                    !selectedSuccessorId
-                  }
-                  onClick={() => {
-                    void (async () => {
-                      if (!onTransferGroupOwner || !selectedSuccessorId) return;
-                      try {
-                        await onTransferGroupOwner(selectedSuccessorId);
-                        setTransferOwnerOpen(false);
-                      } catch {
-                        /* lỗi đã toast ở ChatPage */
-                      }
-                    })();
-                  }}
-                  className="rounded-lg bg-[#0068ff] px-6 py-2.5 text-[15px] font-bold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {busyMemberActionsResolved.changingRole ? 'Đang xử lý…' : 'Chuyển quyền'}
-                </button>
+              <div className="shrink-0 border-t border-black/5 px-6 py-4 dark:border-white/5">
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    disabled={busyMemberActionsResolved.changingRole}
+                    onClick={() => setTransferOwnerOpen(false)}
+                    className="rounded-lg bg-black/5 px-6 py-2.5 text-[15px] font-bold text-black transition-colors hover:bg-black/10 disabled:opacity-50 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      busyMemberActionsResolved.changingRole ||
+                      !canConfirmOwnerTransfer ||
+                      !onTransferGroupOwner ||
+                      !selectedSuccessorId
+                    }
+                    onClick={() => {
+                      void (async () => {
+                        if (!onTransferGroupOwner || !selectedSuccessorId) return;
+                        try {
+                          await onTransferGroupOwner(selectedSuccessorId, currentOwnerNewRole);
+                          setTransferOwnerOpen(false);
+                        } catch {
+                          /* lỗi đã toast ở ChatPage */
+                        }
+                      })();
+                    }}
+                    className="rounded-lg bg-[#0068ff] px-6 py-2.5 text-[15px] font-bold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {busyMemberActionsResolved.changingRole ? 'Đang xử lý…' : 'Chuyển quyền'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

@@ -10,6 +10,8 @@ interface ChatState {
   replyingTo: IMessage | null;
   /** Tăng khi socket báo thay đổi nhóm; ChatPage refetch members/tasks/polls/requests (không cần F5). */
   groupBoardRefreshTickByConversationId: Record<string, number>;
+  /** Thành viên đã rời/bị kick (socket) — lọc khỏi danh sách UI realtime. */
+  removedGroupMemberIdsByConversationId: Record<string, string[]>;
   /** Tin cũ hơn mốc này không hiển thị (member mới / vào lại sau kick). */
   messageJoinCutoffMsByConversation: Record<string, number>;
 }
@@ -21,6 +23,7 @@ const initialState: ChatState = {
   typingUsers: {},
   replyingTo: null,
   groupBoardRefreshTickByConversationId: {},
+  removedGroupMemberIdsByConversationId: {},
   messageJoinCutoffMsByConversation: {},
 };
 
@@ -260,6 +263,25 @@ const chatSlice = createSlice({
       state.groupBoardRefreshTickByConversationId[id] = prev + 1;
     },
 
+    markGroupMemberRemovedRealtime: (
+      state,
+      action: PayloadAction<{ conversationId: string; userId: string }>,
+    ) => {
+      const cid = String(action.payload.conversationId ?? '').trim();
+      const uid = String(action.payload.userId ?? '').trim();
+      if (!cid || !uid) return;
+      const prev = state.removedGroupMemberIdsByConversationId[cid] ?? [];
+      if (!prev.includes(uid)) {
+        state.removedGroupMemberIdsByConversationId[cid] = [...prev, uid];
+      }
+    },
+
+    resetRemovedGroupMembersRealtime: (state, action: PayloadAction<string>) => {
+      const cid = String(action.payload ?? '').trim();
+      if (!cid) return;
+      delete state.removedGroupMemberIdsByConversationId[cid];
+    },
+
     setMessageJoinCutoff: (
       state,
       action: PayloadAction<{ conversationId: string; minCreatedAtMs: number | null }>,
@@ -302,6 +324,8 @@ export const {
   setReplyingTo,
   clearReplyingTo,
   bumpGroupBoardRefresh,
+  markGroupMemberRemovedRealtime,
+  resetRemovedGroupMembersRealtime,
   setMessageJoinCutoff,
   clearConversationMessages,
 } = chatSlice.actions;
