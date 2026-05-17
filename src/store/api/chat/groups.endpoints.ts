@@ -9,6 +9,7 @@ import {
 import type {
   AddMembersRequest,
   ChangeMemberRoleRequest,
+  TransferGroupOwnerRequest,
   UpdateGroupRequest,
   UpdateGroupSettingsRequest,
 } from '@/store/api/chat/types';
@@ -123,6 +124,14 @@ export function buildGroupsEndpoints(builder: ChatEndpointBuilder) {
       query: ({ groupId, userId, ...body }) => ({
         url: `/chat/groups/${groupId}/members/${userId}/role`,
         method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['Conversations'],
+    }),
+    transferGroupOwner: builder.mutation<ApiSuccessResponse<unknown>, TransferGroupOwnerRequest>({
+      query: ({ groupId, ...body }) => ({
+        url: `/chat/groups/${groupId}/transfer-owner`,
+        method: 'POST',
         body,
       }),
       invalidatesTags: ['Conversations'],
