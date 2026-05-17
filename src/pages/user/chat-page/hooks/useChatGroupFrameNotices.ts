@@ -124,6 +124,19 @@ export function useChatGroupFrameNotices({
         if (kind === 'message_pinned' || kind === 'message_unpinned') {
           return;
         }
+        // Đã có pill system trong khung chat — không banner trùng.
+        if (
+          kind === 'group_admin_promoted' ||
+          kind === 'group_admin_demoted' ||
+          kind === 'group_owner_transferred' ||
+          kind === 'group_owner_assigned' ||
+          kind === 'group_member_invited' ||
+          kind === 'group_member_joined' ||
+          kind === 'group_member_left' ||
+          kind === 'group_member_removed'
+        ) {
+          return;
+        }
         const atIso = String(obj?.createdAt ?? msg.createdAt ?? new Date().toISOString());
 
         // Human-friendly preview line (reuse the same wording as sidebar/system message renderer)
@@ -229,10 +242,6 @@ export function useChatGroupFrameNotices({
 
     const onRoleChanged = (data: unknown) => {
       if (!isActive(data)) return;
-      const d = data as { userId?: string };
-      dedupedNotice(`group:role:${String(d?.userId ?? '')}`, 'Vai trò thành viên đã thay đổi', {
-        variant: 'task_assigned',
-      });
       void fetchGroupMembers(String(activeConversationIdRef.current));
     };
 
