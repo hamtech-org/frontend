@@ -126,9 +126,10 @@ export default function ChatPage() {
       resolveGroupMemberRole({
         userId: currentUserId,
         members: groupMembers,
+        conversationLeaderId: activeConversation?.leaderId,
         conversationCreatorId: activeConversation?.creatorId,
       }),
-    [currentUserId, groupMembers, activeConversation?.creatorId],
+    [currentUserId, groupMembers, activeConversation?.leaderId, activeConversation?.creatorId],
   );
 
   const { state: modalState, actions: modalActions } = useChatModalController();
@@ -529,7 +530,9 @@ export default function ChatPage() {
       }}
       onLeaveGroup={groupController.handleLeaveGroup}
       onDeleteGroup={groupController.handleDeleteGroup}
-      onTransferGroupOwner={(userId) => void groupController.handleTransferGroupOwner(userId)}
+      onTransferGroupOwner={(userId, currentOwnerNewRole) =>
+        void groupController.handleTransferGroupOwner(userId, currentOwnerNewRole)
+      }
       onOpenMemberModal={() => {}}
       currentUserRole={currentUserRole}
       currentUserId={currentUserId}
@@ -539,6 +542,7 @@ export default function ChatPage() {
       onRejectMember={groupController.handleRejectRequest}
       onKickMember={groupController.handleKickMember}
       onDemoteAdminToMember={groupController.handleDemoteAdminToMember}
+      onPromoteMemberToAdmin={groupController.handlePromoteMemberToAdmin}
       busyMemberActions={{
         approving: groupActionLoading.approveRequest,
         rejecting: groupActionLoading.rejectRequest,
