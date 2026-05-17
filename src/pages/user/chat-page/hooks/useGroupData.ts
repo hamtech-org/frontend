@@ -89,18 +89,24 @@ export function useGroupData({
       : [],
   );
 
-  const fetchGroupMembers = useCallback(async (groupId: string) => {
-    setGroupLoading((prev) => ({ ...prev, members: true }));
-    try {
-      const res = await groupApi.getMembers(groupId);
-      setGroupMembers(filterGroupMembersExcludingRemoved(groupId, res.data.data ?? []));
-    } catch (err) {
-      console.error('[fetchGroupMembers] Error:', err);
-      setGroupMembers([]);
-    } finally {
-      setGroupLoading((prev) => ({ ...prev, members: false }));
-    }
-  }, []);
+  const fetchGroupMembers = useCallback(
+    async (groupId: string, _options?: { force?: boolean }): Promise<GroupMember[]> => {
+      setGroupLoading((prev) => ({ ...prev, members: true }));
+      try {
+        const res = await groupApi.getMembers(groupId);
+        const members = filterGroupMembersExcludingRemoved(groupId, res.data.data ?? []);
+        setGroupMembers(members);
+        return members;
+      } catch (err) {
+        console.error('[fetchGroupMembers] Error:', err);
+        setGroupMembers([]);
+        return [];
+      } finally {
+        setGroupLoading((prev) => ({ ...prev, members: false }));
+      }
+    },
+    [],
+  );
 
   const fetchGroupRequests = useCallback(async (groupId: string) => {
     setGroupLoading((prev) => ({ ...prev, requests: true }));
