@@ -15,7 +15,7 @@ export type ChatFrameNotice = {
 interface UseChatGroupFrameNoticesParams {
   isConnected: boolean;
   activeConversationId: string | null;
-  fetchGroupMembers: (groupId: string) => Promise<void>;
+  fetchGroupMembers: (groupId: string, options?: { force?: boolean }) => Promise<unknown>;
   fetchGroupRequests: (groupId: string) => Promise<void>;
   fetchGroupPolls: (groupId: string) => Promise<void>;
   fetchGroupTasks: (groupId: string) => Promise<void>;
