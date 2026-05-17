@@ -29,7 +29,7 @@ interface UseChatRealtimeEventsParams {
   activeConversationId: string | null;
   setActivePollId: (pollId: string) => void;
   setShowPollVoteModal: (open: boolean) => void;
-  fetchGroupMembers: (groupId: string) => Promise<void>;
+  fetchGroupMembers: (groupId: string, options?: { force?: boolean }) => Promise<unknown>;
   patchMessageInCache: (
     conversationId: string,
     messageId: string,
