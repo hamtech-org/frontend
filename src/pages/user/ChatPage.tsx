@@ -321,6 +321,7 @@ export default function ChatPage() {
     dispatch,
     isConnected,
     activeConversationId,
+    currentUserId,
     setActivePollId: modalActions.setActivePollId,
     setShowPollVoteModal: modalActions.setShowPollVoteModal,
     fetchGroupMembers,
