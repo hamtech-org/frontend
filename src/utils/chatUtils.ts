@@ -245,6 +245,39 @@ export function extractFirstHttpUrl(content: string): string | null {
   return m ? m[0] : null;
 }
 
+/** Câu hỏi bình chọn từ tin system `poll_created` (bảng tin / ghim). */
+export function pollQuestionFromPinnedMessage(
+  msg: Pick<IMessage, 'content' | 'type'>,
+): string | null {
+  const raw = String(msg.content ?? '').trim();
+  if (!raw.startsWith('{')) return null;
+  try {
+    const obj = JSON.parse(raw) as { kind?: string; poll?: { question?: string } };
+    if (obj?.kind !== 'poll_created') return null;
+    const q = String(obj?.poll?.question ?? '').trim();
+    return q || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Một dòng preview cho thẻ tin ghim trong bảng tin nhóm — không hiển thị JSON thô. */
+export function bulletinPinnedPreviewLine(msg: IMessage, viewerUserId?: string): string {
+  const pollQ = pollQuestionFromPinnedMessage(msg);
+  if (pollQ) return pollQ;
+  const raw = String(msg.content ?? '').trim();
+  if (raw.startsWith('{')) {
+    const line = lastMessageLineFromSystemJson(raw, {
+      currentUserId: viewerUserId,
+      senderId: msg.senderId,
+      senderDisplayName: msg.senderDisplayName,
+    });
+    if (line) return line;
+    return 'Thông báo nhóm';
+  }
+  return formatPinnedMessagePreviewLine(msg);
+}
+
 export function formatPinnedMessagePreviewLine(msg: IMessage): string {
   if (msg.isRecalled) return 'Tin nhắn đã được thu hồi';
   if (msg.isDeleted) return 'Tin nhắn đã xóa';
