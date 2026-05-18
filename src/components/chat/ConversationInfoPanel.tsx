@@ -44,6 +44,7 @@ import {
   type MuteNotificationsApplyPayload,
 } from '@/components/chat/MuteNotificationsModal';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
+import { BulletinPinnedMessageCard } from '@/components/chat/BulletinPinnedMessageCard';
 import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-toastify';
@@ -1159,37 +1160,20 @@ export function ConversationInfoPanel({
                     ) : (
                       <div className="space-y-2">
                         {pinnedMessages.map((m) => {
-                          const who = String(m.senderDisplayName ?? '').trim() || 'Thành viên';
                           const when = formatBulletinFooterTime(m.createdAt);
-                          const content = String(m.content ?? '').trim();
-                          const preview =
-                            content.length > 180 ? `${content.slice(0, 180)}…` : content;
                           return (
-                            <button
+                            <BulletinPinnedMessageCard
                               key={m.messageId}
-                              type="button"
+                              msg={m}
+                              when={when}
+                              viewerUserId={effectiveUserId}
                               onClick={() => {
                                 setBulletinModalMode(null);
                                 setBulletinAddOpen(false);
                                 setShowConversationSearch(false);
                                 onJumpToMessage?.(String(m.messageId));
                               }}
-                              className="w-full rounded-2xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:bg-black/[0.03] dark:border-white/10 dark:bg-[#242424] dark:hover:bg-white/[0.04]"
-                              title="Nhấn để mở tin ghim"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Pin className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
-                                <p className="min-w-0 flex-1 truncate text-[13px] font-bold text-foreground">
-                                  {who}
-                                </p>
-                                <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
-                                  {when || '—'}
-                                </span>
-                              </div>
-                              <div className="mt-2 text-[13px] font-medium leading-snug text-foreground/85 whitespace-pre-line">
-                                {preview || '…'}
-                              </div>
-                            </button>
+                            />
                           );
                         })}
                       </div>
@@ -1216,38 +1200,20 @@ export function ConversationInfoPanel({
                             </div>
                             <div className="space-y-2">
                               {pinnedMessages.map((m) => {
-                                const who =
-                                  String(m.senderDisplayName ?? '').trim() || 'Thành viên';
                                 const when = formatBulletinFooterTime(m.createdAt);
-                                const content = String(m.content ?? '').trim();
-                                const preview =
-                                  content.length > 180 ? `${content.slice(0, 180)}…` : content;
                                 return (
-                                  <button
+                                  <BulletinPinnedMessageCard
                                     key={m.messageId}
-                                    type="button"
+                                    msg={m}
+                                    when={when}
+                                    viewerUserId={effectiveUserId}
                                     onClick={() => {
                                       setBulletinModalMode(null);
                                       setBulletinAddOpen(false);
                                       setShowConversationSearch(false);
                                       onJumpToMessage?.(String(m.messageId));
                                     }}
-                                    className="w-full rounded-2xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:bg-black/[0.03] dark:border-white/10 dark:bg-[#242424] dark:hover:bg-white/[0.04]"
-                                    title="Nhấn để mở tin ghim"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <Pin className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
-                                      <p className="min-w-0 flex-1 truncate text-[13px] font-bold text-foreground">
-                                        {who}
-                                      </p>
-                                      <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
-                                        {when || '—'}
-                                      </span>
-                                    </div>
-                                    <div className="mt-2 whitespace-pre-line text-[13px] font-medium leading-snug text-foreground/85">
-                                      {preview || '…'}
-                                    </div>
-                                  </button>
+                                  />
                                 );
                               })}
                             </div>
