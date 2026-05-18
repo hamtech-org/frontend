@@ -49,31 +49,17 @@ import { GroupJoinLinkCard } from '@/components/chat/GroupJoinLinkCard';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { MediaLightbox } from '@/components/chat/MediaLightbox';
+import { ChatFileMessageCard } from '@/components/chat/ChatFileMessageCard';
 import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMenu';
 import { ForwardMediaPickerModal } from '@/components/chat/ForwardMediaPickerModal';
 import { formatFileSize } from '@/utils/fileHelper';
+import { downloadAuthedChatMedia } from '@/utils/chatMediaDownload';
 import { toast } from 'react-toastify';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 
 async function downloadAuthedFile(url: string, filename: string): Promise<boolean> {
-  try {
-    const token = localStorage.getItem('accessToken');
-    const res = await fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) return false;
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = objectUrl;
-    a.download = filename || 'file';
-    a.click();
-    URL.revokeObjectURL(objectUrl);
-    return true;
-  } catch {
-    return false;
-  }
+  return downloadAuthedChatMedia(url, filename);
 }
 
 const CHAT_URL_REGEX = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
@@ -504,7 +490,7 @@ export function ChatMessageList({
   const [hiddenReactPopupId, setHiddenReactPopupId] = useState<string | null>(null);
   const [mediaLightbox, setMediaLightbox] = useState<{
     src: string;
-    kind: 'image' | 'video';
+    kind: 'image' | 'video' | 'file';
   } | null>(null);
   /** Tin nhắn đã bấm tải file về máy trong phiên (hiện “Đã có trên máy”). */
   const [downloadedMediaIds, setDownloadedMediaIds] = useState<Set<string>>(() => new Set());
@@ -719,7 +705,7 @@ export function ChatMessageList({
     x: number;
     y: number;
     msg: IMessage;
-    kind: 'image' | 'video';
+    kind: 'image' | 'video' | 'file';
   } | null>(null);
   const [forwardMediaMessage, setForwardMediaMessage] = useState<IMessage | null>(null);
 
@@ -1872,13 +1858,7 @@ export function ChatMessageList({
                             <div
                               className={`w-full ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
                             >
-                              <div
-                                className={`w-full overflow-hidden rounded-2xl border shadow-md ${
-                                  isMe
-                                    ? 'border-blue-200/50 bg-blue-50/90 dark:border-blue-800/50 dark:bg-blue-950/35'
-                                    : 'border-black/10 bg-slate-50/95 dark:border-white/10 dark:bg-zinc-900/50'
-                                }`}
-                              >
+                              <div className="w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900">
                                 <button
                                   type="button"
                                   aria-label="Xem ảnh lớn"
@@ -1913,13 +1893,7 @@ export function ChatMessageList({
                             <div
                               className={`w-full min-w-0 ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
                             >
-                              <div
-                                className={`w-full overflow-hidden rounded-2xl border shadow-md ${
-                                  isMe
-                                    ? 'border-blue-200/50 bg-blue-50/90 dark:border-blue-800/50 dark:bg-blue-950/35'
-                                    : 'border-black/10 bg-slate-50/95 dark:border-white/10 dark:bg-zinc-900/50'
-                                }`}
-                              >
+                              <div className="w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900">
                                 <div
                                   className="relative w-full aspect-video max-h-[min(78vh,640px)] bg-zinc-950"
                                   onContextMenuCapture={(e) => {
@@ -2019,69 +1993,41 @@ export function ChatMessageList({
                             </div>
                           )}
                           {msg.type === 'file' && msg.mediaUrl && (
-                            <div
-                              className={`flex w-full max-w-[min(100%,20rem)] items-center gap-2 rounded-lg px-2.5 py-2 min-w-0 ${
-                                showCaption || msg.replyToDetails ? 'mb-1.5' : ''
-                              } ${
-                                isMe
-                                  ? 'bg-black/8 dark:bg-white/10'
-                                  : 'bg-black/6 dark:bg-white/10 border border-black/8 dark:border-white/10'
-                              }`}
-                            >
-                              <FileText
-                                className="w-8 h-8 shrink-0 text-muted-foreground"
-                                aria-hidden
+                            <div className={`w-full ${msg.replyToDetails ? 'mb-1.5' : ''}`}>
+                              <ChatFileMessageCard
+                                msg={msg}
+                                mediaSavedOnDevice={mediaSavedOnDevice}
+                                showCaption={showCaption}
+                                captionBlock={
+                                  <LinkifiedChatText text={msg.content ?? ''} isMe={false} />
+                                }
+                                onOpen={() => {
+                                  const url = msg.mediaUrl as string;
+                                  window.open(url, '_blank', 'noopener,noreferrer');
+                                }}
+                                onOpenDownloadsHint={openDownloadsFolderHint}
+                                onDownload={() =>
+                                  void handleMediaDownload(
+                                    msg.messageId,
+                                    msg.mediaUrl as string,
+                                    msg.mediaOriginalName?.trim() || 'file',
+                                  )
+                                }
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMediaContextMenu({
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                    msg,
+                                    kind: 'file',
+                                  });
+                                  onActionMenuMsgIdChange(null);
+                                }}
                               />
-                              <div className="min-w-0 flex-1">
-                                <p
-                                  className="text-xs font-semibold text-foreground truncate"
-                                  title={msg.mediaOriginalName?.trim() || 'Tệp đính kèm'}
-                                >
-                                  {msg.mediaOriginalName?.trim() || 'Tệp đính kèm'}
-                                </p>
-                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                  {msg.mediaSize != null && msg.mediaSize > 0 ? (
-                                    <span className="text-[10px] text-muted-foreground">
-                                      {formatFileSize(msg.mediaSize)}
-                                    </span>
-                                  ) : null}
-                                  {mediaSavedOnDevice && (
-                                    <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                                      <CircleCheck className="w-3 h-3 shrink-0" aria-hidden />
-                                      Đã có trên máy
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-0.5 shrink-0">
-                                <button
-                                  type="button"
-                                  aria-label="Gợi ý thư mục tải xuống"
-                                  title="Thư mục Tải xuống"
-                                  onClick={() => openDownloadsFolderHint()}
-                                  className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-                                >
-                                  <FolderOpen className="w-4 h-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  aria-label="Tải xuống"
-                                  title="Tải xuống"
-                                  onClick={() =>
-                                    void handleMediaDownload(
-                                      msg.messageId,
-                                      msg.mediaUrl as string,
-                                      msg.mediaOriginalName?.trim() || 'file',
-                                    )
-                                  }
-                                  className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-                                >
-                                  <Download className="w-4 h-4" />
-                                </button>
-                              </div>
                             </div>
                           )}
-                          {isMediaMsg && showCaption && (
+                          {isMediaMsg && showCaption && msg.type !== 'file' && (
                             <div
                               className={`mt-0.5 w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'} px-2.5 py-1.5 rounded-lg text-[13px] break-words whitespace-pre-wrap ${
                                 isMe
@@ -2618,11 +2564,14 @@ export function ChatMessageList({
               onSaveToDevice={() =>
                 void handleMediaDownload(
                   mediaContextMenu.msg.messageId,
-                  mediaContextMenu.kind === 'video'
-                    ? (mediaContextMenu.msg.mediaUrl as string)
-                    : imageDisplaySrc(mediaContextMenu.msg),
+                  (mediaContextMenu.msg.mediaUrl as string) ||
+                    imageDisplaySrc(mediaContextMenu.msg),
                   mediaContextMenu.msg.mediaOriginalName?.trim() ||
-                    (mediaContextMenu.kind === 'video' ? 'video.mp4' : 'image.jpg'),
+                    (mediaContextMenu.kind === 'video'
+                      ? 'video.mp4'
+                      : mediaContextMenu.kind === 'file'
+                        ? 'file'
+                        : 'image.jpg'),
                 )
               }
               onTogglePin={() => void onTogglePin(mediaContextMenu.msg)}
