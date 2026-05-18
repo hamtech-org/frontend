@@ -45,7 +45,6 @@ import {
 } from '@/components/chat/MuteNotificationsModal';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
 import { BulletinPinnedMessageCard } from '@/components/chat/BulletinPinnedMessageCard';
-import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-toastify';
 import { MIN_GROUP_MEMBERS } from '@/constants/group.constants';
@@ -78,6 +77,18 @@ function formatBulletinFooterTime(iso?: string) {
   const date = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const time = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
   return `${date} lúc ${time}`;
+}
+
+/** Hạn công việc trên thẻ bảng tin — đồng bộ mobile `renderTaskCards`. */
+function formatBulletinTaskDue(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function SuccessorPickAvatar({ url, label }: { url?: string | null; label: string }) {
