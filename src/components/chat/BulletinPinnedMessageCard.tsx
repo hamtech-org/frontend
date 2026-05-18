@@ -2,6 +2,8 @@ import type { LucideIcon } from 'lucide-react';
 import { BarChart2, FileText, Image as ImageIcon, MessageSquare, Pin, Video } from 'lucide-react';
 import type { IMessage } from '@/types/chat.types';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
+import { ChatFileTypeBadge } from '@/components/chat/ChatFileTypeBadge';
+import { resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 import {
   bulletinPinnedPreviewLine,
   mediaThumbSrcForPinnedRow,
@@ -46,6 +48,7 @@ export function BulletinPinnedMessageCard({
   const showPreview = shouldShowPinnedBulletinPreview(kind, title, preview);
   const thumb = kind === 'image' || kind === 'video' ? mediaThumbSrcForPinnedRow(msg) : null;
   const meta = pinnedBulletinMetaLine(who, when);
+  const fileMeta = kind === 'file' ? resolveChatFileBubbleMeta(msg) : null;
 
   return (
     <button
@@ -55,13 +58,21 @@ export function BulletinPinnedMessageCard({
       title="Nhấn để mở tin ghim"
     >
       <div className="flex items-start gap-2.5">
-        <span className="relative h-9 w-9 shrink-0">
-          <span
-            className="flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition-transform group-hover:scale-105"
-            style={{ backgroundColor: accent }}
-          >
-            <Icon className="h-[18px] w-[18px] text-white" strokeWidth={2} aria-hidden />
-          </span>
+        <span className={`relative shrink-0 ${kind === 'file' ? 'h-10 w-9' : 'h-9 w-9'}`}>
+          {kind === 'file' && fileMeta ? (
+            <ChatFileTypeBadge
+              fileName={fileMeta.fileName}
+              mimeType={fileMeta.mimeType}
+              className="shadow-sm transition-transform group-hover:scale-105"
+            />
+          ) : (
+            <span
+              className="flex h-9 w-9 items-center justify-center rounded-full shadow-sm transition-transform group-hover:scale-105"
+              style={{ backgroundColor: accent }}
+            >
+              <Icon className="h-[18px] w-[18px] text-white" strokeWidth={2} aria-hidden />
+            </span>
+          )}
           <span
             className="absolute -left-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-black/[0.06] bg-white dark:border-white/10 dark:bg-[#242424]"
             aria-hidden
