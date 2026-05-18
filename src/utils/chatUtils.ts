@@ -1,5 +1,8 @@
 import type { IConversation, IMessage, MessageType, TypingUserEntry } from '@/types/chat.types';
-import { formatGroupSystemChatLine } from '@/utils/groupSystemMessage';
+import {
+  formatGroupSystemChatLine,
+  formatLegacyGroupProfileSystemLine,
+} from '@/utils/groupSystemMessage';
 import { formatGroupJoinLinkListPreview } from '@/utils/groupJoinLinkMessage';
 
 export function decodeJwtUserId(token: string | null): string | null {
@@ -50,9 +53,16 @@ export function lastMessageLineFromSystemJson(
   ctx: SystemJsonPreviewCtx,
 ): string | null {
   const trimmed = (raw ?? '').trim();
-  if (!trimmed.startsWith('{')) return null;
-  const groupLine = formatGroupSystemChatLine(trimmed, ctx.currentUserId);
+  if (!trimmed) return null;
+  const groupLine =
+    formatGroupSystemChatLine(trimmed, ctx.currentUserId) ??
+    formatLegacyGroupProfileSystemLine(trimmed, {
+      senderId: ctx.senderId,
+      currentUserId: ctx.currentUserId,
+      senderDisplayName: ctx.senderDisplayName,
+    });
   if (groupLine) return groupLine;
+  if (!trimmed.startsWith('{')) return null;
   try {
     const obj = JSON.parse(trimmed) as Record<string, unknown> & {
       kind?: string;
