@@ -490,7 +490,7 @@ export function ChatMessageList({
   const [hiddenReactPopupId, setHiddenReactPopupId] = useState<string | null>(null);
   const [mediaLightbox, setMediaLightbox] = useState<{
     src: string;
-    kind: 'image' | 'video' | 'file';
+    kind: 'image' | 'video';
   } | null>(null);
   /** Tin nhắn đã bấm tải file về máy trong phiên (hiện “Đã có trên máy”). */
   const [downloadedMediaIds, setDownloadedMediaIds] = useState<Set<string>>(() => new Set());

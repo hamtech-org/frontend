@@ -156,7 +156,6 @@ export default function ChatPage() {
 
   const pinController = useMessagePinController({
     dispatch,
-    activeConversationId,
     activeConversation: activeConversationForPermissions,
     currentUserId,
     groupMembers,

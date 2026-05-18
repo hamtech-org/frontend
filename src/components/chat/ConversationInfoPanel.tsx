@@ -20,7 +20,7 @@ import {
   X,
   Trash2,
 } from 'lucide-react';
-import type { IConversation, IMessage } from '@/types/chat.types';
+import type { IConversation, IMessage, MessageType } from '@/types/chat.types';
 import type {
   GroupMember,
   GroupMemberRole,
@@ -140,7 +140,7 @@ type MessageGalleryItem = {
   messageId: string;
   senderId: string;
   senderDisplayName: string | null;
-  type: string;
+  type: MessageType;
   content: string;
   mediaUrl: string | null;
   mediaType: string | null;

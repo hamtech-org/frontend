@@ -13,7 +13,6 @@ import { canUserPinMessageInGroup } from '@/utils/groupConversationPermissions';
 
 interface UseMessagePinControllerParams {
   dispatch: AppDispatch;
-  activeConversationId: string | null;
   activeConversation?: IConversation;
   currentUserId: string;
   groupMembers: GroupMember[];
@@ -30,7 +29,6 @@ interface UseMessagePinControllerParams {
 
 export function useMessagePinController({
   dispatch,
-  activeConversationId,
   activeConversation,
   currentUserId,
   groupMembers,
