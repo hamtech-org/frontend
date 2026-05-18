@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { toast } from 'react-toastify';
 import { chatApi } from '@/store/api/chatApi';
-import { socketService } from '@/services/socket';
 import { groupApi } from '@/services/chat/groupApi';
 import { apiClient } from '@/services/api';
 import type { IMessage, IConversation } from '@/types/chat.types';
@@ -286,41 +285,7 @@ export function useGroupConversationController({
       modalActions.setShowEditGroupModal(false);
       modalActions.setEditGroupAvatarFile(null);
       toast.success('Cập nhật nhóm thành công');
-      const now = new Date();
-      const content =
-        previousName && previousName !== nextName
-          ? `Tên nhóm đã đổi từ '${previousName}' thành '${nextName}'`
-          : `${currentUserDisplayName || 'Bạn'} đã đổi tên nhóm thành '${nextName}'`;
-      const systemMsg: IMessage = {
-        messageId: `system-${Date.now()}`,
-        conversationId: activeConversationId,
-        senderId: 'system',
-        senderDisplayName: 'Hệ thống',
-        type: 'system' as IMessage['type'],
-        content,
-        mediaUrl: null,
-        thumbnailUrl: null,
-        replyTo: null,
-        replyToDetails: null,
-        isPinned: false,
-        isEdited: false,
-        isRecalled: false,
-        isDeleted: false,
-        reactions: {},
-        status: 'sent',
-        createdAt: now.toISOString(),
-      };
-      dispatch(
-        chatApi.util.updateQueryData(
-          'getMessages',
-          { conversationId: activeConversationId },
-          (draft) => {
-            if (!draft.data) draft.data = [];
-            draft.data.push(systemMsg);
-          },
-        ),
-      );
-      socketService.emit('message:new', systemMsg);
+      void fetchGroupMembers(activeConversationId, { force: true });
     } catch (error) {
       dispatch(
         chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
@@ -342,9 +307,11 @@ export function useGroupConversationController({
     editGroupAvatarFile,
     uploadMedia,
     dispatch,
+    currentUserId,
     currentUserDisplayName,
     modalActions,
     setActionBusy,
+    fetchGroupMembers,
   ]);
 
   const handleDeleteGroup = useCallback(async () => {
@@ -1378,11 +1345,14 @@ export function useGroupConversationController({
       try {
         const res = await groupApi.removeMember(activeConversationId, userId);
         const count = (res.data?.data as { memberCount?: number } | null)?.memberCount;
-        if (typeof count === 'number' && Number.isFinite(count)) {
-          syncGroupMemberCount?.(activeConversationId, count);
-        } else {
-          syncGroupMemberCount?.(activeConversationId, before.length - 1);
-        }
+        const nextMemberCount =
+          typeof count === 'number' && Number.isFinite(count)
+            ? Math.max(0, count)
+            : Math.max(0, before.length - 1);
+        patchGroupProfileInConversationsCache(dispatch, activeConversationId, {
+          memberCount: nextMemberCount,
+        });
+        syncGroupMemberCount?.(activeConversationId, nextMemberCount);
         await Promise.all([
           fetchGroupMembers(activeConversationId, { force: true }),
           refetchConversations?.() ?? Promise.resolve(),
