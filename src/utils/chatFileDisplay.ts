@@ -87,20 +87,55 @@ function inferFileNameFromMime(mime: string | null | undefined): string | null {
   return null;
 }
 
-/** Tên file hiển thị cho ghim / bảng tin — ưu tiên `mediaOriginalName`, không dùng placeholder. */
+export function repairUtf8Mojibake(text: string): string {
+  const raw = text.trim();
+  if (!raw || !/[ÃÂÄÆÐÑØÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ]/.test(raw)) {
+    return raw;
+  }
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) {
+    bytes[i] = raw.charCodeAt(i) & 0xff;
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return raw;
+  }
+}
+
+export function normalizeChatMediaMime(
+  mediaType?: string | null,
+  messageType?: string | null,
+): string | null {
+  const raw = (mediaType ?? '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw.includes('/')) return raw;
+  if (raw === 'file' || raw === 'image' || raw === 'video' || raw === 'audio') return null;
+  if (messageType && raw === messageType) return null;
+  return raw;
+}
+
+/** Metadata file — một nguồn cho ghim, gallery, bubble. */
+export function resolveChatFileBubbleMeta(
+  msg: Pick<IMessage, 'type' | 'mediaOriginalName' | 'mediaType'>,
+): {
+  fileName: string;
+  mimeType: string | null;
+  typeLabel: string;
+  accent: string;
+} {
+  const mimeType = normalizeChatMediaMime(msg.mediaType, msg.type);
+  const rawName = repairUtf8Mojibake(msg.mediaOriginalName?.trim() ?? '');
+  const fileName = rawName || inferFileNameFromMime(mimeType) || 'Tệp đính kèm';
+  const typeLabel = chatFileTypeLabel(fileName, mimeType);
+  const accent = chatFileTypeAccent(fileName, mimeType);
+  return { fileName, mimeType, typeLabel, accent };
+}
+
+/** Tên file hiển thị cho ghim / bảng tin — dùng chung logic thẻ file trong chat. */
 export function pinnedChatFileDisplayName(
   msg: Pick<IMessage, 'type' | 'content' | 'mediaOriginalName' | 'mediaType'>,
 ): string {
-  const server = msg.mediaOriginalName?.trim();
-  if (server && server !== '[File]') return server;
-  const content = (msg.content ?? '').trim();
-  if (msg.type === 'file' && content && content !== '[File]' && !content.startsWith('{')) {
-    return content;
-  }
-  const inferred = inferFileNameFromMime(msg.mediaType);
-  if (inferred) {
-    const base = inferred.split('/').pop() ?? inferred;
-    return base;
-  }
-  return 'Tệp tin';
+  if (msg.type !== 'file') return 'Tệp tin';
+  return resolveChatFileBubbleMeta(msg).fileName;
 }
