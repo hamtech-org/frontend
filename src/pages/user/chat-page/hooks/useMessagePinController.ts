@@ -120,20 +120,12 @@ export function useMessagePinController({
           }));
           pushLocalPinSystemLine({ conversationId: cid, actorLabel, pinned: false });
         } else {
-          const sameConv = activeConversationId && cid === activeConversationId;
-          const pinCount = sameConv
-            ? pinnedMessagesOrdered.length
-            : allMessages.filter(
-                (m) => m.conversationId === cid && m.isPinned && !m.isRecalled && !m.isDeleted,
-              ).length;
-          if (pinCount >= MAX_PINNED_PER_CONVERSATION) {
-            if (sameConv && pinnedMessagesOrdered.length >= MAX_PINNED_PER_CONVERSATION) {
-              setPinReplaceIndex(null);
-              setPinLimitModalMsg(msg);
-              setActionMenuMsgId(null);
-              return;
-            }
-            toast.error(`Đã đủ ${MAX_PINNED_PER_CONVERSATION} tin ghim trong cuộc trò chuyện này.`);
+          const visiblePinCount = allMessages.filter(
+            (m) => m.conversationId === cid && Boolean(m.isPinned) && !m.isRecalled && !m.isDeleted,
+          ).length;
+          if (visiblePinCount >= MAX_PINNED_PER_CONVERSATION) {
+            setPinReplaceIndex(null);
+            setPinLimitModalMsg(msg);
             setActionMenuMsgId(null);
             return;
           }
@@ -182,8 +174,6 @@ export function useMessagePinController({
       pushLocalPinSystemLine,
       patchMessageInCache,
       setPinnedMessageOrderByConv,
-      activeConversationId,
-      pinnedMessagesOrdered,
       allMessages,
       activeConversation,
       groupMembers,
