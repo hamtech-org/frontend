@@ -53,7 +53,7 @@ import { ChatFileMessageCard } from '@/components/chat/ChatFileMessageCard';
 import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMenu';
 import { ForwardMediaPickerModal } from '@/components/chat/ForwardMediaPickerModal';
 import { formatFileSize } from '@/utils/fileHelper';
-import { downloadAuthedChatMedia } from '@/utils/chatMediaDownload';
+import { downloadAuthedChatMedia, resolveChatMediaDownloadUrl } from '@/utils/chatMediaDownload';
 import { toast } from 'react-toastify';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
@@ -2002,8 +2002,8 @@ export function ChatMessageList({
                                   <LinkifiedChatText text={msg.content ?? ''} isMe={false} />
                                 }
                                 onOpen={() => {
-                                  const url = msg.mediaUrl as string;
-                                  window.open(url, '_blank', 'noopener,noreferrer');
+                                  const url = resolveChatMediaDownloadUrl(msg.mediaUrl as string);
+                                  if (url) window.open(url, '_blank', 'noopener,noreferrer');
                                 }}
                                 onOpenDownloadsHint={openDownloadsFolderHint}
                                 onDownload={() =>
