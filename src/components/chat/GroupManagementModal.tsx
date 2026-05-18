@@ -1,15 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import {
-  Copy,
-  KeyRound,
-  Link2,
-  Lock,
-  RefreshCw,
-  Share2,
-  HelpCircle,
-  UserPlus,
-  X,
-} from 'lucide-react';
+import { Copy, KeyRound, Link2, Lock, RefreshCw, Share2, HelpCircle, X } from 'lucide-react';
 import { useId } from 'react';
 import { toast } from 'react-toastify';
 import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/PinLimitModal';
@@ -320,23 +310,6 @@ export function GroupManagementModal({
           )}
 
           <motion.div className="px-4 pb-4 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2">
-            {canEdit ? (
-              <button
-                type="button"
-                className="w-full flex items-center gap-3 py-3 text-left text-[14px] font-semibold text-[#0068ff] hover:bg-blue-500/10 dark:hover:bg-blue-500/15 rounded-lg px-2 -mx-2 disabled:opacity-45"
-                disabled={!onNavigateToMembers}
-                onClick={() => {
-                  if (!onNavigateToMembers) {
-                    toast.info('Dùng mục Quản lý thành viên để bổ nhiệm phó nhóm');
-                    return;
-                  }
-                  onNavigateToMembers({ tab: 'list', leadersOnly: false });
-                }}
-              >
-                <UserPlus className="w-5 h-5 shrink-0" />
-                Bổ nhiệm phó nhóm
-              </button>
-            ) : null}
             <button
               type="button"
               className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 disabled:opacity-45"
