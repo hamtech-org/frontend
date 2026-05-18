@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Clock,
   Edit3,
-  File,
   FileText,
   MessageSquare,
   Pin,
@@ -45,9 +44,12 @@ import {
 } from '@/components/chat/MuteNotificationsModal';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
 import { BulletinPinnedMessageCard } from '@/components/chat/BulletinPinnedMessageCard';
+import { BulletinTaskCard } from '@/components/chat/BulletinTaskCard';
+import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-toastify';
 import { MIN_GROUP_MEMBERS } from '@/constants/group.constants';
+import { chatFileTypeAccent, chatFileTypeLabel } from '@/utils/chatFileDisplay';
 import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
 import {
   canUserCreatePollInGroup,
@@ -77,18 +79,6 @@ function formatBulletinFooterTime(iso?: string) {
   const date = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const time = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
   return `${date} lúc ${time}`;
-}
-
-/** Hạn công việc trên thẻ bảng tin — đồng bộ mobile `renderTaskCards`. */
-function formatBulletinTaskDue(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 function SuccessorPickAvatar({ url, label }: { url?: string | null; label: string }) {
@@ -909,6 +899,28 @@ export function ConversationInfoPanel({
     };
   }, [galleryKind, activeConversation?.conversationId]);
 
+  const panelTitle = useMemo(() => {
+    if (showInlineMembers) {
+      return memberLeadersOnly ? 'Trưởng & phó nhóm' : 'Quản lý thành viên';
+    }
+    if (showGroupManagement) return 'Quản lý nhóm';
+    if (showConversationSearch) return 'Tìm kiếm';
+    if (galleryKind === 'media') return 'Ảnh / Video';
+    if (galleryKind === 'file') return 'File';
+    if (galleryKind === 'link') return 'Link';
+    if (bulletinModalMode === 'reminders') return 'Danh sách nhắc hẹn';
+    if (bulletinModalMode === 'notesPolls') return 'Tin ghim & Bình chọn';
+    return `Thông tin ${activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}`;
+  }, [
+    showInlineMembers,
+    memberLeadersOnly,
+    showGroupManagement,
+    showConversationSearch,
+    galleryKind,
+    bulletinModalMode,
+    activeConversation?.type,
+  ]);
+
   return (
     <div className="w-full h-full min-h-0 border-l border-black/5 dark:border-white/5 flex flex-col bg-white dark:bg-[#1a1a1a] overflow-hidden">
       <div className="h-20 px-6 flex items-center justify-between border-b border-black/5 dark:border-white/5 sticky top-0 bg-inherit z-10 shrink-0">
@@ -925,9 +937,7 @@ export function ConversationInfoPanel({
           ) : null}
         </div>
 
-        <div className="min-w-0 flex-1 px-2 text-center font-bold text-lg">
-          Thông tin {activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}
-        </div>
+        <div className="min-w-0 flex-1 px-2 text-center font-bold text-lg">{panelTitle}</div>
 
         <div className="flex min-w-10 justify-end">
           {showRemindersTaskAdd ? (
@@ -1039,6 +1049,8 @@ export function ConversationInfoPanel({
                   if (galleryKind === 'file') {
                     const href = item.mediaUrl || '#';
                     const name = item.mediaOriginalName?.trim() || 'Tập tin';
+                    const typeLabel = chatFileTypeLabel(name, item.mediaType);
+                    const accent = chatFileTypeAccent(name, item.mediaType);
                     return (
                       <a
                         key={item.messageId}
@@ -1047,9 +1059,13 @@ export function ConversationInfoPanel({
                         rel="noopener noreferrer"
                         className="flex items-start gap-3 rounded-xl border border-black/[0.06] bg-white p-3 shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
                       >
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-black/5 dark:bg-white/10">
-                          <File className="h-5 w-5 text-muted-foreground" />
-                        </div>
+                        <span
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[10px] font-extrabold tracking-wide text-white"
+                          style={{ backgroundColor: accent }}
+                          aria-hidden
+                        >
+                          {typeLabel.slice(0, 4)}
+                        </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] font-semibold">{name}</p>
                           <p className="mt-1 text-[11px] text-muted-foreground">
@@ -1115,24 +1131,27 @@ export function ConversationInfoPanel({
                     </p>
                   </div>
                 ) : (
-                  reminderFeedItems.map((item) => (
-                    <BulletinCardRow
-                      key={`${item.kind}-${item.id}`}
-                      item={item}
-                      memberAvatarById={memberAvatarById}
-                      currentUserId={currentUserId}
-                      onVotePoll={onVotePoll}
-                      onOpenPollVote={onOpenPollVote}
-                      onAddPollOption={onAddPollOption}
-                      onClosePoll={onClosePoll}
-                      onTaskJoined={onTaskJoined}
-                      onEditTaskFromBulletin={onEditTaskFromBulletin}
-                      onDeleteTaskFromBulletin={onDeleteTaskFromBulletin}
-                      taskMutating={taskActionBusy}
-                      focusTaskId={focusTaskId}
-                      focusFlashNonce={focusFlashNonce}
-                    />
-                  ))
+                  reminderFeedItems.map((item) => {
+                    if (!item.task) return null;
+                    return (
+                      <BulletinTaskCard
+                        key={`task-${item.id}`}
+                        task={item.task}
+                        creatorName={item.creatorName}
+                        avatarUrl={
+                          item.creatorId ? memberAvatarById.get(item.creatorId) : undefined
+                        }
+                        when={formatBulletinFooterTime(item.createdAt)}
+                        currentUserId={currentUserId}
+                        onTaskJoined={onTaskJoined}
+                        onEdit={onEditTaskFromBulletin}
+                        onDelete={onDeleteTaskFromBulletin}
+                        taskMutating={taskActionBusy}
+                        focusTaskId={focusTaskId}
+                        focusFlashNonce={focusFlashNonce}
+                      />
+                    );
+                  })
                 )}
               </div>
             ) : (
