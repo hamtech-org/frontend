@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { UserPlus, Users, X } from 'lucide-react';
+import { MoreHorizontal, UserMinus, UserPlus, Users, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { apiClient } from '@/services/api';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
@@ -86,6 +86,7 @@ export function MemberManagementModal({
   const [promoteSubmitting, setPromoteSubmitting] = useState(false);
   const [promotePickerOpen, setPromotePickerOpen] = useState(false);
   const [actionMenuUserId, setActionMenuUserId] = useState<string | null>(null);
+  const [friendActionUserIds, setFriendActionUserIds] = useState<Record<string, true>>({});
   const tabBtnBase =
     'inline-flex h-10 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-3 text-[12px] font-bold transition-all';
   const tabBtnActive = 'bg-blue-600 text-white shadow-md shadow-blue-600/20';
@@ -187,9 +188,15 @@ export function MemberManagementModal({
   const adminSlotsFull = useMemo(() => isGroupAdminSlotsFull(activeMembers), [activeMembers]);
 
   const memberTabs = useMemo(() => {
-    if (leadersOnly || variant === 'inline') return ['list'] as const;
+    if (leadersOnly) return ['list'] as const;
     return ['list', ...(canModerate ? (['pending'] as const) : [])] as const;
-  }, [canModerate, leadersOnly, variant]);
+  }, [canModerate, leadersOnly]);
+
+  useEffect(() => {
+    if (!(memberTabs as readonly MemberTab[]).includes(memberTab)) {
+      onMemberTabChange('list');
+    }
+  }, [memberTab, memberTabs, onMemberTabChange]);
 
   useEffect(() => {
     if (!actionMenuUserId) return;
@@ -283,18 +290,53 @@ export function MemberManagementModal({
   const addFriend = async (userId: string) => {
     try {
       await apiClient.post('/contacts/friends/request', { userId });
+      setFriendActionUserIds((p) => ({ ...p, [userId]: true }));
       toast.success('Đã kết bạn');
     } catch (e: unknown) {
       const status = (e as { response?: { status?: number } })?.response?.status;
+      if (status === 409) setFriendActionUserIds((p) => ({ ...p, [userId]: true }));
       toast.error(status === 409 ? 'Đã kết bạn' : 'Không thể kết bạn');
     }
   };
+
+  const renderMemberTabBar = (className: string) => (
+    <div className={className}>
+      {memberTabs.map((tab) => (
+        <button
+          key={tab}
+          type="button"
+          onClick={() => onMemberTabChange(tab)}
+          className={`${tabBtnBase} ${memberTab === tab ? tabBtnActive : tabBtnIdle}`}
+        >
+          {tab === 'list' ? (
+            <>
+              <Users className="w-3.5 h-3.5" /> Thành viên ({members.length})
+            </>
+          ) : (
+            <>
+              <UserPlus className="w-3.5 h-3.5" /> Chờ duyệt{' '}
+              {requests.length > 0 && (
+                <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 leading-none">
+                  {requests.length}
+                </span>
+              )}
+            </>
+          )}
+        </button>
+      ))}
+    </div>
+  );
 
   // Inline: render thẳng trong panel (không overlay)
   if (variant === 'inline') {
     if (!open) return null;
     return (
       <div className="relative flex h-full w-full flex-col bg-white dark:bg-[#1a1a1a]">
+        {memberTabs.length > 1
+          ? renderMemberTabBar(
+              'flex shrink-0 gap-1 border-b border-black/5 px-5 py-3 dark:border-white/5',
+            )
+          : null}
         <div className="flex-1 overflow-y-auto px-5 pb-4 pt-4 custom-scrollbar space-y-2">
           {memberTab === 'list' ? (
             listMembers.length === 0 ? (
@@ -309,112 +351,98 @@ export function MemberManagementModal({
                   canKick && member.role !== 'owner' && member.userId !== currentUserId;
                 const canDemote = (canKick || isSelfAdmin) && member.role === 'admin';
                 const canPromote = canKick && member.role === 'member' && !adminSlotsFull;
-                const canAct =
-                  isSelfAdmin || (canKickThis && (leadersOnly ? member.role === 'admin' : true));
                 return (
                   <div
                     key={member.userId}
-                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                    className="flex items-center gap-3 rounded-xl p-2.5 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                   >
                     {renderAvatar({
                       userId: member.userId,
                       name: displayNameFor(member.userId, member.name),
                       avatar: member.avatar,
                     })}
-                    <div className="flex-1 overflow-hidden">
+                    <div className="min-w-0 flex-1">
                       <p className="font-bold text-[14px] text-black dark:text-white truncate">
                         {displayNameFor(member.userId, member.name)}
                       </p>
+                      {member.role === 'owner' ? (
+                        <span className="mt-1 inline-flex max-w-full rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold leading-none text-amber-600 dark:text-amber-400">
+                          Trưởng nhóm
+                        </span>
+                      ) : member.role === 'admin' ? (
+                        <span className="mt-1 inline-flex max-w-full rounded-md bg-blue-600/10 px-1.5 py-0.5 text-[10px] font-bold leading-none text-blue-700 dark:text-blue-300">
+                          Phó nhóm
+                        </span>
+                      ) : null}
                     </div>
-                    {member.role === 'owner' ? (
-                      <span className="px-2 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[11px] font-bold shrink-0">
-                        Trưởng nhóm
-                      </span>
-                    ) : member.role === 'admin' ? (
-                      <span className="px-2 py-1 rounded-lg bg-blue-600/10 text-blue-700 dark:text-blue-300 text-[11px] font-bold shrink-0">
-                        Phó nhóm
-                      </span>
-                    ) : null}
-                    {canPromote ? (
-                      <button
-                        type="button"
-                        disabled={busy?.changingRole}
-                        onClick={() => setPromoteConfirmUserId(member.userId)}
-                        className="shrink-0 rounded-lg bg-[#0068ff]/10 px-2.5 py-1 text-[11px] font-bold text-[#0068ff] hover:bg-[#0068ff]/15 disabled:opacity-50"
-                      >
-                        Bổ nhiệm
-                      </button>
-                    ) : null}
-                    {canAct ? (
-                      <div className="relative shrink-0">
+                    <div className="flex shrink-0 items-center gap-1">
+                      {canPromote ? (
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActionMenuUserId((prev) =>
-                              prev === member.userId ? null : member.userId,
-                            );
-                          }}
-                          className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
-                          title="Tùy chọn"
-                          aria-label="Tùy chọn"
-                          aria-expanded={menuOpen}
+                          disabled={busy?.changingRole}
+                          onClick={() => setPromoteConfirmUserId(member.userId)}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#0068ff]/10 text-[#0068ff] transition-colors hover:bg-[#0068ff]/15 disabled:opacity-50"
+                          title="Bổ nhiệm phó nhóm"
+                          aria-label="Bổ nhiệm phó nhóm"
                         >
-                          ⋯
+                          <UserPlus className="h-4 w-4" />
                         </button>
-
-                        {menuOpen && (
-                          <div
-                            role="menu"
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute right-0 top-10 w-44 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
+                      ) : null}
+                      {!leadersOnly && canKickThis ? (
+                        <button
+                          type="button"
+                          disabled={busy?.removing}
+                          onClick={() => setKickConfirmUserId(member.userId)}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-red-600 transition-colors hover:bg-red-500/15 disabled:opacity-50"
+                          title="Kick"
+                          aria-label="Kick"
+                        >
+                          <UserMinus className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                      {canDemote ? (
+                        <div className="relative shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActionMenuUserId((prev) =>
+                                prev === member.userId ? null : member.userId,
+                              );
+                            }}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/5 text-muted-foreground transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20"
+                            title="Tùy chọn vai trò"
+                            aria-label="Tùy chọn vai trò"
+                            aria-expanded={menuOpen}
                           >
-                            {canDemote ? (
-                              <button
-                                type="button"
-                                role="menuitem"
-                                disabled={busy?.changingRole}
-                                onClick={() => {
-                                  setActionMenuUserId(null);
-                                  setDemoteConfirmUserId(member.userId);
-                                }}
-                                className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
-                              >
-                                Hạ phó nhóm xuống thành viên
-                              </button>
-                            ) : null}
-                            {canPromote ? (
-                              <button
-                                type="button"
-                                role="menuitem"
-                                disabled={busy?.changingRole}
-                                onClick={() => {
-                                  setActionMenuUserId(null);
-                                  setPromoteConfirmUserId(member.userId);
-                                }}
-                                className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
-                              >
-                                Bổ nhiệm làm phó nhóm
-                              </button>
-                            ) : null}
-                            {!leadersOnly && canKickThis ? (
-                              <button
-                                type="button"
-                                role="menuitem"
-                                disabled={busy?.removing}
-                                onClick={() => {
-                                  setActionMenuUserId(null);
-                                  setKickConfirmUserId(member.userId);
-                                }}
-                                className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
-                              >
-                                Kick
-                              </button>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+
+                          {menuOpen && (
+                            <div
+                              role="menu"
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute right-0 top-9 w-44 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
+                            >
+                              {canDemote ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={busy?.changingRole}
+                                  onClick={() => {
+                                    setActionMenuUserId(null);
+                                    setDemoteConfirmUserId(member.userId);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
+                                >
+                                  Hạ phó nhóm xuống thành viên
+                                </button>
+                              ) : null}
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 );
               })
@@ -427,13 +455,13 @@ export function MemberManagementModal({
               );
               const subtitle =
                 person.status === 'invited' ? 'Được mời vào nhóm' : 'Yêu cầu tham gia';
-              const menuOpen = actionMenuUserId === person.userId;
+              const showAddFriend = !person.isFriend && !friendActionUserIds[person.userId];
               return (
                 <div
                   key={person.userId}
                   className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 hover:border-blue-600/20 transition-colors"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
                     {renderAvatar({
                       userId: person.userId,
                       name: displayName,
@@ -452,67 +480,32 @@ export function MemberManagementModal({
                     </div>
                   </div>
 
-                  <div className="relative shrink-0">
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    {showAddFriend ? (
+                      <button
+                        type="button"
+                        onClick={() => void addFriend(person.userId)}
+                        className="rounded-lg bg-blue-600/10 px-3 py-1.5 text-[12px] font-bold text-blue-700 hover:bg-blue-600/15 dark:text-blue-300"
+                      >
+                        Kết bạn
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActionMenuUserId((prev) =>
-                          prev === person.userId ? null : person.userId,
-                        );
-                      }}
-                      className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
-                      title="Tùy chọn"
-                      aria-label="Tùy chọn"
+                      disabled={busy?.rejecting}
+                      onClick={() => void reject(person.userId)}
+                      className="rounded-lg bg-red-500/10 px-3 py-1.5 text-[12px] font-bold text-red-600 hover:bg-red-500/15 disabled:opacity-50"
                     >
-                      ⋯
+                      Từ chối
                     </button>
-
-                    {menuOpen && (
-                      <div
-                        role="menu"
-                        onClick={(e) => e.stopPropagation()}
-                        className="absolute right-0 top-10 w-40 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
-                      >
-                        {!person.isFriend && (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setActionMenuUserId(null);
-                              void addFriend(person.userId);
-                            }}
-                            className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-blue-700 dark:text-blue-300"
-                          >
-                            Kết bạn
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          role="menuitem"
-                          disabled={busy?.rejecting}
-                          onClick={() => {
-                            setActionMenuUserId(null);
-                            void reject(person.userId);
-                          }}
-                          className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
-                        >
-                          Từ chối
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          disabled={busy?.approving}
-                          onClick={() => {
-                            setActionMenuUserId(null);
-                            void approve(person.userId);
-                          }}
-                          className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
-                        >
-                          Duyệt
-                        </button>
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      disabled={busy?.approving}
+                      onClick={() => void approve(person.userId)}
+                      className="rounded-lg bg-[#0068ff]/10 px-3 py-1.5 text-[12px] font-bold text-[#0068ff] hover:bg-[#0068ff]/15 disabled:opacity-50"
+                    >
+                      Duyệt
+                    </button>
                   </div>
                 </div>
               );
@@ -704,31 +697,7 @@ export function MemberManagementModal({
               </div>
             </div>
 
-            <div className="flex shrink-0 gap-1 px-5 pt-4">
-              {memberTabs.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => onMemberTabChange(tab)}
-                  className={`${tabBtnBase} ${memberTab === tab ? tabBtnActive : tabBtnIdle}`}
-                >
-                  {tab === 'list' ? (
-                    <>
-                      <Users className="w-3.5 h-3.5" /> Thành viên ({members.length})
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-3.5 h-3.5" /> Chờ duyệt{' '}
-                      {requests.length > 0 && (
-                        <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 leading-none">
-                          {requests.length}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </button>
-              ))}
-            </div>
+            {renderMemberTabBar('flex shrink-0 gap-1 px-5 pt-4')}
 
             <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-2">
               {memberTab === 'list'
@@ -737,120 +706,100 @@ export function MemberManagementModal({
                     const isSelfAdmin = currentUserId === member.userId && member.role === 'admin';
                     const canKickThis =
                       canKick && member.role !== 'owner' && member.userId !== currentUserId;
-                    const canAct = isSelfAdmin || canKickThis;
                     const canDemote = (canKick || isSelfAdmin) && member.role === 'admin';
                     const canPromote = canKick && member.role === 'member' && !adminSlotsFull;
                     return (
                       <div
                         key={member.userId}
-                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                        className="flex items-center gap-3 rounded-xl p-2.5 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                       >
                         {renderAvatar({
                           userId: member.userId,
                           name: member.name,
                           avatar: member.avatar,
                         })}
-                        <div className="flex-1 overflow-hidden">
+                        <div className="min-w-0 flex-1">
                           <p className="font-bold text-[14px] text-black dark:text-white truncate">
                             {member.name}
                           </p>
+                          {member.role === 'owner' ? (
+                            <span className="mt-1 inline-flex max-w-full rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold leading-none text-amber-600 dark:text-amber-400">
+                              Trưởng nhóm
+                            </span>
+                          ) : member.role === 'admin' ? (
+                            <span className="mt-1 inline-flex max-w-full rounded-md bg-blue-600/10 px-1.5 py-0.5 text-[10px] font-bold leading-none text-blue-700 dark:text-blue-300">
+                              Phó nhóm
+                            </span>
+                          ) : null}
                         </div>
-                        {member.role === 'owner' && (
-                          <span className="px-2 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[11px] font-bold shrink-0">
-                            Trưởng nhóm
-                          </span>
-                        )}
-                        {member.role === 'admin' ? (
-                          <span className="px-2 py-1 rounded-lg bg-blue-600/10 text-blue-700 dark:text-blue-300 text-[11px] font-bold shrink-0">
-                            Phó nhóm
-                          </span>
-                        ) : null}
-                        {canPromote ? (
-                          <button
-                            type="button"
-                            disabled={busy?.changingRole}
-                            onClick={() => setPromoteConfirmUserId(member.userId)}
-                            className="shrink-0 rounded-lg bg-[#0068ff]/10 px-2.5 py-1 text-[11px] font-bold text-[#0068ff] hover:bg-[#0068ff]/15 disabled:opacity-50"
-                          >
-                            Bổ nhiệm
-                          </button>
-                        ) : null}
-                        {canAct ? (
-                          <div className="relative shrink-0">
+                        <div className="flex shrink-0 items-center gap-1">
+                          {canPromote ? (
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActionMenuUserId((prev) =>
-                                  prev === member.userId ? null : member.userId,
-                                );
-                              }}
-                              className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
-                              title="Tùy chọn"
-                              aria-label="Tùy chọn"
-                              aria-expanded={menuOpen}
+                              disabled={busy?.changingRole}
+                              onClick={() => setPromoteConfirmUserId(member.userId)}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#0068ff]/10 text-[#0068ff] transition-colors hover:bg-[#0068ff]/15 disabled:opacity-50"
+                              title="Bổ nhiệm phó nhóm"
+                              aria-label="Bổ nhiệm phó nhóm"
                             >
-                              ⋯
+                              <UserPlus className="h-4 w-4" />
                             </button>
-
-                            {menuOpen && (
-                              <div
-                                role="menu"
-                                onClick={(e) => e.stopPropagation()}
-                                className="absolute right-0 top-10 w-44 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
+                          ) : null}
+                          {canKickThis ? (
+                            <button
+                              type="button"
+                              disabled={busy?.removing}
+                              onClick={() => setKickConfirmUserId(member.userId)}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-red-600 transition-colors hover:bg-red-500/15 disabled:opacity-50"
+                              title="Kick"
+                              aria-label="Kick"
+                            >
+                              <UserMinus className="h-4 w-4" />
+                            </button>
+                          ) : null}
+                          {canDemote ? (
+                            <div className="relative shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActionMenuUserId((prev) =>
+                                    prev === member.userId ? null : member.userId,
+                                  );
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/5 text-muted-foreground transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20"
+                                title="Tùy chọn vai trò"
+                                aria-label="Tùy chọn vai trò"
+                                aria-expanded={menuOpen}
                               >
-                                {canDemote ? (
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    disabled={busy?.changingRole}
-                                    onClick={() => {
-                                      setActionMenuUserId(null);
-                                      setDemoteConfirmUserId(member.userId);
-                                    }}
-                                    className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
-                                  >
-                                    Hạ phó nhóm xuống thành viên
-                                  </button>
-                                ) : null}
-                                {canPromote ? (
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    disabled={busy?.changingRole}
-                                    onClick={() => {
-                                      setActionMenuUserId(null);
-                                      void (async () => {
-                                        try {
-                                          await promoteMemberToAdmin(member.userId);
-                                        } catch {
-                                          toast.error('Không thể đổi vai trò');
-                                        }
-                                      })();
-                                    }}
-                                    className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
-                                  >
-                                    Bổ nhiệm làm phó nhóm
-                                  </button>
-                                ) : null}
-                                {canKickThis ? (
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    disabled={busy?.removing}
-                                    onClick={() => {
-                                      setActionMenuUserId(null);
-                                      setKickConfirmUserId(member.userId);
-                                    }}
-                                    className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
-                                  >
-                                    Kick
-                                  </button>
-                                ) : null}
-                              </div>
-                            )}
-                          </div>
-                        ) : null}
+                                <MoreHorizontal className="h-4 w-4" />
+                              </button>
+
+                              {menuOpen && (
+                                <div
+                                  role="menu"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute right-0 top-9 w-44 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
+                                >
+                                  {canDemote ? (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      disabled={busy?.changingRole}
+                                      onClick={() => {
+                                        setActionMenuUserId(null);
+                                        setDemoteConfirmUserId(member.userId);
+                                      }}
+                                      className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
+                                    >
+                                      Hạ phó nhóm xuống thành viên
+                                    </button>
+                                  ) : null}
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     );
                   })
@@ -860,13 +809,13 @@ export function MemberManagementModal({
                       person.userId) as string;
                     const subtitle =
                       person.status === 'invited' ? 'Được mời vào nhóm' : 'Yêu cầu tham gia';
-                    const menuOpen = actionMenuUserId === person.userId;
+                    const showAddFriend = !person.isFriend && !friendActionUserIds[person.userId];
                     return (
                       <div
                         key={person.userId}
                         className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-white/5 border border-black/5 dark:border-white/10 hover:border-blue-600/20 transition-colors"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
                           {renderAvatar({
                             userId: person.userId,
                             name: displayName,
@@ -885,67 +834,32 @@ export function MemberManagementModal({
                           </div>
                         </div>
 
-                        <div className="relative shrink-0">
+                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                          {showAddFriend ? (
+                            <button
+                              type="button"
+                              onClick={() => void addFriend(person.userId)}
+                              className="rounded-lg bg-blue-600/10 px-3 py-1.5 text-[12px] font-bold text-blue-700 hover:bg-blue-600/15 dark:text-blue-300"
+                            >
+                              Kết bạn
+                            </button>
+                          ) : null}
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActionMenuUserId((prev) =>
-                                prev === person.userId ? null : person.userId,
-                              );
-                            }}
-                            className="h-9 w-9 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-muted-foreground font-black"
-                            title="Tùy chọn"
-                            aria-label="Tùy chọn"
+                            disabled={busy?.rejecting}
+                            onClick={() => void reject(person.userId)}
+                            className="rounded-lg bg-red-500/10 px-3 py-1.5 text-[12px] font-bold text-red-600 hover:bg-red-500/15 disabled:opacity-50"
                           >
-                            ⋯
+                            Từ chối
                           </button>
-
-                          {menuOpen && (
-                            <div
-                              role="menu"
-                              onClick={(e) => e.stopPropagation()}
-                              className="absolute right-0 top-10 w-40 rounded-xl overflow-hidden bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 shadow-xl"
-                            >
-                              {!person.isFriend && (
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  onClick={() => {
-                                    setActionMenuUserId(null);
-                                    void addFriend(person.userId);
-                                  }}
-                                  className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-blue-700 dark:text-blue-300"
-                                >
-                                  Kết bạn
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                role="menuitem"
-                                disabled={busy?.rejecting}
-                                onClick={() => {
-                                  setActionMenuUserId(null);
-                                  void reject(person.userId);
-                                }}
-                                className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-red-600 disabled:opacity-50"
-                              >
-                                Từ chối
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                disabled={busy?.approving}
-                                onClick={() => {
-                                  setActionMenuUserId(null);
-                                  void approve(person.userId);
-                                }}
-                                className="w-full text-left px-3 py-2 text-[13px] font-semibold hover:bg-black/5 dark:hover:bg-white/5 text-foreground disabled:opacity-50"
-                              >
-                                Duyệt
-                              </button>
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            disabled={busy?.approving}
+                            onClick={() => void approve(person.userId)}
+                            className="rounded-lg bg-[#0068ff]/10 px-3 py-1.5 text-[12px] font-bold text-[#0068ff] hover:bg-[#0068ff]/15 disabled:opacity-50"
+                          >
+                            Duyệt
+                          </button>
                         </div>
                       </div>
                     );
