@@ -17,6 +17,11 @@ function isCloudFrontSignedUrl(raw: string): boolean {
   }
 }
 
+export function sanitizeDownloadFilename(name: string): string {
+  const cleaned = name.replace(/[^\w.\-() \u00C0-\u024F]+/g, '_').trim();
+  return cleaned.slice(0, 200) || 'download';
+}
+
 export function parseMediaIdFromStoredUrl(urlStr: string): string | null {
   const trimmed = urlStr.trim();
   if (!trimmed) return null;
@@ -52,6 +57,15 @@ export function buildClientMediaDownloadUrl(mediaId: string): string {
   return `${window.location.origin}${prefix}${suffix}`;
 }
 
+/** URL tải file — server stream kèm Content-Disposition đúng tên. */
+export function buildClientMediaAttachmentUrl(mediaId: string, filename?: string): string {
+  const base = buildClientMediaDownloadUrl(mediaId);
+  const params = new URLSearchParams({ attachment: '1' });
+  const safe = filename?.trim();
+  if (safe) params.set('filename', safe);
+  return `${base}?${params.toString()}`;
+}
+
 export function resolveChatMediaDownloadUrl(storedUrl: string): string {
   const trimmed = storedUrl.trim();
   if (!trimmed) return '';
@@ -62,29 +76,65 @@ export function resolveChatMediaDownloadUrl(storedUrl: string): string {
   return trimmed.startsWith('/') ? `${origin}${trimmed}` : `${origin}/${trimmed}`;
 }
 
+export function resolveChatMediaAttachmentUrl(storedUrl: string, filename?: string): string {
+  const trimmed = storedUrl.trim();
+  if (!trimmed) return '';
+  const safeName = filename?.trim() ? sanitizeDownloadFilename(filename) : undefined;
+  const mediaId = parseMediaIdFromStoredUrl(trimmed);
+  if (mediaId) return buildClientMediaAttachmentUrl(mediaId, safeName);
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const origin = window.location.origin;
+  const absolute = trimmed.startsWith('/') ? `${origin}${trimmed}` : `${origin}/${trimmed}`;
+  return absolute;
+}
+
+function triggerBrowserDownload(url: string, filename: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener noreferrer';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function downloadViaFetchBlob(url: string, filename: string): Promise<boolean> {
+  const token = localStorage.getItem('accessToken');
+  const headers: Record<string, string> =
+    !isCloudFrontSignedUrl(url) && token ? { Authorization: `Bearer ${token}` } : {};
+  const res = await fetch(url, { headers, redirect: 'follow' });
+  if (!res.ok) return false;
+  const blob = await res.blob();
+  if (!blob.size) return false;
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+  return true;
+}
+
 export async function downloadAuthedChatMedia(
   storedUrl: string,
   filename: string,
 ): Promise<boolean> {
   try {
-    const url = resolveChatMediaDownloadUrl(storedUrl);
+    const safeName = sanitizeDownloadFilename(filename);
+    const mediaId = parseMediaIdFromStoredUrl(storedUrl);
+    const url = mediaId
+      ? buildClientMediaAttachmentUrl(mediaId, safeName)
+      : resolveChatMediaAttachmentUrl(storedUrl, safeName);
     if (!url) return false;
-    const token = localStorage.getItem('accessToken');
-    const headers: Record<string, string> =
-      !isCloudFrontSignedUrl(url) && token ? { Authorization: `Bearer ${token}` } : {};
-    const res = await fetch(url, { headers, redirect: 'follow', credentials: 'same-origin' });
-    if (!res.ok) return false;
-    const blob = await res.blob();
-    if (!blob.size) return false;
-    const objectUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = objectUrl;
-    a.download = filename || 'file';
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(objectUrl);
+
+    const viaBlob = await downloadViaFetchBlob(url, safeName);
+    if (viaBlob) return true;
+
+    triggerBrowserDownload(url, safeName);
     return true;
   } catch {
     return false;
