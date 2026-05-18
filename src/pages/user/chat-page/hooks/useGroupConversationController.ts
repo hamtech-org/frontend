@@ -1083,7 +1083,14 @@ export function useGroupConversationController({
       if (!activeConversationId) return;
       const result = await apiClient.post<{
         success: boolean;
-        data: { summary: string; highlights: string[]; model: string; tokensUsed: number };
+        data: {
+          summary: string;
+          highlights: string[];
+          unreadSummary: string;
+          unreadMessageCount: number;
+          model: string;
+          tokensUsed: number;
+        };
       }>('/ai/group-summary', {
         conversationId: activeConversationId,
         limit: 40,
@@ -1092,22 +1099,35 @@ export function useGroupConversationController({
       const highlights = Array.isArray(result.data?.data?.highlights)
         ? result.data.data.highlights
         : [];
+      const unreadSummary = String(result.data?.data?.unreadSummary ?? '').trim();
+      const unreadMessageCount = Number(result.data?.data?.unreadMessageCount ?? 0);
 
       const summaryBlock = summary
-        ? `Tóm tắt\n${summary
+        ? `Tổng hợp tin nhắn\n${summary
             .split('\n')
             .map((l) => l.trim())
             .filter(Boolean)
             .map((l) => (l.startsWith('-') || l.startsWith('•') ? l : `• ${l}`))
             .join('\n')}`
-        : 'Tóm tắt\n• (Chưa có)';
+        : 'Tổng hợp tin nhắn\n• (Chưa có)';
 
       const highlightsBlock =
         highlights.length > 0
           ? `Điểm nổi bật\n${highlights.map((h) => `• ${String(h).trim()}`).join('\n')}`
-          : 'Điểm nổi bật\n• (Không có)';
+          : 'Điểm nổi bật\n• Không có';
 
-      modalActions.setAiSummaryResult([summaryBlock, highlightsBlock].join('\n\n'));
+      const unreadSummaryBlock = unreadSummary
+        ? `Tin nhắn vừa bỏ lỡ (${unreadMessageCount})\n${unreadSummary
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .map((l) => (l.startsWith('-') || l.startsWith('•') ? l : `• ${l}`))
+            .join('\n')}`
+        : `Tin nhắn vừa bỏ lỡ (${unreadMessageCount})\n• (Chưa có)`;
+
+      modalActions.setAiSummaryResult(
+        [summaryBlock, highlightsBlock, unreadSummaryBlock].join('\n\n'),
+      );
     } catch (error) {
       console.error('Failed to generate AI summary:', error);
       modalActions.setAiSummaryResult('Không thể tạo tóm tắt vào lúc này.');
@@ -1123,7 +1143,14 @@ export function useGroupConversationController({
     try {
       const result = await apiClient.post<{
         success: boolean;
-        data: { summary: string; highlights: string[]; model: string; tokensUsed: number };
+        data: {
+          summary: string;
+          highlights: string[];
+          unreadSummary: string;
+          unreadMessageCount: number;
+          model: string;
+          tokensUsed: number;
+        };
       }>('/ai/group-summary', {
         conversationId: activeConversationId,
         limit: 40,
@@ -1132,22 +1159,35 @@ export function useGroupConversationController({
       const highlights = Array.isArray(result.data?.data?.highlights)
         ? result.data.data.highlights
         : [];
+      const unreadSummary = String(result.data?.data?.unreadSummary ?? '').trim();
+      const unreadMessageCount = Number(result.data?.data?.unreadMessageCount ?? 0);
 
       const summaryBlock = summary
-        ? `Tóm tắt\n${summary
+        ? `Tổng hợp tin nhắn\n${summary
             .split('\n')
             .map((l) => l.trim())
             .filter(Boolean)
             .map((l) => (l.startsWith('-') || l.startsWith('•') ? l : `• ${l}`))
             .join('\n')}`
-        : 'Tóm tắt\n• (Chưa có)';
+        : 'Tổng hợp tin nhắn\n• (Chưa có)';
 
       const highlightsBlock =
         highlights.length > 0
           ? `Điểm nổi bật\n${highlights.map((h) => `• ${String(h).trim()}`).join('\n')}`
-          : 'Điểm nổi bật\n• (Không có)';
+          : 'Điểm nổi bật\n• Không có';
 
-      modalActions.setAiSummaryResult([summaryBlock, highlightsBlock].join('\n\n'));
+      const unreadSummaryBlock = unreadSummary
+        ? `Tin nhắn vừa bỏ lỡ (${unreadMessageCount})\n${unreadSummary
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .map((l) => (l.startsWith('-') || l.startsWith('•') ? l : `• ${l}`))
+            .join('\n')}`
+        : `Tin nhắn vừa bỏ lỡ (${unreadMessageCount})\n• (Chưa có)`;
+
+      modalActions.setAiSummaryResult(
+        [summaryBlock, highlightsBlock, unreadSummaryBlock].join('\n\n'),
+      );
       toast.success('Đã tạo tóm tắt AI');
     } catch (error) {
       console.error('Failed to rerun AI summary:', error);

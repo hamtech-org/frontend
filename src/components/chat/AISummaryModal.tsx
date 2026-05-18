@@ -63,7 +63,7 @@ export function AISummaryModal({
                       AI đang phân tích...
                     </p>
                     <p className="text-[13px] text-muted-foreground">
-                      Đang đọc và tóm tắt toàn bộ lịch sử chat
+                      Đang tổng hợp hội thoại gần đây và phần chưa đọc
                     </p>
                   </div>
                   <div className="flex gap-1.5">
@@ -92,7 +92,7 @@ export function AISummaryModal({
                         .map((para, i) => (
                           <p
                             key={i}
-                            className="text-[14px] text-black dark:text-white/90 leading-relaxed font-medium"
+                            className="whitespace-pre-line text-[14px] text-black dark:text-white/90 leading-relaxed font-medium"
                           >
                             {para}
                           </p>
