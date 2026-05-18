@@ -49,7 +49,8 @@ import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-toastify';
 import { MIN_GROUP_MEMBERS } from '@/constants/group.constants';
-import { chatFileTypeAccent, chatFileTypeLabel } from '@/utils/chatFileDisplay';
+import { ChatFileTypeBadge } from '@/components/chat/ChatFileTypeBadge';
+import { resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
 import {
   canUserCreatePollInGroup,
@@ -1048,9 +1049,7 @@ export function ConversationInfoPanel({
                   }
                   if (galleryKind === 'file') {
                     const href = item.mediaUrl || '#';
-                    const name = item.mediaOriginalName?.trim() || 'Tập tin';
-                    const typeLabel = chatFileTypeLabel(name, item.mediaType);
-                    const accent = chatFileTypeAccent(name, item.mediaType);
+                    const { fileName: name } = resolveChatFileBubbleMeta(item);
                     return (
                       <a
                         key={item.messageId}
@@ -1059,13 +1058,7 @@ export function ConversationInfoPanel({
                         rel="noopener noreferrer"
                         className="flex items-start gap-3 rounded-xl border border-black/[0.06] bg-white p-3 shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
                       >
-                        <span
-                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[10px] font-extrabold tracking-wide text-white"
-                          style={{ backgroundColor: accent }}
-                          aria-hidden
-                        >
-                          {typeLabel.slice(0, 4)}
-                        </span>
+                        <ChatFileTypeBadge fileName={name} mimeType={item.mediaType} />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] font-semibold">{name}</p>
                           <p className="mt-1 text-[11px] text-muted-foreground">
