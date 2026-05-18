@@ -13,6 +13,7 @@ import {
   typingStarted,
   typingStopped,
   bumpGroupBoardRefresh,
+  markGroupMemberRemovedRealtime,
   setActiveConversation,
 } from '@/store/slices/chatSlice';
 import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
@@ -23,6 +24,7 @@ import {
 } from '@/utils/chatUtils';
 import {
   applyKickedFromGroupRealtime,
+  applyLeftGroupRealtime,
   applyRejoinedGroupMemberRealtime,
   messagePassesJoinCutoff,
 } from '@/utils/chatMembershipRealtime';
@@ -298,8 +300,13 @@ export function useChatSocketListeners(
       if (data.type === 'request')
         dispatch(chatApi.util.invalidateTags([{ type: 'GroupRequests', id: groupId }]));
 
-      // Mặc định luôn refresh Conversations để cập nhật memberCount hoặc status
-      dispatch(chatApi.util.invalidateTags(['Conversations']));
+      // Có memberCount trong payload thì đã patch cache — tránh refetch ghi đè tạm thời.
+      const hasMemberCountPatch =
+        typeof profileFromPayload?.patch.memberCount === 'number' &&
+        Number.isFinite(profileFromPayload.patch.memberCount);
+      if (!hasMemberCountPatch) {
+        dispatch(chatApi.util.invalidateTags(['Conversations']));
+      }
       if (groupId === activeConversationIdRef.current) {
         dispatch(
           chatApi.util.invalidateTags([{ type: 'Conversations', id: `MEMBERS-${groupId}` }]),
@@ -309,8 +316,25 @@ export function useChatSocketListeners(
 
     /** Cùng ref cho on/off — không dùng `off(event)` không handler (sẽ xóa cả listener của ChatPage / module khác). */
     const onGroupMemberJoinedGU = (data: unknown) => onGroupMemberJoinedSelfGU(data);
-    const onGroupMemberLeftGU = (data: unknown) =>
+    const onGroupMemberLeftGU = (data: unknown) => {
+      const p = data as {
+        userId?: string;
+        conversationId?: string;
+        groupId?: string;
+      };
+      const gid = String(p.conversationId ?? p.groupId ?? '').trim();
+      const leftUserId = String(p.userId ?? '').trim();
+      if (gid && leftUserId) {
+        dispatch(markGroupMemberRemovedRealtime({ conversationId: gid, userId: leftUserId }));
+      }
+      if (gid && leftUserId === currentUserId) {
+        applyLeftGroupRealtime(dispatch, gid);
+        if (activeConversationIdRef.current === gid) {
+          dispatch(setActiveConversation(null));
+        }
+      }
       handleGroupUpdate({ ...(data as object), type: 'member' });
+    };
     const onGroupMembersAddedGU = (data: unknown) =>
       handleGroupUpdate({ ...(data as object), type: 'member' });
     const onGroupMemberRemovedGU = (data: unknown) => {
@@ -320,7 +344,11 @@ export function useChatSocketListeners(
         groupId?: string;
       };
       const gid = String(p.conversationId ?? p.groupId ?? '').trim();
-      if (gid && p.userId && p.userId === currentUserId) {
+      const removedUserId = String(p.userId ?? '').trim();
+      if (gid && removedUserId) {
+        dispatch(markGroupMemberRemovedRealtime({ conversationId: gid, userId: removedUserId }));
+      }
+      if (gid && removedUserId === currentUserId) {
         applyKickedFromGroupRealtime(dispatch, gid);
         if (activeConversationIdRef.current === gid) {
           dispatch(setActiveConversation(null));

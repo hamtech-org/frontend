@@ -27,8 +27,11 @@ export const groupApi = {
   deleteGroup(groupId: string) {
     return apiClient.delete(`/chat/groups/${groupId}`);
   },
-  leaveGroup(groupId: string) {
-    return apiClient.post(`/chat/groups/${groupId}/leave`);
+  leaveGroup(groupId: string, newOwnerUserId?: string) {
+    return apiClient.post(
+      `/chat/groups/${groupId}/leave`,
+      newOwnerUserId ? { newOwnerUserId } : {},
+    );
   },
   addMembers(groupId: string, memberIds: string[]) {
     return apiClient.post(`/chat/groups/${groupId}/members`, { memberIds });
@@ -69,13 +72,11 @@ export const groupApi = {
   async transferGroupOwnership(
     groupId: string,
     newOwnerUserId: string,
-    currentOwnerUserId: string,
+    currentOwnerNewRole: Extract<GroupMemberRole, 'admin' | 'member'>,
   ) {
-    await apiClient.put(`/chat/groups/${groupId}/members/${newOwnerUserId}/role`, {
-      role: 'owner',
-    });
-    await apiClient.put(`/chat/groups/${groupId}/members/${currentOwnerUserId}/role`, {
-      role: 'admin',
+    await apiClient.post(`/chat/groups/${groupId}/transfer-owner`, {
+      newOwnerUserId,
+      currentOwnerNewRole,
     });
   },
   createPoll(
@@ -102,7 +103,11 @@ export const groupApi = {
   removeMember(groupId: string, userId: string) {
     return apiClient.delete(`/chat/groups/${groupId}/members/${userId}`);
   },
-  changeMemberRole(groupId: string, userId: string, role: GroupMemberRole) {
+  changeMemberRole(
+    groupId: string,
+    userId: string,
+    role: Extract<GroupMemberRole, 'admin' | 'member'>,
+  ) {
     return apiClient.put(`/chat/groups/${groupId}/members/${userId}/role`, { role });
   },
   votePoll(groupId: string, pollId: string, optionIndex: number) {

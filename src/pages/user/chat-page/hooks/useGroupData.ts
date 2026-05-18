@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { socketService } from '@/services/socket';
 import { groupApi } from '@/services/chat/groupApi';
+import { resetRemovedGroupMembersRealtime } from '@/store/slices/chatSlice';
+import type { AppDispatch } from '@/store/store';
+import { filterGroupMembersExcludingRemoved } from '@/utils/groupMembersRealtime';
 import type {
   GroupActionLoading,
   GroupMember,
@@ -38,6 +41,7 @@ export function useGroupData({
   refetchConversations,
   isSocketReady = false,
 }: UseGroupDataParams) {
+  const dispatch = useDispatch<AppDispatch>();
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [groupRequests, setGroupRequests] = useState<GroupRequest[]>([]);
   const [groupPolls, setGroupPolls] = useState<GroupPoll[]>([]);
@@ -79,18 +83,30 @@ export function useGroupData({
       : 0,
   );
 
-  const fetchGroupMembers = useCallback(async (groupId: string) => {
-    setGroupLoading((prev) => ({ ...prev, members: true }));
-    try {
-      const res = await groupApi.getMembers(groupId);
-      setGroupMembers(res.data.data ?? []);
-    } catch (err) {
-      console.error('[fetchGroupMembers] Error:', err);
-      setGroupMembers([]);
-    } finally {
-      setGroupLoading((prev) => ({ ...prev, members: false }));
-    }
-  }, []);
+  const removedMemberIdsForActive = useSelector((state: RootState) =>
+    activeConversationId
+      ? (state.chat.removedGroupMemberIdsByConversationId[activeConversationId] ?? [])
+      : [],
+  );
+
+  const fetchGroupMembers = useCallback(
+    async (groupId: string, _options?: { force?: boolean }): Promise<GroupMember[]> => {
+      setGroupLoading((prev) => ({ ...prev, members: true }));
+      try {
+        const res = await groupApi.getMembers(groupId);
+        const members = filterGroupMembersExcludingRemoved(groupId, res.data.data ?? []);
+        setGroupMembers(members);
+        return members;
+      } catch (err) {
+        console.error('[fetchGroupMembers] Error:', err);
+        setGroupMembers([]);
+        return [];
+      } finally {
+        setGroupLoading((prev) => ({ ...prev, members: false }));
+      }
+    },
+    [],
+  );
 
   const fetchGroupRequests = useCallback(async (groupId: string) => {
     setGroupLoading((prev) => ({ ...prev, requests: true }));
@@ -173,6 +189,8 @@ export function useGroupData({
       return;
     }
 
+    dispatch(resetRemovedGroupMembersRealtime(activeConversationId));
+
     void Promise.all([
       fetchGroupMembers(activeConversationId),
       fetchGroupRequests(activeConversationId),
@@ -182,11 +200,18 @@ export function useGroupData({
   }, [
     activeConversationId,
     activeConversationType,
+    dispatch,
     fetchGroupMembers,
     fetchGroupRequests,
     fetchGroupPolls,
     fetchGroupTasks,
   ]);
+
+  useEffect(() => {
+    if (!activeConversationId || activeConversationType !== 'group') return;
+    if (removedMemberIdsForActive.length === 0) return;
+    setGroupMembers((prev) => filterGroupMembersExcludingRemoved(activeConversationId, prev));
+  }, [activeConversationId, activeConversationType, removedMemberIdsForActive]);
 
   useEffect(() => {
     if (!activeConversationId || activeConversationType !== 'group') return;

@@ -86,7 +86,13 @@ export interface AddMembersRequest {
 export interface ChangeMemberRoleRequest {
   groupId: string;
   userId: string;
-  role: 'owner' | 'admin' | 'member';
+  role: 'admin' | 'member';
+}
+
+export interface TransferGroupOwnerRequest {
+  groupId: string;
+  newOwnerUserId: string;
+  currentOwnerNewRole: 'admin' | 'member';
 }
 
 export interface CreatePollRequest {
