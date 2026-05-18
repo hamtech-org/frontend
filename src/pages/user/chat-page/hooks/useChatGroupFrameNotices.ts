@@ -180,10 +180,20 @@ export function useChatGroupFrameNotices({
         if (isTaskKind) {
           void fetchGroupTasks(msg.conversationId);
           const taskId = obj.task?.taskId ? String(obj.task.taskId) : '';
+          const actorId = String(obj.actor?.userId ?? '').trim();
+          if (
+            (kind === 'task_assigned' || kind === 'task_updated') &&
+            actorId &&
+            currentUserId &&
+            actorId === currentUserId
+          ) {
+            return;
+          }
+          const dedupeMs = kind === 'task_reminder' || kind === 'task_due' ? 60_000 : 8_000;
           dedupedNotice(`sys:${kind}:${taskId || msg.messageId}`, preview, {
             atIso,
             variant: kind === 'task_joined' ? 'task_joined' : 'task_assigned',
-            dedupeMs: 1500,
+            dedupeMs,
           });
           return;
         }
