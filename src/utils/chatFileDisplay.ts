@@ -22,23 +22,56 @@ export function chatFilePreviewUrl(msg: IMessage): string | null {
   return null;
 }
 
+const EXT_TYPE_LABEL: Record<string, string> = {
+  PDF: 'PDF',
+  DOC: 'DOC',
+  DOCX: 'DOCX',
+  XLS: 'XLS',
+  XLSX: 'XLSX',
+  PPT: 'PPT',
+  PPTX: 'PPTX',
+  ZIP: 'ZIP',
+  RAR: 'RAR',
+  '7Z': '7Z',
+  TXT: 'TXT',
+  CSV: 'CSV',
+  MP3: 'MP3',
+  WAV: 'WAV',
+  M4A: 'M4A',
+};
+
+function fileExtension(fileName: string): string {
+  const base = fileName.trim();
+  if (!base.includes('.')) return '';
+  return (base.split('.').pop() ?? '').toUpperCase();
+}
+
+/** Nhãn loại file: PDF, XLSX, … — đồng bộ mobile `chatMediaDisplay.ts`. */
 export function chatFileTypeLabel(fileName: string, mimeType?: string | null): string {
-  const ext = fileName.includes('.') ? (fileName.split('.').pop() ?? '').toUpperCase() : '';
+  const ext = fileExtension(fileName);
+  if (ext && EXT_TYPE_LABEL[ext]) return EXT_TYPE_LABEL[ext];
   if (ext && ext.length <= 8) return ext;
+
   const m = (mimeType ?? '').toLowerCase();
   if (m.includes('pdf')) return 'PDF';
-  if (m.includes('spreadsheet') || m.includes('excel')) return 'XLSX';
-  if (m.includes('word')) return 'DOC';
-  if (m.includes('zip')) return 'ZIP';
+  if (m.includes('spreadsheet') || m.includes('excel') || m.includes('sheet')) return 'XLSX';
+  if (m.includes('word') || m.includes('msword') || m.includes('document')) return 'DOC';
+  if (m.includes('presentation') || m.includes('powerpoint')) return 'PPT';
+  if (m.includes('zip') && !m.includes('gzip')) return 'ZIP';
+  if (m.includes('rar')) return 'RAR';
+  if (m.startsWith('audio/')) return 'MP3';
   return 'FILE';
 }
 
+/** Màu badge icon loại file (Zalo). */
 export function chatFileTypeAccent(fileName: string, mimeType?: string | null): string {
   const label = chatFileTypeLabel(fileName, mimeType);
   if (label === 'PDF') return '#E53935';
-  if (label === 'XLSX' || label === 'XLS') return '#2E7D32';
+  if (label === 'XLSX' || label === 'XLS' || label === 'CSV') return '#2E7D32';
   if (label === 'DOC' || label === 'DOCX') return '#1565C0';
-  if (label === 'ZIP' || label === 'RAR') return '#F9A825';
+  if (label === 'PPT' || label === 'PPTX') return '#E65100';
+  if (label === 'ZIP' || label === 'RAR' || label === '7Z') return '#F9A825';
+  if (label === 'MP3' || label === 'WAV' || label === 'M4A') return '#6A1B9A';
   return '#5C6BC0';
 }
 
