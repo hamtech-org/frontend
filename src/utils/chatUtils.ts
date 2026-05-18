@@ -1,5 +1,5 @@
 import type { IConversation, IMessage, MessageType, TypingUserEntry } from '@/types/chat.types';
-import { chatFileTypeAccent, pinnedChatFileDisplayName } from '@/utils/chatFileDisplay';
+import { pinnedChatFileDisplayName, resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 
 export { pinnedChatFileDisplayName } from '@/utils/chatFileDisplay';
 import {
@@ -297,7 +297,7 @@ export function pinnedMessageAccent(msg: IMessage): string {
   const kind = pinnedMessageKind(msg);
   if (kind === 'poll') return CHAT_POLL_PINNED_ACCENT;
   if (kind === 'file') {
-    return chatFileTypeAccent(pinnedChatFileDisplayName(msg), msg.mediaType);
+    return resolveChatFileBubbleMeta(msg).accent;
   }
   return PINNED_STATIC_ACCENTS[kind];
 }
