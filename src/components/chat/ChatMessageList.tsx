@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, Fragment, type Ref } from 'react';
+import { useState, useCallback, useEffect, Fragment, type ReactNode, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   AlarmClock,
@@ -40,7 +40,10 @@ import {
   lastMessageLineFromSystemJson,
   typingLabel,
 } from '@/utils/chatUtils';
-import { formatGroupSystemChatLine } from '@/utils/groupSystemMessage';
+import {
+  formatGroupSystemChatLine,
+  formatLegacyGroupProfileSystemLine,
+} from '@/utils/groupSystemMessage';
 import { resolveGroupJoinLinkFromMessageContent } from '@/utils/groupJoinLinkMessage';
 import { GroupJoinLinkCard } from '@/components/chat/GroupJoinLinkCard';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
@@ -71,6 +74,58 @@ async function downloadAuthedFile(url: string, filename: string): Promise<boolea
   } catch {
     return false;
   }
+}
+
+const CHAT_URL_REGEX = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
+const TRAILING_URL_PUNCTUATION_REGEX = /[),.!?;:]+$/;
+
+function splitTrailingUrlPunctuation(raw: string): { url: string; suffix: string } {
+  const match = raw.match(TRAILING_URL_PUNCTUATION_REGEX);
+  if (!match?.[0]) return { url: raw, suffix: '' };
+  const suffix = match[0];
+  return { url: raw.slice(0, -suffix.length), suffix };
+}
+
+function hrefFromChatUrl(raw: string): string {
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
+function LinkifiedChatText({ text, isMe }: { text: string; isMe: boolean }) {
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  CHAT_URL_REGEX.lastIndex = 0;
+
+  while ((match = CHAT_URL_REGEX.exec(text)) !== null) {
+    const raw = match[0];
+    const start = match.index;
+    if (start > cursor) nodes.push(text.slice(cursor, start));
+
+    const { url, suffix } = splitTrailingUrlPunctuation(raw);
+    if (url) {
+      nodes.push(
+        <a
+          key={`${start}-${url}`}
+          href={hrefFromChatUrl(url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          className={`font-semibold underline underline-offset-2 decoration-1 break-all ${
+            isMe
+              ? 'text-white hover:text-blue-50'
+              : 'text-blue-600 hover:text-blue-700 dark:text-blue-400'
+          }`}
+        >
+          {url}
+        </a>,
+      );
+    }
+    if (suffix) nodes.push(suffix);
+    cursor = start + raw.length;
+  }
+
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return <>{nodes.length > 0 ? nodes : text}</>;
 }
 
 /** Trạng thái gửi/nhận/đã xem (Zalo) — chỉ tin của mình; nhóm chỉ hiện «đã gửi». */
@@ -728,29 +783,15 @@ export function ChatMessageList({
               const systemJsonRaw = typeof msg.content === 'string' ? msg.content.trim() : '';
               let content = msg.content;
               if (typeof content === 'string') {
-                const groupLine = formatGroupSystemChatLine(content, currentUserId);
+                const groupLine =
+                  formatGroupSystemChatLine(content, currentUserId) ??
+                  formatLegacyGroupProfileSystemLine(content, {
+                    senderId: msg.senderId,
+                    currentUserId,
+                    senderDisplayName: msg.senderDisplayName,
+                  });
                 if (groupLine) {
                   content = groupLine;
-                }
-              }
-              // Giữ logic cũ (case avatar nhóm) để tránh thay đổi hành vi đang ổn định.
-              if (
-                typeof content === 'string' &&
-                content.includes('đã cập nhật ảnh đại diện nhóm') &&
-                msg.senderId === currentUserId
-              ) {
-                content = 'Bạn đã cập nhật ảnh đại diện nhóm';
-              }
-              // Plain text legacy: thay tên người gửi → "Bạn" (không đụng JSON task/poll).
-              if (
-                msg.senderId === currentUserId &&
-                msg.senderDisplayName &&
-                typeof content === 'string' &&
-                !content.trim().startsWith('{')
-              ) {
-                const name = msg.senderDisplayName.trim();
-                if (name) {
-                  content = content.replace(name, 'Bạn');
                 }
               }
               // Không thay `null`/`undefined` trong payload JSON — sẽ thành JSON không hợp lệ
@@ -2048,12 +2089,14 @@ export function ChatMessageList({
                                   : 'bg-black/5 dark:bg-white/10 text-foreground'
                               }`}
                             >
-                              {msg.content}
+                              <LinkifiedChatText text={msg.content ?? ''} isMe={false} />
                             </div>
                           )}
                           {joinLinkPayload ? <GroupJoinLinkCard payload={joinLinkPayload} /> : null}
                           {!isMediaMsg && showCaption && !joinLinkPayload && (
-                            <span className="break-words whitespace-pre-wrap">{msg.content}</span>
+                            <span className="break-words whitespace-pre-wrap">
+                              <LinkifiedChatText text={msg.content ?? ''} isMe={isMe} />
+                            </span>
                           )}
                           {msg.isEdited && (
                             <span
