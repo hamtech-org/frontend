@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { toast } from 'react-toastify';
 import { chatApi } from '@/store/api/chatApi';
@@ -418,8 +418,11 @@ export function useGroupConversationController({
     ],
   );
 
+  const createTaskInFlightRef = useRef(false);
+
   const handleSubmitTask = useCallback(async () => {
     if (!activeConversationId) return;
+    if (createTaskInFlightRef.current) return;
     if (!taskTitle.trim()) {
       toast.error('Vui lòng nhập tiêu đề công việc');
       return;
@@ -528,36 +531,8 @@ export function useGroupConversationController({
     }
 
     setActionBusy('createTask', true);
+    createTaskInFlightRef.current = true;
     const dueDateIso = deadlineLocalInputToJsonValue(taskDeadline) ?? undefined;
-    const optimisticTask: GroupTask = {
-      taskId: `tmp-${Date.now()}`,
-      title: taskTitle.trim(),
-      description: taskNote.trim(),
-      assignees: isGroupOptIn ? [] : taskAssignees,
-      participants: [],
-      assignToAll: isGroupOptIn,
-      broadcast: isGroupOptIn,
-      subtasks:
-        cleanSubtaskRows.length > 0
-          ? cleanSubtaskRows.map((r) => ({
-              id: `sub-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-              assigneeId: r.assigneeId,
-              assigneeName:
-                groupMembers.find((m) => m.userId === r.assigneeId)?.displayName ??
-                groupMembers.find((m) => m.userId === r.assigneeId)?.name ??
-                r.assigneeId,
-              content: r.content,
-              done: false,
-              completedAt: null,
-            }))
-          : undefined,
-      status: 'todo',
-      dueDate: dueDateIso,
-      createdAt: new Date().toISOString(),
-      creatorId: currentUserId,
-      creatorDisplayName: currentUserDisplayName?.trim() ?? null,
-    };
-    setGroupTasks((prev) => [optimisticTask, ...prev]);
     try {
       await groupApi.createTask(activeConversationId, {
         title: taskTitle.trim(),
@@ -572,10 +547,10 @@ export function useGroupConversationController({
       // Server đã `createAndBroadcastSystemMessage` (`task_assigned`) — không bơm local / emit socket (tránh banner đúp).
       modalActions.closeTaskModal();
     } catch (err) {
-      setGroupTasks((prev) => prev.filter((task) => task.taskId !== optimisticTask.taskId));
       toast.error('Không thể tạo công việc');
       console.error('Failed to create task:', err);
     } finally {
+      createTaskInFlightRef.current = false;
       setActionBusy('createTask', false);
     }
   }, [
