@@ -41,3 +41,33 @@ export function chatFileTypeAccent(fileName: string, mimeType?: string | null): 
   if (label === 'ZIP' || label === 'RAR') return '#F9A825';
   return '#5C6BC0';
 }
+
+function inferFileNameFromMime(mime: string | null | undefined): string | null {
+  if (!mime) return null;
+  const m = mime.toLowerCase();
+  if (m.includes('pdf')) return 'document.pdf';
+  if (m.includes('spreadsheet') || m.includes('excel')) return 'spreadsheet.xlsx';
+  if (m.includes('word')) return 'document.docx';
+  if (m.includes('presentation') || m.includes('powerpoint')) return 'presentation.pptx';
+  if (m.includes('zip')) return 'archive.zip';
+  if (m.includes('rar')) return 'archive.rar';
+  return null;
+}
+
+/** Tên file hiển thị cho ghim / bảng tin — ưu tiên `mediaOriginalName`, không dùng placeholder. */
+export function pinnedChatFileDisplayName(
+  msg: Pick<IMessage, 'type' | 'content' | 'mediaOriginalName' | 'mediaType'>,
+): string {
+  const server = msg.mediaOriginalName?.trim();
+  if (server && server !== '[File]') return server;
+  const content = (msg.content ?? '').trim();
+  if (msg.type === 'file' && content && content !== '[File]' && !content.startsWith('{')) {
+    return content;
+  }
+  const inferred = inferFileNameFromMime(msg.mediaType);
+  if (inferred) {
+    const base = inferred.split('/').pop() ?? inferred;
+    return base;
+  }
+  return 'Tệp tin';
+}
