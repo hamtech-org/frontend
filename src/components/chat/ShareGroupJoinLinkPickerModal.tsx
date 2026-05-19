@@ -22,7 +22,7 @@ type ShareGroupJoinLinkPickerModalProps = {
 type FriendRow = {
   userId: string;
   displayName: string;
-  avatar?: string | null;
+  avatar: string | null;
 };
 
 function sortConvsByRecent(convs: IConversation[]) {
