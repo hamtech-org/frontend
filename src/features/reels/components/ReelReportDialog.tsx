@@ -23,7 +23,7 @@ interface Props {
 
 const REPORT_OPTIONS: { value: ReelReportReason; label: string }[] = [
   { value: 'spam', label: 'Spam / Quảng cáo' },
-  { value: 'nudity', label: 'Nội dung khiêu dâm' },
+  { value: 'nudity', label: 'Nội dung không phù hợp' },
   { value: 'hate', label: 'Phát ngôn thù ghét' },
   { value: 'violence', label: 'Bạo lực' },
   { value: 'other', label: 'Khác' },
