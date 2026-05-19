@@ -55,8 +55,8 @@ import { ForwardMediaPickerModal } from '@/components/chat/ForwardMediaPickerMod
 import { formatFileSize } from '@/utils/fileHelper';
 import {
   downloadAuthedChatMedia,
+  fetchChatMediaBlob,
   resolveChatMediaDownloadUrl,
-  resolveChatMediaFetchUrl,
 } from '@/utils/chatMediaDownload';
 import { toast } from 'react-toastify';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
@@ -715,15 +715,7 @@ export function ChatMessageList({
 
   const copyImageToClipboard = useCallback(async (url: string) => {
     try {
-      const fetchUrl = resolveChatMediaFetchUrl(url);
-      if (!fetchUrl) throw new Error('empty');
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(fetchUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        redirect: 'follow',
-      });
-      if (!res.ok) throw new Error('fetch');
-      const blob = await res.blob();
+      const blob = await fetchChatMediaBlob(url);
       const type = blob.type || 'image/png';
       if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
         toast.error('Trình duyệt không hỗ trợ copy ảnh (cần HTTPS).');
