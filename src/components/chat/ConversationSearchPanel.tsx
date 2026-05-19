@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar, File, Search, User, Users, X } from 'lucide-react';
+import { Calendar, Search, User, Users, X } from 'lucide-react';
+import { ChatFileTypeBadge } from '@/components/chat/ChatFileTypeBadge';
+import { ConversationSearchMessageCard } from '@/components/chat/conversationGallery/ConversationSearchMessageCard';
+import { resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 import type { IConversation, IMessage } from '@/types/chat.types';
 import {
   formatConversationListLastPreview,
   isSystemChatNotificationMessage,
-  lastMessagePreviewContentFromMessage,
   sortConversationsForSidebar,
 } from '@/utils/chatUtils';
 import { formatZaloConversationTime } from '@/utils/formatDate';
@@ -288,19 +290,6 @@ export function ConversationSearchPanel({
   const hasMoreMsg = messageHits.length > msgLimit;
   const hasMoreFile = fileHits.length > fileLimit;
 
-  const renderAvatar = (senderId: string, label: string) => {
-    const url = memberAvatarById.get(senderId);
-    const initial = label.trim().charAt(0).toUpperCase() || '?';
-    if (url) {
-      return <img src={url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />;
-    }
-    return (
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/10 text-[14px] font-semibold dark:bg-white/10">
-        {initial}
-      </div>
-    );
-  };
-
   const jump = (messageId: string) => {
     onSelectMessage(messageId);
     onClose();
@@ -495,39 +484,24 @@ export function ConversationSearchPanel({
                 </p>
               ) : (
                 <>
-                  <ul className="space-y-0">
+                  <ul className="space-y-2">
                     {shownMessages.map((m) => {
                       const isMe = m.senderId === currentUserId;
                       const who = isMe
                         ? 'Bạn'
                         : m.senderDisplayName?.trim() || m.senderId || 'Thành viên';
-                      const preview = lastMessagePreviewContentFromMessage(m);
                       const time = formatZaloConversationTime(m.createdAt);
                       return (
-                        <li
-                          key={m.messageId}
-                          className="border-b border-black/[0.04] last:border-0 dark:border-white/[0.06]"
-                        >
-                          <button
-                            type="button"
+                        <li key={m.messageId}>
+                          <ConversationSearchMessageCard
+                            message={m}
+                            currentUserId={currentUserId}
+                            senderLabel={who}
+                            avatarUrl={memberAvatarById.get(m.senderId) ?? null}
+                            timeLabel={time}
+                            needle={needleForUi}
                             onClick={() => jump(m.messageId)}
-                            className="flex w-full gap-2.5 px-2 py-3 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                          >
-                            {renderAvatar(m.senderId, who)}
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="truncate text-[14px] font-bold text-foreground">
-                                  {who}
-                                </span>
-                                <span className="shrink-0 text-xs text-muted-foreground">
-                                  {time}
-                                </span>
-                              </div>
-                              <p className="mt-0.5 line-clamp-2 text-[13px] text-muted-foreground">
-                                <HighlightMatch text={preview} needle={needleForUi} />
-                              </p>
-                            </div>
-                          </button>
+                          />
                         </li>
                       );
                     })}
@@ -559,7 +533,7 @@ export function ConversationSearchPanel({
                       const who = isMe
                         ? 'Bạn'
                         : m.senderDisplayName?.trim() || m.senderId || 'Thành viên';
-                      const name = m.mediaOriginalName?.trim() || 'Tập tin';
+                      const { fileName: name, mimeType } = resolveChatFileBubbleMeta(m);
                       const sizeStr = formatFileSize(m.mediaSize ?? null);
                       const dateStr = m.createdAt
                         ? new Date(m.createdAt).toLocaleDateString('vi-VN', {
@@ -572,11 +546,9 @@ export function ConversationSearchPanel({
                           <button
                             type="button"
                             onClick={() => jump(m.messageId)}
-                            className="flex w-full gap-3 rounded-xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
+                            className="flex w-full gap-3 rounded-xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:border-[#5C6BC0]/35 dark:border-white/10 dark:bg-[#242424]"
                           >
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-red-500/12 text-red-600 dark:bg-red-500/20 dark:text-red-400">
-                              <File className="h-6 w-6" strokeWidth={2} />
-                            </div>
+                            <ChatFileTypeBadge fileName={name} mimeType={mimeType} size="md" />
                             <div className="min-w-0 flex-1">
                               <p className="line-clamp-2 text-[13px] font-semibold text-foreground">
                                 <HighlightMatch text={name} needle={needleForUi} />
