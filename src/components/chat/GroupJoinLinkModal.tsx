@@ -287,7 +287,7 @@ export function GroupJoinLinkModal({
                     >
                       {joinUrl}
                     </button>
-                    <div className="mt-5 w-full flex flex-wrap items-start justify-center gap-x-5 gap-y-3">
+                    <div className="mt-8 w-full flex flex-wrap items-start justify-center gap-x-5 gap-y-3">
                       <ActionChip
                         icon={Copy}
                         label="Sao chép link"
