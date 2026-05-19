@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '@/store/store';
-import { REELS } from '@/features/newsfeed/constants';
 import { useFeedPagination } from '@/features/newsfeed/hooks/useFeedPagination';
-import { useHorizontalScrollerControls } from '@/features/newsfeed/hooks/useHorizontalScrollerControls';
 import { CreatePostPromptCard } from '@/features/newsfeed/components/CreatePostPromptCard';
 import { ReelsSection } from '@/features/newsfeed/components/ReelsSection';
 import { FeedSection } from '@/features/newsfeed/components/FeedSection';
@@ -14,8 +12,6 @@ export default function HomePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<IPost | undefined>(undefined);
   const { posts, hasMore, isLoadingInitial, isFetchingNext, loadMoreRef } = useFeedPagination();
-  const { scrollerRef, canScrollLeft, canScrollRight, updateNavState, scrollByDirection } =
-    useHorizontalScrollerControls();
 
   const createPostName = useMemo(
     () => currentUser?.displayName?.trim() || 'Bạn',
@@ -39,14 +35,7 @@ export default function HomePage() {
             setIsModalOpen(true);
           }}
         />
-        <ReelsSection
-          reels={REELS}
-          canScrollLeft={canScrollLeft}
-          canScrollRight={canScrollRight}
-          scrollerRef={scrollerRef}
-          onScroll={updateNavState}
-          onScrollByDirection={scrollByDirection}
-        />
+        <ReelsSection />
       </section>
 
       <FeedSection

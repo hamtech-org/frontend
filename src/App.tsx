@@ -1,6 +1,7 @@
 import IncomingCallModal from '@/components/call/IncomingCallModal';
 import AppHeader from '@/components/layout/AppHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
+import { ReelUploadToast } from '@/components/layout/ReelUploadToast';
 import { ShellMain, ShellRoot } from '@/components/layout/ShellPrimitives';
 import GlobalSearchBox from '@/components/search/GlobalSearchBox';
 import { CallProvider } from '@/contexts/CallContext';
@@ -34,6 +35,8 @@ const App: React.FC = () => {
   const isCallRoute = location.pathname === '/call';
   const isJoinRoute = location.pathname.startsWith('/join/');
   const isChatRoute = location.pathname.startsWith('/chat');
+  const isReelsRoute = location.pathname.startsWith('/reels');
+  const isImmersiveRoute = isChatRoute || isReelsRoute;
   const routeTransitionKey = isChatRoute ? 'chat' : location.pathname;
   const shouldRenderAppShell = !isGuestRoute && !isCallRoute && !isChatRoute && !isJoinRoute;
   const {
@@ -159,7 +162,7 @@ const App: React.FC = () => {
           )}
         </AnimatePresence>
 
-        {!isChatRoute && (
+        {!isImmersiveRoute && (
           <AppHeader
             isDarkMode={isDarkMode}
             isSidebarOpen={isDesktopSidebarExpanded}
@@ -176,8 +179,8 @@ const App: React.FC = () => {
         <div
           className={cn(
             'flex-1 min-h-0 relative',
-            isChatRoute ? 'overflow-hidden' : 'overflow-y-auto',
-            isChatRoute ? 'bg-background' : 'bg-muted/55',
+            isImmersiveRoute ? 'overflow-hidden' : 'overflow-y-auto',
+            isReelsRoute ? 'bg-black' : isChatRoute ? 'bg-background' : 'bg-muted/55',
           )}
         >
           <AnimatePresence initial={false} mode="sync">
@@ -201,6 +204,7 @@ const App: React.FC = () => {
           </AnimatePresence>
         </div>
       </ShellMain>
+      <ReelUploadToast />
     </ShellRoot>
   );
 };
