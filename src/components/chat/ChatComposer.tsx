@@ -4,7 +4,6 @@ import EmojiPicker from 'emoji-picker-react';
 import {
   BarChart2,
   CheckSquare,
-  FileText,
   Image,
   Loader2,
   Mic,
@@ -31,24 +30,18 @@ import {
   canUserSendMessageInGroup,
 } from '@/utils/groupConversationPermissions';
 import { GroupMemberSendRestrictedBar } from '@/components/chat/GroupMemberSendRestrictedBar';
+import {
+  ChatPendingAttachmentsStrip,
+  type PendingAttachment,
+} from '@/components/chat/ChatPendingAttachmentsStrip';
 import type { GroupMember } from '@/types/chat.group.types';
 
-export type PendingAttachment = {
-  localId: string;
-  file: File;
-  previewUrl: string | null;
-};
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+export type { PendingAttachment };
 
 type ChatComposerProps = {
   activeConversation: IConversation | undefined;
   activeConversationId: string | null;
-  /** Vai trò trong nhóm (để khớp quyền `groupSettings.memberPermissions`). */
+  /** Vai trĂ² trong nhĂ³m (Ä‘á»ƒ khá»›p quyá»n `groupSettings.memberPermissions`). */
   currentUserRole?: GroupMemberRole;
   onOpenPoll: () => void;
   onOpenTask: () => void;
@@ -182,7 +175,7 @@ export function ChatComposer({
 
   const handleLikeClick = () => {
     if (sendDisabled) return;
-    void handleSendMessage('👍');
+    void handleSendMessage('đŸ‘');
   };
 
   const handleVoiceUiClick = () => {
@@ -193,6 +186,30 @@ export function ChatComposer({
   const appendFromFileList = (list: FileList | null) => {
     if (!list?.length) return;
     addPendingFiles(Array.from(list));
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!activeConversationId || busy) return;
+
+    const files: File[] = [];
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item?.kind === 'file') {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+    }
+    if (files.length === 0 && e.clipboardData.files?.length) {
+      files.push(...Array.from(e.clipboardData.files));
+    }
+
+    if (files.length === 0) return;
+
+    e.preventDefault();
+    addPendingFiles(files);
   };
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -223,7 +240,7 @@ export function ChatComposer({
     return (
       <div className="relative z-20 flex shrink-0 flex-col gap-2 border-t border-black/5 bg-ethereal-bg/80 p-4 backdrop-blur-md dark:border-white/5 dark:bg-midnight-bg/80 sm:p-6">
         <p className="text-center text-[15px] font-semibold text-slate-700 dark:text-slate-200">
-          Nhóm đã được giải tán
+          NhĂ³m Ä‘Ă£ Ä‘Æ°á»£c giáº£i tĂ¡n
         </p>
         <p className="text-center text-sm text-muted-foreground">
           Không thể gửi tin nhắn mới trong cuộc trò chuyện này.
@@ -242,10 +259,10 @@ export function ChatComposer({
         <div className="flex items-center gap-3 bg-black/5 dark:bg-white/5 px-4 py-3 rounded-xl border-l-4 border-blue-600 animate-in slide-in-from-bottom-2 duration-200">
           <div className="flex-1 min-w-0">
             <p className="text-[11px] font-bold text-blue-600 mb-0.5">
-              Đang trả lời {replyingTo.senderDisplayName ?? replyingTo.senderId}
+              Äang tráº£ lá»i {replyingTo.senderDisplayName ?? replyingTo.senderId}
             </p>
             <p className="text-xs text-muted-foreground truncate">
-              {replyingTo.isRecalled ? 'Tin nhắn đã được thu hồi' : replyingTo.content}
+              {replyingTo.isRecalled ? 'Tin nháº¯n Ä‘Ă£ Ä‘Æ°á»£c thu há»“i' : replyingTo.content}
             </p>
           </div>
 
@@ -263,11 +280,11 @@ export function ChatComposer({
                   onClick={async () => {
                     if (!activeConversationId) return;
                     if (!currentUserId) {
-                      toast.error('Không tìm thấy thông tin người dùng hiện tại.');
+                      toast.error('KhĂ´ng tĂ¬m tháº¥y thĂ´ng tin ngÆ°á»i dĂ¹ng hiá»‡n táº¡i.');
                       return;
                     }
                     if (replyingTo.isRecalled) {
-                      toast.info('Tin nhắn đã thu hồi, không thể gợi ý trả lời.');
+                      toast.info('Tin nháº¯n Ä‘Ă£ thu há»“i, khĂ´ng thá»ƒ gá»£i Ă½ tráº£ lá»i.');
                       return;
                     }
 
@@ -286,19 +303,19 @@ export function ChatComposer({
                       const suggestions = res.data?.data?.suggestions ?? [];
                       const first = suggestions[0]?.trim();
                       if (!first) {
-                        toast.warning('AI chưa trả về gợi ý phù hợp.');
+                        toast.warning('AI chÆ°a tráº£ vá» gá»£i Ă½ phĂ¹ há»£p.');
                         return;
                       }
 
                       setInputText(first);
                       window.setTimeout(() => textareaRef.current?.focus(), 0);
                     } catch {
-                      toast.error('Gợi ý trả lời thất bại. Vui lòng thử lại.');
+                      toast.error('Gá»£i Ă½ tráº£ lá»i tháº¥t báº¡i. Vui lĂ²ng thá»­ láº¡i.');
                     } finally {
                       setAiReplyLoading(false);
                     }
                   }}
-                  aria-label="AI gợi ý câu trả lời"
+                  aria-label="AI gá»£i Ă½ cĂ¢u tráº£ lá»i"
                   className="p-1.5 rounded-full hover:bg-muted transition-colors text-blue-600 disabled:opacity-45 disabled:pointer-events-none"
                 >
                   {aiReplyLoading ? (
@@ -308,15 +325,15 @@ export function ChatComposer({
                   )}
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top">AI gợi ý trả lời</TooltipContent>
+              <TooltipContent side="top">AI gá»£i Ă½ tráº£ lá»i</TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
-          {/* X thay Smile — semantic đúng hơn cho nút đóng (Hamtech Rule) */}
+          {/* X thay Smile â€” semantic Ä‘Ăºng hÆ¡n cho nĂºt Ä‘Ă³ng (Hamtech Rule) */}
           <button
             type="button"
             onClick={clearReply}
-            aria-label="Hủy trả lời tin nhắn"
+            aria-label="Há»§y tráº£ lá»i tin nháº¯n"
             className="p-1 rounded-full hover:bg-muted transition-colors text-muted-foreground"
           >
             <X className="size-4" />
@@ -324,52 +341,11 @@ export function ChatComposer({
         </div>
       )}
 
-      {pendingAttachments.length > 0 && (
-        <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto rounded-xl border border-black/10 dark:border-white/10 bg-black/3 dark:bg-white/4 p-2">
-          {pendingAttachments.map((p) => (
-            <div
-              key={p.localId}
-              className="relative group/at shrink-0 w-18 rounded-lg border border-black/10 dark:border-white/10 bg-white/80 dark:bg-zinc-900/80 overflow-hidden"
-            >
-              {p.previewUrl ? (
-                p.file.type.startsWith('video/') ? (
-                  <video
-                    src={p.previewUrl}
-                    muted
-                    playsInline
-                    className="h-16 w-full object-cover bg-zinc-200/40 dark:bg-zinc-700/40"
-                  />
-                ) : (
-                  <img
-                    src={p.previewUrl}
-                    alt=""
-                    className="h-16 w-full object-contain bg-zinc-100/90 dark:bg-zinc-800/80"
-                  />
-                )
-              ) : (
-                <div className="h-16 w-full flex flex-col items-center justify-center gap-0.5 px-1 bg-black/5 dark:bg-white/5">
-                  <FileText className="w-6 h-6 text-muted-foreground shrink-0" />
-                </div>
-              )}
-              <div className="px-1 py-0.5 border-t border-black/5 dark:border-white/5">
-                <p className="text-[9px] font-medium truncate leading-tight" title={p.file.name}>
-                  {p.file.name}
-                </p>
-                <p className="text-[8px] text-muted-foreground">{formatFileSize(p.file.size)}</p>
-              </div>
-              <button
-                type="button"
-                title="Bỏ file"
-                onClick={() => removePendingAttachment(p.localId)}
-                disabled={mediaUploading}
-                className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white opacity-90 hover:opacity-100 disabled:opacity-40"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <ChatPendingAttachmentsStrip
+        attachments={pendingAttachments}
+        onRemove={removePendingAttachment}
+        removeDisabled={mediaUploading}
+      />
 
       <TooltipProvider delayDuration={300}>
         <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
@@ -379,13 +355,13 @@ export function ChatComposer({
                 <button
                   type="button"
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  aria-label="Mở bảng chọn emoji"
+                  aria-label="Má»Ÿ báº£ng chá»n emoji"
                   className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600"
                 >
                   <Smile className="size-5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top">Emoji / Nhãn dán</TooltipContent>
+              <TooltipContent side="top">Emoji / NhĂ£n dĂ¡n</TooltipContent>
             </Tooltip>
             {showEmojiPicker && (
               <div
@@ -419,13 +395,13 @@ export function ChatComposer({
                 type="button"
                 disabled={actionDisabled}
                 onClick={() => galleryInputRef.current?.click()}
-                aria-label="Thêm ảnh hoặc video"
+                aria-label="ThĂªm áº£nh hoáº·c video"
                 className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 disabled:pointer-events-none disabled:opacity-40"
               >
                 <Image className="size-5" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="top">Thêm ảnh/video</TooltipContent>
+            <TooltipContent side="top">ThĂªm áº£nh/video</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -433,7 +409,7 @@ export function ChatComposer({
                 type="button"
                 disabled={actionDisabled}
                 onClick={() => fileInputRef.current?.click()}
-                aria-label="Thêm tệp tài liệu"
+                aria-label="ThĂªm tá»‡p tĂ i liá»‡u"
                 className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 disabled:pointer-events-none disabled:opacity-40"
               >
                 <Paperclip className="size-5" />
@@ -447,14 +423,14 @@ export function ChatComposer({
                 type="button"
                 onClick={handleVoiceUiClick}
                 disabled={voiceDisabled}
-                aria-label="Nút voice bản xem trước UI"
+                aria-label="NĂºt voice báº£n xem trÆ°á»›c UI"
                 aria-pressed={voiceUiState === 'active-ui'}
                 title={
                   voiceUiState === 'active-ui'
-                    ? 'Đang mô phỏng ghi âm'
+                    ? 'Äang mĂ´ phá»ng ghi Ă¢m'
                     : voiceUiState === 'cancelled-ui'
-                      ? 'Đã hủy mô phỏng ghi âm'
-                      : 'Voice UI preview (chưa ghi âm thật)'
+                      ? 'ÄĂ£ há»§y mĂ´ phá»ng ghi Ă¢m'
+                      : 'Voice UI preview (chÆ°a ghi Ă¢m tháº­t)'
                 }
                 className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 disabled:pointer-events-none disabled:opacity-40"
               >
@@ -481,7 +457,7 @@ export function ChatComposer({
               <button
                 type="button"
                 disabled={!activeConversationId}
-                aria-label={showAiQuickReplies ? 'Tắt gợi ý AI' : 'Bật gợi ý AI'}
+                aria-label={showAiQuickReplies ? 'Táº¯t gá»£i Ă½ AI' : 'Báº­t gá»£i Ă½ AI'}
                 aria-pressed={showAiQuickReplies}
                 onClick={() => setShowAiQuickReplies((prev) => !prev)}
                 className={[
@@ -495,7 +471,7 @@ export function ChatComposer({
               </button>
             </TooltipTrigger>
             <TooltipContent side="top">
-              {showAiQuickReplies ? 'Tắt gợi ý AI' : 'Bật gợi ý AI'}
+              {showAiQuickReplies ? 'Táº¯t gá»£i Ă½ AI' : 'Báº­t gá»£i Ă½ AI'}
             </TooltipContent>
           </Tooltip>
 
@@ -511,12 +487,12 @@ export function ChatComposer({
                       userId: currentUserId,
                     })
                   ) {
-                    toast.error('Nhóm không cho phép thành viên tạo bình chọn.');
+                    toast.error('NhĂ³m khĂ´ng cho phĂ©p thĂ nh viĂªn táº¡o bĂ¬nh chá»n.');
                     return;
                   }
                   onOpenPoll();
                 }}
-                title="Tạo bình chọn (Poll)"
+                title="Táº¡o bĂ¬nh chá»n (Poll)"
                 className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0"
               >
                 <BarChart2 className="w-5 h-5" />
@@ -531,25 +507,27 @@ export function ChatComposer({
                       userId: currentUserId,
                     })
                   ) {
-                    toast.error('Nhóm không cho phép thành viên tạo công việc / nhắc hẹn.');
+                    toast.error(
+                      'NhĂ³m khĂ´ng cho phĂ©p thĂ nh viĂªn táº¡o cĂ´ng viá»‡c / nháº¯c háº¹n.',
+                    );
                     return;
                   }
                   onOpenTask();
                 }}
-                title="Giao việc / Nhắc hẹn"
+                title="Giao viá»‡c / Nháº¯c háº¹n"
                 className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all text-muted-foreground hover:text-blue-600 shrink-0"
               >
                 <CheckSquare className="w-5 h-5" />
               </button>
               <button
                 type="button"
-                title="AI Tóm tắt nhóm"
+                title="AI TĂ³m táº¯t nhĂ³m"
                 onClick={() => onOpenAISummary?.()}
                 disabled={!activeConversationId || !onOpenAISummary}
                 className="ml-2 shrink-0 inline-flex items-center gap-2 rounded-lg border border-blue-600/20 bg-blue-600/5 p-2 text-xs font-bold text-blue-600 transition-all hover:bg-blue-600/10 hover:text-blue-700 disabled:opacity-45 disabled:pointer-events-none"
               >
                 <Sparkles className="size-4" />
-                <span>Tóm tắt Tin nhắn</span>
+                <span>TĂ³m táº¯t Tin nháº¯n</span>
               </button>
             </>
           )}
@@ -564,7 +542,7 @@ export function ChatComposer({
                   <Palette className="size-5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top">Bảng trắng tương tác</TooltipContent>
+              <TooltipContent side="top">Báº£ng tráº¯ng tÆ°Æ¡ng tĂ¡c</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -589,8 +567,8 @@ export function ChatComposer({
             ref={textareaRef}
             placeholder={
               activeConversation
-                ? `Nhập tin nhắn tới ${activeConversation.name ?? 'hội thoại'}...`
-                : 'Chọn hội thoại để nhắn tin'
+                ? `Nháº­p tin nháº¯n tá»›i ${activeConversation.name ?? 'há»™i thoáº¡i'}...`
+                : 'Chá»n há»™i thoáº¡i Ä‘á»ƒ nháº¯n tin'
             }
             rows={1}
             value={inputText}
@@ -599,8 +577,9 @@ export function ChatComposer({
               handleTyping();
             }}
             onKeyDown={(e) => handleKeyDown(e)}
+            onPaste={handlePaste}
             disabled={!activeConversationId}
-            aria-label="Soạn tin nhắn"
+            aria-label="Soáº¡n tin nháº¯n"
             className="max-h-32 min-h-10 w-full resize-none bg-transparent px-3.5 py-2.5 text-sm font-medium leading-5 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>
@@ -611,7 +590,7 @@ export function ChatComposer({
               type="button"
               onClick={() => void handleSendMessage()}
               disabled={sendDisabled}
-              aria-label={busy ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'}
+              aria-label={busy ? 'Äang gá»­i tin nháº¯n' : 'Gá»­i tin nháº¯n'}
               className="group animate-in flex size-10 items-center justify-center rounded-lg bg-linear-to-br from-blue-600 to-blue-700 text-white shadow-md shadow-blue-600/20 transition-all fade-in zoom-in hover:-translate-y-0.5 hover:from-blue-600 hover:to-blue-800 hover:shadow-lg hover:shadow-blue-600/25 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:from-blue-600 disabled:hover:to-blue-700"
             >
               {busy ? (
@@ -625,7 +604,7 @@ export function ChatComposer({
               type="button"
               onClick={handleLikeClick}
               disabled={sendDisabled}
-              aria-label="Gửi like nhanh"
+              aria-label="Gá»­i like nhanh"
               className="group animate-in flex size-10 items-center justify-center rounded-lg border border-border/60 bg-muted/45 text-blue-600 shadow-sm transition-all fade-in zoom-in hover:-translate-y-0.5 hover:border-blue-600/30 hover:bg-blue-600 hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
             >
               <ThumbsUp className="size-5 transition-transform group-hover:scale-110" />
