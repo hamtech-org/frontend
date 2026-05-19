@@ -3,28 +3,27 @@ import { ImageIcon } from 'lucide-react';
 import { CONVERSATION_GALLERY_THEME } from '@/components/chat/conversationGallery/conversationGalleryTheme';
 
 type ConversationGalleryMediaCardProps = {
-  href: string;
   who: string;
   when: string;
   thumbnailSrc?: string | null;
   isVideo?: boolean;
+  onClick?: () => void;
 };
 
 export function ConversationGalleryMediaCard({
-  href,
   who,
   when,
   thumbnailSrc,
   isVideo,
+  onClick,
 }: ConversationGalleryMediaCardProps) {
   const theme = CONVERSATION_GALLERY_THEME.media;
 
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex gap-3 rounded-xl border border-black/[0.06] bg-white p-2.5 shadow-sm transition-colors hover:border-[#0068ff]/30 dark:border-white/10 dark:bg-[#242424]"
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full gap-3 rounded-xl border border-black/[0.06] bg-white p-2.5 text-left shadow-sm transition-colors hover:border-[#0068ff]/30 dark:border-white/10 dark:bg-[#242424]"
     >
       <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-black/5 dark:bg-white/10">
         {thumbnailSrc && !isVideo ? (
@@ -49,6 +48,6 @@ export function ConversationGalleryMediaCard({
         <p className="text-[13px] font-semibold text-foreground">{who}</p>
         <p className="mt-1 text-[11px] text-muted-foreground">{when || '—'}</p>
       </div>
-    </a>
+    </button>
   );
 }
