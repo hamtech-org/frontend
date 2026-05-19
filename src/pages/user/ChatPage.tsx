@@ -392,6 +392,13 @@ export default function ChatPage() {
     [directActions],
   );
 
+  const handleGroupClick = useCallback(
+    async (conversationId: string, groupName: string) => {
+      await directActions.handleGroupClick(conversationId, groupName);
+    },
+    [directActions],
+  );
+
   const handleOpenMessages = useCallback(() => {
     setShowAIAssistant(false);
     modalActions.setShowContactsManagement(false);
@@ -483,6 +490,7 @@ export default function ChatPage() {
     onOpenCreateGroup: openCreateGroupModal,
     onOpenMarkRead: handleOpenMarkRead,
     onOpenAddFriend: handleOpenAddFriend,
+    onGroupClick: handleGroupClick,
     onToggleConversationMute: convPrefs.handleToggleConversationMute,
   };
 
@@ -642,6 +650,8 @@ export default function ChatPage() {
                   : undefined
               }
               onFriendClick={handleFriendClick}
+              onGroupClick={handleGroupClick}
+              groupConversations={conversations.filter((c) => c.type === 'group')}
               shareTargetConversations={conversations}
               onForwardMediaMessage={handleForwardMediaMessage}
               onBack={!isTabletOrDesktop ? handleBackToList : undefined}
