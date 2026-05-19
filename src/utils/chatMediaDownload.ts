@@ -139,13 +139,41 @@ function triggerBrowserDownload(url: string, filename: string): void {
   a.remove();
 }
 
-async function downloadViaFetchBlob(url: string, filename: string): Promise<boolean> {
+/** Tải blob media (copy ảnh, xử lý clipboard) — ưu tiên `?attachment=1` để tránh CORS sau redirect CDN. */
+export async function fetchChatMediaBlob(storedUrl: string): Promise<Blob> {
+  const trimmed = storedUrl.trim();
+  if (!trimmed) throw new Error('empty url');
+
+  const mediaId = parseMediaIdFromStoredUrl(trimmed);
+  const url = mediaId
+    ? buildClientMediaAttachmentUrl(mediaId)
+    : isCloudFrontSignedUrl(trimmed)
+      ? trimmed
+      : resolveChatMediaFetchUrl(trimmed);
+  if (!url) throw new Error('empty url');
+
   const token = localStorage.getItem('accessToken');
   const headers: Record<string, string> =
-    !isCloudFrontSignedUrl(url) && token ? { Authorization: `Bearer ${token}` } : {};
+    mediaId || !isCloudFrontSignedUrl(url)
+      ? token
+        ? { Authorization: `Bearer ${token}` }
+        : {}
+      : {};
+
   const res = await fetch(url, { headers, redirect: 'follow' });
-  if (!res.ok) return false;
+  if (!res.ok) throw new Error(String(res.status));
   const blob = await res.blob();
+  if (!blob.size) throw new Error('empty blob');
+  return blob;
+}
+
+async function downloadViaFetchBlob(url: string, filename: string): Promise<boolean> {
+  let blob: Blob;
+  try {
+    blob = await fetchChatMediaBlob(url);
+  } catch {
+    return false;
+  }
   if (!blob.size) return false;
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
