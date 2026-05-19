@@ -1,4 +1,3 @@
-import { ConversationGalleryIcon } from '@/components/chat/conversationGallery/ConversationGalleryIcon';
 import {
   CONVERSATION_GALLERY_KINDS,
   CONVERSATION_GALLERY_THEME,
@@ -21,14 +20,13 @@ export function ConversationGalleryTabBar({ active, onChange }: ConversationGall
             key={kind}
             type="button"
             onClick={() => onChange(kind)}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-[12px] font-semibold transition-colors ${
+            className={`flex flex-1 items-center justify-center rounded-xl border px-2 py-2 text-[12px] font-semibold transition-colors ${
               isActive
                 ? 'border-transparent text-white shadow-sm'
                 : 'border-black/[0.08] bg-black/[0.03] text-muted-foreground hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/[0.05] dark:hover:bg-white/[0.08]'
             }`}
             style={isActive ? { backgroundColor: theme.tint } : undefined}
           >
-            <ConversationGalleryIcon kind={kind} className="h-3.5 w-3.5" strokeWidth={2.25} />
             <span className="truncate">{theme.label}</span>
           </button>
         );

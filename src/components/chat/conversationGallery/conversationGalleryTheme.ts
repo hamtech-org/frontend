@@ -30,8 +30,8 @@ export const CONVERSATION_GALLERY_THEME: Record<
   link: {
     label: 'Link',
     navLabel: 'Link',
-    tint: '#0D9488',
-    softBg: 'rgba(13, 148, 136, 0.1)',
-    softBgDark: 'rgba(13, 148, 136, 0.18)',
+    tint: '#0068FF',
+    softBg: 'rgba(0, 104, 255, 0.08)',
+    softBgDark: 'rgba(0, 104, 255, 0.16)',
   },
 };
