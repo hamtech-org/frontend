@@ -35,6 +35,8 @@ export const appRouteElements = (
     <Route path="/" element={<HomePage />} />
     <Route path="/community" element={<ContactsPage />} />
     <Route path="/live" element={<LiveDirectoryPage />} />
+    {/* develop cũ dùng /studio + StudioPage mock — chuyển sang live mới */}
+    <Route path="/studio" element={<Navigate to="/live" replace />} />
     <Route path="/join/:suffix" element={<JoinGroupPage />} />
     <Route path="/chat/:conversationId" element={<ChatPage />} />
     <Route path="/chat" element={<ChatPage />} />
