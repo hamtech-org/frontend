@@ -129,8 +129,7 @@ export function ConversationSearchPanel({
       if (!id || seen.has(id)) continue;
       seen.add(id);
       const raw = (row.displayName ?? row.name ?? '').trim();
-      const label =
-        currentUserId && id === currentUserId ? 'Bạn' : raw || 'Thành viên';
+      const label = currentUserId && id === currentUserId ? 'Bạn' : raw || 'Thành viên';
       out.push({ userId: id, label });
     }
     out.sort((a, b) => a.label.localeCompare(b.label, 'vi'));
@@ -164,9 +163,12 @@ export function ConversationSearchPanel({
       }
     }
     void apiClient
-      .get<ApiSuccessResponse<IMessage[]>>(`/chat/conversations/${conversationId}/messages/browse`, {
-        params,
-      })
+      .get<ApiSuccessResponse<IMessage[]>>(
+        `/chat/conversations/${conversationId}/messages/browse`,
+        {
+          params,
+        },
+      )
       .then((res) => {
         if (cancelled) return;
         const payload = res.data?.data;
@@ -311,21 +313,6 @@ export function ConversationSearchPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-[#1a1a1a]">
-      <div className="flex shrink-0 items-center justify-between border-b border-black/5 px-5 py-4 dark:border-white/5">
-        <div className="h-8 w-8 shrink-0" aria-hidden />
-        <h3 className="min-w-0 flex-1 truncate text-center text-[17px] font-bold text-black dark:text-white">
-          Tìm kiếm trong trò chuyện
-        </h3>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/5 transition-colors hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
-          title="Quay lại thông tin"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-
       <div className="shrink-0 border-b border-black/5 px-4 py-3 dark:border-white/5">
         <div className="relative">
           <Search
@@ -353,61 +340,63 @@ export function ConversationSearchPanel({
           ) : null}
         </div>
         <div className="mt-3 flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-  <span className="flex h-7 shrink-0 items-center text-[10px] font-semibold text-muted-foreground">
-    Lọc theo
-  </span>
+          <span className="flex h-7 shrink-0 items-center text-[10px] font-semibold text-muted-foreground">
+            Lọc theo
+          </span>
 
-  {memberSelectOptions.length > 0 ? (
-    <label className="flex h-7 min-w-0 max-w-[140px] items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 shadow-sm dark:border-white/[0.1] dark:bg-white/[0.05]">
-      <User className="h-3 w-3 shrink-0 text-muted-foreground" />
+          {memberSelectOptions.length > 0 ? (
+            <label className="flex h-7 min-w-0 max-w-[140px] items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 shadow-sm dark:border-white/[0.1] dark:bg-white/[0.05]">
+              <User className="h-3 w-3 shrink-0 text-muted-foreground" />
 
-      <select
-        value={senderUserId}
-        onChange={(e) => setSenderUserId(e.target.value)}
-        className="min-w-0 flex-1 truncate border-0 bg-transparent text-[11px] font-medium outline-none"
-      >
-        <option value="">Người gửi</option>
-        {memberSelectOptions.map((opt) => (
-          <option key={opt.userId} value={opt.userId}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  ) : (
-    <button
-      type="button"
-      disabled
-      className="flex h-7 items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 text-[11px] text-muted-foreground opacity-60 dark:border-white/[0.1] dark:bg-white/[0.05]"
-    >
-      <User className="h-3 w-3" />
-      Người gửi
-    </button>
-  )}
+              <select
+                value={senderUserId}
+                onChange={(e) => setSenderUserId(e.target.value)}
+                className="min-w-0 flex-1 truncate border-0 bg-transparent text-[11px] font-medium outline-none"
+              >
+                <option value="">Người gửi</option>
+                {memberSelectOptions.map((opt) => (
+                  <option key={opt.userId} value={opt.userId}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="flex h-7 items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 text-[11px] text-muted-foreground opacity-60 dark:border-white/[0.1] dark:bg-white/[0.05]"
+            >
+              <User className="h-3 w-3" />
+              Người gửi
+            </button>
+          )}
 
-  <div className="flex h-7 items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 shadow-sm dark:border-white/[0.1] dark:bg-white/[0.05]">
-    <Calendar className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <div className="flex h-7 items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 shadow-sm dark:border-white/[0.1] dark:bg-white/[0.05]">
+            <Calendar className="h-3 w-3 shrink-0 text-muted-foreground" />
 
-    <input
-      type="date"
-      value={dateFilter}
-      onChange={(e) => setDateFilter(e.target.value)}
-      className="w-[105px] border-0 bg-transparent text-[11px] font-medium outline-none"
-    />
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="w-[105px] border-0 bg-transparent text-[11px] font-medium outline-none"
+            />
 
-    {dateFilter && (
-      <button
-        type="button"
-        onClick={() => setDateFilter("")}
-        className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10"
-      >
-        <X className="h-3 w-3" />
-      </button>
-    )}
-  </div>
-</div>
+            {dateFilter && (
+              <button
+                type="button"
+                onClick={() => setDateFilter('')}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        </div>
         {browseError ? (
-          <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">{browseError}</p>
+          <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+            {browseError}
+          </p>
         ) : null}
       </div>
 
@@ -422,7 +411,9 @@ export function ConversationSearchPanel({
                 ? 'Chọn thành viên hoặc ngày để xem tin; có thể thêm từ khóa để thu hẹp. Hoặc chỉ nhập từ khóa để tìm hội thoại / tin.'
                 : 'Chọn thành viên hoặc ngày để xem tin; có thể thêm từ khóa để thu hẹp.'}
               {conversationTitle ? (
-                <span className="mt-1 block truncate text-xs font-semibold text-foreground/80">{conversationTitle}</span>
+                <span className="mt-1 block truncate text-xs font-semibold text-foreground/80">
+                  {conversationTitle}
+                </span>
               ) : null}
             </p>
           </div>
@@ -495,19 +486,28 @@ export function ConversationSearchPanel({
             ) : null}
 
             <section>
-              <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">Tin nhắn (trong hội thoại hiện tại)</h4>
+              <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">
+                Tin nhắn (trong hội thoại hiện tại)
+              </h4>
               {messageHits.length === 0 ? (
-                <p className="px-2 py-4 text-center text-[13px] text-muted-foreground">Không có tin nhắn khớp.</p>
+                <p className="px-2 py-4 text-center text-[13px] text-muted-foreground">
+                  Không có tin nhắn khớp.
+                </p>
               ) : (
                 <>
                   <ul className="space-y-0">
                     {shownMessages.map((m) => {
                       const isMe = m.senderId === currentUserId;
-                      const who = isMe ? 'Bạn' : (m.senderDisplayName?.trim() || m.senderId || 'Thành viên');
+                      const who = isMe
+                        ? 'Bạn'
+                        : m.senderDisplayName?.trim() || m.senderId || 'Thành viên';
                       const preview = lastMessagePreviewContentFromMessage(m);
                       const time = formatZaloConversationTime(m.createdAt);
                       return (
-                        <li key={m.messageId} className="border-b border-black/[0.04] last:border-0 dark:border-white/[0.06]">
+                        <li
+                          key={m.messageId}
+                          className="border-b border-black/[0.04] last:border-0 dark:border-white/[0.06]"
+                        >
                           <button
                             type="button"
                             onClick={() => jump(m.messageId)}
@@ -516,8 +516,12 @@ export function ConversationSearchPanel({
                             {renderAvatar(m.senderId, who)}
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="truncate text-[14px] font-bold text-foreground">{who}</span>
-                                <span className="shrink-0 text-xs text-muted-foreground">{time}</span>
+                                <span className="truncate text-[14px] font-bold text-foreground">
+                                  {who}
+                                </span>
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                  {time}
+                                </span>
                               </div>
                               <p className="mt-0.5 line-clamp-2 text-[13px] text-muted-foreground">
                                 <HighlightMatch text={preview} needle={needleForUi} />
@@ -544,17 +548,24 @@ export function ConversationSearchPanel({
             <section>
               <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">File</h4>
               {fileHits.length === 0 ? (
-                <p className="px-2 py-4 text-center text-[13px] text-muted-foreground">Không có file khớp.</p>
+                <p className="px-2 py-4 text-center text-[13px] text-muted-foreground">
+                  Không có file khớp.
+                </p>
               ) : (
                 <>
                   <ul className="space-y-2">
                     {shownFiles.map((m) => {
                       const isMe = m.senderId === currentUserId;
-                      const who = isMe ? 'Bạn' : (m.senderDisplayName?.trim() || m.senderId || 'Thành viên');
+                      const who = isMe
+                        ? 'Bạn'
+                        : m.senderDisplayName?.trim() || m.senderId || 'Thành viên';
                       const name = m.mediaOriginalName?.trim() || 'Tập tin';
                       const sizeStr = formatFileSize(m.mediaSize ?? null);
                       const dateStr = m.createdAt
-                        ? new Date(m.createdAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
+                        ? new Date(m.createdAt).toLocaleDateString('vi-VN', {
+                            day: '2-digit',
+                            month: '2-digit',
+                          })
                         : '';
                       return (
                         <li key={m.messageId}>
