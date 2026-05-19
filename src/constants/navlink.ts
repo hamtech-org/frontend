@@ -20,7 +20,7 @@ export const navItems: NavItem[] = [
   { path: '/', icon: Home, label: 'Bảng tin' },
   { path: '/reels', icon: Clapperboard, label: 'Reels' },
   { path: '/community', icon: Compass, label: 'Cộng đồng' },
-  { path: '/studio', icon: Video, label: 'Live Studio' },
+  { path: '/live', icon: Video, label: 'Live Studio' },
   { path: '/chat', icon: MessageSquare, label: 'Tin nhắn' },
   { path: '/analytics', icon: BarChart3, label: 'Thống kê' },
   { path: '/ai-studio', icon: Sparkles, label: 'AI Studio' },

@@ -11,7 +11,7 @@ import { useAppShellState } from '@/hooks/app/useAppShellState';
 import { useLogoutFlow } from '@/hooks/app/useLogoutFlow';
 import { useProfileSync } from '@/hooks/app/useProfileSync';
 import { useAuth } from '@/hooks/useAuth';
-import { appRouteElements } from '@/routes/AppRoutes';
+import { appRouteElements, liveImmersiveRouteElements } from '@/routes/AppRoutes';
 import { guestRouteElements } from '@/routes/GuestRoutes';
 import { cn } from '@/utils/cn';
 import { AnimatePresence, motion } from 'motion/react';
@@ -33,12 +33,14 @@ const App: React.FC = () => {
 
   const isGuestRoute = GUEST_ROUTES.includes(location.pathname);
   const isCallRoute = location.pathname === '/call';
+  const isLiveImmersiveRoute = /^\/live\/[^/]+/.test(location.pathname);
   const isJoinRoute = location.pathname.startsWith('/join/');
   const isChatRoute = location.pathname.startsWith('/chat');
   const isReelsRoute = location.pathname.startsWith('/reels');
   const isImmersiveRoute = isChatRoute || isReelsRoute;
   const routeTransitionKey = isChatRoute ? 'chat' : location.pathname;
-  const shouldRenderAppShell = !isGuestRoute && !isCallRoute && !isChatRoute && !isJoinRoute;
+  const shouldRenderAppShell =
+    !isGuestRoute && !isCallRoute && !isChatRoute && !isLiveImmersiveRoute && !isJoinRoute;
   const {
     isMobileViewport,
     isMobileSidebarOpen,
@@ -85,6 +87,24 @@ const App: React.FC = () => {
           </Routes>
         </CallProvider>
       </Suspense>
+    );
+  }
+
+  if (isLiveImmersiveRoute) {
+    return (
+      <div
+        className={cn(
+          'min-h-screen transition-colors duration-500',
+          isDarkMode ? 'theme-midnight dark' : 'theme-ethereal',
+        )}
+      >
+        <Suspense fallback={<PageLoader />}>
+          <CallProvider>
+            <IncomingCallModal />
+            <Routes>{liveImmersiveRouteElements}</Routes>
+          </CallProvider>
+        </Suspense>
+      </div>
     );
   }
 
@@ -210,8 +230,8 @@ const App: React.FC = () => {
 };
 
 const PageLoader: React.FC = () => (
-  <div className="flex items-center justify-center h-full min-h-[50vh]">
-    <div className="w-12 h-12 rounded-full border-4 border-blue-600/20 border-t-blue-600 animate-spin" />
+  <div className="flex h-full min-h-[50vh] items-center justify-center">
+    <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-600/20 border-t-blue-600" />
   </div>
 );
 
