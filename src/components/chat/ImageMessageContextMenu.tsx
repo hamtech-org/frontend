@@ -1,21 +1,13 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  Download,
-  Image as ImageIcon,
-  Pin,
-  Reply,
-  RotateCcw,
-  Share2,
-  Trash2,
-} from 'lucide-react';
+import { Download, Image as ImageIcon, Pin, Reply, RotateCcw, Share2, Trash2 } from 'lucide-react';
 
 type ImageMessageContextMenuProps = {
   open: boolean;
   anchorX: number;
   anchorY: number;
   /** Ảnh: có mục copy; video: không copy pixel (trình duyệt hạn chế). */
-  mediaKind: 'image' | 'video';
+  mediaKind: 'image' | 'video' | 'file';
   onClose: () => void;
   isMe: boolean;
   /** Giống Zalo: nhãn Ghim / Bỏ ghim. */
@@ -83,7 +75,7 @@ export function ImageMessageContextMenu({
   const ref = useRef<HTMLDivElement>(null);
   const pad = 8;
   const estW = 268;
-  const estH = mediaKind === 'video' ? 280 : 320;
+  const estH = mediaKind === 'video' ? 280 : mediaKind === 'file' ? 300 : 320;
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
   const left = Math.min(Math.max(pad, anchorX), vw - estW - pad);
@@ -111,7 +103,11 @@ export function ImageMessageContextMenu({
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-[280]" aria-hidden onContextMenu={(e) => e.preventDefault()} />
+      <div
+        className="fixed inset-0 z-[280]"
+        aria-hidden
+        onContextMenu={(e) => e.preventDefault()}
+      />
       <div
         ref={ref}
         role="menu"
@@ -120,8 +116,22 @@ export function ImageMessageContextMenu({
         onClick={(e) => e.stopPropagation()}
         onContextMenu={(e) => e.preventDefault()}
       >
-        <MenuRow icon={Reply} label="Trả lời" onClick={() => { onReply(); onClose(); }} />
-        <MenuRow icon={Share2} label="Chia sẻ" onClick={() => { onShare(); onClose(); }} />
+        <MenuRow
+          icon={Reply}
+          label="Trả lời"
+          onClick={() => {
+            onReply();
+            onClose();
+          }}
+        />
+        <MenuRow
+          icon={Share2}
+          label="Chia sẻ"
+          onClick={() => {
+            onShare();
+            onClose();
+          }}
+        />
         <Divider />
         {mediaKind === 'image' && (
           <MenuRow
@@ -133,7 +143,14 @@ export function ImageMessageContextMenu({
             }}
           />
         )}
-        <MenuRow icon={Download} label="Lưu về máy" onClick={() => { onSaveToDevice(); onClose(); }} />
+        <MenuRow
+          icon={Download}
+          label="Lưu về máy"
+          onClick={() => {
+            onSaveToDevice();
+            onClose();
+          }}
+        />
         <Divider />
         <MenuRow
           icon={Pin}

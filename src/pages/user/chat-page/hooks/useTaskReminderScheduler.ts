@@ -130,41 +130,6 @@ function buildReminderPayload({
   });
 }
 
-function buildTaskAssignedPayload({
-  task,
-  memberNameById,
-}: {
-  task: GroupTaskLike;
-  memberNameById: Map<string, string>;
-}): string {
-  const assignees = Array.isArray(task.assignees) ? task.assignees : [];
-  const assignToAll = Boolean(task.assignToAll) || assignees.length === 0;
-  const broadcast = Boolean(task.broadcast) || assignToAll;
-  const names = assignees
-    .map((id) => memberNameById.get(id))
-    .filter((x): x is string => Boolean(x && x.trim()))
-    .map((x) => x.trim());
-  const assigneeLabel = assignToAll
-    ? `Cả nhóm (${memberNameById.size} người)`
-    : names.length > 0
-      ? names.join(', ')
-      : 'cả nhóm';
-
-  return JSON.stringify({
-    kind: 'task_assigned',
-    actor: { userId: task.creatorId ?? null, name: task.creatorDisplayName ?? 'Ai đó' },
-    task: {
-      taskId: String(task.taskId),
-      title: String(task.title ?? ''),
-      dueDate: task.dueDate ?? null,
-      note: null,
-      assigneeLabel,
-      assignToAll,
-      broadcast,
-    },
-  });
-}
-
 export function useTaskReminderScheduler({
   conversationId,
   tasks,
@@ -191,7 +156,6 @@ export function useTaskReminderScheduler({
   const timersRef = useRef<Map<string, number>>(new Map());
   const sentRef = useRef<Set<string>>(new Set());
   const snoozeRef = useRef<Map<string, number>>(new Map());
-  const createdRef = useRef<Set<string>>(new Set());
 
   const cancelTaskReminders = useCallback(
     (taskId: string) => {
@@ -260,36 +224,19 @@ export function useTaskReminderScheduler({
     snoozeRef.current.forEach((t) => clearTimeout(t));
     snoozeRef.current.clear();
     sentRef.current.clear();
-    createdRef.current.clear();
   }, [conversationId]);
 
+  // Không bơm `task_assigned` local — server đã gửi system message qua socket (tránh 2 thẻ + banner lặp).
   useEffect(() => {
     if (!conversationId) return;
-
-    // Clear any existing timers (re-schedule on each tasks change).
     const timers = timersRef.current;
     timers.forEach((t) => clearTimeout(t));
     timers.clear();
-
-    for (const task of tasks) {
-      if (!task?.taskId) continue;
-      if (task.status === 'done') continue;
-
-      if (!createdRef.current.has(task.taskId)) {
-        const payload = buildTaskAssignedPayload({ task, memberNameById });
-        const messageId = taskCardMessageId(conversationId, task.taskId);
-        dispatch(
-          messageReceived(buildSystemMessage({ conversationId, messageId, content: payload })),
-        );
-        createdRef.current.add(task.taskId);
-      }
-    }
-
     return () => {
       timers.forEach((t) => clearTimeout(t));
       timers.clear();
     };
-  }, [conversationId, currentUserId, dispatch, memberNameById, tasks]);
+  }, [conversationId, tasks]);
 
   return { cancelTaskReminders, snoozeTask };
 }

@@ -1,6 +1,15 @@
 import type { IConversation, IMessage, MessageType, TypingUserEntry } from '@/types/chat.types';
-import { formatGroupSystemChatLine } from '@/utils/groupSystemMessage';
+import { pinnedChatFileDisplayName, resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
+
+export { pinnedChatFileDisplayName } from '@/utils/chatFileDisplay';
+import {
+  formatGroupSystemChatLine,
+  formatLegacyGroupProfileSystemLine,
+} from '@/utils/groupSystemMessage';
 import { formatGroupJoinLinkListPreview } from '@/utils/groupJoinLinkMessage';
+
+/** Màu logo bình chọn (PollVoteModal — orange-500). */
+export const CHAT_POLL_PINNED_ACCENT = '#f97316';
 
 export function decodeJwtUserId(token: string | null): string | null {
   if (!token) return null;
@@ -50,9 +59,16 @@ export function lastMessageLineFromSystemJson(
   ctx: SystemJsonPreviewCtx,
 ): string | null {
   const trimmed = (raw ?? '').trim();
-  if (!trimmed.startsWith('{')) return null;
-  const groupLine = formatGroupSystemChatLine(trimmed, ctx.currentUserId);
+  if (!trimmed) return null;
+  const groupLine =
+    formatGroupSystemChatLine(trimmed, ctx.currentUserId) ??
+    formatLegacyGroupProfileSystemLine(trimmed, {
+      senderId: ctx.senderId,
+      currentUserId: ctx.currentUserId,
+      senderDisplayName: ctx.senderDisplayName,
+    });
   if (groupLine) return groupLine;
+  if (!trimmed.startsWith('{')) return null;
   try {
     const obj = JSON.parse(trimmed) as Record<string, unknown> & {
       kind?: string;
@@ -235,6 +251,128 @@ export function extractFirstHttpUrl(content: string): string | null {
   return m ? m[0] : null;
 }
 
+export type PinnedMessageKind = 'message' | 'poll' | 'image' | 'video' | 'file';
+
+const PINNED_STATIC_ACCENTS: Record<Exclude<PinnedMessageKind, 'file' | 'poll'>, string> = {
+  message: '#0068ff',
+  image: '#7c3aed',
+  video: '#d97706',
+};
+
+export function pinnedMessageKind(msg: Pick<IMessage, 'type' | 'content'>): PinnedMessageKind {
+  if (pollQuestionFromPinnedMessage(msg)) return 'poll';
+  if (msg.type === 'image') return 'image';
+  if (msg.type === 'video') return 'video';
+  if (msg.type === 'file') return 'file';
+  return 'message';
+}
+
+export function pinnedMessageKindLabel(kind: PinnedMessageKind): string {
+  switch (kind) {
+    case 'poll':
+      return 'Bình chọn';
+    case 'image':
+      return 'Hình ảnh';
+    case 'video':
+      return 'Video';
+    case 'file':
+      return 'Tệp tin';
+    default:
+      return 'Tin nhắn';
+  }
+}
+
+/** Tiêu đề hàng ghim: file → tên file cụ thể. */
+export function pinnedMessageKindTitle(msg: IMessage): string {
+  const kind = pinnedMessageKind(msg);
+  if (kind === 'file') {
+    const name = pinnedChatFileDisplayName(msg);
+    return name !== 'Tệp tin' ? name : pinnedMessageKindLabel(kind);
+  }
+  return pinnedMessageKindLabel(kind);
+}
+
+/** Màu vòng icon ghim — file theo loại (PDF/XLS/DOC), poll = cam logo. */
+export function pinnedMessageAccent(msg: IMessage): string {
+  const kind = pinnedMessageKind(msg);
+  if (kind === 'poll') return CHAT_POLL_PINNED_ACCENT;
+  if (kind === 'file') {
+    return resolveChatFileBubbleMeta(msg).accent;
+  }
+  return PINNED_STATIC_ACCENTS[kind];
+}
+
+/** Câu hỏi bình chọn từ tin system `poll_created` (bảng tin / ghim). */
+export function pollQuestionFromPinnedMessage(
+  msg: Pick<IMessage, 'content' | 'type'>,
+): string | null {
+  const raw = String(msg.content ?? '').trim();
+  if (!raw.startsWith('{')) return null;
+  try {
+    const obj = JSON.parse(raw) as { kind?: string; poll?: { question?: string } };
+    if (obj?.kind !== 'poll_created') return null;
+    const q = String(obj?.poll?.question ?? '').trim();
+    return q || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Một dòng preview cho thẻ tin ghim trong bảng tin nhóm — không hiển thị JSON thô. */
+export function bulletinPinnedPreviewLine(msg: IMessage, viewerUserId?: string): string {
+  const pollQ = pollQuestionFromPinnedMessage(msg);
+  if (pollQ) return pollQ;
+  const raw = String(msg.content ?? '').trim();
+  if (raw.startsWith('{')) {
+    const line = lastMessageLineFromSystemJson(raw, {
+      currentUserId: viewerUserId,
+      senderId: msg.senderId,
+      senderDisplayName: msg.senderDisplayName,
+    });
+    if (line) return line;
+    return 'Thông báo nhóm';
+  }
+  if (msg.type === 'file') return pinnedChatFileDisplayName(msg);
+  if (msg.type === 'image') return 'Hình ảnh';
+  if (msg.type === 'video') return 'Video';
+  return formatPinnedMessagePreviewLine(msg);
+}
+
+/** Tiêu đề chính trên thẻ ghim — ưu tiên nội dung cụ thể, tránh lặp với preview. */
+export function pinnedBulletinCardTitle(msg: IMessage, viewerUserId?: string): string {
+  const pollQ = pollQuestionFromPinnedMessage(msg);
+  if (pollQ) return pollQ;
+  const kind = pinnedMessageKind(msg);
+  if (kind === 'message') {
+    const line = bulletinPinnedPreviewLine(msg, viewerUserId).trim();
+    if (line) return line;
+  }
+  return pinnedMessageKindTitle(msg);
+}
+
+export function pinnedBulletinMetaLine(who: string, when: string): string {
+  const name = who.trim() || 'Thành viên';
+  const time = when.trim();
+  return time ? `${name} · ${time}` : name;
+}
+
+/** Chỉ hiện dòng preview phụ khi còn thông tin khác tiêu đề. */
+export function shouldShowPinnedBulletinPreview(
+  kind: PinnedMessageKind,
+  title: string,
+  preview: string,
+): boolean {
+  if (kind === 'poll' || kind === 'file' || kind === 'image' || kind === 'video') {
+    return false;
+  }
+  const p = preview.trim();
+  if (!p) return false;
+  const t = title.trim();
+  if (p === t) return false;
+  if (p === pinnedMessageKindLabel(kind)) return false;
+  return kind === 'message';
+}
+
 export function formatPinnedMessagePreviewLine(msg: IMessage): string {
   if (msg.isRecalled) return 'Tin nhắn đã được thu hồi';
   if (msg.isDeleted) return 'Tin nhắn đã xóa';
@@ -265,6 +403,7 @@ export function formatPinnedMessagePreviewLine(msg: IMessage): string {
     return 'Thông báo';
   }
   if (msg.type === 'poll') return 'Bình chọn';
+  if (msg.type === 'file') return pinnedChatFileDisplayName(msg);
   if (msg.type === 'sticker' || msg.type === 'emoji') return 'Nhãn dán';
   if (msg.type === 'location') return 'Vị trí';
   if (msg.type === 'schedule') return 'Lịch hẹn';
