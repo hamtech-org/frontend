@@ -320,49 +320,44 @@ function ReplyQuoteStrip({
           : 'bg-black/5 border-blue-500/50 hover:bg-black/10 dark:hover:bg-white/5'
       }`}
     >
-      <div className="shrink-0">
-        {details.type === 'image' && thumbSrc ? (
-          <div className="w-11 h-11 rounded-lg overflow-hidden bg-black/10 ring-1 ring-black/10 dark:ring-white/10">
-            <AuthenticatedMedia
-              src={thumbSrc}
-              kind="image"
-              className="h-full w-full object-cover"
-              alt=""
-            />
-          </div>
-        ) : details.type === 'image' ? (
-          <div className="w-11 h-11 rounded-lg bg-slate-200/90 dark:bg-slate-700/90 flex items-center justify-center ring-1 ring-black/10">
-            <LucideImage className="w-5 h-5 text-slate-500 dark:text-slate-400" aria-hidden />
-          </div>
-        ) : details.type === 'video' && thumbSrc ? (
-          <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-zinc-900 ring-1 ring-black/10">
-            <AuthenticatedMedia
-              src={thumbSrc}
-              kind="image"
-              className="h-full w-full object-cover"
-              alt=""
-            />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/25 pointer-events-none">
-              <Video className="w-5 h-5 text-white drop-shadow-md" aria-hidden />
+      {(details.type === 'image' || details.type === 'video' || details.type === 'file') && (
+        <div className="shrink-0">
+          {details.type === 'image' && thumbSrc ? (
+            <div className="w-11 h-11 rounded-lg overflow-hidden bg-black/10 ring-1 ring-black/10 dark:ring-white/10">
+              <AuthenticatedMedia
+                src={thumbSrc}
+                kind="image"
+                className="h-full w-full object-cover"
+                alt=""
+              />
             </div>
-          </div>
-        ) : details.type === 'video' ? (
-          <div className="w-11 h-11 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center ring-1 ring-black/5">
-            <Video className="w-5 h-5 text-violet-600 dark:text-violet-400" aria-hidden />
-          </div>
-        ) : details.type === 'file' ? (
-          <div className="w-11 h-11 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center ring-1 ring-black/5">
-            <FileText className="w-5 h-5 text-amber-700 dark:text-amber-400" aria-hidden />
-          </div>
-        ) : (
-          <ZaloStyleAvatar
-            userId={details.senderId}
-            displayName={name}
-            avatarUrl={null}
-            className="w-11 h-11"
-          />
-        )}
-      </div>
+          ) : details.type === 'image' ? (
+            <div className="w-11 h-11 rounded-lg bg-slate-200/90 dark:bg-slate-700/90 flex items-center justify-center ring-1 ring-black/10">
+              <LucideImage className="w-5 h-5 text-slate-500 dark:text-slate-400" aria-hidden />
+            </div>
+          ) : details.type === 'video' && thumbSrc ? (
+            <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-zinc-900 ring-1 ring-black/10">
+              <AuthenticatedMedia
+                src={thumbSrc}
+                kind="image"
+                className="h-full w-full object-cover"
+                alt=""
+              />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/25 pointer-events-none">
+                <Video className="w-5 h-5 text-white drop-shadow-md" aria-hidden />
+              </div>
+            </div>
+          ) : details.type === 'video' ? (
+            <div className="w-11 h-11 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center ring-1 ring-black/5">
+              <Video className="w-5 h-5 text-violet-600 dark:text-violet-400" aria-hidden />
+            </div>
+          ) : (
+            <div className="w-11 h-11 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center ring-1 ring-black/5">
+              <FileText className="w-5 h-5 text-amber-700 dark:text-amber-400" aria-hidden />
+            </div>
+          )}
+        </div>
+      )}
       <div className="min-w-0 flex-1 text-left">
         <p
           className={`text-[10px] font-bold truncate ${

@@ -63,3 +63,44 @@ export function patchMessageInGetMessagesCache(
     }),
   );
 }
+
+/** Cập nhật một tin trong cache `getMessagesPaginated` (items array bên trong .data). */
+export function patchMessageInPaginatedCache(
+  dispatch: AppDispatch,
+  conversationId: string,
+  messageId: string,
+  patch: Partial<IMessage>,
+): void {
+  const mid = String(messageId);
+  dispatch(
+    chatApi.util.updateQueryData(
+      'getMessagesPaginated',
+      { conversationId } as never,
+      (draft: { data: { items: IMessage[] } }) => {
+        if (!draft.data?.items) return;
+        const m = draft.data.items.find((x: IMessage) => String(x.messageId) === mid);
+        if (m) Object.assign(m, patch);
+      },
+    ),
+  );
+}
+
+/** Append a new message to the paginated cache (oldest→newest order). */
+export function appendMessageToPaginatedCache(
+  dispatch: AppDispatch,
+  conversationId: string,
+  message: IMessage,
+): void {
+  dispatch(
+    chatApi.util.updateQueryData(
+      'getMessagesPaginated',
+      { conversationId } as never,
+      (draft: { data: { items: IMessage[] } }) => {
+        if (!draft.data?.items) return;
+        const mid = String(message.messageId);
+        if (draft.data.items.some((m: IMessage) => String(m.messageId) === mid)) return;
+        draft.data.items.push(message);
+      },
+    ),
+  );
+}

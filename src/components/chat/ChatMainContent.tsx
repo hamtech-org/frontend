@@ -1,5 +1,7 @@
 import type { RefObject, SetStateAction, Dispatch, ReactNode } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import { ChevronDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { FriendsListView } from '@/components/chat/FriendsListView';
 import { FriendRequestsView } from '@/components/chat/FriendRequestsView';
 import { ChatHeader } from '@/components/chat/ChatHeader';
@@ -9,7 +11,6 @@ import { ChatComposer } from '@/components/chat/ChatComposer';
 import type { ContactsTabId } from '@/components/chat/ContactsManagementPanel';
 import type { IConversation, IMessage, TypingUserEntry } from '@/types/chat.types';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
-import { useDispatch } from 'react-redux';
 import type { AppDispatch, RootState } from '@/store/store';
 import { setReplyingTo } from '@/store/slices/chatSlice';
 import { useCallContext } from '@/contexts/CallContext';
@@ -40,6 +41,7 @@ interface ChatMainContentProps {
     endRef: RefObject<HTMLDivElement>;
     allMessages: IMessage[];
     unreadIncomingCount: number;
+    isScrolledUp: boolean;
     onJumpToLatest: () => void;
   };
 
@@ -245,42 +247,62 @@ export function ChatMainContent(props: ChatMainContentProps) {
             </div>
           )}
 
-          <ChatMessageList
-            messagesContainerRef={scroll.containerRef}
-            messagesEndRef={scroll.endRef}
-            allMessages={scroll.allMessages}
-            activeConversationId={core.activeConversationId}
-            activeConversation={core.activeConversation}
-            currentUserId={core.currentUserId}
-            typingUsers={[...typingUsers]}
-            unreadIncomingCount={scroll.unreadIncomingCount}
-            jumpHighlightMessageId={jumpHighlightMessageId}
-            jumpFlashNonce={jumpFlashNonce}
-            onJumpToMessage={onJumpToMessage}
-            actionMenuMsgId={actionMenuMsgId}
-            onActionMenuMsgIdChange={onActionMenuMsgIdChange}
-            onStartEdit={onStartEdit}
-            onTogglePin={pinned.onTogglePin}
-            onRecall={messageActions.handleRecallMsg}
-            onDelete={messageActions.handleDeleteMsg}
-            onReply={(msg) => dispatch(setReplyingTo(msg))}
-            onReact={messageActions.handleReactMessage}
-            onJumpToLatest={scroll.onJumpToLatest}
-            groupTasks={group.tasks}
-            groupMembers={group.members}
-            onTaskJoined={
-              core.activeConversation?.type === 'group'
-                ? (taskId) => {
-                    void groupActions.handleTaskJoined(String(taskId));
-                  }
-                : undefined
-            }
-            onOpenPollVote={groupActions.openPollVoteModal}
-            shareTargetConversations={shareTargetConversations}
-            onForwardMediaMessage={onForwardMediaMessage}
-            onEditGroupTask={onEditGroupTask}
-            onDeleteGroupTask={onDeleteGroupTask}
-          />
+          <div className="relative flex flex-1 min-h-0 flex-col">
+            <ChatMessageList
+              messagesContainerRef={scroll.containerRef}
+              messagesEndRef={scroll.endRef}
+              allMessages={scroll.allMessages}
+              activeConversationId={core.activeConversationId}
+              activeConversation={core.activeConversation}
+              currentUserId={core.currentUserId}
+              typingUsers={[...typingUsers]}
+              unreadIncomingCount={scroll.unreadIncomingCount}
+              jumpHighlightMessageId={jumpHighlightMessageId}
+              jumpFlashNonce={jumpFlashNonce}
+              onJumpToMessage={onJumpToMessage}
+              actionMenuMsgId={actionMenuMsgId}
+              onActionMenuMsgIdChange={onActionMenuMsgIdChange}
+              onStartEdit={onStartEdit}
+              onTogglePin={pinned.onTogglePin}
+              onRecall={messageActions.handleRecallMsg}
+              onDelete={messageActions.handleDeleteMsg}
+              onReply={(msg) => dispatch(setReplyingTo(msg))}
+              onReact={messageActions.handleReactMessage}
+              onJumpToLatest={scroll.onJumpToLatest}
+              groupTasks={group.tasks}
+              groupMembers={group.members}
+              onTaskJoined={
+                core.activeConversation?.type === 'group'
+                  ? (taskId) => {
+                      void groupActions.handleTaskJoined(String(taskId));
+                    }
+                  : undefined
+              }
+              onOpenPollVote={groupActions.openPollVoteModal}
+              shareTargetConversations={shareTargetConversations}
+              onForwardMediaMessage={onForwardMediaMessage}
+              onEditGroupTask={onEditGroupTask}
+              onDeleteGroupTask={onDeleteGroupTask}
+            />
+
+            {scroll.isScrolledUp && core.activeConversationId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-lg"
+                onClick={scroll.onJumpToLatest}
+                className="absolute bottom-4 right-5 z-30 rounded-full bg-background/95 shadow-lg shadow-black/10 backdrop-blur-sm hover:scale-105 active:scale-95"
+                aria-label="Cuộn xuống tin mới nhất"
+              >
+                <ChevronDown className="text-foreground/70" />
+                {scroll.unreadIncomingCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
+                    {scroll.unreadIncomingCount > 99 ? '99+' : scroll.unreadIncomingCount}
+                  </span>
+                )}
+              </Button>
+            )}
+          </div>
 
           {postMessageListSlot}
 

@@ -342,15 +342,23 @@ export default function ChatPage() {
     },
   });
 
-  const { messagesContainerRef, messagesEndRef, unreadIncomingCount, handleJumpToLatest } =
-    useChatScrollBehavior({
-      allMessages: messageData.allMessages,
-      activeConversationId,
-      currentUserId,
-      typingUsers,
-      actionMenuMsgId: modalState.actionMenuMsgId,
-      setActionMenuMsgId: modalActions.setActionMenuMsgId,
-    });
+  const {
+    messagesContainerRef,
+    messagesEndRef,
+    unreadIncomingCount,
+    isScrolledUp,
+    handleJumpToLatest,
+  } = useChatScrollBehavior({
+    allMessages: messageData.allMessages,
+    activeConversationId,
+    currentUserId,
+    typingUsers,
+    actionMenuMsgId: modalState.actionMenuMsgId,
+    setActionMenuMsgId: modalActions.setActionMenuMsgId,
+    loadOlderMessages: messageData.loadOlderMessages,
+    hasMore: messageData.hasMore,
+    isLoadingOlder: messageData.isLoadingOlder,
+  });
 
   useEffect(() => {
     modalActions.setMessageConfirm(null);
@@ -632,6 +640,7 @@ export default function ChatPage() {
                 endRef: messagesEndRef,
                 allMessages: messageData.allMessages,
                 unreadIncomingCount,
+                isScrolledUp,
                 onJumpToLatest: handleJumpToLatest,
               }}
               jumpHighlightMessageId={jumpHighlightMessageId}
