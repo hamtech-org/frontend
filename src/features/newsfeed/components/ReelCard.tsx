@@ -25,15 +25,21 @@ export const ReelCard = ({ reel }: Props) => {
   return (
     <motion.div
       whileHover={{ y: -5 }}
-      onClick={() => navigate('/reels')}
+      onClick={() => navigate(`/reels/${reel.reelId}`)}
       className="relative shrink-0 w-[132px] h-[220px] rounded-xl overflow-hidden group cursor-pointer"
     >
-      <img
-        src={reel.thumbnailUrl}
-        alt={reel.caption || 'Reel'}
-        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-        referrerPolicy="no-referrer"
-      />
+      {reel.thumbnailUrl ? (
+        <img
+          src={reel.thumbnailUrl}
+          alt={reel.caption || 'Reel'}
+          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-neutral-900">
+          <Play className="size-9 fill-white text-white opacity-80" />
+        </div>
+      )}
       <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent" />
 
       {/* Author avatar */}
