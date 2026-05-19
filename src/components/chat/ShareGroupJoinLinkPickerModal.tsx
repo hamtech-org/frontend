@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, User, Users, X } from 'lucide-react';
+import { Search, Users, X } from 'lucide-react';
 
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import type { GroupJoinLinkModalData } from '@/contexts/GroupJoinLinkModalContext';
@@ -9,7 +9,7 @@ import { useGetFriendsQuery } from '@/store/api/contactApi';
 import { useGetConversationsQuery } from '@/store/api/chatApi';
 import type { IConversation } from '@/types/chat.types';
 
-type ShareTab = 'recent' | 'groups' | 'friends';
+type ShareTab = 'all' | 'groups' | 'friends';
 
 type ShareGroupJoinLinkPickerModalProps = {
   open: boolean;
@@ -33,26 +33,39 @@ function sortConvsByRecent(convs: IConversation[]) {
   });
 }
 
-function parseFriends(data: unknown): FriendRow[] {
+/** Chỉ lấy người đã kết bạn (accepted / friend) từ GET /contacts/friends. */
+function parseAcceptedFriends(data: unknown): FriendRow[] {
   if (!data) return [];
+  let raw: unknown[] = [];
   if (Array.isArray(data)) {
-    return (data as FriendRow[]).map((f) => ({
-      userId: f.userId,
-      displayName: f.displayName ?? f.userId,
-      avatar: f.avatar,
-    }));
-  }
-  if (typeof data === 'object') {
+    raw = data;
+  } else if (typeof data === 'object') {
     const asObj = data as { friends?: unknown };
-    if (Array.isArray(asObj.friends)) {
-      return (asObj.friends as FriendRow[]).map((f) => ({
-        userId: f.userId,
-        displayName: f.displayName ?? f.userId,
-        avatar: f.avatar,
-      }));
-    }
+    if (Array.isArray(asObj.friends)) raw = asObj.friends;
   }
-  return [];
+  return raw
+    .map((item) => {
+      const f = item as {
+        userId?: string;
+        friendId?: string;
+        displayName?: string;
+        avatar?: string | null;
+        contactStatus?: string;
+        status?: string;
+      };
+      const userId = f.userId ?? f.friendId;
+      if (!userId) return null;
+      if (f.contactStatus && f.contactStatus !== 'accepted' && f.contactStatus !== 'friend') {
+        return null;
+      }
+      return {
+        userId,
+        displayName: f.displayName ?? userId,
+        avatar: f.avatar ?? null,
+      };
+    })
+    .filter((row): row is FriendRow => row !== null)
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, 'vi'));
 }
 
 export function ShareGroupJoinLinkPickerModal({
@@ -62,7 +75,7 @@ export function ShareGroupJoinLinkPickerModal({
   excludeConversationId,
 }: ShareGroupJoinLinkPickerModalProps) {
   const [q, setQ] = useState('');
-  const [tab, setTab] = useState<ShareTab>('recent');
+  const [tab, setTab] = useState<ShareTab>('all');
   const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(() => new Set());
   const [selectedFriendIds, setSelectedFriendIds] = useState<Set<string>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
@@ -80,7 +93,7 @@ export function ShareGroupJoinLinkPickerModal({
     [conversationsRes?.data, excludeConversationId],
   );
 
-  const friends = useMemo(() => parseFriends(friendsRes?.data), [friendsRes?.data]);
+  const friends = useMemo(() => parseAcceptedFriends(friendsRes?.data), [friendsRes?.data]);
 
   const directConvByFriendId = useMemo(() => {
     const map = new Map<string, string>();
@@ -95,7 +108,7 @@ export function ShareGroupJoinLinkPickerModal({
   useEffect(() => {
     if (!open) return;
     setQ('');
-    setTab('recent');
+    setTab('all');
     setSelectedConvIds(new Set());
     setSelectedFriendIds(new Set());
   }, [open]);
@@ -114,29 +127,18 @@ export function ShareGroupJoinLinkPickerModal({
     [conversations],
   );
 
-  const recentConvs = useMemo(() => sortConvsByRecent(conversations), [conversations]);
+  const hasSearch = q.trim().length > 0;
 
-  const filteredConvs = useMemo(() => {
+  const filteredGroups = useMemo(() => {
     const s = q.trim().toLowerCase();
-    let list =
-      tab === 'groups'
-        ? groupConvs
-        : tab === 'friends'
-          ? sortConvsByRecent(conversations.filter((c) => c.type === 'direct'))
-          : recentConvs;
-    if (s) {
-      list = list.filter((c) => (c.name ?? '').toLowerCase().includes(s));
-    }
-    return list;
-  }, [conversations, groupConvs, q, recentConvs, tab]);
+    if (!s) return groupConvs;
+    return groupConvs.filter((c) => (c.name ?? '').toLowerCase().includes(s));
+  }, [groupConvs, q]);
 
   const filteredFriends = useMemo(() => {
     const s = q.trim().toLowerCase();
-    let list = friends;
-    if (s) {
-      list = list.filter((f) => f.displayName.toLowerCase().includes(s));
-    }
-    return list;
+    if (!s) return friends;
+    return friends.filter((f) => f.displayName.toLowerCase().includes(s));
   }, [friends, q]);
 
   const toggleConv = useCallback((id: string) => {
@@ -158,6 +160,67 @@ export function ShareGroupJoinLinkPickerModal({
   }, []);
 
   const selectedCount = selectedConvIds.size + selectedFriendIds.size;
+
+  const renderGroupRow = (c: IConversation) => {
+    const checked = selectedConvIds.has(c.conversationId);
+    return (
+      <li key={c.conversationId}>
+        <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-50 dark:hover:bg-white/[0.04]">
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={submitting}
+            onChange={() => toggleConv(c.conversationId)}
+            className="h-4 w-4 shrink-0 accent-[#0068ff]"
+          />
+          {c.avatar ? (
+            <img
+              src={c.avatar}
+              alt=""
+              className="size-10 rounded-full object-cover border border-slate-100"
+            />
+          ) : (
+            <div className="flex size-10 items-center justify-center rounded-full bg-sky-100">
+              <Users className="h-4 w-4 text-sky-600" />
+            </div>
+          )}
+          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">
+            {c.name ?? 'Hội thoại'}
+          </span>
+        </label>
+      </li>
+    );
+  };
+
+  const renderFriendRow = (f: FriendRow) => {
+    const checked = selectedFriendIds.has(f.userId);
+    const hasChat = directConvByFriendId.has(f.userId);
+    return (
+      <li key={f.userId}>
+        <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-50 dark:hover:bg-white/[0.04]">
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={submitting}
+            onChange={() => toggleFriend(f.userId)}
+            className="h-4 w-4 shrink-0 accent-[#0068ff]"
+          />
+          <ZaloStyleAvatar
+            userId={f.userId}
+            displayName={f.displayName}
+            avatarUrl={f.avatar}
+            className="size-10 shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-semibold text-slate-900 dark:text-slate-100">
+              {f.displayName}
+            </p>
+            <p className="text-[12px] text-slate-500">{hasChat ? 'Chat 1-1' : 'Sẽ mở chat mới'}</p>
+          </div>
+        </label>
+      </li>
+    );
+  };
 
   const handleSend = async () => {
     if (!link || selectedCount === 0) return;
@@ -248,7 +311,7 @@ export function ShareGroupJoinLinkPickerModal({
         <div className="flex shrink-0 flex-wrap gap-1 border-b border-slate-100 px-2 pt-1 dark:border-slate-800">
           {(
             [
-              { id: 'recent' as const, label: 'Gần đây' },
+              { id: 'all' as const, label: 'Tất cả' },
               { id: 'groups' as const, label: 'Nhóm chat' },
               { id: 'friends' as const, label: 'Bạn bè' },
             ] as const
@@ -272,88 +335,45 @@ export function ShareGroupJoinLinkPickerModal({
         <div className="min-h-[200px] flex-1 overflow-y-auto px-1 py-1 custom-scrollbar">
           {loading ? (
             <p className="px-3 py-8 text-center text-sm text-slate-500">Đang tải…</p>
+          ) : hasSearch || tab === 'all' ? (
+            filteredGroups.length === 0 && filteredFriends.length === 0 ? (
+              <p className="px-3 py-8 text-center text-sm text-slate-500">
+                {hasSearch ? 'Không tìm thấy kết quả.' : 'Chưa có nhóm hoặc bạn bè để chia sẻ.'}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {filteredGroups.length > 0 ? (
+                  <section>
+                    <p className="px-2 pb-1 text-[12px] font-semibold uppercase tracking-wide text-slate-400">
+                      Nhóm chat
+                    </p>
+                    <ul className="space-y-0.5">{filteredGroups.map(renderGroupRow)}</ul>
+                  </section>
+                ) : null}
+                {filteredFriends.length > 0 ? (
+                  <section>
+                    <p className="px-2 pb-1 text-[12px] font-semibold uppercase tracking-wide text-slate-400">
+                      Bạn bè
+                    </p>
+                    <ul className="space-y-0.5">{filteredFriends.map(renderFriendRow)}</ul>
+                  </section>
+                ) : null}
+              </div>
+            )
           ) : tab === 'friends' ? (
             filteredFriends.length === 0 ? (
               <p className="px-3 py-8 text-center text-sm text-slate-500">
                 Chưa có bạn bè để chia sẻ.
               </p>
             ) : (
-              <ul className="space-y-0.5">
-                {filteredFriends.map((f) => {
-                  const checked = selectedFriendIds.has(f.userId);
-                  const hasChat = directConvByFriendId.has(f.userId);
-                  return (
-                    <li key={f.userId}>
-                      <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-50 dark:hover:bg-white/[0.04]">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={submitting}
-                          onChange={() => toggleFriend(f.userId)}
-                          className="h-4 w-4 shrink-0 accent-[#0068ff]"
-                        />
-                        <ZaloStyleAvatar
-                          userId={f.userId}
-                          displayName={f.displayName}
-                          avatarUrl={f.avatar}
-                          className="size-10 shrink-0"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[15px] font-semibold text-slate-900 dark:text-slate-100">
-                            {f.displayName}
-                          </p>
-                          <p className="text-[12px] text-slate-500">
-                            {hasChat ? 'Chat 1-1' : 'Sẽ mở chat mới'}
-                          </p>
-                        </div>
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
+              <ul className="space-y-0.5">{filteredFriends.map(renderFriendRow)}</ul>
             )
-          ) : filteredConvs.length === 0 ? (
+          ) : filteredGroups.length === 0 ? (
             <p className="px-3 py-8 text-center text-sm text-slate-500">
-              Không có hội thoại phù hợp.
+              Không có nhóm chat để chia sẻ.
             </p>
           ) : (
-            <ul className="space-y-0.5">
-              {filteredConvs.map((c) => {
-                const isGroup = c.type === 'group';
-                const checked = selectedConvIds.has(c.conversationId);
-                return (
-                  <li key={c.conversationId}>
-                    <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-50 dark:hover:bg-white/[0.04]">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={submitting}
-                        onChange={() => toggleConv(c.conversationId)}
-                        className="h-4 w-4 shrink-0 accent-[#0068ff]"
-                      />
-                      {c.avatar ? (
-                        <img
-                          src={c.avatar}
-                          alt=""
-                          className="size-10 rounded-full object-cover border border-slate-100"
-                        />
-                      ) : (
-                        <div className="flex size-10 items-center justify-center rounded-full bg-sky-100">
-                          {isGroup ? (
-                            <Users className="h-4 w-4 text-sky-600" />
-                          ) : (
-                            <User className="h-4 w-4 text-sky-600" />
-                          )}
-                        </div>
-                      )}
-                      <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">
-                        {c.name ?? 'Hội thoại'}
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
+            <ul className="space-y-0.5">{filteredGroups.map(renderGroupRow)}</ul>
           )}
         </div>
 
