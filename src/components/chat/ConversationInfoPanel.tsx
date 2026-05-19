@@ -1633,7 +1633,7 @@ export function ConversationInfoPanel({
           </div>
 
           {activeConversation?.type === 'group' && !activeConversation.isDeleted && (
-            <div className="p-4 bg-white dark:bg-transparent mt-2 flex flex-col gap-2 justify-center">
+            <div className="p-4 bg-white dark:bg-transparent mt-2 flex flex-col gap-3 justify-center">
               {isOwnerEffective && (
                 <button
                   type="button"
@@ -1650,7 +1650,7 @@ export function ConversationInfoPanel({
                     setTransferOwnerOpen(true);
                   }}
                   disabled={!onTransferGroupOwner || busyMemberActionsResolved.changingRole}
-                  className="flex items-center justify-center gap-2 text-sm font-bold text-[#0068ff] hover:bg-blue-500/10 px-4 py-2 rounded-xl transition-colors border border-[#0068ff]/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-2 text-sm font-bold text-[#0068ff] hover:bg-blue-500/10 px-4 py-3 rounded-xl transition-colors border border-[#0068ff]/25 disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Chuyển quyền trưởng nhóm"
                 >
                   {busyMemberActionsResolved.changingRole
@@ -1680,7 +1680,7 @@ export function ConversationInfoPanel({
                   setLeaveMemberModalOpen(true);
                 }}
                 disabled={!onLeaveGroup || loading?.leaveGroup}
-                className={`flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-2 rounded-xl transition-colors border border-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed ${leaveBlockedByMinMembers ? 'opacity-60' : ''}`}
+                className={`flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-3 rounded-xl transition-colors border border-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed ${leaveBlockedByMinMembers ? 'opacity-60' : ''}`}
                 title={leaveBlockedByMinMembers ? leaveMinMembersHint : 'Rời khỏi nhóm này'}
               >
                 {loading?.leaveGroup ? 'Đang xử lý…' : 'Rời nhóm'}
@@ -1690,7 +1690,7 @@ export function ConversationInfoPanel({
                   type="button"
                   onClick={() => setDeleteGroupModalOpen(true)}
                   disabled={!onDeleteGroup || loading?.deleteGroup}
-                  className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading?.deleteGroup ? 'Đang xử lý…' : 'Giải tán nhóm'}
                 </button>
