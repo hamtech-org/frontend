@@ -53,7 +53,11 @@ import { ChatFileMessageCard } from '@/components/chat/ChatFileMessageCard';
 import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMenu';
 import { ForwardMediaPickerModal } from '@/components/chat/ForwardMediaPickerModal';
 import { formatFileSize } from '@/utils/fileHelper';
-import { downloadAuthedChatMedia, resolveChatMediaDownloadUrl } from '@/utils/chatMediaDownload';
+import {
+  downloadAuthedChatMedia,
+  resolveChatMediaDownloadUrl,
+  resolveChatMediaFetchUrl,
+} from '@/utils/chatMediaDownload';
 import { toast } from 'react-toastify';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
@@ -711,9 +715,12 @@ export function ChatMessageList({
 
   const copyImageToClipboard = useCallback(async (url: string) => {
     try {
+      const fetchUrl = resolveChatMediaFetchUrl(url);
+      if (!fetchUrl) throw new Error('empty');
       const token = localStorage.getItem('accessToken');
-      const res = await fetch(url, {
+      const res = await fetch(fetchUrl, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
+        redirect: 'follow',
       });
       if (!res.ok) throw new Error('fetch');
       const blob = await res.blob();
