@@ -1284,8 +1284,6 @@ export function ConversationInfoPanel({
             conversationTitle={activeConversation?.name ?? undefined}
             conversationMembers={conversationSearchMembers}
             conversationId={activeConversation?.conversationId}
-            conversations={conversations}
-            onSelectConversation={onSelectConversation}
           />
         </div>
       ) : showGroupManagement && activeConversation?.type === 'group' ? (
