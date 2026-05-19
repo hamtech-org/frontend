@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { IMessage } from '@/types/chat.types';
-import { chatFileTypeAccent, pinnedChatFileDisplayName } from '@/utils/chatFileDisplay';
+import { ChatFileTypeBadge } from '@/components/chat/ChatFileTypeBadge';
+import { pinnedChatFileDisplayName, resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 import {
   extractFirstHttpUrl,
   formatPinnedMessagePreviewLine,
@@ -108,13 +109,14 @@ export function PinnedRowPreview({ msg }: { msg: IMessage }) {
   }
 
   if (msg.type === 'file') {
-    const name = pinnedChatFileDisplayName(msg);
-    const fileAccent = chatFileTypeAccent(name, msg.mediaType);
+    const { fileName, mimeType } = resolveChatFileBubbleMeta(msg);
     return (
-      <span className="inline-flex items-center gap-1.5 min-w-0">
-        <span className="font-medium text-slate-800 dark:text-slate-100 shrink-0">{sender}:</span>
-        <FileText className="w-4 h-4 shrink-0" style={{ color: fileAccent }} aria-hidden />
-        <span className="truncate text-slate-600 dark:text-slate-300">{name}</span>
+      <span className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden">
+        <span className="shrink-0 font-medium text-slate-800 dark:text-slate-100">{sender}:</span>
+        <ChatFileTypeBadge fileName={fileName} mimeType={mimeType} size="sm" />
+        <span className="min-w-0 flex-1 truncate text-slate-600 dark:text-slate-300">
+          {fileName}
+        </span>
       </span>
     );
   }
@@ -157,6 +159,7 @@ function PinnedRow({
   const Icon = KIND_ICONS[kind];
   const kindLabel = pinnedMessageKindTitle(msg);
   const pollQuestion = pollQuestionFromPinnedMessage(msg);
+  const fileMeta = kind === 'file' ? resolveChatFileBubbleMeta(msg) : null;
 
   const moreBtnRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
@@ -228,18 +231,30 @@ function PinnedRow({
           className="flex items-start gap-3 min-w-0 flex-1 text-left py-0.5 rounded-lg -mx-1 px-1 transition-transform duration-200 active:scale-[0.995] group-hover/pinrow:translate-x-0.5"
           onClick={() => onScrollToMessage(msg.messageId)}
         >
-          <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full shadow-sm transition-transform duration-200 group-hover/pinrow:scale-105 group-hover/pinrow:shadow-md"
-            style={{ backgroundColor: accent }}
-          >
-            <Icon className="h-[18px] w-[18px] text-white" strokeWidth={2} aria-hidden />
-          </span>
-          <div className="flex min-w-0 flex-col gap-0.5 pt-0.5">
-            <p className="text-[13px] font-bold leading-tight text-slate-900 dark:text-slate-100">
+          {kind === 'file' && fileMeta ? (
+            <ChatFileTypeBadge
+              fileName={fileMeta.fileName}
+              mimeType={fileMeta.mimeType}
+              className="shadow-sm transition-transform duration-200 group-hover/pinrow:scale-105 group-hover/pinrow:shadow-md"
+            />
+          ) : (
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full shadow-sm transition-transform duration-200 group-hover/pinrow:scale-105 group-hover/pinrow:shadow-md"
+              style={{ backgroundColor: accent }}
+            >
+              <Icon className="h-[18px] w-[18px] text-white" strokeWidth={2} aria-hidden />
+            </span>
+          )}
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden pt-0.5">
+            <p className="truncate text-[13px] font-bold leading-tight text-slate-900 dark:text-slate-100">
               {kindLabel}
             </p>
-            <div className="truncate text-[13px] leading-snug text-slate-600 dark:text-slate-300">
-              {pollQuestion ? pollQuestion : <PinnedRowPreview msg={msg} />}
+            <div className="min-w-0 overflow-hidden text-[13px] leading-snug text-slate-600 dark:text-slate-300">
+              {pollQuestion ? (
+                <p className="truncate">{pollQuestion}</p>
+              ) : (
+                <PinnedRowPreview msg={msg} />
+              )}
             </div>
           </div>
         </button>
