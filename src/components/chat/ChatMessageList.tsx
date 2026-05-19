@@ -989,6 +989,14 @@ export function ChatMessageList({
                                 ]),
                               );
                               const t = tBoard;
+                              const cardTitle =
+                                String((t as any)?.title ?? taskCard.title ?? '').trim() ||
+                                taskCard.title;
+                              const cardDueDate =
+                                (t as any)?.dueDate != null &&
+                                String((t as any).dueDate).trim() !== ''
+                                  ? String((t as any).dueDate)
+                                  : taskCard.dueDate;
                               const assignees = Array.isArray((t as any)?.assignees)
                                 ? ((t as any).assignees as string[])
                                 : [];
@@ -1135,7 +1143,7 @@ export function ChatMessageList({
                                       id={`task-card-${taskCard.taskId}-title`}
                                       className="text-[16px] font-black text-foreground break-words leading-snug mb-3.5 pr-2"
                                     >
-                                      {taskCard.title}
+                                      {cardTitle}
                                     </div>
 
                                     {/* Assignees & Deadline */}
@@ -1195,7 +1203,7 @@ export function ChatMessageList({
                                           })()}
                                         </div>
                                       </div>
-                                      {taskCard.dueDate ? (
+                                      {cardDueDate ? (
                                         <div className="flex items-center gap-2.5 text-[13px]">
                                           <AlarmClock className="w-4 h-4 text-muted-foreground shrink-0" />
                                           <div className="min-w-0 flex-1 flex items-center flex-wrap gap-1.5">
@@ -1204,7 +1212,7 @@ export function ChatMessageList({
                                             </span>
                                             <div id={`task-card-${taskCard.taskId}-dueDate`}>
                                               <TaskDeadlineCalendar
-                                                dateIso={taskCard.dueDate}
+                                                dateIso={cardDueDate}
                                                 size="sm"
                                               />
                                             </div>
