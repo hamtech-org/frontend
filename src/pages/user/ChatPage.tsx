@@ -409,6 +409,17 @@ export default function ChatPage() {
     modalActions.setShowInfo(false);
   }, [modalActions]);
 
+  const handleOpenAiMessageResult = useCallback(
+    async (conversationId: string, messageId: string) => {
+      setShowAIAssistant(false);
+      handleSelectConversation(conversationId);
+      window.setTimeout(() => {
+        scrollToMessageBubble(messageId);
+      }, 180);
+    },
+    [handleSelectConversation, scrollToMessageBubble],
+  );
+
   const handleOpenProfile = useCallback(() => {
     navigate('/profile');
   }, [navigate]);
@@ -606,6 +617,7 @@ export default function ChatPage() {
               await directActions.handleFriendClick(otherUserId, otherDisplayName);
               setShowAIAssistant(false);
             }}
+            onOpenMessage={handleOpenAiMessageResult}
           />
         ) : (
           (isTabletOrDesktop || mobileView === 'chat') && (
