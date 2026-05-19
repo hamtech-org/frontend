@@ -63,6 +63,8 @@ interface ChatMainContentProps {
 
   // Friend click for contacts view
   onFriendClick?: (friendId: string, friendName: string) => Promise<void>;
+  onGroupClick?: (conversationId: string, groupName: string) => Promise<void>;
+  groupConversations?: IConversation[];
 
   /** Khi không truyền (layout tối giản), chuyển tiếp media bị tắt. */
   shareTargetConversations?: IConversation[];
@@ -131,6 +133,8 @@ export function ChatMainContent(props: ChatMainContentProps) {
     onSearchMessages,
     resolvedMemberCount,
     onFriendClick,
+    onGroupClick,
+    groupConversations = [],
     shareTargetConversations = [],
     onForwardMediaMessage = async () => {},
     onBack,
@@ -146,6 +150,52 @@ export function ChatMainContent(props: ChatMainContentProps) {
           <FriendRequestsView />
         ) : contactsTab === 'friends' ? (
           <FriendsListView onFriendClick={onFriendClick ?? directActions.handleFriendClick} />
+        ) : contactsTab === 'groups' ? (
+          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-1">
+            {groupConversations.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Chưa có nhóm nào.</p>
+            ) : (
+              groupConversations.map((conv) => {
+                const name = conv.name ?? 'Nhóm';
+                return (
+                  <button
+                    key={conv.conversationId}
+                    type="button"
+                    onClick={() =>
+                      void (onGroupClick ?? directActions.handleGroupClick)(
+                        conv.conversationId,
+                        name,
+                      )
+                    }
+                    className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+                  >
+                    <div className="relative shrink-0 w-11 h-11 rounded-full overflow-hidden">
+                      {conv.avatar ? (
+                        <img
+                          src={conv.avatar}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-sm font-bold text-blue-600">
+                          {name.trim().slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-black dark:text-white truncate">
+                        {name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {conv.memberCount != null ? `${conv.memberCount} thành viên` : 'Nhóm'}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
             Chưa hỗ trợ màn hình này.
