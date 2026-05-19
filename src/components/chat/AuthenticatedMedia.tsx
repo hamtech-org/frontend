@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 
+import { resolveChatMediaFetchUrl } from '@/utils/chatMediaDownload';
+
 type AuthenticatedMediaProps = {
-  /** Absolute URL (e.g. /api/v1/media/:id/download on same origin or full API URL). */
+  /** URL lưu trong tin nhắn (CDN ký, S3 path, hoặc `/api/v1/media/:id/download`). */
   src: string;
   alt?: string;
   className?: string;
@@ -9,23 +11,6 @@ type AuthenticatedMediaProps = {
   /** Chỉ áp dụng khi kind="video" (ví dụ lightbox). */
   videoAutoPlay?: boolean;
 };
-
-function isCloudFrontSignedUrl(raw: string): boolean {
-  const src = (raw ?? '').trim();
-  if (!src) return false;
-  try {
-    const u = new URL(src, window.location.origin);
-    const host = u.hostname.toLowerCase();
-    if (!host.endsWith('cloudfront.net')) return false;
-    return (
-      u.searchParams.has('Signature') &&
-      u.searchParams.has('Key-Pair-Id') &&
-      (u.searchParams.has('Expires') || u.searchParams.has('Policy'))
-    );
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Fetches private media with Bearer token then displays via blob URL (img/video).
@@ -46,10 +31,11 @@ export function AuthenticatedMedia({
 
     const run = async () => {
       try {
+        const fetchUrl = resolveChatMediaFetchUrl(src);
+        if (!fetchUrl) throw new Error('empty');
         const token = localStorage.getItem('accessToken');
-        const isSignedCdn = isCloudFrontSignedUrl(src);
-        const headers = !isSignedCdn && token ? { Authorization: `Bearer ${token}` } : undefined;
-        const res = await fetch(src, { headers });
+        const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+        const res = await fetch(fetchUrl, { headers, redirect: 'follow' });
         if (!res.ok) throw new Error(String(res.status));
         const blob = await res.blob();
         if (cancelled) return;
