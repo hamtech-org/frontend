@@ -44,6 +44,7 @@ import {
   formatGroupSystemChatLine,
   formatLegacyGroupProfileSystemLine,
 } from '@/utils/groupSystemMessage';
+import { resolveTaskAssigneeDisplayLabel } from '@/utils/syncAssignToAllGroupTasks';
 import { resolveGroupJoinLinkFromMessageContent } from '@/utils/groupJoinLinkMessage';
 import { GroupJoinLinkCard } from '@/components/chat/GroupJoinLinkCard';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
@@ -649,14 +650,14 @@ export function ChatMessageList({
       const topAssignees = Array.isArray(t.assignees)
         ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
         : [];
-      const isAll = Boolean(t.assignToAll) || Boolean(t.broadcast);
-      const assigneeLabel = isAll
-        ? 'Cả nhóm'
-        : (subs.length > 0 ? subAssigneeIds : topAssignees).length > 0
-          ? (subs.length > 0 ? subAssigneeIds : topAssignees)
-              .map((id) => nameById.get(id) || id)
-              .join(', ')
-          : (prev?.assigneeLabel ?? undefined);
+      const assigneeLabel = resolveTaskAssigneeDisplayLabel({
+        assignToAll: Boolean(t.assignToAll),
+        broadcast: Boolean(t.broadcast),
+        assigneeIds: subs.length > 0 ? subAssigneeIds : topAssignees,
+        memberCount: groupMembers?.length ?? 0,
+        nameById,
+        fallbackLabel: prev?.assigneeLabel,
+      });
       const noteFromApi =
         t.description != null && String(t.description).trim() !== ''
           ? String(t.description)
@@ -1032,9 +1033,11 @@ export function ChatMessageList({
                                 String(currentUserId),
                               );
                               const topIds =
-                                taskCard.assigneeUserIds.length > 0
-                                  ? taskCard.assigneeUserIds
-                                  : assignees;
+                                assignees.length > 0
+                                  ? assignees
+                                  : taskCard.assigneeUserIds.length > 0
+                                    ? taskCard.assigneeUserIds
+                                    : [];
                               const isTopLevelAssignee = topIds
                                 .map(String)
                                 .includes(String(currentUserId));
@@ -1083,26 +1086,23 @@ export function ChatMessageList({
                                             .filter(Boolean),
                                         ),
                                       );
-                                      const topIds =
-                                        taskCard.assigneeUserIds.length > 0
+                                      const topIds = Array.isArray(tt?.assignees)
+                                        ? (tt.assignees as unknown[])
+                                            .map((x) => String(x))
+                                            .filter(Boolean)
+                                        : taskCard.assigneeUserIds.length > 0
                                           ? taskCard.assigneeUserIds
-                                          : Array.isArray(tt?.assignees)
-                                            ? (tt.assignees as unknown[])
-                                                .map((x) => String(x))
-                                                .filter(Boolean)
-                                            : [];
-                                      const isAll =
-                                        Boolean(tt?.assignToAll) ||
-                                        Boolean(tt?.broadcast) ||
-                                        Boolean(taskCard.assignToAll) ||
-                                        Boolean(taskCard.broadcast);
-                                      const assigneeDisplay = isAll
-                                        ? 'Cả nhóm'
-                                        : (subs.length > 0 ? subAssigneeIds : topIds).length > 0
-                                          ? (subs.length > 0 ? subAssigneeIds : topIds)
-                                              .map((id) => byId.get(String(id)) ?? String(id))
-                                              .join(', ')
-                                          : taskCard.assigneeLabel;
+                                          : [];
+                                      const assigneeDisplay = resolveTaskAssigneeDisplayLabel({
+                                        assignToAll:
+                                          Boolean(tt?.assignToAll) || Boolean(taskCard.assignToAll),
+                                        broadcast:
+                                          Boolean(tt?.broadcast) || Boolean(taskCard.broadcast),
+                                        assigneeIds: subs.length > 0 ? subAssigneeIds : topIds,
+                                        memberCount: groupMembers?.length ?? 0,
+                                        nameById: byId,
+                                        fallbackLabel: taskCard.assigneeLabel,
+                                      });
                                       setTaskDetailTaskId(String(taskCard.taskId));
                                       setTaskDetail({
                                         title: taskCard.title,
@@ -1174,28 +1174,32 @@ export function ChatMessageList({
                                                     ),
                                                   )
                                                 : [];
+                                            const boardAssignees = Array.isArray(
+                                              (tBoard as any)?.assignees,
+                                            )
+                                              ? (
+                                                  ((tBoard as any).assignees as unknown[]) ?? []
+                                                ).map((x) => String(x))
+                                              : [];
                                             const topIds =
-                                              taskCard.assigneeUserIds.length > 0
-                                                ? taskCard.assigneeUserIds
-                                                : Array.isArray((tBoard as any)?.assignees)
-                                                  ? (
-                                                      ((tBoard as any).assignees as unknown[]) ?? []
-                                                    ).map((x) => String(x))
+                                              boardAssignees.length > 0
+                                                ? boardAssignees
+                                                : taskCard.assigneeUserIds.length > 0
+                                                  ? taskCard.assigneeUserIds
                                                   : [];
                                             const ids = subs.length > 0 ? subAssignees : topIds;
-                                            const display =
-                                              Boolean((tBoard as any)?.assignToAll) ||
-                                              Boolean((tBoard as any)?.broadcast) ||
-                                              Boolean(taskCard.assignToAll) ||
-                                              Boolean(taskCard.broadcast)
-                                                ? 'Cả nhóm'
-                                                : ids.length > 0
-                                                  ? ids
-                                                      .map(
-                                                        (id) => byId.get(String(id)) ?? String(id),
-                                                      )
-                                                      .join(', ')
-                                                  : taskCard.assigneeLabel;
+                                            const display = resolveTaskAssigneeDisplayLabel({
+                                              assignToAll:
+                                                Boolean((tBoard as any)?.assignToAll) ||
+                                                Boolean(taskCard.assignToAll),
+                                              broadcast:
+                                                Boolean((tBoard as any)?.broadcast) ||
+                                                Boolean(taskCard.broadcast),
+                                              assigneeIds: ids,
+                                              memberCount: groupMembers?.length ?? 0,
+                                              nameById: byId,
+                                              fallbackLabel: taskCard.assigneeLabel,
+                                            });
                                             return (
                                               <span
                                                 className="font-bold text-foreground truncate"
@@ -2399,13 +2403,15 @@ export function ChatMessageList({
                         const topAssignees = Array.isArray(t?.assignees)
                           ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
                           : [];
-                        const isAll = Boolean(t?.assignToAll) || Boolean(t?.broadcast);
                         const ids = subs.length > 0 ? subAssignees : topAssignees;
-                        const display = isAll
-                          ? 'Cả nhóm'
-                          : ids.length > 0
-                            ? ids.map((id) => nameById.get(id) || id).join(', ')
-                            : (taskDetail.assigneeLabel ?? '');
+                        const display = resolveTaskAssigneeDisplayLabel({
+                          assignToAll: Boolean(t?.assignToAll),
+                          broadcast: Boolean(t?.broadcast),
+                          assigneeIds: ids,
+                          memberCount: groupMembers?.length ?? 0,
+                          nameById,
+                          fallbackLabel: taskDetail.assigneeLabel,
+                        });
                         if (!display.trim()) return null;
                         return (
                           <div className="flex items-start gap-3 text-[14px]">
