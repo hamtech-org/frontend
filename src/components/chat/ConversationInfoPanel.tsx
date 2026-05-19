@@ -1,10 +1,13 @@
-import {
+﻿import {
   Bell,
   BellOff,
   CheckSquare,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Edit3,
+  FileText,
   MessageSquare,
   Pin,
   Plus,
@@ -52,9 +55,9 @@ import {
   ConversationGalleryLinkCard,
   ConversationGalleryMediaCard,
   ConversationGalleryNavRow,
-  ConversationGalleryTabBar,
   CONVERSATION_GALLERY_THEME,
 } from '@/components/chat/conversationGallery';
+import { matchesGalleryCategory } from '@/components/chat/conversationGallery/conversationGalleryFilters';
 import { resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
 import {
@@ -598,6 +601,7 @@ export function ConversationInfoPanel({
   const showBulletinAddMenu =
     bulletinModalMode === 'notesPolls' && (showBulletinPollAdd || showBulletinTaskAdd);
   const [bulletinTab, setBulletinTab] = useState<BulletinTab>('all');
+  const [bulletinExpanded, setBulletinExpanded] = useState(true);
   const [focusFlashNonce, setFocusFlashNonce] = useState(0);
 
   const showTopBack = Boolean(
@@ -674,6 +678,26 @@ export function ConversationInfoPanel({
       onOpenMemberModal?.(tab);
     },
     [onOpenMemberModal],
+  );
+
+  const openBulletinHere = useCallback((mode: 'reminders' | 'notesPolls') => {
+    setShowInlineMembers(false);
+    setShowGroupManagement(false);
+    setShowConversationSearch(false);
+    setGalleryKind(null);
+    setBulletinAddOpen(false);
+    setBulletinModalMode(mode);
+    if (mode === 'notesPolls') setBulletinTab('all');
+  }, []);
+
+  const jumpToGalleryMessage = useCallback(
+    (messageId: string) => {
+      setGalleryKind(null);
+      setBulletinAddOpen(false);
+      setShowConversationSearch(false);
+      onJumpToMessage?.(messageId);
+    },
+    [onJumpToMessage],
   );
 
   const openMembersFromGroupManagement = useCallback(
@@ -909,6 +933,18 @@ export function ConversationInfoPanel({
     };
   }, [galleryKind, activeConversation?.conversationId]);
 
+  const visibleGalleryItems = useMemo(() => {
+    if (!galleryKind) return [];
+    return galleryItems.filter((item) => matchesGalleryCategory(item, galleryKind));
+  }, [galleryItems, galleryKind]);
+
+  const galleryEmptyLabel = useMemo(() => {
+    if (galleryKind === 'media') return 'Chưa có ảnh hoặc video.';
+    if (galleryKind === 'file') return 'Chưa có file được chia sẻ.';
+    if (galleryKind === 'link') return 'Chưa có link trong tin nhắn gần đây.';
+    return 'Chưa có mục nào trong lịch sử gần đây.';
+  }, [galleryKind]);
+
   const panelTitle = useMemo(() => {
     if (showInlineMembers) {
       return memberLeadersOnly ? 'Trưởng & phó nhóm' : 'Quản lý thành viên';
@@ -1022,18 +1058,17 @@ export function ConversationInfoPanel({
       ) : galleryKind !== null ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex h-full min-h-0 w-full flex-col bg-white dark:bg-[#1a1a1a]">
-            <ConversationGalleryTabBar active={galleryKind} onChange={setGalleryKind} />
             <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4">
               {galleryLoading ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">Đang tải...</p>
               ) : galleryError ? (
                 <p className="py-8 text-center text-sm text-red-500">{galleryError}</p>
-              ) : galleryItems.length === 0 ? (
+              ) : visibleGalleryItems.length === 0 ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">
-                  Chưa có mục nào trong lịch sử gần đây.
+                  {galleryEmptyLabel}
                 </p>
               ) : (
-                galleryItems.map((item) => {
+                visibleGalleryItems.map((item) => {
                   const who = item.senderDisplayName?.trim() || 'Thành viên';
                   const when = formatBulletinFooterTime(item.createdAt);
                   const metaLine = `${who} · ${when || '—'}`;
@@ -1044,19 +1079,19 @@ export function ConversationInfoPanel({
                         key={item.messageId}
                         href={href}
                         metaLine={metaLine}
+                        onClick={() => jumpToGalleryMessage(item.messageId)}
                       />
                     );
                   }
                   if (galleryKind === 'file') {
-                    const href = item.mediaUrl || '#';
                     const { fileName: name } = resolveChatFileBubbleMeta(item);
                     return (
                       <ConversationGalleryFileCard
                         key={item.messageId}
-                        href={href}
                         fileName={name}
                         mimeType={item.mediaType}
                         metaLine={metaLine}
+                        onClick={() => jumpToGalleryMessage(item.messageId)}
                       />
                     );
                   }
@@ -1066,11 +1101,11 @@ export function ConversationInfoPanel({
                   return (
                     <ConversationGalleryMediaCard
                       key={item.messageId}
-                      href={item.mediaUrl || '#'}
                       who={who}
                       when={when || '—'}
                       thumbnailSrc={src}
                       isVideo={isVideo}
+                      onClick={() => jumpToGalleryMessage(item.messageId)}
                     />
                   );
                 })
@@ -1504,6 +1539,53 @@ export function ConversationInfoPanel({
               </div>
             </>
           )}
+          {activeConversation?.type === 'group' ? (
+            <div className="mt-2 overflow-hidden rounded-xl border border-black/5 bg-white dark:border-white/10">
+              <button
+                type="button"
+                onClick={() => setBulletinExpanded((v) => !v)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+              >
+                <span className="text-[14px] font-bold text-foreground">Bảng tin nhóm</span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
+                    bulletinExpanded ? '' : '-rotate-90'
+                  }`}
+                  strokeWidth={2}
+                />
+              </button>
+              {bulletinExpanded ? (
+                <div className="pb-2">
+                  <button
+                    type="button"
+                    onClick={() => openBulletinHere('reminders')}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                  >
+                    <Clock
+                      className="h-4 w-4 shrink-0 text-muted-foreground opacity-70"
+                      strokeWidth={1.75}
+                    />
+                    <span className="text-[14px] font-medium text-muted-foreground">
+                      Danh sách nhắc hẹn
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openBulletinHere('notesPolls')}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                  >
+                    <FileText
+                      className="h-4 w-4 shrink-0 text-muted-foreground opacity-70"
+                      strokeWidth={1.75}
+                    />
+                    <span className="text-[14px] font-medium text-muted-foreground">
+                      Tin ghim & Bình chọn
+                    </span>
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-2 overflow-hidden rounded-xl border border-black/5 bg-white dark:border-white/10">
             <ConversationGalleryNavRow
               kind="media"
