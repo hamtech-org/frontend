@@ -15,6 +15,7 @@ import { contactApi } from './api/contactApi';
 import { newsfeedApi } from './api/newsfeedApi';
 import { adminApi } from './api/adminApi';
 import { mediaApi } from './api/mediaApi';
+import { notificationsApi } from './api/notificationsApi';
 import { liveApi } from './api/liveApi';
 
 export const store = configureStore({
@@ -34,6 +35,7 @@ export const store = configureStore({
     [newsfeedApi.reducerPath]: newsfeedApi.reducer,
     [adminApi.reducerPath]: adminApi.reducer,
     [mediaApi.reducerPath]: mediaApi.reducer,
+    [notificationsApi.reducerPath]: notificationsApi.reducer,
     [liveApi.reducerPath]: liveApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
@@ -45,6 +47,7 @@ export const store = configureStore({
       newsfeedApi.middleware,
       adminApi.middleware,
       mediaApi.middleware,
+      notificationsApi.middleware,
       liveApi.middleware,
     ),
 });
