@@ -10,7 +10,6 @@ import { Button } from '@/components/ui';
 import type { GroupJoinLinkModalData } from '@/contexts/GroupJoinLinkModalContext';
 import { useGetGroupJoinPreviewQuery, useJoinGroupViaLinkMutation } from '@/store/api/chatApi';
 import { getApiErrorMessage } from '@/utils/apiErrorMessage';
-import { joinLinkMessageDomain } from '@/utils/groupJoinLinkMessage';
 import { useAuth } from '@/hooks/useAuth';
 
 type GroupJoinLinkModalProps = {
@@ -44,7 +43,6 @@ export function GroupJoinLinkModal({
   const [joinViaLink, { isLoading: joining }] = useJoinGroupViaLinkMutation();
 
   const preview = previewRes?.data;
-  const domain = joinLinkMessageDomain(joinUrl);
   const groupName = data?.groupName ?? preview?.name ?? 'Nhóm chat';
   const groupAvatar = data?.groupAvatar ?? preview?.avatar;
   const conversationIdForChat = preview?.conversationId ?? data?.conversationId;
@@ -289,8 +287,6 @@ export function GroupJoinLinkModal({
                     >
                       {joinUrl}
                     </button>
-                    <p className="mt-1 text-[12px] text-slate-400">{domain}</p>
-
                     <div className="mt-5 w-full flex flex-wrap items-start justify-center gap-x-5 gap-y-3">
                       <ActionChip
                         icon={Copy}
