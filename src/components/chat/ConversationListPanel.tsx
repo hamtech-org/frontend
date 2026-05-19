@@ -48,6 +48,7 @@ type ConversationListPanelProps = {
   onPickSearchMessage?: (messageId: string) => void;
   onOpenCreateGroup: () => void;
   onOpenAddFriend?: () => void;
+  onGroupClick?: (conversationId: string, groupName: string) => void;
   onToggleConversationMute?: (conversationId: string) => void;
   /** Tuỳ chọn: ghi đè formatter (mặc định Zalo + tick mỗi phút). */
   formatMessageTime?: (createdAt: string) => string;
@@ -70,6 +71,7 @@ export function ConversationListPanel({
   onPickSearchMessage,
   onOpenCreateGroup,
   onOpenAddFriend,
+  onGroupClick,
   onToggleConversationMute,
   formatMessageTime: formatMessageTimeProp,
 }: ConversationListPanelProps) {
@@ -423,6 +425,7 @@ export function ConversationListPanel({
         <ContactsManagementPanel
           contactsTab={contactsTab}
           onContactsTabChange={onContactsTabChange}
+          groupConversations={conversations.filter((c) => c.type === 'group')}
         />
       ) : (
         <div className="flex-1 min-h-0 pb-4 flex flex-col gap-2">
