@@ -1,6 +1,6 @@
 import type { ChatEndpointBuilder } from '@/store/api/chat/endpointBuilder';
 import type { ApiSuccessResponse } from '@/types/api.types';
-import type { IMessage } from '@/types/chat.types';
+import type { IMessage, IMessagePage } from '@/types/chat.types';
 import { patchConversationsFromNewMessage } from '@/store/api/chat/cache';
 import type { RootState } from '@/store/store';
 import type {
@@ -22,6 +22,41 @@ export function buildMessagesEndpoints(builder: ChatEndpointBuilder) {
         `/chat/conversations/${conversationId}/messages${limit ? `?limit=${limit}` : ''}`,
       providesTags: (_result, _error, { conversationId }) => [
         { type: 'Messages', id: conversationId },
+      ],
+    }),
+    /**
+     * Cursor-based paginated messages (oldest → newest).
+     * All pages for a conversation merge into a single cache entry.
+     */
+    getMessagesPaginated: builder.query<
+      ApiSuccessResponse<IMessagePage>,
+      { conversationId: string; limit?: number; cursor?: string }
+    >({
+      query: ({ conversationId, limit, cursor }) => {
+        const params = new URLSearchParams();
+        if (limit) params.set('limit', String(limit));
+        if (cursor) params.set('cursor', cursor);
+        const qs = params.toString();
+        return `/chat/conversations/${conversationId}/messages/paginated${qs ? `?${qs}` : ''}`;
+      },
+      // Group all pages for the same conversation into one cache entry
+      serializeQueryArgs: ({ queryArgs }) => queryArgs.conversationId,
+      // Merge older pages (prepend) into existing items
+      merge: (currentCache, newResponse) => {
+        const existingItems = currentCache.data.items;
+        const newItems = newResponse.data.items;
+        // Dedupe by messageId
+        const existingIds = new Set(existingItems.map((m) => m.messageId));
+        const uniqueNew = newItems.filter((m) => !existingIds.has(m.messageId));
+        // Older items prepend (oldest → newest order)
+        currentCache.data.items = [...uniqueNew, ...existingItems];
+        currentCache.data.nextCursor = newResponse.data.nextCursor;
+        currentCache.data.hasMore = newResponse.data.hasMore;
+      },
+      // Allow refetch when cursor changes
+      forceRefetch: ({ currentArg, previousArg }) => currentArg?.cursor !== previousArg?.cursor,
+      providesTags: (_result, _error, { conversationId }) => [
+        { type: 'Messages', id: `paginated-${conversationId}` },
       ],
     }),
     sendMessage: builder.mutation<ApiSuccessResponse<IMessage>, SendMessageRequest>({

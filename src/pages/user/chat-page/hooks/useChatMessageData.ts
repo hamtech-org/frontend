@@ -2,7 +2,9 @@ import { useCallback, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   patchMessageInGetMessagesCache,
-  useGetMessagesQuery,
+  patchMessageInPaginatedCache,
+  useGetMessagesPaginatedQuery,
+  useLazyGetMessagesPaginatedQuery,
   useReactMessageMutation,
 } from '@/store/api/chatApi';
 import type { RootState, AppDispatch } from '@/store/store';
@@ -10,9 +12,13 @@ import type { IMessage } from '@/types/chat.types';
 
 const EMPTY_MESSAGE_ARRAY: ReadonlyArray<IMessage> = [];
 
+const WEB_PAGE_SIZE = 20;
+
 /**
- * Hook gom data layer cho messages: merge API + socket (nâng cao),
+ * Hook gom data layer cho messages: merge API (paginated) + socket (nâng cao),
  * pinned messages with MRU ordering, cache patching helpers, và react mutation.
+ *
+ * Now uses cursor-based pagination for infinite scroll.
  */
 export function useChatMessageData(activeConversationId: string | null) {
   const dispatch = useDispatch<AppDispatch>();
@@ -23,15 +29,30 @@ export function useChatMessageData(activeConversationId: string | null) {
     return state.chat.messages[activeConversationId] ?? EMPTY_MESSAGE_ARRAY;
   });
 
-  // API messages từ RTK Query
-  const { data: messagesData } = useGetMessagesQuery(
-    { conversationId: activeConversationId! },
+  // Paginated API messages từ RTK Query (oldest → newest)
+  const { data: paginatedData, isFetching } = useGetMessagesPaginatedQuery(
+    { conversationId: activeConversationId!, limit: WEB_PAGE_SIZE },
     { skip: !activeConversationId },
   );
 
+  const apiMessages = paginatedData?.data?.items ?? [];
+  const nextCursor = paginatedData?.data?.nextCursor ?? null;
+  const hasMore = paginatedData?.data?.hasMore ?? false;
+
+  // Lazy query for loading older messages
+  const [triggerLoadMore, { isFetching: isLoadingOlder }] = useLazyGetMessagesPaginatedQuery();
+
+  const loadOlderMessages = useCallback(() => {
+    if (!activeConversationId || !nextCursor || isLoadingOlder) return;
+    triggerLoadMore({
+      conversationId: activeConversationId,
+      limit: WEB_PAGE_SIZE,
+      cursor: nextCursor,
+    });
+  }, [activeConversationId, nextCursor, isLoadingOlder, triggerLoadMore]);
+
   // Merge API + socket (nâng cao): ghép statusRank, isRecalled, isDeleted, readBy
   const allMessages = useMemo(() => {
-    const apiMessages = messagesData?.data ?? [];
     const statusRank = (x?: string) =>
       x === 'read' ? 3 : x === 'delivered' ? 2 : x === 'sent' ? 1 : 0;
     const RECALL_TEXT = 'Tin nhắn đã được thu hồi';
@@ -78,6 +99,7 @@ export function useChatMessageData(activeConversationId: string | null) {
       };
     });
 
+    // Socket messages not yet in API (new messages from realtime)
     socketMessages.forEach((sm) => {
       const sid = String(sm.messageId);
       if (!merged.some((m) => String(m.messageId) === sid)) {
@@ -85,9 +107,10 @@ export function useChatMessageData(activeConversationId: string | null) {
       }
     });
 
+    // Items are already oldest→newest from API; sort to ensure consistency
     merged.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     return merged;
-  }, [messagesData, socketMessages]);
+  }, [apiMessages, socketMessages]);
 
   // ── Pinned messages with MRU ordering ────────────────────────────────
   const [pinnedMessageOrderByConv, setPinnedMessageOrderByConv] = useState<
@@ -135,10 +158,11 @@ export function useChatMessageData(activeConversationId: string | null) {
   const latestMessageIdForRead =
     allMessages.length > 0 ? allMessages[allMessages.length - 1].messageId : undefined;
 
-  // Patch một message trong RTK Query cache
+  // Patch một message trong RTK Query cache (both legacy + paginated)
   const patchMessageInCache = useCallback(
     (conversationId: string, messageId: string, patch: Partial<IMessage>) => {
       patchMessageInGetMessagesCache(dispatch, conversationId, messageId, patch);
+      patchMessageInPaginatedCache(dispatch, conversationId, messageId, patch);
     },
     [dispatch],
   );
@@ -171,5 +195,10 @@ export function useChatMessageData(activeConversationId: string | null) {
     latestMessageIdForRead,
     patchMessageInCache,
     handleReactMessage,
+    // New pagination exports
+    hasMore,
+    isLoadingOlder,
+    isFetching,
+    loadOlderMessages,
   };
 }
