@@ -2,12 +2,9 @@ import {
   Bell,
   BellOff,
   CheckSquare,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Edit3,
-  FileText,
   MessageSquare,
   Pin,
   Plus,
@@ -592,7 +589,6 @@ export function ConversationInfoPanel({
     }
   }, [transferOwnerOpen, adminSlotsFull, currentOwnerNewRole]);
   const [deleteGroupModalOpen, setDeleteGroupModalOpen] = useState(false);
-  const [bulletinAccordionOpen, setBulletinAccordionOpen] = useState(true);
   const [galleryKind, setGalleryKind] = useState<MessageGalleryKind | null>(null);
   const [galleryItems, setGalleryItems] = useState<MessageGalleryItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
