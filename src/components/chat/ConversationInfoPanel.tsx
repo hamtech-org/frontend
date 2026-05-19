@@ -28,6 +28,7 @@ import type {
   GroupTask as GroupTaskModel,
 } from '@/types/chat.group.types';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
+import { useAuth } from '@/hooks/useAuth';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import { apiClient } from '@/services/api';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -49,7 +50,14 @@ import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-toastify';
 import { MIN_GROUP_MEMBERS } from '@/constants/group.constants';
-import { ChatFileTypeBadge } from '@/components/chat/ChatFileTypeBadge';
+import {
+  ConversationGalleryFileCard,
+  ConversationGalleryLinkCard,
+  ConversationGalleryMediaCard,
+  ConversationGalleryNavRow,
+  ConversationGalleryTabBar,
+  CONVERSATION_GALLERY_THEME,
+} from '@/components/chat/conversationGallery';
 import { resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
 import {
@@ -507,6 +515,7 @@ export function ConversationInfoPanel({
   focusTaskNonce = 0,
 }: ConversationInfoPanelProps) {
   const { core, groupActions } = useChatPageContext();
+  const { user: authUser } = useAuth();
   const isMuted = !!activeConversation?.isMuted;
   const isConvPinned = !!activeConversation?.isPinnedToTop;
   const scheduledMuteUntil =
@@ -736,8 +745,16 @@ export function ConversationInfoPanel({
       if (!row?.userId || !row.avatar?.trim()) continue;
       m.set(row.userId, row.avatar.trim());
     }
+    const selfId = effectiveUserId;
+    const selfAv = authUser?.avatar?.trim();
+    if (selfId && selfAv && !m.has(selfId)) m.set(selfId, selfAv);
+    if (activeConversation?.type !== 'group') {
+      const otherId = activeConversation?.otherUserId?.trim();
+      const otherAv = activeConversation?.avatar?.trim();
+      if (otherId && otherAv && !m.has(otherId)) m.set(otherId, otherAv);
+    }
     return m;
-  }, [members]);
+  }, [members, effectiveUserId, authUser?.avatar, activeConversation]);
 
   /** ChatPage chỉ tải `members` cho nhóm; chat 1-1 cần 2 người để lọc “Người gửi” trong tìm kiếm. */
   const conversationSearchMembers = useMemo((): ConversationSearchMemberRow[] => {
@@ -906,9 +923,7 @@ export function ConversationInfoPanel({
     }
     if (showGroupManagement) return 'Quản lý nhóm';
     if (showConversationSearch) return 'Tìm kiếm';
-    if (galleryKind === 'media') return 'Ảnh / Video';
-    if (galleryKind === 'file') return 'File';
-    if (galleryKind === 'link') return 'Link';
+    if (galleryKind) return CONVERSATION_GALLERY_THEME[galleryKind].label;
     if (bulletinModalMode === 'reminders') return 'Danh sách nhắc hẹn';
     if (bulletinModalMode === 'notesPolls') return 'Tin ghim & Bình chọn';
     return `Thông tin ${activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}`;
@@ -1015,6 +1030,7 @@ export function ConversationInfoPanel({
       ) : galleryKind !== null ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex h-full min-h-0 w-full flex-col bg-white dark:bg-[#1a1a1a]">
+            <ConversationGalleryTabBar active={galleryKind} onChange={setGalleryKind} />
             <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4">
               {galleryLoading ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">Đang tải...</p>
@@ -1028,82 +1044,42 @@ export function ConversationInfoPanel({
                 galleryItems.map((item) => {
                   const who = item.senderDisplayName?.trim() || 'Thành viên';
                   const when = formatBulletinFooterTime(item.createdAt);
+                  const metaLine = `${who} · ${when || '—'}`;
                   if (galleryKind === 'link') {
                     const href = item.content?.trim() || '#';
                     return (
-                      <a
+                      <ConversationGalleryLinkCard
                         key={item.messageId}
                         href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block rounded-xl border border-black/[0.06] bg-white p-3 shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
-                      >
-                        <p className="line-clamp-2 break-all text-[13px] font-medium text-blue-600">
-                          {href}
-                        </p>
-                        <p className="mt-2 text-[11px] text-muted-foreground">
-                          {who} · {when || '—'}
-                        </p>
-                      </a>
+                        metaLine={metaLine}
+                      />
                     );
                   }
                   if (galleryKind === 'file') {
                     const href = item.mediaUrl || '#';
                     const { fileName: name } = resolveChatFileBubbleMeta(item);
                     return (
-                      <a
+                      <ConversationGalleryFileCard
                         key={item.messageId}
                         href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-start gap-3 rounded-xl border border-black/[0.06] bg-white p-3 shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
-                      >
-                        <ChatFileTypeBadge fileName={name} mimeType={item.mediaType} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-semibold">{name}</p>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {who} · {when || '—'}
-                          </p>
-                        </div>
-                      </a>
+                        fileName={name}
+                        mimeType={item.mediaType}
+                        metaLine={metaLine}
+                      />
                     );
                   }
                   const src = item.thumbnailUrl || item.mediaUrl;
                   const isVideo =
                     item.type === 'video' || (item.mediaType ?? '').startsWith('video/');
                   return (
-                    <a
+                    <ConversationGalleryMediaCard
                       key={item.messageId}
                       href={item.mediaUrl || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex gap-3 rounded-xl border border-black/[0.06] bg-white p-2.5 shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
-                    >
-                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-black/5 dark:bg-white/10">
-                        {src && !isVideo ? (
-                          <img src={src} alt="" className="h-full w-full object-cover" />
-                        ) : src && isVideo ? (
-                          <>
-                            <img
-                              src={item.thumbnailUrl || src}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
-                            <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-[10px] font-bold text-white">
-                              ▶
-                            </span>
-                          </>
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">
-                            Media
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1 py-0.5">
-                        <p className="text-[13px] font-semibold">{who}</p>
-                        <p className="mt-1 text-[11px] text-muted-foreground">{when || '—'}</p>
-                      </div>
-                    </a>
+                      who={who}
+                      when={when || '—'}
+                      thumbnailSrc={src}
+                      isVideo={isVideo}
+                    />
                   );
                 })
               )}
@@ -1538,54 +1514,9 @@ export function ConversationInfoPanel({
               </div>
             </>
           )}
-          <div className="mt-2 border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
-            <button
-              type="button"
-              onClick={() => setBulletinAccordionOpen((v) => !v)}
-              className="flex w-full items-center justify-between gap-2 p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 dark:hover:bg-white/5"
-            >
-              <span className="min-w-0 flex-1">Bảng tin nhóm</span>
-              <ChevronDown
-                className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${bulletinAccordionOpen ? '' : '-rotate-90'}`}
-                aria-hidden
-              />
-            </button>
-            {bulletinAccordionOpen && (
-              <div className="pb-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGalleryKind(null);
-                    setBulletinAddOpen(false);
-                    setShowConversationSearch(false);
-                    setBulletinModalMode('reminders');
-                  }}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                >
-                  <Clock className="h-4 w-4 shrink-0 opacity-70" />
-                  Danh sách nhắc hẹn
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGalleryKind(null);
-                    setBulletinAddOpen(false);
-                    setShowConversationSearch(false);
-                    setBulletinTab('all');
-                    setBulletinModalMode('notesPolls');
-                  }}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                >
-                  <FileText className="h-4 w-4 shrink-0 opacity-70" />
-                  Tin ghim & Bình chọn
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-2 border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
-            <button
-              type="button"
+          <div className="mt-2 overflow-hidden rounded-xl border border-black/5 bg-white dark:border-white/10">
+            <ConversationGalleryNavRow
+              kind="media"
               disabled={!activeConversation?.conversationId}
               onClick={() => {
                 setBulletinModalMode(null);
@@ -1593,15 +1524,9 @@ export function ConversationInfoPanel({
                 setShowConversationSearch(false);
                 setGalleryKind('media');
               }}
-              className="flex w-full cursor-pointer items-center justify-between p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/5"
-            >
-              Ảnh/Video
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </button>
-          </div>
-          <div className="border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
-            <button
-              type="button"
+            />
+            <ConversationGalleryNavRow
+              kind="file"
               disabled={!activeConversation?.conversationId}
               onClick={() => {
                 setBulletinModalMode(null);
@@ -1609,15 +1534,9 @@ export function ConversationInfoPanel({
                 setShowConversationSearch(false);
                 setGalleryKind('file');
               }}
-              className="flex w-full cursor-pointer items-center justify-between p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/5"
-            >
-              File
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </button>
-          </div>
-          <div className="border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
-            <button
-              type="button"
+            />
+            <ConversationGalleryNavRow
+              kind="link"
               disabled={!activeConversation?.conversationId}
               onClick={() => {
                 setBulletinModalMode(null);
@@ -1625,11 +1544,7 @@ export function ConversationInfoPanel({
                 setShowConversationSearch(false);
                 setGalleryKind('link');
               }}
-              className="flex w-full cursor-pointer items-center justify-between p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/5"
-            >
-              Link
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </button>
+            />
           </div>
 
           {activeConversation?.type === 'group' && !activeConversation.isDeleted && (
