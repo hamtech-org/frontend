@@ -16,7 +16,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import type { IMessage } from '@/types/chat.types';
 import { ChatFileTypeBadge } from '@/components/chat/ChatFileTypeBadge';
-import { pinnedChatFileDisplayName, resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
+import { resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 import {
   extractFirstHttpUrl,
   formatPinnedMessagePreviewLine,
