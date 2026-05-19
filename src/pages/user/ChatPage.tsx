@@ -490,7 +490,6 @@ export default function ChatPage() {
     onOpenCreateGroup: openCreateGroupModal,
     onOpenMarkRead: handleOpenMarkRead,
     onOpenAddFriend: handleOpenAddFriend,
-    onGroupClick: handleGroupClick,
     onToggleConversationMute: convPrefs.handleToggleConversationMute,
   };
 
