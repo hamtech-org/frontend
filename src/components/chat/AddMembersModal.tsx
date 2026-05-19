@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Check, Link2, Search, Share2, UserPlus, X } from 'lucide-react';
-import type { GroupJoinLinkModalData } from '@/contexts/GroupJoinLinkModalContext';
+import { Check, Search, UserPlus, X } from 'lucide-react';
 import { useGetFriendsQuery } from '@/store/api/contactApi';
 
 type AddMembersModalProps = {
@@ -12,9 +11,6 @@ type AddMembersModalProps = {
   onToggleSelect: (userId: string, checked: boolean) => void;
   onConfirm: () => void;
   isSubmitting?: boolean;
-  joinLink?: GroupJoinLinkModalData | null;
-  onOpenJoinLinkModal?: () => void;
-  onOpenShareLinkModal?: () => void;
 };
 
 type Friend = {
@@ -33,9 +29,6 @@ export function AddMembersModal({
   onToggleSelect,
   onConfirm,
   isSubmitting = false,
-  joinLink,
-  onOpenJoinLinkModal,
-  onOpenShareLinkModal,
 }: AddMembersModalProps) {
   const [query, setQuery] = useState('');
   const { data: friendsRes, isLoading } = useGetFriendsQuery();
@@ -98,31 +91,7 @@ export function AddMembersModal({
               </button>
             </div>
 
-            <div className="px-5 py-4 border-b border-black/5 dark:border-white/5 space-y-3">
-              {joinLink && (onOpenJoinLinkModal || onOpenShareLinkModal) ? (
-                <div className="flex gap-2">
-                  {onOpenJoinLinkModal ? (
-                    <button
-                      type="button"
-                      onClick={onOpenJoinLinkModal}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#0068ff]/30 bg-sky-50/90 dark:bg-sky-950/30 text-[#0068ff] text-sm font-semibold hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
-                    >
-                      <Link2 className="w-4 h-4" />
-                      Link nhóm
-                    </button>
-                  ) : null}
-                  {onOpenShareLinkModal ? (
-                    <button
-                      type="button"
-                      onClick={onOpenShareLinkModal}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[#0068ff]/30 bg-sky-50/90 dark:bg-sky-950/30 text-[#0068ff] text-sm font-semibold hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
-                    >
-                      <Share2 className="w-4 h-4" />
-                      Chia sẻ link
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
+            <div className="px-5 py-4 border-b border-black/5 dark:border-white/5">
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input

@@ -15,10 +15,6 @@ import type { IConversation, IMessage } from '@/types/chat.types';
 import type { MessageConfirmState } from '@/types/chat.group.types';
 import { toTaskModalMembers } from '@/pages/user/chat-page/adapters/groupAdapters';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
-import { useGetGroupSettingsQuery } from '@/store/api/chatApi';
-import { useGroupJoinLinkModalOptional } from '@/contexts/GroupJoinLinkModalContext';
-import { getJoinGroupUrl } from '@/utils/joinGroupUrl';
-
 interface ChatModalsHostProps {
   state: {
     showPollVoteModal: boolean;
@@ -118,7 +114,6 @@ export function ChatModalsHost({
 }: ChatModalsHostProps) {
   const { core, group, messages, groupActions, directActions, messageActions } =
     useChatPageContext();
-  const joinLinkModal = useGroupJoinLinkModalOptional();
 
   const pollMsgById = (pollId: string): IMessage | null => {
     for (const m of messages ?? []) {
@@ -173,22 +168,6 @@ export function ChatModalsHost({
     taskSubtaskRows,
     editingTaskId,
   } = state;
-
-  const { data: groupSettingsRes } = useGetGroupSettingsQuery(core.activeConversationId!, {
-    skip: !showAddMembersModal || !core.activeConversationId,
-  });
-  const joinSuffix = groupSettingsRes?.data?.joinLinkSuffix;
-  const allowJoinLink = groupSettingsRes?.data?.adminSettings?.allowJoinLink;
-  const joinLinkInfo =
-    allowJoinLink && joinSuffix && core.activeConversation
-      ? {
-          suffix: joinSuffix,
-          url: getJoinGroupUrl(joinSuffix),
-          groupName: core.activeConversation.name ?? 'Nhóm chat',
-          groupAvatar: core.activeConversation.avatar,
-          conversationId: core.activeConversation.conversationId,
-        }
-      : null;
 
   return (
     <>
@@ -344,13 +323,6 @@ export function ChatModalsHost({
         onToggleSelect={groupActions.handleToggleAddMember}
         onConfirm={() => void groupActions.handleAddMembers(state.selectedAddMembers)}
         isSubmitting={group.actionLoading.addMembers}
-        joinLink={joinLinkInfo}
-        onOpenJoinLinkModal={() => {
-          if (joinLinkInfo) joinLinkModal?.openGroupJoinLinkModal(joinLinkInfo);
-        }}
-        onOpenShareLinkModal={() => {
-          if (joinLinkInfo) joinLinkModal?.openShareGroupJoinLinkPicker(joinLinkInfo);
-        }}
       />
       <EditGroupModal
         open={showEditGroupModal}

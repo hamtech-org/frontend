@@ -1,10 +1,9 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+﻿import { useState, useRef, useEffect, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import EmojiPicker from 'emoji-picker-react';
 import {
   BarChart2,
   CheckSquare,
-  FileText,
   Image,
   Loader2,
   Mic,
@@ -31,19 +30,13 @@ import {
   canUserSendMessageInGroup,
 } from '@/utils/groupConversationPermissions';
 import { GroupMemberSendRestrictedBar } from '@/components/chat/GroupMemberSendRestrictedBar';
+import {
+  ChatPendingAttachmentsStrip,
+  type PendingAttachment,
+} from '@/components/chat/ChatPendingAttachmentsStrip';
 import type { GroupMember } from '@/types/chat.group.types';
 
-export type PendingAttachment = {
-  localId: string;
-  file: File;
-  previewUrl: string | null;
-};
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+export type { PendingAttachment };
 
 type ChatComposerProps = {
   activeConversation: IConversation | undefined;
@@ -195,6 +188,30 @@ export function ChatComposer({
     addPendingFiles(Array.from(list));
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!activeConversationId || busy) return;
+
+    const files: File[] = [];
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item?.kind === 'file') {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+    }
+    if (files.length === 0 && e.clipboardData.files?.length) {
+      files.push(...Array.from(e.clipboardData.files));
+    }
+
+    if (files.length === 0) return;
+
+    e.preventDefault();
+    addPendingFiles(files);
+  };
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleGalleryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -324,52 +341,11 @@ export function ChatComposer({
         </div>
       )}
 
-      {pendingAttachments.length > 0 && (
-        <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto rounded-xl border border-black/10 dark:border-white/10 bg-black/3 dark:bg-white/4 p-2">
-          {pendingAttachments.map((p) => (
-            <div
-              key={p.localId}
-              className="relative group/at shrink-0 w-18 rounded-lg border border-black/10 dark:border-white/10 bg-white/80 dark:bg-zinc-900/80 overflow-hidden"
-            >
-              {p.previewUrl ? (
-                p.file.type.startsWith('video/') ? (
-                  <video
-                    src={p.previewUrl}
-                    muted
-                    playsInline
-                    className="h-16 w-full object-cover bg-zinc-200/40 dark:bg-zinc-700/40"
-                  />
-                ) : (
-                  <img
-                    src={p.previewUrl}
-                    alt=""
-                    className="h-16 w-full object-contain bg-zinc-100/90 dark:bg-zinc-800/80"
-                  />
-                )
-              ) : (
-                <div className="h-16 w-full flex flex-col items-center justify-center gap-0.5 px-1 bg-black/5 dark:bg-white/5">
-                  <FileText className="w-6 h-6 text-muted-foreground shrink-0" />
-                </div>
-              )}
-              <div className="px-1 py-0.5 border-t border-black/5 dark:border-white/5">
-                <p className="text-[9px] font-medium truncate leading-tight" title={p.file.name}>
-                  {p.file.name}
-                </p>
-                <p className="text-[8px] text-muted-foreground">{formatFileSize(p.file.size)}</p>
-              </div>
-              <button
-                type="button"
-                title="Bỏ file"
-                onClick={() => removePendingAttachment(p.localId)}
-                disabled={mediaUploading}
-                className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/60 text-white opacity-90 hover:opacity-100 disabled:opacity-40"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <ChatPendingAttachmentsStrip
+        attachments={pendingAttachments}
+        onRemove={removePendingAttachment}
+        removeDisabled={mediaUploading}
+      />
 
       <TooltipProvider delayDuration={300}>
         <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
@@ -599,6 +575,7 @@ export function ChatComposer({
               handleTyping();
             }}
             onKeyDown={(e) => handleKeyDown(e)}
+            onPaste={handlePaste}
             disabled={!activeConversationId}
             aria-label="Soạn tin nhắn"
             className="max-h-32 min-h-10 w-full resize-none bg-transparent px-3.5 py-2.5 text-sm font-medium leading-5 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50"

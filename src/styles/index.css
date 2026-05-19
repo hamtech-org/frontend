@@ -109,10 +109,11 @@
     contain-intrinsic-size: 560px;
   }
 
-  /** Nhảy từ danh sách ghim / tìm tin — một lần, không lặp */
+  /** Nhảy từ danh sách ghim / tìm tin — bọc sát khối bubble/media, không lặp */
   .chat-msg-jump-highlight {
     animation: chat-msg-jump-flash 2.1s ease-out forwards;
-    border-radius: 1rem;
+    border-radius: 0.75rem;
+    box-sizing: border-box;
   }
 
   .volume-slider-h {

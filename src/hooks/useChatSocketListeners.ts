@@ -295,7 +295,7 @@ export function useChatSocketListeners(
       // Invalidate các tags liên quan để FE tự động fetch lại dữ liệu mới nhất
       if (data.type === 'poll')
         dispatch(chatApi.util.invalidateTags([{ type: 'Polls', id: groupId }]));
-      if (data.type === 'task')
+      if (data.type === 'task' || data.type === 'member')
         dispatch(chatApi.util.invalidateTags([{ type: 'Tasks', id: groupId }]));
       if (data.type === 'request')
         dispatch(chatApi.util.invalidateTags([{ type: 'GroupRequests', id: groupId }]));
@@ -304,6 +304,9 @@ export function useChatSocketListeners(
       const hasMemberCountPatch =
         typeof profileFromPayload?.patch.memberCount === 'number' &&
         Number.isFinite(profileFromPayload.patch.memberCount);
+      if (hasMemberCountPatch) {
+        dispatch(chatApi.util.invalidateTags([{ type: 'Tasks', id: groupId }]));
+      }
       if (!hasMemberCountPatch) {
         dispatch(chatApi.util.invalidateTags(['Conversations']));
       }
