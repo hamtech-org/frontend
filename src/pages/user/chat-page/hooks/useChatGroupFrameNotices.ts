@@ -269,6 +269,7 @@ export function useChatGroupFrameNotices({
       );
       void fetchGroupMembers(String(activeConversationIdRef.current));
       void fetchGroupRequests(String(activeConversationIdRef.current));
+      void fetchGroupTasks(String(activeConversationIdRef.current));
     };
 
     const onMemberLeft = (data: unknown) => {
@@ -279,6 +280,7 @@ export function useChatGroupFrameNotices({
       });
       void fetchGroupMembers(String(activeConversationIdRef.current));
       void fetchGroupRequests(String(activeConversationIdRef.current));
+      void fetchGroupTasks(String(activeConversationIdRef.current));
     };
 
     const onMemberRemoved = (data: unknown) => {
@@ -293,6 +295,7 @@ export function useChatGroupFrameNotices({
       );
       void fetchGroupMembers(String(activeConversationIdRef.current));
       void fetchGroupRequests(String(activeConversationIdRef.current));
+      void fetchGroupTasks(String(activeConversationIdRef.current));
     };
 
     const onJoinRequestNew = (data: unknown) => {
