@@ -9,7 +9,7 @@ import { useAppShellState } from '@/hooks/app/useAppShellState';
 import { useLogoutFlow } from '@/hooks/app/useLogoutFlow';
 import { useProfileSync } from '@/hooks/app/useProfileSync';
 import { useAuth } from '@/hooks/useAuth';
-import { appRouteElements } from '@/routes/AppRoutes';
+import { appRouteElements, liveImmersiveRouteElements } from '@/routes/AppRoutes';
 import { guestRouteElements } from '@/routes/GuestRoutes';
 import { cn } from '@/utils/cn';
 import { AnimatePresence, motion } from 'motion/react';
@@ -31,9 +31,11 @@ const App: React.FC = () => {
 
   const isGuestRoute = GUEST_ROUTES.includes(location.pathname);
   const isCallRoute = location.pathname === '/call';
+  const isLiveImmersiveRoute = /^\/live\/[^/]+/.test(location.pathname);
   const isChatRoute = location.pathname.startsWith('/chat');
   const routeTransitionKey = isChatRoute ? 'chat' : location.pathname;
-  const shouldRenderAppShell = !isGuestRoute && !isCallRoute && !isChatRoute;
+  const shouldRenderAppShell =
+    !isGuestRoute && !isCallRoute && !isChatRoute && !isLiveImmersiveRoute;
   const {
     isMobileViewport,
     isMobileSidebarOpen,
@@ -80,6 +82,24 @@ const App: React.FC = () => {
           </Routes>
         </CallProvider>
       </Suspense>
+    );
+  }
+
+  if (isLiveImmersiveRoute) {
+    return (
+      <div
+        className={cn(
+          'min-h-screen transition-colors duration-500',
+          isDarkMode ? 'theme-midnight dark' : 'theme-ethereal',
+        )}
+      >
+        <Suspense fallback={<PageLoader />}>
+          <CallProvider>
+            <IncomingCallModal />
+            <Routes>{liveImmersiveRouteElements}</Routes>
+          </CallProvider>
+        </Suspense>
+      </div>
     );
   }
 

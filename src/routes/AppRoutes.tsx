@@ -4,7 +4,6 @@ import { Navigate, Route } from 'react-router-dom';
 const HomePage = React.lazy(() => import('@/pages/user/HomePage'));
 const ChatPage = React.lazy(() => import('@/pages/user/ChatPage'));
 const ContactsPage = React.lazy(() => import('@/pages/user/ContactsPage'));
-const StudioPage = React.lazy(() => import('@/pages/user/StudioPage'));
 const AIStudioPage = React.lazy(() => import('@/pages/user/AIStudioPage'));
 const ProfilePage = React.lazy(() => import('@/pages/user/ProfilePage'));
 const SearchPage = React.lazy(() => import('@/pages/user/SearchPage'));
@@ -18,12 +17,22 @@ const AdminResourcesPage = React.lazy(() => import('@/pages/admin/sections/Admin
 const AdminAiFilterPage = React.lazy(() => import('@/pages/admin/sections/AdminAiFilterPage'));
 const AdminAnalytics = React.lazy(() => import('@/pages/admin/AdminAnalytics'));
 const ComponentsDemoPage = React.lazy(() => import('@/pages/user/ComponentsDemoPage'));
+const LiveDirectoryPage = React.lazy(() => import('@/pages/user/LiveDirectoryPage'));
+const LiveWatchPage = React.lazy(() => import('@/pages/user/LiveWatchPage'));
+const LiveHostPage = React.lazy(() => import('@/pages/user/LiveHostPage'));
+
+export const liveImmersiveRouteElements = (
+  <>
+    <Route path="/live/:sessionId/studio" element={<LiveHostPage />} />
+    <Route path="/live/:sessionId" element={<LiveWatchPage />} />
+  </>
+);
 
 export const appRouteElements = (
   <>
     <Route path="/" element={<HomePage />} />
     <Route path="/community" element={<ContactsPage />} />
-    <Route path="/studio" element={<StudioPage />} />
+    <Route path="/live" element={<LiveDirectoryPage />} />
     <Route path="/chat/:conversationId" element={<ChatPage />} />
     <Route path="/chat" element={<ChatPage />} />
     <Route path="/search" element={<SearchPage />} />
