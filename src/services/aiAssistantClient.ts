@@ -8,6 +8,10 @@ export type AiAssistantThreadMessage = {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  actions?: Array<{
+    type: string;
+    payload?: Record<string, unknown>;
+  }>;
 };
 
 export async function fetchAiAssistantThread(threadId?: string): Promise<{
