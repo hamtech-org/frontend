@@ -7,7 +7,7 @@ import {
   messageTypeFromUploadResult,
   roughMaxBytesForFile,
 } from '@/constants/chat-page.constants';
-import type { PendingAttachment } from '@/components/chat/ChatComposer';
+import type { PendingAttachment } from '@/components/chat/ChatPendingAttachmentsStrip';
 import type { IConversation, MessageType } from '@/types/chat.types';
 import type { GroupMemberRole } from '@/types/chat.group.types';
 import { canUserSendMessageInGroup } from '@/utils/groupConversationPermissions';
