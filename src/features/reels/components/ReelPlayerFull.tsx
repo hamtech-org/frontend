@@ -199,7 +199,7 @@ export const ReelPlayerFull = ({
       <video
         ref={videoRef}
         src={reel.videoUrl}
-        poster={reel.thumbnailUrl}
+        poster={reel.thumbnailUrl ?? undefined}
         muted={isMuted}
         loop
         playsInline
