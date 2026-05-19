@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Copy, KeyRound, Link2, Lock, RefreshCw, Share2, HelpCircle, X } from 'lucide-react';
+import { Copy, KeyRound, Lock, RefreshCw, Share2, HelpCircle, X } from 'lucide-react';
 import { useId } from 'react';
 import { toast } from 'react-toastify';
 import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/PinLimitModal';
@@ -253,26 +253,17 @@ export function GroupManagementModal({
 
           {admin.allowJoinLink && (
             <div className="px-4 pb-3">
-              <div className="group/joinurl rounded-xl bg-sky-50/90 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 px-3 py-2.5 flex flex-col gap-2 transition-colors hover:border-[#0068ff]/25">
+              <div className="group/joinurl rounded-xl bg-sky-50/90 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 px-3 py-2 flex items-center gap-2 transition-colors hover:border-[#0068ff]/25">
                 <button
                   type="button"
                   disabled={!joinSuffix}
                   title={joinSuffix ? `Link tham gia: ${joinUrl}` : undefined}
                   onClick={openJoinLinkScreen}
-                  className="text-left text-[13px] font-mono text-[#0068ff] truncate min-w-0 w-full transition-[text-decoration] duration-200 group-hover/joinurl:underline group-hover/joinurl:underline-offset-[3px] group-hover/joinurl:decoration-[#0068ff]/70 disabled:opacity-50"
+                  className="flex-1 min-w-0 text-left text-[13px] font-mono text-[#0068ff] truncate transition-[text-decoration] duration-200 group-hover/joinurl:underline group-hover/joinurl:underline-offset-[3px] group-hover/joinurl:decoration-[#0068ff]/70 disabled:opacity-50"
                 >
                   {joinUrl}
                 </button>
-                <div className="flex flex-wrap items-center justify-end gap-1 text-[#0068ff]">
-                  <button
-                    type="button"
-                    title="Xem link & QR"
-                    disabled={!joinSuffix}
-                    className="p-1.5 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-900/50 disabled:opacity-40"
-                    onClick={openJoinLinkScreen}
-                  >
-                    <Link2 className="w-4 h-4" />
-                  </button>
+                <div className="flex shrink-0 items-center gap-2.5 text-[#0068ff]">
                   <button
                     type="button"
                     title="Sao chép"
