@@ -33,8 +33,10 @@ export const appRouteElements = (
     <Route path="/analytics" element={<AdminAnalytics />} />
     <Route path="/ai-studio" element={<AIStudioPage />} />
     <Route path="/profile" element={<ProfilePage />} />
+    <Route path="/profile/:userId" element={<ProfilePage />} />
     <Route path="/components-demo" element={<ComponentsDemoPage />} />
     <Route path="/reels" element={<ReelsPage />} />
+    <Route path="/reels/:reelId" element={<ReelsPage />} />
     <Route path="/admin" element={<AdminLayout />}>
       <Route index element={<AdminHubPage />} />
       <Route path="groups" element={<AdminGroupsPage />} />

@@ -1,15 +1,34 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Loader2, Plus } from 'lucide-react';
-import { useGetReelsFeedQuery, useLazyGetReelsFeedQuery } from '@/store/api/newsfeedApi';
+import { useDispatch } from 'react-redux';
+import { useParams } from 'react-router-dom';
+import {
+  newsfeedApi,
+  useGetReelsFeedQuery,
+  useGetReelByIdQuery,
+  useLazyGetReelsFeedQuery,
+} from '@/store/api/newsfeedApi';
 import { ReelPlayerFull } from '@/features/reels/components/ReelPlayerFull';
 import type { VideoRect } from '@/features/reels/components/ReelPlayerFull';
 import { ReelActionRail } from '@/features/reels/components/ReelActionRail';
 import { ReelCommentsSheet } from '@/features/reels/components/ReelCommentsSheet';
 import { ReelReportDialog } from '@/features/reels/components/ReelReportDialog';
 import { CreateReelModal } from '@/features/reels/components/CreateReelModal';
+import { useSocketContext } from '@/contexts/SocketContext';
+import { socketService } from '@/services/socket';
 import type { IReel } from '@/types/newsfeed.types';
+import type { AppDispatch } from '@/store/store';
+
+function getReelEventId(payload: unknown): string | null {
+  const p = payload as { reelId?: unknown; targetId?: unknown } | null;
+  const reelId = typeof p?.reelId === 'string' ? p.reelId : p?.targetId;
+  return typeof reelId === 'string' ? reelId : null;
+}
 
 export default function ReelsPage() {
+  const dispatch = useDispatch<AppDispatch>();
+  const { reelId: routeReelId } = useParams<{ reelId?: string }>();
+  const { isConnected } = useSocketContext();
   const [visibleIndex, setVisibleIndex] = useState(0);
   const [commentsReelId, setCommentsReelId] = useState<string | null>(null);
   const [reportReelId, setReportReelId] = useState<string | null>(null);
@@ -20,6 +39,9 @@ export default function ReelsPage() {
 
   // Fetch initial page
   const { data, isLoading, isFetching } = useGetReelsFeedQuery({ feed: 'foryou', limit: 10 });
+  const { data: detailData } = useGetReelByIdQuery(routeReelId ?? '', {
+    skip: !routeReelId,
+  });
   const [fetchMore] = useLazyGetReelsFeedQuery();
 
   // Accumulate reels across pages
@@ -30,12 +52,16 @@ export default function ReelsPage() {
   // Reset khi data thay đổi (initial fetch hoặc switch tab)
   useEffect(() => {
     if (data?.data) {
-      setAllReels(data.data.items);
+      const detailReel = detailData?.data;
+      const nextItems = detailReel
+        ? [detailReel, ...data.data.items.filter((r) => r.reelId !== detailReel.reelId)]
+        : data.data.items;
+      setAllReels(nextItems);
       setNextCursor(data.data.nextCursor);
       setHasMore(data.data.hasMore);
       setVisibleIndex(0);
     }
-  }, [data]);
+  }, [data, detailData]);
 
   // Intersection Observer cho snap scroll
   const containerRef = useRef<HTMLDivElement>(null);
@@ -81,7 +107,10 @@ export default function ReelsPage() {
         .unwrap()
         .then((res) => {
           if (res?.data) {
-            setAllReels((prev) => [...prev, ...res.data.items]);
+            setAllReels((prev) => {
+              const existing = new Set(prev.map((r) => r.reelId));
+              return [...prev, ...res.data.items.filter((r) => !existing.has(r.reelId))];
+            });
             setNextCursor(res.data.nextCursor);
             setHasMore(res.data.hasMore);
           }
@@ -95,7 +124,65 @@ export default function ReelsPage() {
     if (commentsReelId !== null && allReels[visibleIndex]) {
       setCommentsReelId(allReels[visibleIndex].reelId);
     }
-  }, [visibleIndex, allReels]);
+  }, [visibleIndex, allReels, commentsReelId]);
+
+  const visibleReelId = allReels[visibleIndex]?.reelId ?? null;
+
+  useEffect(() => {
+    if (!isConnected || !visibleReelId) return undefined;
+    socketService.emit('newsfeed:reel_join', { reelId: visibleReelId });
+    return () => {
+      socketService.emit('newsfeed:reel_leave', { reelId: visibleReelId });
+    };
+  }, [isConnected, visibleReelId]);
+
+  useEffect(() => {
+    if (!isConnected) return undefined;
+
+    const invalidateReel = (payload: unknown) => {
+      const reelId = getReelEventId(payload);
+      dispatch(
+        newsfeedApi.util.invalidateTags([
+          'ReelsFeed',
+          ...(reelId ? [{ type: 'ReelDetail' as const, id: reelId }] : []),
+        ]),
+      );
+    };
+
+    const handleReelDeleted = (payload: unknown) => {
+      const reelId = getReelEventId(payload);
+      if (!reelId) return;
+      setAllReels((prev) => prev.filter((r) => r.reelId !== reelId));
+      setCommentsReelId((current) => (current === reelId ? null : current));
+      setReportReelId((current) => (current === reelId ? null : current));
+      invalidateReel(payload);
+    };
+
+    const handleReelCommented = (payload: unknown) => {
+      const reelId = getReelEventId(payload);
+      dispatch(
+        newsfeedApi.util.invalidateTags([
+          'ReelsFeed',
+          ...(reelId
+            ? [
+                { type: 'ReelDetail' as const, id: reelId },
+                { type: 'ReelComments' as const, id: reelId },
+              ]
+            : []),
+        ]),
+      );
+    };
+
+    socketService.on('newsfeed:reel_deleted', handleReelDeleted);
+    socketService.on('newsfeed:reel_reacted', invalidateReel);
+    socketService.on('newsfeed:reel_commented', handleReelCommented);
+
+    return () => {
+      socketService.off('newsfeed:reel_deleted', handleReelDeleted);
+      socketService.off('newsfeed:reel_reacted', invalidateReel);
+      socketService.off('newsfeed:reel_commented', handleReelCommented);
+    };
+  }, [dispatch, isConnected]);
 
   return (
     <div className="h-full w-full bg-black flex overflow-hidden">
