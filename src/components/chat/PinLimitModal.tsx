@@ -2,7 +2,10 @@ import { AnimatePresence, motion } from 'motion/react';
 import { MessageSquare, X } from 'lucide-react';
 import type { IMessage } from '@/types/chat.types';
 import { PinnedRowPreview } from '@/components/chat/PinnedMessagesBar';
-import { MAX_PINNED_CHATS_TO_TOP, MAX_PINNED_PER_CONVERSATION } from '@/components/chat/chatPinConstants';
+import {
+  MAX_PINNED_CHATS_TO_TOP,
+  MAX_PINNED_PER_CONVERSATION,
+} from '@/components/chat/chatPinConstants';
 
 export { MAX_PINNED_CHATS_TO_TOP, MAX_PINNED_PER_CONVERSATION };
 
@@ -52,7 +55,10 @@ export function PinLimitModal({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-black/5 dark:border-white/10">
-              <h3 id="pin-limit-title" className="font-bold text-[17px] text-[#0a1629] dark:text-white">
+              <h3
+                id="pin-limit-title"
+                className="font-bold text-[17px] text-[#0a1629] dark:text-white"
+              >
                 Cập nhật danh sách ghim
               </h3>
               <button
@@ -67,8 +73,8 @@ export function PinLimitModal({
 
             <div className="px-5 py-4 space-y-4">
               <p className="text-[14px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                Đã đạt giới hạn {MAX_PINNED_PER_CONVERSATION} ghim. Vui lòng chọn ghim cần bỏ để cập nhật ghim
-                mới.
+                Đã đạt giới hạn {MAX_PINNED_PER_CONVERSATION} ghim. Vui lòng chọn ghim cần bỏ để cập
+                nhật ghim mới.
               </p>
 
               <div
@@ -93,8 +99,10 @@ export function PinLimitModal({
                         <MessageSquare className="w-[18px] h-[18px] text-white" strokeWidth={2} />
                       </div>
                       <div className="min-w-0 flex-1 pt-0.5">
-                        <p className="text-[13px] font-bold text-slate-900 dark:text-slate-100">Tin nhắn</p>
-                        <div className="text-[13px] leading-snug mt-0.5">
+                        <p className="text-[13px] font-bold text-slate-900 dark:text-slate-100">
+                          Tin nhắn
+                        </p>
+                        <div className="mt-0.5 min-w-0 overflow-hidden text-[13px] leading-snug">
                           <PinnedRowPreview msg={msg} />
                         </div>
                       </div>

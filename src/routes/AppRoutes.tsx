@@ -20,6 +20,8 @@ const ComponentsDemoPage = React.lazy(() => import('@/pages/user/ComponentsDemoP
 const LiveDirectoryPage = React.lazy(() => import('@/pages/user/LiveDirectoryPage'));
 const LiveWatchPage = React.lazy(() => import('@/pages/user/LiveWatchPage'));
 const LiveHostPage = React.lazy(() => import('@/pages/user/LiveHostPage'));
+const ReelsPage = React.lazy(() => import('@/pages/user/ReelsPage'));
+const JoinGroupPage = React.lazy(() => import('@/pages/user/JoinGroupPage'));
 
 export const liveImmersiveRouteElements = (
   <>
@@ -33,13 +35,17 @@ export const appRouteElements = (
     <Route path="/" element={<HomePage />} />
     <Route path="/community" element={<ContactsPage />} />
     <Route path="/live" element={<LiveDirectoryPage />} />
+    <Route path="/join/:suffix" element={<JoinGroupPage />} />
     <Route path="/chat/:conversationId" element={<ChatPage />} />
     <Route path="/chat" element={<ChatPage />} />
     <Route path="/search" element={<SearchPage />} />
     <Route path="/analytics" element={<AdminAnalytics />} />
     <Route path="/ai-studio" element={<AIStudioPage />} />
     <Route path="/profile" element={<ProfilePage />} />
+    <Route path="/profile/:userId" element={<ProfilePage />} />
     <Route path="/components-demo" element={<ComponentsDemoPage />} />
+    <Route path="/reels" element={<ReelsPage />} />
+    <Route path="/reels/:reelId" element={<ReelsPage />} />
     <Route path="/admin" element={<AdminLayout />}>
       <Route index element={<AdminHubPage />} />
       <Route path="groups" element={<AdminGroupsPage />} />

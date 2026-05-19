@@ -106,7 +106,9 @@ export function AddMembersModal({
 
             <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-2">
               {isLoading ? (
-                <p className="text-center text-sm text-muted-foreground py-6">Đang tải danh sách...</p>
+                <p className="text-center text-sm text-muted-foreground py-6">
+                  Đang tải danh sách...
+                </p>
               ) : rows.length === 0 ? (
                 <p className="text-center text-sm text-muted-foreground py-6">
                   {friends.length === 0 ? 'Chưa có bạn bè để thêm' : 'Không có người dùng phù hợp'}
@@ -120,7 +122,7 @@ export function AddMembersModal({
                       key={friend.userId}
                       className={`flex items-center gap-3 p-3 rounded-xl ${
                         isInGroup
-                          ? 'opacity-70 cursor-default'
+                          ? 'opacity-80 cursor-default'
                           : 'hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer'
                       }`}
                     >
@@ -138,7 +140,11 @@ export function AddMembersModal({
                       )}
                       <div className="w-10 h-10 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center">
                         {friend.avatar ? (
-                          <img src={friend.avatar} alt={friend.displayName ?? ''} className="w-full h-full object-cover" />
+                          <img
+                            src={friend.avatar}
+                            alt={friend.displayName ?? ''}
+                            className="w-full h-full object-cover"
+                          />
                         ) : (
                           <span className="text-blue-600 font-bold text-xs">
                             {(friend.displayName?.slice(0, 1) ?? 'U').toUpperCase()}
@@ -146,7 +152,9 @@ export function AddMembersModal({
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate">{friend.displayName ?? friend.userId}</p>
+                        <p className="text-sm font-semibold truncate">
+                          {friend.displayName ?? friend.userId}
+                        </p>
                         <p className="text-xs text-muted-foreground truncate">
                           {isInGroup ? 'Đã tham gia' : (friend.email ?? friend.phone ?? '')}
                         </p>
@@ -158,7 +166,9 @@ export function AddMembersModal({
             </div>
 
             <div className="px-5 py-4 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-3">
-              <span className="text-sm text-muted-foreground">Đã chọn {selectedIds.length} người</span>
+              <span className="text-sm text-muted-foreground">
+                Đã chọn {selectedIds.length} người
+              </span>
               <button
                 type="button"
                 disabled={selectedIds.length === 0 || isSubmitting}

@@ -38,4 +38,6 @@ export const {
   useGetGroupRequestsQuery,
   useGetGroupSettingsQuery,
   useUpdateGroupSettingsMutation,
+  useGetGroupJoinPreviewQuery,
+  useJoinGroupViaLinkMutation,
 } = chatApi;

@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { socketService } from '@/services/socket';
 import { groupApi } from '@/services/chat/groupApi';
+import { resetRemovedGroupMembersRealtime } from '@/store/slices/chatSlice';
+import type { AppDispatch } from '@/store/store';
+import { filterGroupMembersExcludingRemoved } from '@/utils/groupMembersRealtime';
+import { syncAssignToAllGroupTasksWithMembers } from '@/utils/syncAssignToAllGroupTasks';
 import type {
   GroupActionLoading,
   GroupMember,
@@ -38,7 +42,10 @@ export function useGroupData({
   refetchConversations,
   isSocketReady = false,
 }: UseGroupDataParams) {
+  const dispatch = useDispatch<AppDispatch>();
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  const groupMembersRef = useRef<GroupMember[]>([]);
+  groupMembersRef.current = groupMembers;
   const [groupRequests, setGroupRequests] = useState<GroupRequest[]>([]);
   const [groupPolls, setGroupPolls] = useState<GroupPoll[]>([]);
   const [groupTasks, setGroupTasks] = useState<GroupTask[]>([]);
@@ -79,18 +86,30 @@ export function useGroupData({
       : 0,
   );
 
-  const fetchGroupMembers = useCallback(async (groupId: string) => {
-    setGroupLoading((prev) => ({ ...prev, members: true }));
-    try {
-      const res = await groupApi.getMembers(groupId);
-      setGroupMembers(res.data.data ?? []);
-    } catch (err) {
-      console.error('[fetchGroupMembers] Error:', err);
-      setGroupMembers([]);
-    } finally {
-      setGroupLoading((prev) => ({ ...prev, members: false }));
-    }
-  }, []);
+  const removedMemberIdsForActive = useSelector((state: RootState) =>
+    activeConversationId
+      ? (state.chat.removedGroupMemberIdsByConversationId[activeConversationId] ?? [])
+      : [],
+  );
+
+  const fetchGroupMembers = useCallback(
+    async (groupId: string, _options?: { force?: boolean }): Promise<GroupMember[]> => {
+      setGroupLoading((prev) => ({ ...prev, members: true }));
+      try {
+        const res = await groupApi.getMembers(groupId);
+        const members = filterGroupMembersExcludingRemoved(groupId, res.data.data ?? []);
+        setGroupMembers(members);
+        return members;
+      } catch (err) {
+        console.error('[fetchGroupMembers] Error:', err);
+        setGroupMembers([]);
+        return [];
+      } finally {
+        setGroupLoading((prev) => ({ ...prev, members: false }));
+      }
+    },
+    [],
+  );
 
   const fetchGroupRequests = useCallback(async (groupId: string) => {
     setGroupLoading((prev) => ({ ...prev, requests: true }));
@@ -128,25 +147,34 @@ export function useGroupData({
       const next = (res.data.data ?? []) as GroupTask[];
       setGroupTasks((prev) => {
         const prevById = new Map(prev.map((t) => [String(t.taskId), t]));
-        return next.map((t) => {
+        const merged = next.map((t) => {
           const p = prevById.get(String(t.taskId));
+          const serverAssignees = (t as { assignees?: string[] }).assignees;
+          const assignees = Array.isArray(serverAssignees)
+            ? serverAssignees.map(String)
+            : Array.isArray(p?.assignees)
+              ? p.assignees.map(String)
+              : [];
           const serverParticipants = (t as { participants?: string[] }).participants;
           const participants = Array.isArray(serverParticipants)
             ? serverParticipants.map(String)
             : Array.isArray(p?.participants) && p.participants.length > 0
               ? p.participants.map(String)
               : [];
+          const serverAssignToAll = Boolean((t as GroupTask).assignToAll);
+          const serverBroadcast = Boolean((t as GroupTask).broadcast);
           return {
             ...t,
-            // Preserve client-only fields across refetch (backend may not return them).
-            ...(p?.assignToAll !== undefined ? { assignToAll: p.assignToAll } : {}),
-            ...(p?.broadcast !== undefined ? { broadcast: p.broadcast } : {}),
+            assignees,
+            assignToAll: serverAssignToAll,
+            broadcast: serverBroadcast,
             ...(Array.isArray(participants) ? { participants } : {}),
             ...(p?.creatorId ? { creatorId: p.creatorId } : {}),
             ...(p?.creatorDisplayName ? { creatorDisplayName: p.creatorDisplayName } : {}),
             ...(p?.createdAt ? { createdAt: p.createdAt } : {}),
           };
         });
+        return syncAssignToAllGroupTasksWithMembers(merged, groupMembersRef.current);
       });
     } catch (err) {
       console.error('[fetchGroupTasks] Error:', err);
@@ -173,6 +201,8 @@ export function useGroupData({
       return;
     }
 
+    dispatch(resetRemovedGroupMembersRealtime(activeConversationId));
+
     void Promise.all([
       fetchGroupMembers(activeConversationId),
       fetchGroupRequests(activeConversationId),
@@ -182,6 +212,7 @@ export function useGroupData({
   }, [
     activeConversationId,
     activeConversationType,
+    dispatch,
     fetchGroupMembers,
     fetchGroupRequests,
     fetchGroupPolls,
@@ -190,7 +221,28 @@ export function useGroupData({
 
   useEffect(() => {
     if (!activeConversationId || activeConversationType !== 'group') return;
+    if (removedMemberIdsForActive.length === 0) return;
+    setGroupMembers((prev) => filterGroupMembersExcludingRemoved(activeConversationId, prev));
+  }, [activeConversationId, activeConversationType, removedMemberIdsForActive]);
+
+  /** Task «giao cả nhóm» (kể cả task tạo từ đầu): đồng bộ assignees khi member đổi. */
+  useEffect(() => {
+    if (!activeConversationId || activeConversationType !== 'group') return;
+    if (groupMembers.length === 0) return;
+    setGroupTasks((prev) => syncAssignToAllGroupTasksWithMembers(prev, groupMembers));
+  }, [groupMembers, activeConversationId, activeConversationType]);
+
+  useEffect(() => {
+    if (!activeConversationId || activeConversationType !== 'group') return;
     if (!isSocketReady) return;
+
+    const handleGroupProfileUpdated = (data: unknown) => {
+      const payload = data as GroupEventPayload & { memberCount?: number };
+      if ((payload.groupId ?? payload.conversationId) !== activeConversationId) return;
+      if (typeof payload.memberCount !== 'number') return;
+      void fetchGroupMembers(activeConversationId);
+      void fetchGroupTasks(activeConversationId);
+    };
 
     const isCurrentGroup = (data: unknown): boolean => {
       const payload = data as GroupEventPayload;
@@ -205,6 +257,7 @@ export function useGroupData({
     const handleMemberChanged = (data: unknown) => {
       if (!isCurrentGroup(data)) return;
       void fetchGroupMembers(activeConversationId);
+      void fetchGroupTasks(activeConversationId);
     };
 
     const handleTaskChanged = (data: unknown) => {
@@ -240,6 +293,7 @@ export function useGroupData({
     socketService.on('group:task_updated', handleTaskChanged);
     socketService.on('group:task_deleted', handleTaskChanged);
     socketService.on('group:recap_new', handleRecapChanged);
+    socketService.on('group:updated', handleGroupProfileUpdated);
 
     return () => {
       socketService.off('group:member_joined', handleMemberChanged);
@@ -255,6 +309,7 @@ export function useGroupData({
       socketService.off('group:task_updated', handleTaskChanged);
       socketService.off('group:task_deleted', handleTaskChanged);
       socketService.off('group:recap_new', handleRecapChanged);
+      socketService.off('group:updated', handleGroupProfileUpdated);
     };
   }, [
     activeConversationId,

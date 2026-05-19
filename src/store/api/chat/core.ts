@@ -6,11 +6,20 @@ import { buildGroupsEndpoints } from '@/store/api/chat/groups.endpoints';
 import { buildRequestsEndpoints } from '@/store/api/chat/requests.endpoints';
 import { buildPollsEndpoints } from '@/store/api/chat/polls.endpoints';
 import { buildTasksEndpoints } from '@/store/api/chat/tasks.endpoints';
+import { buildJoinEndpoints } from '@/store/api/chat/join.endpoints';
 
 export const chatApi = createApi({
   reducerPath: 'chatApi',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['Conversations', 'Messages', 'Polls', 'Tasks', 'GroupRequests', 'GroupSettings'],
+  tagTypes: [
+    'Conversations',
+    'Messages',
+    'Polls',
+    'Tasks',
+    'GroupRequests',
+    'GroupSettings',
+    'GroupJoinPreview',
+  ],
   endpoints: (builder) => ({
     ...buildConversationsEndpoints(builder),
     ...buildMessagesEndpoints(builder),
@@ -18,5 +27,6 @@ export const chatApi = createApi({
     ...buildRequestsEndpoints(builder),
     ...buildPollsEndpoints(builder),
     ...buildTasksEndpoints(builder),
+    ...buildJoinEndpoints(builder),
   }),
 });

@@ -15,7 +15,6 @@ import type { IConversation, IMessage } from '@/types/chat.types';
 import type { MessageConfirmState } from '@/types/chat.group.types';
 import { toTaskModalMembers } from '@/pages/user/chat-page/adapters/groupAdapters';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
-
 interface ChatModalsHostProps {
   state: {
     showPollVoteModal: boolean;

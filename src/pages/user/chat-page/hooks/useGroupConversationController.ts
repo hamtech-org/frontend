@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { toast } from 'react-toastify';
 import { chatApi } from '@/store/api/chatApi';
-import { socketService } from '@/services/socket';
 import { groupApi } from '@/services/chat/groupApi';
 import { apiClient } from '@/services/api';
 import type { IMessage, IConversation } from '@/types/chat.types';
@@ -10,7 +9,12 @@ import {
   canUserCreatePollInGroup,
   canUserCreateTaskInGroup,
   canUserChangeGroupProfileInGroup,
+  isGroupAdminSlotsFull,
+  MAX_GROUP_ADMINS,
+  normalizeGroupMembersList,
+  resolveGroupMemberRole,
 } from '@/utils/groupConversationPermissions';
+import { patchGroupProfileInConversationsCache } from '@/utils/groupRealtimeCache';
 import type {
   GroupActionLoading,
   GroupMember,
@@ -18,7 +22,13 @@ import type {
   GroupTask,
 } from '@/types/chat.group.types';
 import type { AppDispatch } from '@/store/store';
-import { messageReceived } from '@/store/slices/chatSlice';
+import {
+  bumpGroupBoardRefresh,
+  markGroupMemberRemovedRealtime,
+  messageReceived,
+  setActiveConversation,
+} from '@/store/slices/chatSlice';
+import { applyLeftGroupRealtime } from '@/utils/chatMembershipRealtime';
 import {
   patchTaskAssignedSystemMessages,
   hideTaskAssignedCardsForTaskId,
@@ -67,12 +77,13 @@ interface UseGroupConversationControllerParams {
     setGroupJoinRequested: Dispatch<SetStateAction<boolean>>;
   };
   groupFetchers: {
-    fetchGroupMembers: (groupId: string) => Promise<void>;
+    fetchGroupMembers: (groupId: string, options?: { force?: boolean }) => Promise<GroupMember[]>;
     fetchGroupRequests: (groupId: string) => Promise<void>;
     fetchGroupPolls: (groupId: string) => Promise<void>;
     fetchGroupTasks: (groupId: string) => Promise<void>;
   };
   refetchConversations?: () => void;
+  syncGroupMemberCount?: (groupId: string, memberCount: number) => void;
   modalState: {
     editGroupAvatarPreview: string | null;
     editGroupName: string;
@@ -133,6 +144,7 @@ export function useGroupConversationController({
   groupSetters,
   groupFetchers,
   refetchConversations,
+  syncGroupMemberCount,
   modalState,
   modalActions,
   setActionBusy,
@@ -273,41 +285,7 @@ export function useGroupConversationController({
       modalActions.setShowEditGroupModal(false);
       modalActions.setEditGroupAvatarFile(null);
       toast.success('Cập nhật nhóm thành công');
-      const now = new Date();
-      const content =
-        previousName && previousName !== nextName
-          ? `Tên nhóm đã đổi từ '${previousName}' thành '${nextName}'`
-          : `${currentUserDisplayName || 'Bạn'} đã đổi tên nhóm thành '${nextName}'`;
-      const systemMsg: IMessage = {
-        messageId: `system-${Date.now()}`,
-        conversationId: activeConversationId,
-        senderId: 'system',
-        senderDisplayName: 'Hệ thống',
-        type: 'system' as IMessage['type'],
-        content,
-        mediaUrl: null,
-        thumbnailUrl: null,
-        replyTo: null,
-        replyToDetails: null,
-        isPinned: false,
-        isEdited: false,
-        isRecalled: false,
-        isDeleted: false,
-        reactions: {},
-        status: 'sent',
-        createdAt: now.toISOString(),
-      };
-      dispatch(
-        chatApi.util.updateQueryData(
-          'getMessages',
-          { conversationId: activeConversationId },
-          (draft) => {
-            if (!draft.data) draft.data = [];
-            draft.data.push(systemMsg);
-          },
-        ),
-      );
-      socketService.emit('message:new', systemMsg);
+      void fetchGroupMembers(activeConversationId, { force: true });
     } catch (error) {
       dispatch(
         chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
@@ -329,9 +307,11 @@ export function useGroupConversationController({
     editGroupAvatarFile,
     uploadMedia,
     dispatch,
+    currentUserId,
     currentUserDisplayName,
     modalActions,
     setActionBusy,
+    fetchGroupMembers,
   ]);
 
   const handleDeleteGroup = useCallback(async () => {
@@ -346,7 +326,6 @@ export function useGroupConversationController({
       toast.error('Chỉ trưởng nhóm mới có quyền giải tán nhóm');
       return;
     }
-    if (!window.confirm('Giải tán nhóm?')) return;
     setActionBusy('deleteGroup', true);
     try {
       await groupApi.deleteGroup(activeConversationId);
@@ -360,21 +339,31 @@ export function useGroupConversationController({
     }
   }, [activeConversationId, currentUserId, currentUserRole, groupMembers, navigate, setActionBusy]);
 
-  const handleLeaveGroup = useCallback(async () => {
-    if (!activeConversationId) return;
-    if (!window.confirm('Bạn chắc chắn muốn rời nhóm?')) return;
-    setActionBusy('leaveGroup', true);
-    try {
-      await groupApi.leaveGroup(activeConversationId);
-      toast.success('Đã rời nhóm');
-      void navigate('/chat', { replace: true });
-    } catch (error) {
-      toast.error('Không thể rời nhóm');
-      console.error('Failed to leave group:', error);
-    } finally {
-      setActionBusy('leaveGroup', false);
-    }
-  }, [activeConversationId, navigate, setActionBusy]);
+  const handleLeaveGroup = useCallback(
+    async (opts?: { newOwnerUserId?: string }) => {
+      if (!activeConversationId) return;
+      setActionBusy('leaveGroup', true);
+      try {
+        await groupApi.leaveGroup(activeConversationId, opts?.newOwnerUserId);
+        applyLeftGroupRealtime(dispatch, activeConversationId);
+        dispatch(setActiveConversation(null));
+        toast.success('Đã rời nhóm');
+        void navigate('/chat', { replace: true });
+      } catch (error) {
+        const msg =
+          error &&
+          typeof error === 'object' &&
+          'response' in error &&
+          (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+        toast.error(typeof msg === 'string' && msg.trim() ? msg : 'Không thể rời nhóm');
+        console.error('Failed to leave group:', error);
+        throw error;
+      } finally {
+        setActionBusy('leaveGroup', false);
+      }
+    },
+    [activeConversationId, dispatch, navigate, setActionBusy],
+  );
 
   const openAddMembersModal = useCallback(() => {
     modalActions.setSelectedAddMembers([]);
@@ -397,8 +386,13 @@ export function useGroupConversationController({
       setActionBusy('addMembers', true);
       try {
         await groupApi.addMembers(activeConversationId, memberIds);
-        toast.success('Đã gửi lời mời vào nhóm');
-        await fetchGroupRequests(activeConversationId);
+        const approvalRequired =
+          activeConversation?.groupSettings?.adminSettings?.approvalRequired ?? false;
+        toast.success(approvalRequired ? 'Đã gửi lời mời vào nhóm' : 'Đã thêm thành viên vào nhóm');
+        await Promise.all([
+          fetchGroupMembers(activeConversationId),
+          fetchGroupRequests(activeConversationId),
+        ]);
         modalActions.setSelectedAddMembers([]);
         modalActions.setShowAddMembersModal(false);
       } catch (error) {
@@ -414,11 +408,21 @@ export function useGroupConversationController({
         setActionBusy('addMembers', false);
       }
     },
-    [activeConversationId, fetchGroupRequests, modalActions, setActionBusy],
+    [
+      activeConversation?.groupSettings?.adminSettings?.approvalRequired,
+      activeConversationId,
+      fetchGroupMembers,
+      fetchGroupRequests,
+      modalActions,
+      setActionBusy,
+    ],
   );
+
+  const createTaskInFlightRef = useRef(false);
 
   const handleSubmitTask = useCallback(async () => {
     if (!activeConversationId) return;
+    if (createTaskInFlightRef.current) return;
     if (!taskTitle.trim()) {
       toast.error('Vui lòng nhập tiêu đề công việc');
       return;
@@ -527,36 +531,8 @@ export function useGroupConversationController({
     }
 
     setActionBusy('createTask', true);
+    createTaskInFlightRef.current = true;
     const dueDateIso = deadlineLocalInputToJsonValue(taskDeadline) ?? undefined;
-    const optimisticTask: GroupTask = {
-      taskId: `tmp-${Date.now()}`,
-      title: taskTitle.trim(),
-      description: taskNote.trim(),
-      assignees: isGroupOptIn ? [] : taskAssignees,
-      participants: [],
-      assignToAll: isGroupOptIn,
-      broadcast: isGroupOptIn,
-      subtasks:
-        cleanSubtaskRows.length > 0
-          ? cleanSubtaskRows.map((r) => ({
-              id: `sub-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-              assigneeId: r.assigneeId,
-              assigneeName:
-                groupMembers.find((m) => m.userId === r.assigneeId)?.displayName ??
-                groupMembers.find((m) => m.userId === r.assigneeId)?.name ??
-                r.assigneeId,
-              content: r.content,
-              done: false,
-              completedAt: null,
-            }))
-          : undefined,
-      status: 'todo',
-      dueDate: dueDateIso,
-      createdAt: new Date().toISOString(),
-      creatorId: currentUserId,
-      creatorDisplayName: currentUserDisplayName?.trim() ?? null,
-    };
-    setGroupTasks((prev) => [optimisticTask, ...prev]);
     try {
       await groupApi.createTask(activeConversationId, {
         title: taskTitle.trim(),
@@ -567,14 +543,15 @@ export function useGroupConversationController({
         subtasks: cleanSubtaskRows.length > 0 ? cleanSubtaskRows : undefined,
       });
       toast.success('Đã tạo công việc');
+      await fetchGroupMembers(activeConversationId);
       await fetchGroupTasks(activeConversationId);
       // Server đã `createAndBroadcastSystemMessage` (`task_assigned`) — không bơm local / emit socket (tránh banner đúp).
       modalActions.closeTaskModal();
     } catch (err) {
-      setGroupTasks((prev) => prev.filter((task) => task.taskId !== optimisticTask.taskId));
       toast.error('Không thể tạo công việc');
       console.error('Failed to create task:', err);
     } finally {
+      createTaskInFlightRef.current = false;
       setActionBusy('createTask', false);
     }
   }, [
@@ -588,6 +565,7 @@ export function useGroupConversationController({
     taskDeadline,
     editingTaskId,
     modalActions,
+    fetchGroupMembers,
     fetchGroupTasks,
     setActionBusy,
     dispatch,
@@ -843,34 +821,86 @@ export function useGroupConversationController({
   );
 
   const handleTransferGroupOwner = useCallback(
-    async (newOwnerUserId: string) => {
+    async (newOwnerUserId: string, currentOwnerNewRole: 'admin' | 'member') => {
       if (!activeConversationId) return;
-      const currentRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
-      if (currentRole !== 'owner') {
+      const trimmedTarget = newOwnerUserId.trim();
+      if (!trimmedTarget) return;
+
+      const memberMeta = {
+        leaderId: activeConversation?.leaderId,
+        creatorId: activeConversation?.creatorId,
+      };
+      const normalizedMembers = normalizeGroupMembersList(groupMembers, memberMeta);
+      const isOwner =
+        resolveGroupMemberRole({
+          userId: currentUserId,
+          members: normalizedMembers,
+          conversationLeaderId: memberMeta.leaderId,
+          conversationCreatorId: memberMeta.creatorId,
+        }) === 'owner';
+      if (!isOwner) {
         toast.error('Chỉ trưởng nhóm mới có thể chuyển quyền');
         return;
       }
-      if (!newOwnerUserId?.trim()) return;
+      if (!normalizedMembers.some((m) => m.userId === trimmedTarget)) {
+        toast.error('Thành viên được chọn không còn trong nhóm');
+        return;
+      }
+      if (currentOwnerNewRole === 'admin' && isGroupAdminSlotsFull(normalizedMembers)) {
+        toast.error(
+          `Nhóm đã đủ ${MAX_GROUP_ADMINS} phó nhóm. Chọn vai trò thành viên sau khi chuyển quyền.`,
+        );
+        return;
+      }
       setActionBusy('changeRole', true);
       const before = groupMembers;
-      setGroupMembers((prev) =>
-        prev.map((m) => {
-          // Ensure only ONE owner after transfer.
-          if (String(m.userId) === String(newOwnerUserId)) return { ...m, role: 'owner' as const };
-          // Demote any existing owners (usually the current owner) to admin.
-          if (m.role === 'owner') return { ...m, role: 'admin' as const };
-          // Keep others as-is.
-          return m;
-        }),
+      setGroupMembers(
+        normalizeGroupMembersList(
+          groupMembers.map((m) => {
+            if (String(m.userId) === trimmedTarget) return { ...m, role: 'owner' as const };
+            if (
+              resolveGroupMemberRole({
+                userId: m.userId,
+                members: [m],
+                conversationLeaderId: memberMeta.leaderId,
+                conversationCreatorId: memberMeta.creatorId,
+              }) === 'owner'
+            ) {
+              return { ...m, role: currentOwnerNewRole };
+            }
+            return m;
+          }),
+          { leaderId: trimmedTarget, creatorId: memberMeta.creatorId },
+        ),
       );
       try {
-        await groupApi.transferGroupOwnership(activeConversationId, newOwnerUserId, currentUserId);
+        await groupApi.transferGroupOwnership(
+          activeConversationId,
+          trimmedTarget,
+          currentOwnerNewRole,
+        );
+        patchGroupProfileInConversationsCache(dispatch, activeConversationId, {
+          leaderId: trimmedTarget,
+        });
+        dispatch(bumpGroupBoardRefresh({ conversationId: activeConversationId }));
         toast.success('Trưởng nhóm mới đã được cập nhật');
-        void fetchGroupMembers(activeConversationId);
+        await fetchGroupMembers(activeConversationId, { force: true });
         void refetchConversations?.();
       } catch (err) {
         setGroupMembers(before);
-        toast.error('Không thể chuyển quyền. Thử lại hoặc kiểm tra quyền trên máy chủ');
+        const msg =
+          err &&
+          typeof err === 'object' &&
+          'response' in err &&
+          (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        toast.error(
+          status === 429
+            ? 'Hệ thống đang xử lý quá nhiều yêu cầu. Vui lòng thử lại sau vài giây.'
+            : typeof msg === 'string' && msg.trim()
+              ? msg
+              : 'Không thể chuyển quyền. Thử lại hoặc kiểm tra quyền trên máy chủ',
+        );
         console.error('Failed to transfer group owner:', err);
         throw err;
       } finally {
@@ -878,7 +908,10 @@ export function useGroupConversationController({
       }
     },
     [
+      activeConversation?.creatorId,
+      activeConversation?.leaderId,
       activeConversationId,
+      dispatch,
       groupMembers,
       currentUserId,
       setActionBusy,
@@ -918,6 +951,58 @@ export function useGroupConversationController({
         setGroupMembers(before);
         toast.error('Không thể đổi vai trò. Thử lại sau.');
         console.error('Failed to demote admin:', err);
+        throw err;
+      } finally {
+        setActionBusy('changeRole', false);
+      }
+    },
+    [
+      activeConversationId,
+      groupMembers,
+      currentUserId,
+      setActionBusy,
+      setGroupMembers,
+      fetchGroupMembers,
+      refetchConversations,
+    ],
+  );
+
+  const handlePromoteMemberToAdmin = useCallback(
+    async (userId: string) => {
+      if (!activeConversationId) return;
+      const currentRole = groupMembers.find((m) => m.userId === currentUserId)?.role;
+      if (currentRole !== 'owner') {
+        toast.error('Chỉ trưởng nhóm mới có thể đổi vai trò');
+        return;
+      }
+      if (!userId?.trim()) return;
+      const target = groupMembers.find((m) => m.userId === userId);
+      if (!target) return;
+      if (target.role !== 'member') {
+        toast.info('Người này không phải thành viên thường');
+        return;
+      }
+      if (isGroupAdminSlotsFull(groupMembers)) {
+        toast.error(
+          `Nhóm chỉ có tối đa ${MAX_GROUP_ADMINS} phó nhóm. Hãy hạ một phó nhóm trước khi bổ nhiệm thêm.`,
+        );
+        return;
+      }
+
+      setActionBusy('changeRole', true);
+      const before = groupMembers;
+      setGroupMembers((prev) =>
+        prev.map((m) => (m.userId === userId ? { ...m, role: 'admin' as const } : m)),
+      );
+      try {
+        await groupApi.changeMemberRole(activeConversationId, userId, 'admin');
+        toast.success('Đã bổ nhiệm phó nhóm');
+        void fetchGroupMembers(activeConversationId);
+        void refetchConversations?.();
+      } catch (err) {
+        setGroupMembers(before);
+        toast.error('Không thể đổi vai trò. Thử lại sau.');
+        console.error('Failed to promote member:', err);
         throw err;
       } finally {
         setActionBusy('changeRole', false);
@@ -1166,6 +1251,10 @@ export function useGroupConversationController({
       }
       try {
         await groupApi.approveRequest(activeConversationId, userId);
+        await Promise.all([
+          fetchGroupMembers(activeConversationId, { force: true }),
+          fetchGroupTasks(activeConversationId),
+        ]);
         toast.success('Đã duyệt yêu cầu');
       } catch (err) {
         setGroupRequests(beforeRequests);
@@ -1181,6 +1270,8 @@ export function useGroupConversationController({
       currentUserRole,
       groupRequests,
       groupMembers,
+      fetchGroupMembers,
+      fetchGroupTasks,
       setActionBusy,
       setGroupMembers,
       setGroupRequests,
@@ -1227,11 +1318,27 @@ export function useGroupConversationController({
       }
       setActionBusy('removeMember', true);
       const before = groupMembers;
+      dispatch(
+        markGroupMemberRemovedRealtime({
+          conversationId: activeConversationId,
+          userId,
+        }),
+      );
       setGroupMembers((prev) => prev.filter((m) => m.userId !== userId));
       try {
-        await groupApi.removeMember(activeConversationId, userId);
+        const res = await groupApi.removeMember(activeConversationId, userId);
+        const count = (res.data?.data as { memberCount?: number } | null)?.memberCount;
+        const nextMemberCount =
+          typeof count === 'number' && Number.isFinite(count)
+            ? Math.max(0, count)
+            : Math.max(0, before.length - 1);
+        patchGroupProfileInConversationsCache(dispatch, activeConversationId, {
+          memberCount: nextMemberCount,
+        });
+        syncGroupMemberCount?.(activeConversationId, nextMemberCount);
         await Promise.all([
-          fetchGroupMembers(activeConversationId),
+          fetchGroupMembers(activeConversationId, { force: true }),
+          fetchGroupTasks(activeConversationId),
           refetchConversations?.() ?? Promise.resolve(),
         ]);
       } catch (err) {
@@ -1246,9 +1353,12 @@ export function useGroupConversationController({
       activeConversationId,
       currentUserId,
       currentUserRole,
+      dispatch,
       fetchGroupMembers,
+      fetchGroupTasks,
       groupMembers,
       refetchConversations,
+      syncGroupMemberCount,
       setActionBusy,
       setGroupMembers,
     ],
@@ -1411,6 +1521,7 @@ export function useGroupConversationController({
       handleTaskJoined,
       handleTransferGroupOwner,
       handleDemoteAdminToMember,
+      handlePromoteMemberToAdmin,
       openAISummaryFromPanel,
       handleRerunAISummary,
       handleCreatePoll,
@@ -1441,6 +1552,7 @@ export function useGroupConversationController({
       handleTaskJoined,
       handleTransferGroupOwner,
       handleDemoteAdminToMember,
+      handlePromoteMemberToAdmin,
       openAISummaryFromPanel,
       handleRerunAISummary,
       handleCreatePoll,

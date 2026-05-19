@@ -16,20 +16,21 @@ import {
 import { socketService } from '@/services/socket';
 import type { AppDispatch } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
-
-type GroupUpdatedPayload = {
-  conversationId?: string;
-  name?: string;
-  avatar?: string;
-};
+import { lastMessagePreviewContentFromMessage } from '@/utils/chatUtils';
+import {
+  groupProfilePatchFromPayload,
+  patchGroupProfileInConversationsCache,
+} from '@/utils/groupRealtimeCache';
+import { groupUpdateNoticeText, type GroupUpdatedPayload } from '@/utils/groupProfileUpdateNotice';
 
 interface UseChatRealtimeEventsParams {
   dispatch: AppDispatch;
   isConnected: boolean;
   activeConversationId: string | null;
+  currentUserId?: string;
   setActivePollId: (pollId: string) => void;
   setShowPollVoteModal: (open: boolean) => void;
-  fetchGroupMembers: (groupId: string) => Promise<void>;
+  fetchGroupMembers: (groupId: string, options?: { force?: boolean }) => Promise<unknown>;
   patchMessageInCache: (
     conversationId: string,
     messageId: string,
@@ -43,6 +44,7 @@ export function useChatRealtimeEvents({
   dispatch,
   isConnected,
   activeConversationId,
+  currentUserId,
   setActivePollId,
   setShowPollVoteModal,
   fetchGroupMembers,
@@ -69,11 +71,11 @@ export function useChatRealtimeEvents({
           if (!conv) return;
           conv.lastMessage = {
             messageId: msg.messageId,
-            content: msg.content,
+            content: lastMessagePreviewContentFromMessage(msg, currentUserId),
             senderId: msg.senderId,
             type: msg.type,
             createdAt: msg.createdAt,
-            senderDisplayName: msg.senderDisplayName,
+            senderDisplayName: msg.senderDisplayName?.trim() ?? null,
           };
         }),
       );
@@ -254,21 +256,24 @@ export function useChatRealtimeEvents({
     };
 
     const handleGroupUpdated = (payload: GroupUpdatedPayload) => {
-      if (!payload.conversationId) return;
+      const profileFromPayload = groupProfilePatchFromPayload(payload);
+      const conversationId =
+        profileFromPayload?.conversationId ?? payload.conversationId ?? payload.groupId;
+      if (!conversationId) return;
 
-      dispatch(
-        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
-          const conv = draft?.data?.find((item) => item.conversationId === payload.conversationId);
-          if (!conv) return;
-          if (payload.name) conv.name = payload.name;
-          if (payload.avatar) conv.avatar = payload.avatar;
-        }),
-      );
+      if (profileFromPayload) {
+        patchGroupProfileInConversationsCache(
+          dispatch,
+          profileFromPayload.conversationId,
+          profileFromPayload.patch,
+        );
+      }
 
-      if (payload.conversationId !== activeConversationIdRef.current) {
-        toast.info(`Nhóm '${payload.name ?? ''}' vừa cập nhật thông tin`);
+      const noticeText = groupUpdateNoticeText(payload, currentUserId);
+      if (conversationId !== activeConversationIdRef.current) {
+        if (noticeText) toast.info(noticeText);
       } else {
-        void fetchGroupMembers(payload.conversationId);
+        void fetchGroupMembers(conversationId);
       }
     };
 
@@ -334,6 +339,7 @@ export function useChatRealtimeEvents({
     setPinnedMessageOrderByConv,
     fetchGroupMembers,
     isConnected,
+    currentUserId,
     setActivePollId,
     setShowPollVoteModal,
     navigate,

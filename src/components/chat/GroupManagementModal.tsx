@@ -5,6 +5,8 @@ import { toast } from 'react-toastify';
 import { MAX_PINNED_PER_CONVERSATION } from '@/components/chat/PinLimitModal';
 import { useGetGroupSettingsQuery, useUpdateGroupSettingsMutation } from '@/store/api/chatApi';
 import type { IGroupAdminSettings, IGroupMemberPermissions } from '@/types/chat.types';
+import { useGroupJoinLinkModalOptional } from '@/contexts/GroupJoinLinkModalContext';
+import { getJoinGroupUrl } from '@/utils/joinGroupUrl';
 
 /** Alias tương thích import cũ. */
 export type GroupMemberPermissions = IGroupMemberPermissions;
@@ -22,6 +24,8 @@ type GroupManagementModalProps = {
   open: boolean;
   onClose: () => void;
   conversationId: string | undefined;
+  groupName?: string;
+  groupAvatar?: string | null;
   canEdit: boolean;
   variant?: GroupManagementUiVariant;
   /** Mở quản lý thành viên (kick / vai trò). */
@@ -85,6 +89,8 @@ export function GroupManagementModal({
   open,
   onClose,
   conversationId,
+  groupName = 'Nhóm chat',
+  groupAvatar,
   canEdit,
   variant = 'modal',
   onNavigateToMembers,
@@ -94,18 +100,35 @@ export function GroupManagementModal({
     skip: !open || !conversationId,
   });
   const [updateSettings, { isLoading: saving }] = useUpdateGroupSettingsMutation();
+  const joinLinkModal = useGroupJoinLinkModalOptional();
+  const openSharePicker = () => {
+    if (!joinSuffix || joinUrl === '—' || !conversationId) return;
+    joinLinkModal?.openShareGroupJoinLinkPicker({
+      suffix: joinSuffix,
+      url: joinUrl,
+      groupName,
+      groupAvatar,
+      conversationId,
+    });
+  };
 
   const gs = settingsRes?.data;
   const member = gs?.memberPermissions;
   const admin = gs?.adminSettings;
   const joinSuffix = gs?.joinLinkSuffix;
 
-  const joinUrl =
-    typeof window !== 'undefined' && joinSuffix
-      ? `${window.location.origin}/join/${joinSuffix}`
-      : joinSuffix
-        ? `/join/${joinSuffix}`
-        : '—';
+  const joinUrl = joinSuffix ? getJoinGroupUrl(joinSuffix) : '—';
+
+  const openJoinLinkScreen = () => {
+    if (!joinSuffix || joinUrl === '—' || !conversationId) return;
+    joinLinkModal?.openGroupJoinLinkModal({
+      suffix: joinSuffix,
+      url: joinUrl,
+      groupName,
+      groupAvatar,
+      conversationId,
+    });
+  };
 
   const patchMember = async (key: keyof IGroupMemberPermissions, value: boolean) => {
     if (!canEdit || !conversationId) return;
@@ -230,11 +253,17 @@ export function GroupManagementModal({
 
           {admin.allowJoinLink && (
             <div className="px-4 pb-3">
-              <div className="rounded-xl bg-sky-50/90 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 px-3 py-2.5 flex items-center justify-between gap-2">
-                <span className="text-[13px] font-mono text-slate-800 dark:text-slate-200 truncate">
+              <div className="group/joinurl rounded-xl bg-sky-50/90 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 px-3 py-2 flex items-center gap-2 transition-colors hover:border-[#0068ff]/25">
+                <button
+                  type="button"
+                  disabled={!joinSuffix}
+                  title={joinSuffix ? `Link tham gia: ${joinUrl}` : undefined}
+                  onClick={openJoinLinkScreen}
+                  className="flex-1 min-w-0 text-left text-[13px] font-mono text-[#0068ff] truncate transition-[text-decoration] duration-200 group-hover/joinurl:underline group-hover/joinurl:underline-offset-[3px] group-hover/joinurl:decoration-[#0068ff]/70 disabled:opacity-50"
+                >
                   {joinUrl}
-                </span>
-                <div className="flex items-center gap-1 shrink-0 text-[#0068ff]">
+                </button>
+                <div className="flex shrink-0 items-center gap-2.5 text-[#0068ff]">
                   <button
                     type="button"
                     title="Sao chép"
@@ -250,16 +279,10 @@ export function GroupManagementModal({
                   </button>
                   <button
                     type="button"
-                    title="Chia sẻ"
+                    title="Chia sẻ tới bạn bè / nhóm"
                     disabled={!joinSuffix}
                     className="p-1.5 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-900/50 disabled:opacity-40"
-                    onClick={() => {
-                      if (!joinSuffix || !navigator.share) {
-                        toast.info('Dùng Sao chép để gửi link');
-                        return;
-                      }
-                      void navigator.share({ title: 'Tham gia nhóm', url: joinUrl });
-                    }}
+                    onClick={openSharePicker}
                   >
                     <Share2 className="w-4 h-4" />
                   </button>
@@ -277,7 +300,7 @@ export function GroupManagementModal({
             </div>
           )}
 
-          <div className="px-4 pb-4 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2">
+          <motion.div className="px-4 pb-4 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2">
             <button
               type="button"
               className="w-full flex items-center gap-3 py-3 text-left text-[14px] text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-zinc-800/80 rounded-lg px-2 -mx-2 disabled:opacity-45"
@@ -293,7 +316,7 @@ export function GroupManagementModal({
               <KeyRound className="w-5 h-5 text-slate-500 shrink-0" />
               Trưởng &amp; phó nhóm
             </button>
-          </div>
+          </motion.div>
 
           {!canEdit && (
             <p className="px-4 pb-4 text-[12px] text-center text-slate-500">

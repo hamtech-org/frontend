@@ -1,9 +1,11 @@
 import IncomingCallModal from '@/components/call/IncomingCallModal';
 import AppHeader from '@/components/layout/AppHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
+import { ReelUploadToast } from '@/components/layout/ReelUploadToast';
 import { ShellMain, ShellRoot } from '@/components/layout/ShellPrimitives';
 import GlobalSearchBox from '@/components/search/GlobalSearchBox';
 import { CallProvider } from '@/contexts/CallContext';
+import { GroupJoinLinkModalProvider } from '@/contexts/GroupJoinLinkModalContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAppShellState } from '@/hooks/app/useAppShellState';
 import { useLogoutFlow } from '@/hooks/app/useLogoutFlow';
@@ -32,10 +34,13 @@ const App: React.FC = () => {
   const isGuestRoute = GUEST_ROUTES.includes(location.pathname);
   const isCallRoute = location.pathname === '/call';
   const isLiveImmersiveRoute = /^\/live\/[^/]+/.test(location.pathname);
+  const isJoinRoute = location.pathname.startsWith('/join/');
   const isChatRoute = location.pathname.startsWith('/chat');
+  const isReelsRoute = location.pathname.startsWith('/reels');
+  const isImmersiveRoute = isChatRoute || isReelsRoute;
   const routeTransitionKey = isChatRoute ? 'chat' : location.pathname;
   const shouldRenderAppShell =
-    !isGuestRoute && !isCallRoute && !isChatRoute && !isLiveImmersiveRoute;
+    !isGuestRoute && !isCallRoute && !isChatRoute && !isLiveImmersiveRoute && !isJoinRoute;
   const {
     isMobileViewport,
     isMobileSidebarOpen,
@@ -177,7 +182,7 @@ const App: React.FC = () => {
           )}
         </AnimatePresence>
 
-        {!isChatRoute && (
+        {!isImmersiveRoute && (
           <AppHeader
             isDarkMode={isDarkMode}
             isSidebarOpen={isDesktopSidebarExpanded}
@@ -194,8 +199,8 @@ const App: React.FC = () => {
         <div
           className={cn(
             'flex-1 min-h-0 relative',
-            isChatRoute ? 'overflow-hidden' : 'overflow-y-auto',
-            isChatRoute ? 'bg-background' : 'bg-muted/55',
+            isImmersiveRoute ? 'overflow-hidden' : 'overflow-y-auto',
+            isReelsRoute ? 'bg-black' : isChatRoute ? 'bg-background' : 'bg-muted/55',
           )}
         >
           <AnimatePresence initial={false} mode="sync">
@@ -209,21 +214,24 @@ const App: React.FC = () => {
             >
               <Suspense fallback={<PageLoader />}>
                 <CallProvider>
-                  <IncomingCallModal />
-                  <Routes>{appRouteElements}</Routes>
+                  <GroupJoinLinkModalProvider>
+                    <IncomingCallModal />
+                    <Routes>{appRouteElements}</Routes>
+                  </GroupJoinLinkModalProvider>
                 </CallProvider>
               </Suspense>
             </motion.div>
           </AnimatePresence>
         </div>
       </ShellMain>
+      <ReelUploadToast />
     </ShellRoot>
   );
 };
 
 const PageLoader: React.FC = () => (
-  <div className="flex items-center justify-center h-full min-h-[50vh]">
-    <div className="w-12 h-12 rounded-full border-4 border-blue-600/20 border-t-blue-600 animate-spin" />
+  <div className="flex h-full min-h-[50vh] items-center justify-center">
+    <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-600/20 border-t-blue-600" />
   </div>
 );
 

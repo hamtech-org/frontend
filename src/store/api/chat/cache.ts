@@ -1,29 +1,24 @@
 import type { AppDispatch } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
 import { chatApi } from '@/store/api/chat/core';
-import { sortConversationsForSidebar } from '@/utils/chatUtils';
+import {
+  lastMessagePreviewContentFromMessage,
+  sortConversationsForSidebar,
+} from '@/utils/chatUtils';
 
 /** Cập nhật preview lastMessage + unread trên cache getConversations (gọi sau khi module đã export chatApi). */
 export function patchConversationsFromNewMessage(
   dispatch: AppDispatch,
   msg: IMessage,
   activeConversationId: string | null,
+  currentUserId: string | null,
 ): void {
   dispatch(
     chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
       if (!draft?.data) return;
       const conv = draft.data.find((c) => c.conversationId === msg.conversationId);
       if (!conv) return;
-      const previewContent =
-        msg.content?.trim() !== ''
-          ? msg.content
-          : msg.type === 'image'
-            ? '[Ảnh]'
-            : msg.type === 'video'
-              ? '[Video]'
-              : msg.type === 'file'
-                ? '[File]'
-                : msg.content;
+      const previewContent = lastMessagePreviewContentFromMessage(msg, currentUserId ?? undefined);
       const alreadySamePreview =
         conv.lastMessage &&
         conv.lastMessage.content === previewContent &&
@@ -39,7 +34,12 @@ export function patchConversationsFromNewMessage(
       };
       conv.lastMessageAt = msg.createdAt;
       conv.updatedAt = msg.createdAt;
-      if (msg.conversationId !== activeConversationId && !alreadySamePreview) {
+      const isIncomingFromOther = Boolean(currentUserId) && msg.senderId !== currentUserId;
+      if (
+        isIncomingFromOther &&
+        msg.conversationId !== activeConversationId &&
+        !alreadySamePreview
+      ) {
         conv.unreadCount = (conv.unreadCount ?? 0) + 1;
       }
       draft.data = sortConversationsForSidebar(draft.data);

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, Fragment, type Ref } from 'react';
+import { useState, useCallback, useEffect, Fragment, type ReactNode, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   AlarmClock,
@@ -40,35 +40,87 @@ import {
   lastMessageLineFromSystemJson,
   typingLabel,
 } from '@/utils/chatUtils';
-import { formatGroupSystemChatLine } from '@/utils/groupSystemMessage';
+import {
+  formatGroupSystemChatLine,
+  formatLegacyGroupProfileSystemLine,
+} from '@/utils/groupSystemMessage';
+import { resolveTaskAssigneeDisplayLabel } from '@/utils/syncAssignToAllGroupTasks';
+import { resolveGroupJoinLinkFromMessageContent } from '@/utils/groupJoinLinkMessage';
+import { GroupJoinLinkCard } from '@/components/chat/GroupJoinLinkCard';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { MediaLightbox } from '@/components/chat/MediaLightbox';
+import { ChatFileMessageCard } from '@/components/chat/ChatFileMessageCard';
 import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMenu';
 import { ForwardMediaPickerModal } from '@/components/chat/ForwardMediaPickerModal';
 import { formatFileSize } from '@/utils/fileHelper';
+import {
+  jumpHighlightMediaShellClass,
+  jumpHighlightTextBubbleClass,
+} from '@/utils/chatJumpHighlight';
+import {
+  downloadAuthedChatMedia,
+  fetchChatMediaBlob,
+  resolveChatMediaDownloadUrl,
+} from '@/utils/chatMediaDownload';
 import { toast } from 'react-toastify';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 
 async function downloadAuthedFile(url: string, filename: string): Promise<boolean> {
-  try {
-    const token = localStorage.getItem('accessToken');
-    const res = await fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) return false;
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = objectUrl;
-    a.download = filename || 'file';
-    a.click();
-    URL.revokeObjectURL(objectUrl);
-    return true;
-  } catch {
-    return false;
+  return downloadAuthedChatMedia(url, filename);
+}
+
+const CHAT_URL_REGEX = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
+const TRAILING_URL_PUNCTUATION_REGEX = /[),.!?;:]+$/;
+
+function splitTrailingUrlPunctuation(raw: string): { url: string; suffix: string } {
+  const match = raw.match(TRAILING_URL_PUNCTUATION_REGEX);
+  if (!match?.[0]) return { url: raw, suffix: '' };
+  const suffix = match[0];
+  return { url: raw.slice(0, -suffix.length), suffix };
+}
+
+function hrefFromChatUrl(raw: string): string {
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
+function LinkifiedChatText({ text, isMe }: { text: string; isMe: boolean }) {
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  CHAT_URL_REGEX.lastIndex = 0;
+
+  while ((match = CHAT_URL_REGEX.exec(text)) !== null) {
+    const raw = match[0];
+    const start = match.index;
+    if (start > cursor) nodes.push(text.slice(cursor, start));
+
+    const { url, suffix } = splitTrailingUrlPunctuation(raw);
+    if (url) {
+      nodes.push(
+        <a
+          key={`${start}-${url}`}
+          href={hrefFromChatUrl(url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          className={`font-semibold underline underline-offset-2 decoration-1 break-all ${
+            isMe
+              ? 'text-white hover:text-blue-50'
+              : 'text-blue-600 hover:text-blue-700 dark:text-blue-400'
+          }`}
+        >
+          {url}
+        </a>,
+      );
+    }
+    if (suffix) nodes.push(suffix);
+    cursor = start + raw.length;
   }
+
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return <>{nodes.length > 0 ? nodes : text}</>;
 }
 
 /** Trạng thái gửi/nhận/đã xem (Zalo) — chỉ tin của mình; nhóm chỉ hiện «đã gửi». */
@@ -598,14 +650,14 @@ export function ChatMessageList({
       const topAssignees = Array.isArray(t.assignees)
         ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
         : [];
-      const isAll = Boolean(t.assignToAll) || Boolean(t.broadcast);
-      const assigneeLabel = isAll
-        ? 'Cả nhóm'
-        : (subs.length > 0 ? subAssigneeIds : topAssignees).length > 0
-          ? (subs.length > 0 ? subAssigneeIds : topAssignees)
-              .map((id) => nameById.get(id) || id)
-              .join(', ')
-          : (prev?.assigneeLabel ?? undefined);
+      const assigneeLabel = resolveTaskAssigneeDisplayLabel({
+        assignToAll: Boolean(t.assignToAll),
+        broadcast: Boolean(t.broadcast),
+        assigneeIds: subs.length > 0 ? subAssigneeIds : topAssignees,
+        memberCount: groupMembers?.length ?? 0,
+        nameById,
+        fallbackLabel: prev?.assigneeLabel,
+      });
       const noteFromApi =
         t.description != null && String(t.description).trim() !== ''
           ? String(t.description)
@@ -662,18 +714,13 @@ export function ChatMessageList({
     x: number;
     y: number;
     msg: IMessage;
-    kind: 'image' | 'video';
+    kind: 'image' | 'video' | 'file';
   } | null>(null);
   const [forwardMediaMessage, setForwardMediaMessage] = useState<IMessage | null>(null);
 
   const copyImageToClipboard = useCallback(async (url: string) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error('fetch');
-      const blob = await res.blob();
+      const blob = await fetchChatMediaBlob(url);
       const type = blob.type || 'image/png';
       if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
         toast.error('Trình duyệt không hỗ trợ copy ảnh (cần HTTPS).');
@@ -726,29 +773,15 @@ export function ChatMessageList({
               const systemJsonRaw = typeof msg.content === 'string' ? msg.content.trim() : '';
               let content = msg.content;
               if (typeof content === 'string') {
-                const groupLine = formatGroupSystemChatLine(content, currentUserId);
+                const groupLine =
+                  formatGroupSystemChatLine(content, currentUserId) ??
+                  formatLegacyGroupProfileSystemLine(content, {
+                    senderId: msg.senderId,
+                    currentUserId,
+                    senderDisplayName: msg.senderDisplayName,
+                  });
                 if (groupLine) {
                   content = groupLine;
-                }
-              }
-              // Giữ logic cũ (case avatar nhóm) để tránh thay đổi hành vi đang ổn định.
-              if (
-                typeof content === 'string' &&
-                content.includes('đã cập nhật ảnh đại diện nhóm') &&
-                msg.senderId === currentUserId
-              ) {
-                content = 'Bạn đã cập nhật ảnh đại diện nhóm';
-              }
-              // Plain text legacy: thay tên người gửi → "Bạn" (không đụng JSON task/poll).
-              if (
-                msg.senderId === currentUserId &&
-                msg.senderDisplayName &&
-                typeof content === 'string' &&
-                !content.trim().startsWith('{')
-              ) {
-                const name = msg.senderDisplayName.trim();
-                if (name) {
-                  content = content.replace(name, 'Bạn');
                 }
               }
               // Không thay `null`/`undefined` trong payload JSON — sẽ thành JSON không hợp lệ
@@ -961,6 +994,14 @@ export function ChatMessageList({
                                 ]),
                               );
                               const t = tBoard;
+                              const cardTitle =
+                                String((t as any)?.title ?? taskCard.title ?? '').trim() ||
+                                taskCard.title;
+                              const cardDueDate =
+                                (t as any)?.dueDate != null &&
+                                String((t as any).dueDate).trim() !== ''
+                                  ? String((t as any).dueDate)
+                                  : taskCard.dueDate;
                               const assignees = Array.isArray((t as any)?.assignees)
                                 ? ((t as any).assignees as string[])
                                 : [];
@@ -992,9 +1033,11 @@ export function ChatMessageList({
                                 String(currentUserId),
                               );
                               const topIds =
-                                taskCard.assigneeUserIds.length > 0
-                                  ? taskCard.assigneeUserIds
-                                  : assignees;
+                                assignees.length > 0
+                                  ? assignees
+                                  : taskCard.assigneeUserIds.length > 0
+                                    ? taskCard.assigneeUserIds
+                                    : [];
                               const isTopLevelAssignee = topIds
                                 .map(String)
                                 .includes(String(currentUserId));
@@ -1043,26 +1086,23 @@ export function ChatMessageList({
                                             .filter(Boolean),
                                         ),
                                       );
-                                      const topIds =
-                                        taskCard.assigneeUserIds.length > 0
+                                      const topIds = Array.isArray(tt?.assignees)
+                                        ? (tt.assignees as unknown[])
+                                            .map((x) => String(x))
+                                            .filter(Boolean)
+                                        : taskCard.assigneeUserIds.length > 0
                                           ? taskCard.assigneeUserIds
-                                          : Array.isArray(tt?.assignees)
-                                            ? (tt.assignees as unknown[])
-                                                .map((x) => String(x))
-                                                .filter(Boolean)
-                                            : [];
-                                      const isAll =
-                                        Boolean(tt?.assignToAll) ||
-                                        Boolean(tt?.broadcast) ||
-                                        Boolean(taskCard.assignToAll) ||
-                                        Boolean(taskCard.broadcast);
-                                      const assigneeDisplay = isAll
-                                        ? 'Cả nhóm'
-                                        : (subs.length > 0 ? subAssigneeIds : topIds).length > 0
-                                          ? (subs.length > 0 ? subAssigneeIds : topIds)
-                                              .map((id) => byId.get(String(id)) ?? String(id))
-                                              .join(', ')
-                                          : taskCard.assigneeLabel;
+                                          : [];
+                                      const assigneeDisplay = resolveTaskAssigneeDisplayLabel({
+                                        assignToAll:
+                                          Boolean(tt?.assignToAll) || Boolean(taskCard.assignToAll),
+                                        broadcast:
+                                          Boolean(tt?.broadcast) || Boolean(taskCard.broadcast),
+                                        assigneeIds: subs.length > 0 ? subAssigneeIds : topIds,
+                                        memberCount: groupMembers?.length ?? 0,
+                                        nameById: byId,
+                                        fallbackLabel: taskCard.assigneeLabel,
+                                      });
                                       setTaskDetailTaskId(String(taskCard.taskId));
                                       setTaskDetail({
                                         title: taskCard.title,
@@ -1107,7 +1147,7 @@ export function ChatMessageList({
                                       id={`task-card-${taskCard.taskId}-title`}
                                       className="text-[16px] font-black text-foreground break-words leading-snug mb-3.5 pr-2"
                                     >
-                                      {taskCard.title}
+                                      {cardTitle}
                                     </div>
 
                                     {/* Assignees & Deadline */}
@@ -1134,28 +1174,32 @@ export function ChatMessageList({
                                                     ),
                                                   )
                                                 : [];
+                                            const boardAssignees = Array.isArray(
+                                              (tBoard as any)?.assignees,
+                                            )
+                                              ? (
+                                                  ((tBoard as any).assignees as unknown[]) ?? []
+                                                ).map((x) => String(x))
+                                              : [];
                                             const topIds =
-                                              taskCard.assigneeUserIds.length > 0
-                                                ? taskCard.assigneeUserIds
-                                                : Array.isArray((tBoard as any)?.assignees)
-                                                  ? (
-                                                      ((tBoard as any).assignees as unknown[]) ?? []
-                                                    ).map((x) => String(x))
+                                              boardAssignees.length > 0
+                                                ? boardAssignees
+                                                : taskCard.assigneeUserIds.length > 0
+                                                  ? taskCard.assigneeUserIds
                                                   : [];
                                             const ids = subs.length > 0 ? subAssignees : topIds;
-                                            const display =
-                                              Boolean((tBoard as any)?.assignToAll) ||
-                                              Boolean((tBoard as any)?.broadcast) ||
-                                              Boolean(taskCard.assignToAll) ||
-                                              Boolean(taskCard.broadcast)
-                                                ? 'Cả nhóm'
-                                                : ids.length > 0
-                                                  ? ids
-                                                      .map(
-                                                        (id) => byId.get(String(id)) ?? String(id),
-                                                      )
-                                                      .join(', ')
-                                                  : taskCard.assigneeLabel;
+                                            const display = resolveTaskAssigneeDisplayLabel({
+                                              assignToAll:
+                                                Boolean((tBoard as any)?.assignToAll) ||
+                                                Boolean(taskCard.assignToAll),
+                                              broadcast:
+                                                Boolean((tBoard as any)?.broadcast) ||
+                                                Boolean(taskCard.broadcast),
+                                              assigneeIds: ids,
+                                              memberCount: groupMembers?.length ?? 0,
+                                              nameById: byId,
+                                              fallbackLabel: taskCard.assigneeLabel,
+                                            });
                                             return (
                                               <span
                                                 className="font-bold text-foreground truncate"
@@ -1167,7 +1211,7 @@ export function ChatMessageList({
                                           })()}
                                         </div>
                                       </div>
-                                      {taskCard.dueDate ? (
+                                      {cardDueDate ? (
                                         <div className="flex items-center gap-2.5 text-[13px]">
                                           <AlarmClock className="w-4 h-4 text-muted-foreground shrink-0" />
                                           <div className="min-w-0 flex-1 flex items-center flex-wrap gap-1.5">
@@ -1176,7 +1220,7 @@ export function ChatMessageList({
                                             </span>
                                             <div id={`task-card-${taskCard.taskId}-dueDate`}>
                                               <TaskDeadlineCalendar
-                                                dateIso={taskCard.dueDate}
+                                                dateIso={cardDueDate}
                                                 size="sm"
                                               />
                                             </div>
@@ -1743,6 +1787,11 @@ export function ChatMessageList({
             const showCaption = messageHasCaption(msg);
             const mediaSavedOnDevice = downloadedMediaIds.has(msg.messageId);
             const isJumpHighlight = jumpHighlightMessageId === msg.messageId;
+            const joinLinkPayload =
+              !isMediaMsg && msg.type === 'text'
+                ? resolveGroupJoinLinkFromMessageContent(msg.content ?? '')
+                : null;
+            const isJoinLinkMsg = Boolean(joinLinkPayload);
             return (
               <Fragment key={msg.messageId}>
                 {showDaySepMsg ? (
@@ -1755,13 +1804,6 @@ export function ChatMessageList({
                   transition={{ duration: 0.18, ease: 'easeOut' }}
                   className={`flex items-end gap-2 group/msg relative ${isMe ? 'flex-row-reverse' : 'flex-row'} ${isSameSenderAsPrev ? 'mt-0' : 'mt-1'}`}
                 >
-                  {isJumpHighlight && (
-                    <div
-                      key={jumpFlashNonce}
-                      className="absolute -inset-x-1 -inset-y-0.5 z-[1] rounded-2xl pointer-events-none chat-msg-jump-highlight"
-                      aria-hidden
-                    />
-                  )}
                   {showAvatar ? (
                     <ZaloStyleAvatar
                       userId={msg.senderId}
@@ -1778,7 +1820,7 @@ export function ChatMessageList({
                       isWideMediaBubble
                         ? 'w-full max-w-[min(96vw,44rem)] sm:max-w-[min(92%,42rem)]'
                         : 'max-w-[85%] md:max-w-[75%] lg:max-w-[65%]'
-                    } ${isMe ? 'items-end' : 'items-start'}`}
+                    } ${isJoinLinkMsg ? 'min-w-[min(100%,340px)]' : ''} ${isMe ? 'items-end' : 'items-start'}`}
                   >
                     {!isMe && activeConversation?.type === 'group' && !isSameSenderAsPrev && (
                       <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-1 px-1">
@@ -1798,9 +1840,10 @@ export function ChatMessageList({
                           Tin nhắn đã được thu hồi
                         </div>
                       ) : (
-                        <div
+                        <motion.div
+                          key={isJumpHighlight ? jumpFlashNonce : undefined}
                           className={
-                            isMediaMsg
+                            isMediaMsg || isJoinLinkMsg
                               ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none break-words whitespace-pre-wrap bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
                                   isMe ? 'items-end' : 'items-start'
                                 }`
@@ -1808,7 +1851,7 @@ export function ChatMessageList({
                                   isMe
                                     ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
                                     : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
-                                }`
+                                } ${!isMediaMsg && !isJoinLinkMsg ? jumpHighlightTextBubbleClass(isJumpHighlight, isMe) : ''}`
                           }
                         >
                           {msg.replyToDetails && (
@@ -1824,12 +1867,9 @@ export function ChatMessageList({
                             <div
                               className={`w-full ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
                             >
-                              <div
-                                className={`w-full overflow-hidden rounded-2xl border shadow-md ${
-                                  isMe
-                                    ? 'border-blue-200/50 bg-blue-50/90 dark:border-blue-800/50 dark:bg-blue-950/35'
-                                    : 'border-black/10 bg-slate-50/95 dark:border-white/10 dark:bg-zinc-900/50'
-                                }`}
+                              <motion.div
+                                key={isJumpHighlight ? jumpFlashNonce : undefined}
+                                className={`w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900 ${jumpHighlightMediaShellClass(isJumpHighlight)}`}
                               >
                                 <button
                                   type="button"
@@ -1858,19 +1898,16 @@ export function ChatMessageList({
                                     alt="Ảnh đính kèm"
                                   />
                                 </button>
-                              </div>
+                              </motion.div>
                             </div>
                           )}
                           {msg.type === 'video' && msg.mediaUrl && (
                             <div
                               className={`w-full min-w-0 ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
                             >
-                              <div
-                                className={`w-full overflow-hidden rounded-2xl border shadow-md ${
-                                  isMe
-                                    ? 'border-blue-200/50 bg-blue-50/90 dark:border-blue-800/50 dark:bg-blue-950/35'
-                                    : 'border-black/10 bg-slate-50/95 dark:border-white/10 dark:bg-zinc-900/50'
-                                }`}
+                              <motion.div
+                                key={isJumpHighlight ? jumpFlashNonce : undefined}
+                                className={`w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900 ${jumpHighlightMediaShellClass(isJumpHighlight)}`}
                               >
                                 <div
                                   className="relative w-full aspect-video max-h-[min(78vh,640px)] bg-zinc-950"
@@ -1967,73 +2004,46 @@ export function ChatMessageList({
                                     </button>
                                   </div>
                                 </div>
-                              </div>
+                              </motion.div>
                             </div>
                           )}
                           {msg.type === 'file' && msg.mediaUrl && (
-                            <div
-                              className={`flex w-full max-w-[min(100%,20rem)] items-center gap-2 rounded-lg px-2.5 py-2 min-w-0 ${
-                                showCaption || msg.replyToDetails ? 'mb-1.5' : ''
-                              } ${
-                                isMe
-                                  ? 'bg-black/8 dark:bg-white/10'
-                                  : 'bg-black/6 dark:bg-white/10 border border-black/8 dark:border-white/10'
-                              }`}
-                            >
-                              <FileText
-                                className="w-8 h-8 shrink-0 text-muted-foreground"
-                                aria-hidden
+                            <div className={`w-full ${msg.replyToDetails ? 'mb-1.5' : ''}`}>
+                              <ChatFileMessageCard
+                                msg={msg}
+                                mediaSavedOnDevice={mediaSavedOnDevice}
+                                showCaption={showCaption}
+                                isJumpHighlighted={isJumpHighlight}
+                                captionBlock={
+                                  <LinkifiedChatText text={msg.content ?? ''} isMe={false} />
+                                }
+                                onOpen={() => {
+                                  const url = resolveChatMediaDownloadUrl(msg.mediaUrl as string);
+                                  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                                }}
+                                onOpenDownloadsHint={openDownloadsFolderHint}
+                                onDownload={() =>
+                                  void handleMediaDownload(
+                                    msg.messageId,
+                                    msg.mediaUrl as string,
+                                    msg.mediaOriginalName?.trim() || 'file',
+                                  )
+                                }
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMediaContextMenu({
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                    msg,
+                                    kind: 'file',
+                                  });
+                                  onActionMenuMsgIdChange(null);
+                                }}
                               />
-                              <div className="min-w-0 flex-1">
-                                <p
-                                  className="text-xs font-semibold text-foreground truncate"
-                                  title={msg.mediaOriginalName?.trim() || 'Tệp đính kèm'}
-                                >
-                                  {msg.mediaOriginalName?.trim() || 'Tệp đính kèm'}
-                                </p>
-                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                                  {msg.mediaSize != null && msg.mediaSize > 0 ? (
-                                    <span className="text-[10px] text-muted-foreground">
-                                      {formatFileSize(msg.mediaSize)}
-                                    </span>
-                                  ) : null}
-                                  {mediaSavedOnDevice && (
-                                    <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                                      <CircleCheck className="w-3 h-3 shrink-0" aria-hidden />
-                                      Đã có trên máy
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-0.5 shrink-0">
-                                <button
-                                  type="button"
-                                  aria-label="Gợi ý thư mục tải xuống"
-                                  title="Thư mục Tải xuống"
-                                  onClick={() => openDownloadsFolderHint()}
-                                  className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-                                >
-                                  <FolderOpen className="w-4 h-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  aria-label="Tải xuống"
-                                  title="Tải xuống"
-                                  onClick={() =>
-                                    void handleMediaDownload(
-                                      msg.messageId,
-                                      msg.mediaUrl as string,
-                                      msg.mediaOriginalName?.trim() || 'file',
-                                    )
-                                  }
-                                  className="shrink-0 p-2 rounded-lg text-foreground hover:bg-black/10 dark:hover:bg-white/15 transition-colors"
-                                >
-                                  <Download className="w-4 h-4" />
-                                </button>
-                              </div>
                             </div>
                           )}
-                          {isMediaMsg && showCaption && (
+                          {isMediaMsg && showCaption && msg.type !== 'file' && (
                             <div
                               className={`mt-0.5 w-full ${isWideMediaBubble ? 'max-w-full' : 'max-w-[min(100%,20rem)]'} px-2.5 py-1.5 rounded-lg text-[13px] break-words whitespace-pre-wrap ${
                                 isMe
@@ -2041,11 +2051,14 @@ export function ChatMessageList({
                                   : 'bg-black/5 dark:bg-white/10 text-foreground'
                               }`}
                             >
-                              {msg.content}
+                              <LinkifiedChatText text={msg.content ?? ''} isMe={false} />
                             </div>
                           )}
-                          {!isMediaMsg && showCaption && (
-                            <span className="break-words whitespace-pre-wrap">{msg.content}</span>
+                          {joinLinkPayload ? <GroupJoinLinkCard payload={joinLinkPayload} /> : null}
+                          {!isMediaMsg && showCaption && !joinLinkPayload && (
+                            <span className="break-words whitespace-pre-wrap">
+                              <LinkifiedChatText text={msg.content ?? ''} isMe={isMe} />
+                            </span>
                           )}
                           {msg.isEdited && (
                             <span
@@ -2083,7 +2096,7 @@ export function ChatMessageList({
                               ))}
                             </div>
                           )}
-                        </div>
+                        </motion.div>
                       )}
 
                       {!msg.isDeleted && !msg.isRecalled && (
@@ -2390,13 +2403,15 @@ export function ChatMessageList({
                         const topAssignees = Array.isArray(t?.assignees)
                           ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
                           : [];
-                        const isAll = Boolean(t?.assignToAll) || Boolean(t?.broadcast);
                         const ids = subs.length > 0 ? subAssignees : topAssignees;
-                        const display = isAll
-                          ? 'Cả nhóm'
-                          : ids.length > 0
-                            ? ids.map((id) => nameById.get(id) || id).join(', ')
-                            : (taskDetail.assigneeLabel ?? '');
+                        const display = resolveTaskAssigneeDisplayLabel({
+                          assignToAll: Boolean(t?.assignToAll),
+                          broadcast: Boolean(t?.broadcast),
+                          assigneeIds: ids,
+                          memberCount: groupMembers?.length ?? 0,
+                          nameById,
+                          fallbackLabel: taskDetail.assigneeLabel,
+                        });
                         if (!display.trim()) return null;
                         return (
                           <div className="flex items-start gap-3 text-[14px]">
@@ -2567,11 +2582,14 @@ export function ChatMessageList({
               onSaveToDevice={() =>
                 void handleMediaDownload(
                   mediaContextMenu.msg.messageId,
-                  mediaContextMenu.kind === 'video'
-                    ? (mediaContextMenu.msg.mediaUrl as string)
-                    : imageDisplaySrc(mediaContextMenu.msg),
+                  (mediaContextMenu.msg.mediaUrl as string) ||
+                    imageDisplaySrc(mediaContextMenu.msg),
                   mediaContextMenu.msg.mediaOriginalName?.trim() ||
-                    (mediaContextMenu.kind === 'video' ? 'video.mp4' : 'image.jpg'),
+                    (mediaContextMenu.kind === 'video'
+                      ? 'video.mp4'
+                      : mediaContextMenu.kind === 'file'
+                        ? 'file'
+                        : 'image.jpg'),
                 )
               }
               onTogglePin={() => void onTogglePin(mediaContextMenu.msg)}

@@ -2,13 +2,9 @@ import {
   Bell,
   BellOff,
   CheckSquare,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Edit3,
-  File,
-  FileText,
   MessageSquare,
   Pin,
   Plus,
@@ -21,7 +17,7 @@ import {
   X,
   Trash2,
 } from 'lucide-react';
-import type { IConversation, IMessage } from '@/types/chat.types';
+import type { IConversation, IMessage, MessageType } from '@/types/chat.types';
 import type {
   GroupMember,
   GroupMemberRole,
@@ -29,6 +25,7 @@ import type {
   GroupTask as GroupTaskModel,
 } from '@/types/chat.group.types';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
+import { useAuth } from '@/hooks/useAuth';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import { apiClient } from '@/services/api';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -44,15 +41,28 @@ import {
   type MuteNotificationsApplyPayload,
 } from '@/components/chat/MuteNotificationsModal';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
+import { BulletinPinnedMessageCard } from '@/components/chat/BulletinPinnedMessageCard';
+import { BulletinTaskCard } from '@/components/chat/BulletinTaskCard';
 import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-toastify';
 import { MIN_GROUP_MEMBERS } from '@/constants/group.constants';
+import {
+  ConversationGalleryFileCard,
+  ConversationGalleryLinkCard,
+  ConversationGalleryMediaCard,
+  ConversationGalleryNavRow,
+  ConversationGalleryTabBar,
+  CONVERSATION_GALLERY_THEME,
+} from '@/components/chat/conversationGallery';
+import { resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
 import {
   canUserCreatePollInGroup,
   canUserCreateTaskInGroup,
   canUserChangeGroupProfileInGroup,
+  isGroupAdminSlotsFull,
+  MAX_GROUP_ADMINS,
 } from '@/utils/groupConversationPermissions';
 
 type GroupPoll = {
@@ -135,7 +145,7 @@ type MessageGalleryItem = {
   messageId: string;
   senderId: string;
   senderDisplayName: string | null;
-  type: string;
+  type: MessageType;
   content: string;
   mediaUrl: string | null;
   mediaType: string | null;
@@ -384,7 +394,10 @@ type ConversationInfoPanelProps = {
   onOpenMemberModal?: (tab: 'list' | 'pending') => void;
   onLeaveGroup?: (opts?: { newOwnerUserId?: string }) => void | Promise<void>;
   /** Chuyển quyền trưởng nhóm (không rời nhóm) — giống mobile. */
-  onTransferGroupOwner?: (newOwnerUserId: string) => void | Promise<void>;
+  onTransferGroupOwner?: (
+    newOwnerUserId: string,
+    currentOwnerNewRole: Extract<GroupMemberRole, 'admin' | 'member'>,
+  ) => void | Promise<void>;
   onDeleteGroup?: () => void;
   onEditGroup?: () => void;
   onAddMembers?: () => void;
@@ -437,14 +450,14 @@ type ConversationInfoPanelProps = {
   onKickMember?: (userId: string) => void | Promise<void>;
   /** Owner-only: hạ phó nhóm (admin) xuống member. */
   onDemoteAdminToMember?: (userId: string) => void | Promise<void>;
+  /** Owner-only: bổ nhiệm thành viên thường làm phó nhóm. */
+  onPromoteMemberToAdmin?: (userId: string) => void | Promise<void>;
 
   /** Tin đã tải trong hội thoại — tìm trong phạm vi client. */
   conversationMessages?: IMessage[];
   /** Mỗi lần tăng (từ ChatHeader) → mở panel tìm kiếm inline. */
   conversationSearchRequestTick?: number;
   onJumpToMessage?: (messageId: string) => void;
-  conversations?: IConversation[];
-  onSelectConversation?: (conversationId: string) => void;
   /** Khi set: tự mở tab công việc và cuộn tới task tương ứng. */
   focusTaskId?: string | null;
   /** Tăng để trigger lại hiệu ứng focus/scroll. */
@@ -486,16 +499,16 @@ export function ConversationInfoPanel({
   onRejectMember,
   onKickMember,
   onDemoteAdminToMember,
+  onPromoteMemberToAdmin,
   busyMemberActions,
   conversationMessages = [],
   conversationSearchRequestTick = 0,
   onJumpToMessage,
-  conversations = [],
-  onSelectConversation,
   focusTaskId = null,
   focusTaskNonce = 0,
 }: ConversationInfoPanelProps) {
   const { core, groupActions } = useChatPageContext();
+  const { user: authUser } = useAuth();
   const isMuted = !!activeConversation?.isMuted;
   const isConvPinned = !!activeConversation?.isPinnedToTop;
   const scheduledMuteUntil =
@@ -515,9 +528,9 @@ export function ConversationInfoPanel({
   // Nghiệp vụ:
   // - owner: full quản trị
   // - admin (phó nhóm): chỉ duyệt/từ chối yêu cầu vào nhóm
-  const canModerateMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
-  const canKickMembers = currentUserRole === 'owner';
-  const canDisbandGroup = currentUserRole === 'owner';
+  const canModerateMembers = isOwnerEffective || currentUserRole === 'admin';
+  const canKickMembers = isOwnerEffective;
+  const canDisbandGroup = isOwnerEffective;
 
   const permArgs = useMemo(
     () => ({
@@ -546,6 +559,11 @@ export function ConversationInfoPanel({
   const leaveBlockedByMinMembers = effectiveMemberCount <= MIN_GROUP_MEMBERS;
   const leaveMinMembersHint = `Nhóm cần còn tối thiểu ${MIN_GROUP_MEMBERS} thành viên sau khi có người rời (hiện ${effectiveMemberCount} người). Hãy mời thêm thành viên hoặc giải tán nhóm.`;
 
+  const adminSlotsFull = useMemo(
+    () => isGroupAdminSlotsFull(members as Array<{ role?: string }>),
+    [members],
+  );
+
   const [memberTab, setMemberTab] = useState<'list' | 'pending'>('list');
   const [memberLeadersOnly, setMemberLeadersOnly] = useState(false);
   const [showInlineMembers, setShowInlineMembers] = useState(false);
@@ -558,9 +576,15 @@ export function ConversationInfoPanel({
   const [leaveOwnerTransferOpen, setLeaveOwnerTransferOpen] = useState(false);
   const [transferOwnerOpen, setTransferOwnerOpen] = useState(false);
   const [selectedSuccessorId, setSelectedSuccessorId] = useState<string | null>(null);
+  const [currentOwnerNewRole, setCurrentOwnerNewRole] =
+    useState<Extract<GroupMemberRole, 'admin' | 'member'>>('member');
   const [successorSearchQuery, setSuccessorSearchQuery] = useState('');
+  useEffect(() => {
+    if (transferOwnerOpen && adminSlotsFull && currentOwnerNewRole === 'admin') {
+      setCurrentOwnerNewRole('member');
+    }
+  }, [transferOwnerOpen, adminSlotsFull, currentOwnerNewRole]);
   const [deleteGroupModalOpen, setDeleteGroupModalOpen] = useState(false);
-  const [bulletinAccordionOpen, setBulletinAccordionOpen] = useState(true);
   const [galleryKind, setGalleryKind] = useState<MessageGalleryKind | null>(null);
   const [galleryItems, setGalleryItems] = useState<MessageGalleryItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
@@ -707,15 +731,22 @@ export function ConversationInfoPanel({
     !!selectedSuccessorId &&
     filteredSuccessorCandidates.some((c) => c.userId === selectedSuccessorId);
   const canConfirmOwnerTransfer = canConfirmOwnerLeave;
-
   const memberAvatarById = useMemo(() => {
     const m = new Map<string, string>();
     for (const row of members as Array<{ userId?: string; avatar?: string }>) {
       if (!row?.userId || !row.avatar?.trim()) continue;
       m.set(row.userId, row.avatar.trim());
     }
+    const selfId = effectiveUserId;
+    const selfAv = authUser?.avatar?.trim();
+    if (selfId && selfAv && !m.has(selfId)) m.set(selfId, selfAv);
+    if (activeConversation?.type !== 'group') {
+      const otherId = activeConversation?.otherUserId?.trim();
+      const otherAv = activeConversation?.avatar?.trim();
+      if (otherId && otherAv && !m.has(otherId)) m.set(otherId, otherAv);
+    }
     return m;
-  }, [members]);
+  }, [members, effectiveUserId, authUser?.avatar, activeConversation]);
 
   /** ChatPage chỉ tải `members` cho nhóm; chat 1-1 cần 2 người để lọc “Người gửi” trong tìm kiếm. */
   const conversationSearchMembers = useMemo((): ConversationSearchMemberRow[] => {
@@ -878,6 +909,26 @@ export function ConversationInfoPanel({
     };
   }, [galleryKind, activeConversation?.conversationId]);
 
+  const panelTitle = useMemo(() => {
+    if (showInlineMembers) {
+      return memberLeadersOnly ? 'Trưởng & phó nhóm' : 'Quản lý thành viên';
+    }
+    if (showGroupManagement) return 'Quản lý nhóm';
+    if (showConversationSearch) return 'Tìm kiếm';
+    if (galleryKind) return CONVERSATION_GALLERY_THEME[galleryKind].label;
+    if (bulletinModalMode === 'reminders') return 'Danh sách nhắc hẹn';
+    if (bulletinModalMode === 'notesPolls') return 'Tin ghim & Bình chọn';
+    return `Thông tin ${activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}`;
+  }, [
+    showInlineMembers,
+    memberLeadersOnly,
+    showGroupManagement,
+    showConversationSearch,
+    galleryKind,
+    bulletinModalMode,
+    activeConversation?.type,
+  ]);
+
   return (
     <div className="w-full h-full min-h-0 border-l border-black/5 dark:border-white/5 flex flex-col bg-white dark:bg-[#1a1a1a] overflow-hidden">
       <div className="h-20 px-6 flex items-center justify-between border-b border-black/5 dark:border-white/5 sticky top-0 bg-inherit z-10 shrink-0">
@@ -894,9 +945,7 @@ export function ConversationInfoPanel({
           ) : null}
         </div>
 
-        <div className="min-w-0 flex-1 px-2 text-center font-bold text-lg">
-          Thông tin {activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}
-        </div>
+        <div className="min-w-0 flex-1 px-2 text-center font-bold text-lg">{panelTitle}</div>
 
         <div className="flex min-w-10 justify-end">
           {showRemindersTaskAdd ? (
@@ -960,6 +1009,8 @@ export function ConversationInfoPanel({
             onReject={onRejectMember}
             onKick={onKickMember}
             onDemoteAdminToMember={onDemoteAdminToMember}
+            onPromoteMemberToAdmin={onPromoteMemberToAdmin}
+            onBrowseMembersForPromote={() => setMemberLeadersOnly(false)}
             busy={busyMemberActionsResolved}
             variant="inline"
             canModerate={canModerateMembers}
@@ -971,6 +1022,7 @@ export function ConversationInfoPanel({
       ) : galleryKind !== null ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex h-full min-h-0 w-full flex-col bg-white dark:bg-[#1a1a1a]">
+            <ConversationGalleryTabBar active={galleryKind} onChange={setGalleryKind} />
             <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4">
               {galleryLoading ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">Đang tải...</p>
@@ -984,84 +1036,42 @@ export function ConversationInfoPanel({
                 galleryItems.map((item) => {
                   const who = item.senderDisplayName?.trim() || 'Thành viên';
                   const when = formatBulletinFooterTime(item.createdAt);
+                  const metaLine = `${who} · ${when || '—'}`;
                   if (galleryKind === 'link') {
                     const href = item.content?.trim() || '#';
                     return (
-                      <a
+                      <ConversationGalleryLinkCard
                         key={item.messageId}
                         href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block rounded-xl border border-black/[0.06] bg-white p-3 shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
-                      >
-                        <p className="line-clamp-2 break-all text-[13px] font-medium text-blue-600">
-                          {href}
-                        </p>
-                        <p className="mt-2 text-[11px] text-muted-foreground">
-                          {who} · {when || '—'}
-                        </p>
-                      </a>
+                        metaLine={metaLine}
+                      />
                     );
                   }
                   if (galleryKind === 'file') {
                     const href = item.mediaUrl || '#';
-                    const name = item.mediaOriginalName?.trim() || 'Tập tin';
+                    const { fileName: name } = resolveChatFileBubbleMeta(item);
                     return (
-                      <a
+                      <ConversationGalleryFileCard
                         key={item.messageId}
                         href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-start gap-3 rounded-xl border border-black/[0.06] bg-white p-3 shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
-                      >
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-black/5 dark:bg-white/10">
-                          <File className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-semibold">{name}</p>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {who} · {when || '—'}
-                          </p>
-                        </div>
-                      </a>
+                        fileName={name}
+                        mimeType={item.mediaType}
+                        metaLine={metaLine}
+                      />
                     );
                   }
                   const src = item.thumbnailUrl || item.mediaUrl;
                   const isVideo =
                     item.type === 'video' || (item.mediaType ?? '').startsWith('video/');
                   return (
-                    <a
+                    <ConversationGalleryMediaCard
                       key={item.messageId}
                       href={item.mediaUrl || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex gap-3 rounded-xl border border-black/[0.06] bg-white p-2.5 shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
-                    >
-                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-black/5 dark:bg-white/10">
-                        {src && !isVideo ? (
-                          <img src={src} alt="" className="h-full w-full object-cover" />
-                        ) : src && isVideo ? (
-                          <>
-                            <img
-                              src={item.thumbnailUrl || src}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
-                            <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-[10px] font-bold text-white">
-                              ▶
-                            </span>
-                          </>
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">
-                            Media
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1 py-0.5">
-                        <p className="text-[13px] font-semibold">{who}</p>
-                        <p className="mt-1 text-[11px] text-muted-foreground">{when || '—'}</p>
-                      </div>
-                    </a>
+                      who={who}
+                      when={when || '—'}
+                      thumbnailSrc={src}
+                      isVideo={isVideo}
+                    />
                   );
                 })
               )}
@@ -1082,24 +1092,27 @@ export function ConversationInfoPanel({
                     </p>
                   </div>
                 ) : (
-                  reminderFeedItems.map((item) => (
-                    <BulletinCardRow
-                      key={`${item.kind}-${item.id}`}
-                      item={item}
-                      memberAvatarById={memberAvatarById}
-                      currentUserId={currentUserId}
-                      onVotePoll={onVotePoll}
-                      onOpenPollVote={onOpenPollVote}
-                      onAddPollOption={onAddPollOption}
-                      onClosePoll={onClosePoll}
-                      onTaskJoined={onTaskJoined}
-                      onEditTaskFromBulletin={onEditTaskFromBulletin}
-                      onDeleteTaskFromBulletin={onDeleteTaskFromBulletin}
-                      taskMutating={taskActionBusy}
-                      focusTaskId={focusTaskId}
-                      focusFlashNonce={focusFlashNonce}
-                    />
-                  ))
+                  reminderFeedItems.map((item) => {
+                    if (!item.task) return null;
+                    return (
+                      <BulletinTaskCard
+                        key={`task-${item.id}`}
+                        task={item.task}
+                        creatorName={item.creatorName}
+                        avatarUrl={
+                          item.creatorId ? memberAvatarById.get(item.creatorId) : undefined
+                        }
+                        when={formatBulletinFooterTime(item.createdAt)}
+                        currentUserId={currentUserId}
+                        onTaskJoined={onTaskJoined}
+                        onEdit={onEditTaskFromBulletin}
+                        onDelete={onDeleteTaskFromBulletin}
+                        taskMutating={taskActionBusy}
+                        focusTaskId={focusTaskId}
+                        focusFlashNonce={focusFlashNonce}
+                      />
+                    );
+                  })
                 )}
               </div>
             ) : (
@@ -1138,37 +1151,20 @@ export function ConversationInfoPanel({
                     ) : (
                       <div className="space-y-2">
                         {pinnedMessages.map((m) => {
-                          const who = String(m.senderDisplayName ?? '').trim() || 'Thành viên';
                           const when = formatBulletinFooterTime(m.createdAt);
-                          const content = String(m.content ?? '').trim();
-                          const preview =
-                            content.length > 180 ? `${content.slice(0, 180)}…` : content;
                           return (
-                            <button
+                            <BulletinPinnedMessageCard
                               key={m.messageId}
-                              type="button"
+                              msg={m}
+                              when={when}
+                              viewerUserId={effectiveUserId}
                               onClick={() => {
                                 setBulletinModalMode(null);
                                 setBulletinAddOpen(false);
                                 setShowConversationSearch(false);
                                 onJumpToMessage?.(String(m.messageId));
                               }}
-                              className="w-full rounded-2xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:bg-black/[0.03] dark:border-white/10 dark:bg-[#242424] dark:hover:bg-white/[0.04]"
-                              title="Nhấn để mở tin ghim"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Pin className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
-                                <p className="min-w-0 flex-1 truncate text-[13px] font-bold text-foreground">
-                                  {who}
-                                </p>
-                                <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
-                                  {when || '—'}
-                                </span>
-                              </div>
-                              <div className="mt-2 text-[13px] font-medium leading-snug text-foreground/85 whitespace-pre-line">
-                                {preview || '…'}
-                              </div>
-                            </button>
+                            />
                           );
                         })}
                       </div>
@@ -1195,38 +1191,20 @@ export function ConversationInfoPanel({
                             </div>
                             <div className="space-y-2">
                               {pinnedMessages.map((m) => {
-                                const who =
-                                  String(m.senderDisplayName ?? '').trim() || 'Thành viên';
                                 const when = formatBulletinFooterTime(m.createdAt);
-                                const content = String(m.content ?? '').trim();
-                                const preview =
-                                  content.length > 180 ? `${content.slice(0, 180)}…` : content;
                                 return (
-                                  <button
+                                  <BulletinPinnedMessageCard
                                     key={m.messageId}
-                                    type="button"
+                                    msg={m}
+                                    when={when}
+                                    viewerUserId={effectiveUserId}
                                     onClick={() => {
                                       setBulletinModalMode(null);
                                       setBulletinAddOpen(false);
                                       setShowConversationSearch(false);
                                       onJumpToMessage?.(String(m.messageId));
                                     }}
-                                    className="w-full rounded-2xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:bg-black/[0.03] dark:border-white/10 dark:bg-[#242424] dark:hover:bg-white/[0.04]"
-                                    title="Nhấn để mở tin ghim"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <Pin className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
-                                      <p className="min-w-0 flex-1 truncate text-[13px] font-bold text-foreground">
-                                        {who}
-                                      </p>
-                                      <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
-                                        {when || '—'}
-                                      </span>
-                                    </div>
-                                    <div className="mt-2 whitespace-pre-line text-[13px] font-medium leading-snug text-foreground/85">
-                                      {preview || '…'}
-                                    </div>
-                                  </button>
+                                  />
                                 );
                               })}
                             </div>
@@ -1302,8 +1280,6 @@ export function ConversationInfoPanel({
             conversationTitle={activeConversation?.name ?? undefined}
             conversationMembers={conversationSearchMembers}
             conversationId={activeConversation?.conversationId}
-            conversations={conversations}
-            onSelectConversation={onSelectConversation}
           />
         </div>
       ) : showGroupManagement && activeConversation?.type === 'group' ? (
@@ -1313,6 +1289,8 @@ export function ConversationInfoPanel({
             open
             onClose={() => setShowGroupManagement(false)}
             conversationId={activeConversation.conversationId}
+            groupName={activeConversation.name ?? 'Nhóm chat'}
+            groupAvatar={activeConversation.avatar}
             canEdit={isOwnerEffective}
             onNavigateToMembers={openMembersFromGroupManagement}
           />
@@ -1505,16 +1483,10 @@ export function ConversationInfoPanel({
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() =>
-                    openMemberModalHere(
-                      canModerateMembers && (numRequests ?? 0) > 0 ? 'pending' : 'list',
-                    )
-                  }
+                  onClick={() => openMemberModalHere('list')}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      openMemberModalHere(
-                        canModerateMembers && (numRequests ?? 0) > 0 ? 'pending' : 'list',
-                      );
+                      openMemberModalHere('list');
                     }
                   }}
                   className="p-4 flex items-center justify-between font-bold text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
@@ -1532,54 +1504,9 @@ export function ConversationInfoPanel({
               </div>
             </>
           )}
-          <div className="mt-2 border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
-            <button
-              type="button"
-              onClick={() => setBulletinAccordionOpen((v) => !v)}
-              className="flex w-full items-center justify-between gap-2 p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 dark:hover:bg-white/5"
-            >
-              <span className="min-w-0 flex-1">Bảng tin nhóm</span>
-              <ChevronDown
-                className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${bulletinAccordionOpen ? '' : '-rotate-90'}`}
-                aria-hidden
-              />
-            </button>
-            {bulletinAccordionOpen && (
-              <div className="pb-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGalleryKind(null);
-                    setBulletinAddOpen(false);
-                    setShowConversationSearch(false);
-                    setBulletinModalMode('reminders');
-                  }}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                >
-                  <Clock className="h-4 w-4 shrink-0 opacity-70" />
-                  Danh sách nhắc hẹn
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGalleryKind(null);
-                    setBulletinAddOpen(false);
-                    setShowConversationSearch(false);
-                    setBulletinTab('all');
-                    setBulletinModalMode('notesPolls');
-                  }}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                >
-                  <FileText className="h-4 w-4 shrink-0 opacity-70" />
-                  Tin ghim & Bình chọn
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-2 border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
-            <button
-              type="button"
+          <div className="mt-2 overflow-hidden rounded-xl border border-black/5 bg-white dark:border-white/10">
+            <ConversationGalleryNavRow
+              kind="media"
               disabled={!activeConversation?.conversationId}
               onClick={() => {
                 setBulletinModalMode(null);
@@ -1587,15 +1514,9 @@ export function ConversationInfoPanel({
                 setShowConversationSearch(false);
                 setGalleryKind('media');
               }}
-              className="flex w-full cursor-pointer items-center justify-between p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/5"
-            >
-              Ảnh/Video
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </button>
-          </div>
-          <div className="border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
-            <button
-              type="button"
+            />
+            <ConversationGalleryNavRow
+              kind="file"
               disabled={!activeConversation?.conversationId}
               onClick={() => {
                 setBulletinModalMode(null);
@@ -1603,15 +1524,9 @@ export function ConversationInfoPanel({
                 setShowConversationSearch(false);
                 setGalleryKind('file');
               }}
-              className="flex w-full cursor-pointer items-center justify-between p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/5"
-            >
-              File
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </button>
-          </div>
-          <div className="border-b border-black/5 bg-white dark:border-white/5 dark:bg-transparent">
-            <button
-              type="button"
+            />
+            <ConversationGalleryNavRow
+              kind="link"
               disabled={!activeConversation?.conversationId}
               onClick={() => {
                 setBulletinModalMode(null);
@@ -1619,15 +1534,11 @@ export function ConversationInfoPanel({
                 setShowConversationSearch(false);
                 setGalleryKind('link');
               }}
-              className="flex w-full cursor-pointer items-center justify-between p-4 text-left text-sm font-bold transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/5"
-            >
-              Link
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </button>
+            />
           </div>
 
           {activeConversation?.type === 'group' && !activeConversation.isDeleted && (
-            <div className="p-4 bg-white dark:bg-transparent mt-2 flex flex-col gap-2 justify-center">
+            <div className="p-4 bg-white dark:bg-transparent mt-2 flex flex-col gap-3 justify-center">
               {isOwnerEffective && (
                 <button
                   type="button"
@@ -1640,10 +1551,11 @@ export function ConversationInfoPanel({
                     }
                     setSuccessorSearchQuery('');
                     setSelectedSuccessorId(successorCandidates[0]!.userId);
+                    setCurrentOwnerNewRole('admin');
                     setTransferOwnerOpen(true);
                   }}
                   disabled={!onTransferGroupOwner || busyMemberActionsResolved.changingRole}
-                  className="flex items-center justify-center gap-2 text-sm font-bold text-[#0068ff] hover:bg-blue-500/10 px-4 py-2 rounded-xl transition-colors border border-[#0068ff]/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-2 text-sm font-bold text-[#0068ff] hover:bg-blue-500/10 px-4 py-3 rounded-xl transition-colors border border-[#0068ff]/25 disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Chuyển quyền trưởng nhóm"
                 >
                   {busyMemberActionsResolved.changingRole
@@ -1673,7 +1585,7 @@ export function ConversationInfoPanel({
                   setLeaveMemberModalOpen(true);
                 }}
                 disabled={!onLeaveGroup || loading?.leaveGroup}
-                className={`flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-2 rounded-xl transition-colors border border-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed ${leaveBlockedByMinMembers ? 'opacity-60' : ''}`}
+                className={`flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-3 rounded-xl transition-colors border border-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed ${leaveBlockedByMinMembers ? 'opacity-60' : ''}`}
                 title={leaveBlockedByMinMembers ? leaveMinMembersHint : 'Rời khỏi nhóm này'}
               >
                 {loading?.leaveGroup ? 'Đang xử lý…' : 'Rời nhóm'}
@@ -1683,7 +1595,7 @@ export function ConversationInfoPanel({
                   type="button"
                   onClick={() => setDeleteGroupModalOpen(true)}
                   disabled={!onDeleteGroup || loading?.deleteGroup}
-                  className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading?.deleteGroup ? 'Đang xử lý…' : 'Giải tán nhóm'}
                 </button>
@@ -1731,7 +1643,7 @@ export function ConversationInfoPanel({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.15 }}
-              className="max-h-[min(520px,85vh)] w-full max-w-[440px] overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-[#1a1a1a]"
+              className="flex max-h-[min(640px,88vh)] w-full max-w-[440px] flex-col overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-[#1a1a1a]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-black/5 px-6 py-4 dark:border-white/5">
@@ -1854,7 +1766,7 @@ export function ConversationInfoPanel({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.15 }}
-              className="max-h-[min(520px,85vh)] w-full max-w-[440px] overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-[#1a1a1a]"
+              className="flex max-h-[min(640px,88vh)] w-full max-w-[440px] flex-col overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-[#1a1a1a]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-black/5 px-6 py-4 dark:border-white/5">
@@ -1870,13 +1782,43 @@ export function ConversationInfoPanel({
                   <X className="h-6 w-6 stroke-[1.5]" />
                 </button>
               </div>
-              <div className="px-6 pt-3">
+              <div className="shrink-0 px-6 pt-3">
                 <p className="text-[13px] text-muted-foreground">
-                  Bạn sẽ trở thành <span className="font-bold text-foreground">phó nhóm</span> sau
-                  khi chuyển quyền.
+                  Bạn sẽ mất quyền trưởng nhóm sau khi xác nhận. Chọn vai trò mới của bạn:
                 </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[
+                    { value: 'admin' as const, label: 'Phó nhóm' },
+                    { value: 'member' as const, label: 'Thành viên' },
+                  ].map((option) => (
+                    <label
+                      key={option.value}
+                      className="flex cursor-pointer items-center gap-2 rounded-xl border border-black/10 px-3 py-2 text-[13px] font-bold text-foreground hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
+                    >
+                      <input
+                        type="radio"
+                        name="current-owner-new-role"
+                        value={option.value}
+                        checked={currentOwnerNewRole === option.value}
+                        onChange={() => setCurrentOwnerNewRole(option.value)}
+                        disabled={
+                          busyMemberActionsResolved.changingRole ||
+                          (option.value === 'admin' && adminSlotsFull)
+                        }
+                        className="h-4 w-4 shrink-0 accent-[#0068ff]"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+                {adminSlotsFull ? (
+                  <p className="mt-2 text-[12px] text-amber-600 dark:text-amber-400">
+                    Nhóm đã đủ {MAX_GROUP_ADMINS} phó nhóm — sau khi chuyển quyền bạn chỉ có thể là
+                    thành viên.
+                  </p>
+                ) : null}
               </div>
-              <div className="px-6 pb-2 pt-3">
+              <div className="shrink-0 px-6 pb-2 pt-3">
                 <div className="relative">
                   <Search
                     className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -1894,7 +1836,7 @@ export function ConversationInfoPanel({
                   />
                 </div>
               </div>
-              <div className="max-h-[min(340px,50vh)] overflow-y-auto px-6 py-2">
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-2">
                 <fieldset className="space-y-1">
                   <legend className="sr-only">Chọn thành viên nhận quyền trưởng nhóm</legend>
                   {filteredSuccessorCandidates.length === 0 ? (
@@ -1932,38 +1874,40 @@ export function ConversationInfoPanel({
                   )}
                 </fieldset>
               </div>
-              <div className="flex items-center justify-end gap-3 border-t border-black/5 px-6 py-4 dark:border-white/5">
-                <button
-                  type="button"
-                  disabled={busyMemberActionsResolved.changingRole}
-                  onClick={() => setTransferOwnerOpen(false)}
-                  className="rounded-lg bg-black/5 px-6 py-2.5 text-[15px] font-bold text-black transition-colors hover:bg-black/10 disabled:opacity-50 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    busyMemberActionsResolved.changingRole ||
-                    !canConfirmOwnerTransfer ||
-                    !onTransferGroupOwner ||
-                    !selectedSuccessorId
-                  }
-                  onClick={() => {
-                    void (async () => {
-                      if (!onTransferGroupOwner || !selectedSuccessorId) return;
-                      try {
-                        await onTransferGroupOwner(selectedSuccessorId);
-                        setTransferOwnerOpen(false);
-                      } catch {
-                        /* lỗi đã toast ở ChatPage */
-                      }
-                    })();
-                  }}
-                  className="rounded-lg bg-[#0068ff] px-6 py-2.5 text-[15px] font-bold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {busyMemberActionsResolved.changingRole ? 'Đang xử lý…' : 'Chuyển quyền'}
-                </button>
+              <div className="shrink-0 border-t border-black/5 px-6 py-4 dark:border-white/5">
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    disabled={busyMemberActionsResolved.changingRole}
+                    onClick={() => setTransferOwnerOpen(false)}
+                    className="rounded-lg bg-black/5 px-6 py-2.5 text-[15px] font-bold text-black transition-colors hover:bg-black/10 disabled:opacity-50 dark:bg-white/10 dark:text-white dark:hover:bg-white/20"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      busyMemberActionsResolved.changingRole ||
+                      !canConfirmOwnerTransfer ||
+                      !onTransferGroupOwner ||
+                      !selectedSuccessorId
+                    }
+                    onClick={() => {
+                      void (async () => {
+                        if (!onTransferGroupOwner || !selectedSuccessorId) return;
+                        try {
+                          await onTransferGroupOwner(selectedSuccessorId, currentOwnerNewRole);
+                          setTransferOwnerOpen(false);
+                        } catch {
+                          /* lỗi đã toast ở ChatPage */
+                        }
+                      })();
+                    }}
+                    className="rounded-lg bg-[#0068ff] px-6 py-2.5 text-[15px] font-bold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {busyMemberActionsResolved.changingRole ? 'Đang xử lý…' : 'Chuyển quyền'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

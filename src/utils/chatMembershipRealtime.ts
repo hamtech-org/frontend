@@ -62,8 +62,17 @@ export function applyRejoinedGroupMemberRealtime(
   dispatch(chatApi.util.invalidateTags(['Conversations', { type: 'Messages', id: cid }]));
 }
 
+/** Tự rời nhóm — xóa tin local, bỏ hội thoại khỏi sidebar. */
+export function applyLeftGroupRealtime(dispatch: AppDispatch, conversationId: string): void {
+  applyRemovedFromGroupRealtime(dispatch, conversationId);
+}
+
 /** Bị kick — xóa tin local, bỏ hội thoại khỏi sidebar. */
 export function applyKickedFromGroupRealtime(dispatch: AppDispatch, conversationId: string): void {
+  applyRemovedFromGroupRealtime(dispatch, conversationId);
+}
+
+function applyRemovedFromGroupRealtime(dispatch: AppDispatch, conversationId: string): void {
   const cid = conversationId.trim();
   if (!cid) return;
 

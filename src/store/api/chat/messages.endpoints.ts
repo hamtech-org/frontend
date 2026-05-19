@@ -2,6 +2,7 @@ import type { ChatEndpointBuilder } from '@/store/api/chat/endpointBuilder';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import type { IMessage } from '@/types/chat.types';
 import { patchConversationsFromNewMessage } from '@/store/api/chat/cache';
+import type { RootState } from '@/store/store';
 import type {
   DeleteMessageRequest,
   EditMessageRequest,
@@ -19,7 +20,9 @@ export function buildMessagesEndpoints(builder: ChatEndpointBuilder) {
     >({
       query: ({ conversationId, limit }) =>
         `/chat/conversations/${conversationId}/messages${limit ? `?limit=${limit}` : ''}`,
-      providesTags: (_result, _error, { conversationId }) => [{ type: 'Messages', id: conversationId }],
+      providesTags: (_result, _error, { conversationId }) => [
+        { type: 'Messages', id: conversationId },
+      ],
     }),
     sendMessage: builder.mutation<ApiSuccessResponse<IMessage>, SendMessageRequest>({
       query: ({ conversationId, ...body }) => ({
@@ -27,11 +30,20 @@ export function buildMessagesEndpoints(builder: ChatEndpointBuilder) {
         method: 'POST',
         body,
       }),
-      invalidatesTags: (_result, _error, { conversationId }) => [{ type: 'Messages', id: conversationId }],
-      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+      invalidatesTags: (_result, _error, { conversationId }) => [
+        { type: 'Messages', id: conversationId },
+      ],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled, getState }) {
         try {
           const { data } = await queryFulfilled;
-          patchConversationsFromNewMessage(dispatch, data.data, arg.conversationId);
+          const state = getState() as RootState;
+          const currentUserId = state.auth.user?.userId ?? null;
+          patchConversationsFromNewMessage(
+            dispatch,
+            data.data,
+            state.chat.activeConversationId,
+            currentUserId,
+          );
         } catch {
           /* gửi thất bại — không patch list */
         }
@@ -94,14 +106,18 @@ export function buildMessagesEndpoints(builder: ChatEndpointBuilder) {
         'Conversations',
       ],
     }),
-    reactMessage: builder.mutation<ApiSuccessResponse<Record<string, string[]>>, ReactMessageRequest>({
+    reactMessage: builder.mutation<
+      ApiSuccessResponse<Record<string, string[]>>,
+      ReactMessageRequest
+    >({
       query: ({ messageId, ...body }) => ({
         url: `/chat/messages/${messageId}/react`,
         method: 'POST',
         body,
       }),
-      invalidatesTags: (_result, _error, { conversationId }) => [{ type: 'Messages', id: conversationId }],
+      invalidatesTags: (_result, _error, { conversationId }) => [
+        { type: 'Messages', id: conversationId },
+      ],
     }),
   };
 }
-
