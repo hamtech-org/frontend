@@ -54,6 +54,10 @@ import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMe
 import { ForwardMediaPickerModal } from '@/components/chat/ForwardMediaPickerModal';
 import { formatFileSize } from '@/utils/fileHelper';
 import {
+  jumpHighlightMediaShellClass,
+  jumpHighlightTextBubbleClass,
+} from '@/utils/chatJumpHighlight';
+import {
   downloadAuthedChatMedia,
   fetchChatMediaBlob,
   resolveChatMediaDownloadUrl,
@@ -1796,13 +1800,6 @@ export function ChatMessageList({
                   transition={{ duration: 0.18, ease: 'easeOut' }}
                   className={`flex items-end gap-2 group/msg relative ${isMe ? 'flex-row-reverse' : 'flex-row'} ${isSameSenderAsPrev ? 'mt-0' : 'mt-1'}`}
                 >
-                  {isJumpHighlight && (
-                    <div
-                      key={jumpFlashNonce}
-                      className="absolute -inset-x-1 -inset-y-0.5 z-[1] rounded-2xl pointer-events-none chat-msg-jump-highlight"
-                      aria-hidden
-                    />
-                  )}
                   {showAvatar ? (
                     <ZaloStyleAvatar
                       userId={msg.senderId}
@@ -1839,7 +1836,8 @@ export function ChatMessageList({
                           Tin nhắn đã được thu hồi
                         </div>
                       ) : (
-                        <div
+                        <motion.div
+                          key={isJumpHighlight ? jumpFlashNonce : undefined}
                           className={
                             isMediaMsg || isJoinLinkMsg
                               ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none break-words whitespace-pre-wrap bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
@@ -1849,7 +1847,7 @@ export function ChatMessageList({
                                   isMe
                                     ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
                                     : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
-                                }`
+                                } ${!isMediaMsg && !isJoinLinkMsg ? jumpHighlightTextBubbleClass(isJumpHighlight, isMe) : ''}`
                           }
                         >
                           {msg.replyToDetails && (
@@ -1865,7 +1863,10 @@ export function ChatMessageList({
                             <div
                               className={`w-full ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
                             >
-                              <div className="w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900">
+                              <motion.div
+                                key={isJumpHighlight ? jumpFlashNonce : undefined}
+                                className={`w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900 ${jumpHighlightMediaShellClass(isJumpHighlight)}`}
+                              >
                                 <button
                                   type="button"
                                   aria-label="Xem ảnh lớn"
@@ -1893,14 +1894,17 @@ export function ChatMessageList({
                                     alt="Ảnh đính kèm"
                                   />
                                 </button>
-                              </div>
+                              </motion.div>
                             </div>
                           )}
                           {msg.type === 'video' && msg.mediaUrl && (
                             <div
                               className={`w-full min-w-0 ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
                             >
-                              <div className="w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900">
+                              <motion.div
+                                key={isJumpHighlight ? jumpFlashNonce : undefined}
+                                className={`w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900 ${jumpHighlightMediaShellClass(isJumpHighlight)}`}
+                              >
                                 <div
                                   className="relative w-full aspect-video max-h-[min(78vh,640px)] bg-zinc-950"
                                   onContextMenuCapture={(e) => {
@@ -1996,7 +2000,7 @@ export function ChatMessageList({
                                     </button>
                                   </div>
                                 </div>
-                              </div>
+                              </motion.div>
                             </div>
                           )}
                           {msg.type === 'file' && msg.mediaUrl && (
@@ -2005,6 +2009,7 @@ export function ChatMessageList({
                                 msg={msg}
                                 mediaSavedOnDevice={mediaSavedOnDevice}
                                 showCaption={showCaption}
+                                isJumpHighlighted={isJumpHighlight}
                                 captionBlock={
                                   <LinkifiedChatText text={msg.content ?? ''} isMe={false} />
                                 }
@@ -2087,7 +2092,7 @@ export function ChatMessageList({
                               ))}
                             </div>
                           )}
-                        </div>
+                        </motion.div>
                       )}
 
                       {!msg.isDeleted && !msg.isRecalled && (
