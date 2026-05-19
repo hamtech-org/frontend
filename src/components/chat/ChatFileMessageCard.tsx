@@ -3,6 +3,7 @@ import { CircleCheck, Download, Files, FolderOpen } from 'lucide-react';
 
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { chatFilePreviewUrl, chatFileTypeAccent, chatFileTypeLabel } from '@/utils/chatFileDisplay';
+import { jumpHighlightMediaShellClass } from '@/utils/chatJumpHighlight';
 import { formatFileSize } from '@/utils/fileHelper';
 import type { IMessage } from '@/types/chat.types';
 
@@ -10,6 +11,7 @@ type ChatFileMessageCardProps = {
   msg: IMessage;
   mediaSavedOnDevice: boolean;
   showCaption: boolean;
+  isJumpHighlighted?: boolean;
   replyHeader?: ReactNode;
   captionBlock?: ReactNode;
   onOpen: () => void;
@@ -23,6 +25,7 @@ export function ChatFileMessageCard({
   msg,
   mediaSavedOnDevice,
   showCaption,
+  isJumpHighlighted = false,
   replyHeader,
   captionBlock,
   onOpen,
@@ -41,7 +44,7 @@ export function ChatFileMessageCard({
 
   return (
     <div
-      className="flex w-full max-w-[min(100%,20rem)] min-w-[268px] flex-col overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900"
+      className={`flex w-full max-w-[min(100%,20rem)] min-w-[268px] flex-col overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900 ${jumpHighlightMediaShellClass(isJumpHighlighted)}`}
       onContextMenu={onContextMenu}
     >
       {replyHeader}
