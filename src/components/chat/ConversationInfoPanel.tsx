@@ -458,8 +458,6 @@ type ConversationInfoPanelProps = {
   /** Mỗi lần tăng (từ ChatHeader) → mở panel tìm kiếm inline. */
   conversationSearchRequestTick?: number;
   onJumpToMessage?: (messageId: string) => void;
-  conversations?: IConversation[];
-  onSelectConversation?: (conversationId: string) => void;
   /** Khi set: tự mở tab công việc và cuộn tới task tương ứng. */
   focusTaskId?: string | null;
   /** Tăng để trigger lại hiệu ứng focus/scroll. */
@@ -506,8 +504,6 @@ export function ConversationInfoPanel({
   conversationMessages = [],
   conversationSearchRequestTick = 0,
   onJumpToMessage,
-  conversations = [],
-  onSelectConversation,
   focusTaskId = null,
   focusTaskNonce = 0,
 }: ConversationInfoPanelProps) {
