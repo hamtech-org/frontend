@@ -156,7 +156,6 @@ export default function ChatPage() {
 
   const pinController = useMessagePinController({
     dispatch,
-    activeConversationId,
     activeConversation: activeConversationForPermissions,
     currentUserId,
     groupMembers,
@@ -321,6 +320,7 @@ export default function ChatPage() {
     dispatch,
     isConnected,
     activeConversationId,
+    currentUserId,
     setActivePollId: modalActions.setActivePollId,
     setShowPollVoteModal: modalActions.setShowPollVoteModal,
     fetchGroupMembers,

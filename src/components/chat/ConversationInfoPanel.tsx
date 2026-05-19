@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Clock,
   Edit3,
-  File,
   FileText,
   MessageSquare,
   Pin,
@@ -21,7 +20,7 @@ import {
   X,
   Trash2,
 } from 'lucide-react';
-import type { IConversation, IMessage } from '@/types/chat.types';
+import type { IConversation, IMessage, MessageType } from '@/types/chat.types';
 import type {
   GroupMember,
   GroupMemberRole,
@@ -44,10 +43,14 @@ import {
   type MuteNotificationsApplyPayload,
 } from '@/components/chat/MuteNotificationsModal';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
+import { BulletinPinnedMessageCard } from '@/components/chat/BulletinPinnedMessageCard';
+import { BulletinTaskCard } from '@/components/chat/BulletinTaskCard';
 import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-toastify';
 import { MIN_GROUP_MEMBERS } from '@/constants/group.constants';
+import { ChatFileTypeBadge } from '@/components/chat/ChatFileTypeBadge';
+import { resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 import { isTaskJoinDeadlinePassed } from '@/utils/chatUtils';
 import {
   canUserCreatePollInGroup,
@@ -137,7 +140,7 @@ type MessageGalleryItem = {
   messageId: string;
   senderId: string;
   senderDisplayName: string | null;
-  type: string;
+  type: MessageType;
   content: string;
   mediaUrl: string | null;
   mediaType: string | null;
@@ -897,6 +900,28 @@ export function ConversationInfoPanel({
     };
   }, [galleryKind, activeConversation?.conversationId]);
 
+  const panelTitle = useMemo(() => {
+    if (showInlineMembers) {
+      return memberLeadersOnly ? 'Trưởng & phó nhóm' : 'Quản lý thành viên';
+    }
+    if (showGroupManagement) return 'Quản lý nhóm';
+    if (showConversationSearch) return 'Tìm kiếm';
+    if (galleryKind === 'media') return 'Ảnh / Video';
+    if (galleryKind === 'file') return 'File';
+    if (galleryKind === 'link') return 'Link';
+    if (bulletinModalMode === 'reminders') return 'Danh sách nhắc hẹn';
+    if (bulletinModalMode === 'notesPolls') return 'Tin ghim & Bình chọn';
+    return `Thông tin ${activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}`;
+  }, [
+    showInlineMembers,
+    memberLeadersOnly,
+    showGroupManagement,
+    showConversationSearch,
+    galleryKind,
+    bulletinModalMode,
+    activeConversation?.type,
+  ]);
+
   return (
     <div className="w-full h-full min-h-0 border-l border-black/5 dark:border-white/5 flex flex-col bg-white dark:bg-[#1a1a1a] overflow-hidden">
       <div className="h-20 px-6 flex items-center justify-between border-b border-black/5 dark:border-white/5 sticky top-0 bg-inherit z-10 shrink-0">
@@ -913,9 +938,7 @@ export function ConversationInfoPanel({
           ) : null}
         </div>
 
-        <div className="min-w-0 flex-1 px-2 text-center font-bold text-lg">
-          Thông tin {activeConversation?.type === 'group' ? 'nhóm' : 'hội thoại'}
-        </div>
+        <div className="min-w-0 flex-1 px-2 text-center font-bold text-lg">{panelTitle}</div>
 
         <div className="flex min-w-10 justify-end">
           {showRemindersTaskAdd ? (
@@ -1026,7 +1049,7 @@ export function ConversationInfoPanel({
                   }
                   if (galleryKind === 'file') {
                     const href = item.mediaUrl || '#';
-                    const name = item.mediaOriginalName?.trim() || 'Tập tin';
+                    const { fileName: name } = resolveChatFileBubbleMeta(item);
                     return (
                       <a
                         key={item.messageId}
@@ -1035,9 +1058,7 @@ export function ConversationInfoPanel({
                         rel="noopener noreferrer"
                         className="flex items-start gap-3 rounded-xl border border-black/[0.06] bg-white p-3 shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
                       >
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-black/5 dark:bg-white/10">
-                          <File className="h-5 w-5 text-muted-foreground" />
-                        </div>
+                        <ChatFileTypeBadge fileName={name} mimeType={item.mediaType} />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] font-semibold">{name}</p>
                           <p className="mt-1 text-[11px] text-muted-foreground">
@@ -1103,24 +1124,27 @@ export function ConversationInfoPanel({
                     </p>
                   </div>
                 ) : (
-                  reminderFeedItems.map((item) => (
-                    <BulletinCardRow
-                      key={`${item.kind}-${item.id}`}
-                      item={item}
-                      memberAvatarById={memberAvatarById}
-                      currentUserId={currentUserId}
-                      onVotePoll={onVotePoll}
-                      onOpenPollVote={onOpenPollVote}
-                      onAddPollOption={onAddPollOption}
-                      onClosePoll={onClosePoll}
-                      onTaskJoined={onTaskJoined}
-                      onEditTaskFromBulletin={onEditTaskFromBulletin}
-                      onDeleteTaskFromBulletin={onDeleteTaskFromBulletin}
-                      taskMutating={taskActionBusy}
-                      focusTaskId={focusTaskId}
-                      focusFlashNonce={focusFlashNonce}
-                    />
-                  ))
+                  reminderFeedItems.map((item) => {
+                    if (!item.task) return null;
+                    return (
+                      <BulletinTaskCard
+                        key={`task-${item.id}`}
+                        task={item.task}
+                        creatorName={item.creatorName}
+                        avatarUrl={
+                          item.creatorId ? memberAvatarById.get(item.creatorId) : undefined
+                        }
+                        when={formatBulletinFooterTime(item.createdAt)}
+                        currentUserId={currentUserId}
+                        onTaskJoined={onTaskJoined}
+                        onEdit={onEditTaskFromBulletin}
+                        onDelete={onDeleteTaskFromBulletin}
+                        taskMutating={taskActionBusy}
+                        focusTaskId={focusTaskId}
+                        focusFlashNonce={focusFlashNonce}
+                      />
+                    );
+                  })
                 )}
               </div>
             ) : (
@@ -1159,37 +1183,20 @@ export function ConversationInfoPanel({
                     ) : (
                       <div className="space-y-2">
                         {pinnedMessages.map((m) => {
-                          const who = String(m.senderDisplayName ?? '').trim() || 'Thành viên';
                           const when = formatBulletinFooterTime(m.createdAt);
-                          const content = String(m.content ?? '').trim();
-                          const preview =
-                            content.length > 180 ? `${content.slice(0, 180)}…` : content;
                           return (
-                            <button
+                            <BulletinPinnedMessageCard
                               key={m.messageId}
-                              type="button"
+                              msg={m}
+                              when={when}
+                              viewerUserId={effectiveUserId}
                               onClick={() => {
                                 setBulletinModalMode(null);
                                 setBulletinAddOpen(false);
                                 setShowConversationSearch(false);
                                 onJumpToMessage?.(String(m.messageId));
                               }}
-                              className="w-full rounded-2xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:bg-black/[0.03] dark:border-white/10 dark:bg-[#242424] dark:hover:bg-white/[0.04]"
-                              title="Nhấn để mở tin ghim"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Pin className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
-                                <p className="min-w-0 flex-1 truncate text-[13px] font-bold text-foreground">
-                                  {who}
-                                </p>
-                                <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
-                                  {when || '—'}
-                                </span>
-                              </div>
-                              <div className="mt-2 text-[13px] font-medium leading-snug text-foreground/85 whitespace-pre-line">
-                                {preview || '…'}
-                              </div>
-                            </button>
+                            />
                           );
                         })}
                       </div>
@@ -1216,38 +1223,20 @@ export function ConversationInfoPanel({
                             </div>
                             <div className="space-y-2">
                               {pinnedMessages.map((m) => {
-                                const who =
-                                  String(m.senderDisplayName ?? '').trim() || 'Thành viên';
                                 const when = formatBulletinFooterTime(m.createdAt);
-                                const content = String(m.content ?? '').trim();
-                                const preview =
-                                  content.length > 180 ? `${content.slice(0, 180)}…` : content;
                                 return (
-                                  <button
+                                  <BulletinPinnedMessageCard
                                     key={m.messageId}
-                                    type="button"
+                                    msg={m}
+                                    when={when}
+                                    viewerUserId={effectiveUserId}
                                     onClick={() => {
                                       setBulletinModalMode(null);
                                       setBulletinAddOpen(false);
                                       setShowConversationSearch(false);
                                       onJumpToMessage?.(String(m.messageId));
                                     }}
-                                    className="w-full rounded-2xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:bg-black/[0.03] dark:border-white/10 dark:bg-[#242424] dark:hover:bg-white/[0.04]"
-                                    title="Nhấn để mở tin ghim"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <Pin className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
-                                      <p className="min-w-0 flex-1 truncate text-[13px] font-bold text-foreground">
-                                        {who}
-                                      </p>
-                                      <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
-                                        {when || '—'}
-                                      </span>
-                                    </div>
-                                    <div className="mt-2 whitespace-pre-line text-[13px] font-medium leading-snug text-foreground/85">
-                                      {preview || '…'}
-                                    </div>
-                                  </button>
+                                  />
                                 );
                               })}
                             </div>

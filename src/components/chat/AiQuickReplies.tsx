@@ -114,7 +114,7 @@ export function AiQuickReplies({
 
   return (
     <div className={className}>
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
         {TOPICS.map((topic) => {
           const isActive = topic === selectedTopic;
           return (
