@@ -150,13 +150,15 @@ export function CreateReelModal({ isOpen, onClose }: Props) {
     xhr.onload = () => {
       void (async () => {
         try {
-          const res = JSON.parse(xhr.responseText) as { data?: { url?: string } };
+          const res = JSON.parse(xhr.responseText) as {
+            data?: { url?: string; thumbnailUrl?: string | null };
+          };
           const videoUrl = res?.data?.url;
           if (!videoUrl) throw new Error('Video upload failed');
 
-          // Upload thumbnail via fetch (small file, no progress needed)
-          let thumbUrl: string | undefined;
-          if (thumbDataUrl) {
+          // Backend thumbnail is preferred; client canvas thumbnail is only a fallback.
+          let thumbUrl = res?.data?.thumbnailUrl ?? undefined;
+          if (!thumbUrl && thumbDataUrl) {
             const blob = await fetch(thumbDataUrl).then((r) => r.blob());
             const thumbFile = new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' });
             const tf = new FormData();
