@@ -552,8 +552,6 @@ export default function ChatPage() {
       conversationMessages={messageData.allMessages}
       conversationSearchRequestTick={conversationSearchRequestTick}
       onJumpToMessage={scrollToMessageBubble}
-      conversations={conversations}
-      onSelectConversation={handleSelectConversation}
       onTaskJoined={(taskId) => void groupController.handleTaskJoined(taskId)}
       onEditTaskFromBulletin={(t) => groupController.openEditTaskFromGroupTask(String(t.taskId))}
       onDeleteTaskFromBulletin={(id) => void groupController.handleDeleteGroupTask(id)}
