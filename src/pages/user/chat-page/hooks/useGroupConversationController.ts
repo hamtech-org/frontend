@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { toast } from 'react-toastify';
 import { chatApi } from '@/store/api/chatApi';
-import { socketService } from '@/services/socket';
 import { groupApi } from '@/services/chat/groupApi';
 import { apiClient } from '@/services/api';
 import type { IMessage, IConversation } from '@/types/chat.types';
@@ -286,41 +285,7 @@ export function useGroupConversationController({
       modalActions.setShowEditGroupModal(false);
       modalActions.setEditGroupAvatarFile(null);
       toast.success('Cập nhật nhóm thành công');
-      const now = new Date();
-      const content =
-        previousName && previousName !== nextName
-          ? `Tên nhóm đã đổi từ '${previousName}' thành '${nextName}'`
-          : `${currentUserDisplayName || 'Bạn'} đã đổi tên nhóm thành '${nextName}'`;
-      const systemMsg: IMessage = {
-        messageId: `system-${Date.now()}`,
-        conversationId: activeConversationId,
-        senderId: 'system',
-        senderDisplayName: 'Hệ thống',
-        type: 'system' as IMessage['type'],
-        content,
-        mediaUrl: null,
-        thumbnailUrl: null,
-        replyTo: null,
-        replyToDetails: null,
-        isPinned: false,
-        isEdited: false,
-        isRecalled: false,
-        isDeleted: false,
-        reactions: {},
-        status: 'sent',
-        createdAt: now.toISOString(),
-      };
-      dispatch(
-        chatApi.util.updateQueryData(
-          'getMessages',
-          { conversationId: activeConversationId },
-          (draft) => {
-            if (!draft.data) draft.data = [];
-            draft.data.push(systemMsg);
-          },
-        ),
-      );
-      socketService.emit('message:new', systemMsg);
+      void fetchGroupMembers(activeConversationId, { force: true });
     } catch (error) {
       dispatch(
         chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
@@ -342,9 +307,11 @@ export function useGroupConversationController({
     editGroupAvatarFile,
     uploadMedia,
     dispatch,
+    currentUserId,
     currentUserDisplayName,
     modalActions,
     setActionBusy,
+    fetchGroupMembers,
   ]);
 
   const handleDeleteGroup = useCallback(async () => {
@@ -451,8 +418,11 @@ export function useGroupConversationController({
     ],
   );
 
+  const createTaskInFlightRef = useRef(false);
+
   const handleSubmitTask = useCallback(async () => {
     if (!activeConversationId) return;
+    if (createTaskInFlightRef.current) return;
     if (!taskTitle.trim()) {
       toast.error('Vui lòng nhập tiêu đề công việc');
       return;
@@ -561,36 +531,8 @@ export function useGroupConversationController({
     }
 
     setActionBusy('createTask', true);
+    createTaskInFlightRef.current = true;
     const dueDateIso = deadlineLocalInputToJsonValue(taskDeadline) ?? undefined;
-    const optimisticTask: GroupTask = {
-      taskId: `tmp-${Date.now()}`,
-      title: taskTitle.trim(),
-      description: taskNote.trim(),
-      assignees: isGroupOptIn ? [] : taskAssignees,
-      participants: [],
-      assignToAll: isGroupOptIn,
-      broadcast: isGroupOptIn,
-      subtasks:
-        cleanSubtaskRows.length > 0
-          ? cleanSubtaskRows.map((r) => ({
-              id: `sub-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-              assigneeId: r.assigneeId,
-              assigneeName:
-                groupMembers.find((m) => m.userId === r.assigneeId)?.displayName ??
-                groupMembers.find((m) => m.userId === r.assigneeId)?.name ??
-                r.assigneeId,
-              content: r.content,
-              done: false,
-              completedAt: null,
-            }))
-          : undefined,
-      status: 'todo',
-      dueDate: dueDateIso,
-      createdAt: new Date().toISOString(),
-      creatorId: currentUserId,
-      creatorDisplayName: currentUserDisplayName?.trim() ?? null,
-    };
-    setGroupTasks((prev) => [optimisticTask, ...prev]);
     try {
       await groupApi.createTask(activeConversationId, {
         title: taskTitle.trim(),
@@ -605,10 +547,10 @@ export function useGroupConversationController({
       // Server đã `createAndBroadcastSystemMessage` (`task_assigned`) — không bơm local / emit socket (tránh banner đúp).
       modalActions.closeTaskModal();
     } catch (err) {
-      setGroupTasks((prev) => prev.filter((task) => task.taskId !== optimisticTask.taskId));
       toast.error('Không thể tạo công việc');
       console.error('Failed to create task:', err);
     } finally {
+      createTaskInFlightRef.current = false;
       setActionBusy('createTask', false);
     }
   }, [
@@ -1378,11 +1320,14 @@ export function useGroupConversationController({
       try {
         const res = await groupApi.removeMember(activeConversationId, userId);
         const count = (res.data?.data as { memberCount?: number } | null)?.memberCount;
-        if (typeof count === 'number' && Number.isFinite(count)) {
-          syncGroupMemberCount?.(activeConversationId, count);
-        } else {
-          syncGroupMemberCount?.(activeConversationId, before.length - 1);
-        }
+        const nextMemberCount =
+          typeof count === 'number' && Number.isFinite(count)
+            ? Math.max(0, count)
+            : Math.max(0, before.length - 1);
+        patchGroupProfileInConversationsCache(dispatch, activeConversationId, {
+          memberCount: nextMemberCount,
+        });
+        syncGroupMemberCount?.(activeConversationId, nextMemberCount);
         await Promise.all([
           fetchGroupMembers(activeConversationId, { force: true }),
           refetchConversations?.() ?? Promise.resolve(),
