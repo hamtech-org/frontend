@@ -5,6 +5,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { FloatingEmoji } from './FloatingEmoji';
 import { ReactionType, REACTION_META } from '@/types/reaction.types';
 import { cn } from '@/utils/cn';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface ReactionButtonProps {
   currentUserReaction?: ReactionType | null;
@@ -14,6 +15,7 @@ interface ReactionButtonProps {
   className?: string;
   showLabel?: boolean;
   summary?: Partial<Record<string, number>>;
+  pickerAlign?: 'left' | 'right' | 'center';
 }
 
 export const ReactionButton: React.FC<ReactionButtonProps> = ({
@@ -24,6 +26,7 @@ export const ReactionButton: React.FC<ReactionButtonProps> = ({
   className,
   showLabel = false,
   summary,
+  pickerAlign,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [floatingEmoji, setFloatingEmoji] = useState<{
@@ -129,85 +132,93 @@ export const ReactionButton: React.FC<ReactionButtonProps> = ({
 
   return (
     <div className="relative inline-flex items-center">
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={handleDefaultClick}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        className={cn(
-          'flex items-center gap-1.5 rounded-md font-medium transition-colors hover:bg-muted/50 focus:outline-none',
-          mergedSummary ? 'px-1.5 py-0.5' : sizeClasses[size],
-          className,
-        )}
-        style={{ color: currentMeta ? currentMeta.color : undefined }}
-      >
-        {mergedSummary ? (
-          <>
-            <div className="flex -space-x-1 items-center">
-              {mergedSummary.topLotties.map((lottie, idx) => (
-                <div
-                  key={idx}
-                  className="w-4 h-4 rounded-full bg-background ring-1 ring-background overflow-hidden"
-                  style={{ zIndex: 10 - idx }}
-                >
-                  <Player
-                    src={lottie}
-                    autoplay={true}
-                    loop={false}
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                </div>
-              ))}
-            </div>
-            <span
-              className="font-bold tabular-nums text-[11px]"
-              style={{ color: currentMeta?.color }}
-            >
-              {mergedSummary.total.toLocaleString()}
-            </span>
-          </>
-        ) : currentMeta ? (
-          <div className="w-6 h-6 flex items-center justify-center">
-            <Player
-              ref={playerRef}
-              src={currentMeta.lottie}
-              autoplay={true}
-              loop={false}
-              style={{ width: '100%', height: '100%' }}
-            />
-          </div>
-        ) : (
-          <ThumbsUp
-            size={iconSizes[size]}
-            className="text-muted-foreground transition-transform active:scale-90"
-          />
-        )}
-
-        {!mergedSummary && showLabel && (
-          <span className={cn('select-none', currentMeta ? '' : 'text-muted-foreground')}>
-            {currentMeta ? currentMeta.label : 'Thích'}
-          </span>
-        )}
-
-        {!mergedSummary && typeof count === 'number' && count > 0 && (
-          <span
+      <Popover open={isHovered}>
+        <PopoverTrigger asChild>
+          <button
+            ref={buttonRef}
+            type="button"
+            onClick={handleDefaultClick}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
             className={cn(
-              'select-none tabular-nums font-semibold',
-              currentMeta ? '' : 'text-muted-foreground',
+              'flex items-center gap-1.5 rounded-md font-medium transition-colors hover:bg-muted/50 focus:outline-none',
+              mergedSummary ? 'px-1.5 py-0.5' : sizeClasses[size],
+              className,
             )}
+            style={{ color: currentMeta ? currentMeta.color : undefined }}
           >
-            {count.toLocaleString()}
-          </span>
-        )}
-      </button>
+            {mergedSummary ? (
+              <>
+                <div className="flex -space-x-1 items-center">
+                  {mergedSummary.topLotties.map((lottie, idx) => (
+                    <div
+                      key={idx}
+                      className="w-4 h-4 rounded-full bg-background ring-1 ring-background overflow-hidden"
+                      style={{ zIndex: 10 - idx }}
+                    >
+                      <Player
+                        src={lottie}
+                        autoplay={true}
+                        loop={false}
+                        style={{ width: '100%', height: '100%' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <span
+                  className="font-bold tabular-nums text-[11px]"
+                  style={{ color: currentMeta?.color }}
+                >
+                  {mergedSummary.total.toLocaleString()}
+                </span>
+              </>
+            ) : currentMeta ? (
+              <div className="w-6 h-6 flex items-center justify-center">
+                <Player
+                  ref={playerRef}
+                  src={currentMeta.lottie}
+                  autoplay={true}
+                  loop={false}
+                  style={{ width: '100%', height: '100%' }}
+                />
+              </div>
+            ) : (
+              <ThumbsUp
+                size={iconSizes[size]}
+                className="text-muted-foreground transition-transform active:scale-90"
+              />
+            )}
 
-      <EmojiPicker
-        isVisible={isHovered}
-        onReact={handleReact}
-        onMouseEnter={handlePickerMouseEnter}
-        onMouseLeave={handlePickerMouseLeave}
-      />
+            {!mergedSummary && showLabel && (
+              <span className={cn('select-none', currentMeta ? '' : 'text-muted-foreground')}>
+                {currentMeta ? currentMeta.label : 'Thích'}
+              </span>
+            )}
+
+            {!mergedSummary && typeof count === 'number' && count > 0 && (
+              <span
+                className={cn(
+                  'select-none tabular-nums font-semibold',
+                  currentMeta ? '' : 'text-muted-foreground',
+                )}
+              >
+                {count.toLocaleString()}
+              </span>
+            )}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align={pickerAlign === 'center' ? 'center' : pickerAlign === 'right' ? 'end' : 'start'}
+          sideOffset={8}
+          className="w-auto rounded-full p-1.5 z-[9999] shadow-xl bg-background"
+          onMouseEnter={handlePickerMouseEnter}
+          onMouseLeave={handlePickerMouseLeave}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <EmojiPicker isVisible={isHovered} onReact={handleReact} />
+        </PopoverContent>
+      </Popover>
 
       {floatingEmoji && (
         <FloatingEmoji

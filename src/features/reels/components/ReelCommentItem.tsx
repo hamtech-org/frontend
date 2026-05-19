@@ -2,23 +2,28 @@ import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '@/store/store';
 import type { IComment } from '@/types/newsfeed.types';
-import { useReactToCommentMutation, useLazyGetCommentRepliesQuery } from '@/store/api/newsfeedApi';
+import {
+  useReactToReelCommentMutation,
+  useLazyGetReelCommentRepliesQuery,
+  useAddReelCommentMutation,
+} from '@/store/api/newsfeedApi';
 import { ReactionButton } from '@/components/common/ReactionButton';
 import { ReactionSummary } from '@/components/common/ReactionButton/ReactionSummary';
-import { CommentInput } from './CommentInput';
-import { HashtagText } from './HashtagText';
-import { MediaLightbox } from './MediaLightbox';
+import { MediaLightbox } from '@/features/newsfeed/components/MediaLightbox';
 import { formatRelative } from '@/utils/formatDate';
 import { cn } from '@/utils/cn';
-import { MessageCircle } from 'lucide-react';
+import { Loader2, MessageCircle, Send } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
-interface CommentItemProps {
+interface Props {
   comment: IComment;
-  postId: string;
+  reelId: string;
   isNested?: boolean;
 }
 
-export const CommentItem = ({ comment, postId, isNested = false }: CommentItemProps) => {
+export const ReelCommentItem = ({ comment, reelId, isNested = false }: Props) => {
   const currentUser = useSelector((state: RootState) => state.auth.user);
 
   const [showReplyInput, setShowReplyInput] = useState(false);
@@ -28,19 +33,25 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
   const [replyNextCursor, setReplyNextCursor] = useState<string | null>(null);
   const [hasMoreReplies, setHasMoreReplies] = useState(false);
   const [localRepliesCount, setLocalRepliesCount] = useState(comment.repliesCount ?? 0);
+  const [replyText, setReplyText] = useState('');
 
   const [localReaction, setLocalReaction] = useState<
     import('@/types/reaction.types').ReactionType | null
   >(comment.currentUserReaction ?? null);
   const [localReactionsCount, setLocalReactionsCount] = useState(comment.reactionsCount || {});
 
-  const [reactToComment] = useReactToCommentMutation();
-  const [fetchReplies, { isLoading: isLoadingReplies }] = useLazyGetCommentRepliesQuery();
+  const [reactToReelComment] = useReactToReelCommentMutation();
+  const [fetchReplies, { isLoading: isLoadingReplies }] = useLazyGetReelCommentRepliesQuery();
+  const [addReelComment, { isLoading: isSendingReply }] = useAddReelCommentMutation();
+
+  const authorName = comment.author?.displayName ?? comment.authorId;
+  const authorAvatar = comment.author?.avatar ?? '';
+  const authorInitial = authorName.charAt(0).toUpperCase();
 
   const loadReplies = async (cursor?: string | null, append = false) => {
     try {
       const res = await fetchReplies({
-        postId,
+        reelId,
         commentId: comment.commentId,
         cursor: cursor ?? null,
       }).unwrap();
@@ -60,26 +71,32 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
     setShowReplies((prev) => !prev);
   };
 
-  const handleReplySubmitted = (newReply: IComment) => {
-    setReplies((prev) => [...prev, newReply]);
-    setLocalRepliesCount((prev) => prev + 1);
-    setShowReplies(true);
-    setShowReplyInput(false);
+  const handleSendReply = async () => {
+    const trimmed = replyText.trim();
+    if (!trimmed || isSendingReply) return;
+    try {
+      const res = await addReelComment({
+        reelId,
+        content: trimmed,
+        parentId: comment.commentId,
+      }).unwrap();
+      const newReply = res.data;
+      setReplies((prev) => [...prev, newReply]);
+      setLocalRepliesCount((prev) => prev + 1);
+      setShowReplies(true);
+      setShowReplyInput(false);
+      setReplyText('');
+    } catch {
+      // no-op
+    }
   };
-
-  const authorName = comment.author?.displayName ?? comment.authorId;
-  const authorAvatar = comment.author?.avatar ?? '';
-  const authorInitial = authorName.charAt(0).toUpperCase();
-
-  const myName = currentUser?.displayName?.trim() || 'Bạn';
-  const myAvatar = currentUser?.avatar ?? '';
-  const myInitial = myName.charAt(0).toUpperCase();
 
   return (
     <div className={cn('flex items-start gap-2')}>
+      {/* Avatar */}
       <div
         className={cn(
-          'rounded-full overflow-hidden bg-muted/60 flex items-center justify-center shrink-0',
+          'rounded-full overflow-hidden bg-muted flex items-center justify-center shrink-0',
           isNested ? 'size-6' : 'size-7',
         )}
       >
@@ -103,10 +120,10 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
       </div>
 
       <div className="min-w-0 flex-1">
-        {/* Author name — ngoài bubble */}
+        {/* Tên tác giả ngoài bubble */}
         <p
           className={cn(
-            'mb-0.5 px-1 font-semibold text-foreground/80',
+            'mb-0.5 px-1 font-semibold text-foreground/90',
             isNested ? 'text-[11px]' : 'text-xs',
           )}
         >
@@ -115,10 +132,8 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
 
         {/* Bubble — chỉ render khi có text */}
         {!!comment.content && (
-          <div className="w-fit max-w-full rounded-xl bg-muted/50 px-3 py-2">
-            <p className="text-sm text-foreground leading-5">
-              <HashtagText text={comment.content} />
-            </p>
+          <div className="w-fit max-w-full rounded-xl bg-muted px-3 py-2">
+            <p className="text-sm text-foreground/90 leading-5 break-words">{comment.content}</p>
           </div>
         )}
 
@@ -165,6 +180,7 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
               className={!localReaction ? 'h-5 px-1 rounded-sm' : undefined}
               currentUserReaction={localReaction}
               summary={localReaction ? localReactionsCount : undefined}
+              pickerAlign="right"
               onReact={(type) => {
                 const prevReaction = localReaction;
                 const serverType = type ?? prevReaction;
@@ -178,7 +194,7 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
                 }
                 setLocalReaction(type);
                 setLocalReactionsCount(newCounts);
-                void reactToComment({ postId, commentId: comment.commentId, type: serverType });
+                void reactToReelComment({ reelId, commentId: comment.commentId, type: serverType });
               }}
             />
           </div>
@@ -186,7 +202,7 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
           {!isNested && (
             <button
               type="button"
-              className="hover:text-foreground transition-colors"
+              className="text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setShowReplyInput((prev) => !prev)}
             >
               <MessageCircle size={14} />
@@ -199,10 +215,10 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
           <button
             type="button"
             onClick={() => void handleToggleReplies()}
-            className="mt-1 px-1 text-xs font-semibold text-blue-500 hover:text-blue-600 transition-colors flex items-center gap-1.5"
+            className="mt-1 px-1 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5"
           >
             {isLoadingReplies && (
-              <span className="size-3 rounded-full border-2 border-blue-300 border-t-blue-500 animate-spin" />
+              <span className="size-3 rounded-full border-2 border-blue-400/40 border-t-blue-400 animate-spin" />
             )}
             {showReplies ? 'Ẩn trả lời' : `Xem ${localRepliesCount} trả lời`}
           </button>
@@ -212,13 +228,13 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
         {!isNested && showReplies && replies.length > 0 && (
           <div className="mt-2 flex flex-col gap-2">
             {replies.map((reply) => (
-              <CommentItem key={reply.commentId} comment={reply} postId={postId} isNested />
+              <ReelCommentItem key={reply.commentId} comment={reply} reelId={reelId} isNested />
             ))}
             {hasMoreReplies && (
               <button
                 type="button"
                 onClick={() => void loadReplies(replyNextCursor, true)}
-                className="px-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                className="px-1 text-xs font-semibold text-muted-foreground/60 hover:text-foreground transition-colors"
               >
                 Xem thêm trả lời
               </button>
@@ -228,17 +244,41 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
 
         {/* Inline reply input */}
         {!isNested && showReplyInput && (
-          <div className="mt-2">
-            <CommentInput
-              postId={postId}
-              replyTo={{ commentId: comment.commentId, authorName }}
-              onClearReply={() => setShowReplyInput(false)}
-              onSubmitted={handleReplySubmitted}
+          <div className="mt-2 flex items-center gap-2">
+            <Avatar className="size-6 shrink-0">
+              {currentUser?.avatar && (
+                <AvatarImage src={currentUser.avatar} referrerPolicy="no-referrer" />
+              )}
+              <AvatarFallback className="text-[9px] bg-muted text-foreground">
+                {(currentUser?.displayName ?? 'B').charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <Input
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSendReply();
+                }
+              }}
+              placeholder={`Trả lời ${authorName}...`}
+              className="flex-1 h-8 rounded-xl bg-muted border-input text-foreground placeholder:text-muted-foreground text-sm"
+              disabled={isSendingReply}
               autoFocus
-              authorName={myName}
-              authorAvatar={myAvatar}
-              authorInitial={myInitial}
             />
+            <Button
+              size="icon"
+              onClick={() => void handleSendReply()}
+              disabled={!replyText.trim() || isSendingReply}
+              className="size-8 rounded-xl shrink-0 bg-blue-600 hover:bg-blue-700"
+            >
+              {isSendingReply ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Send className="size-3.5" />
+              )}
+            </Button>
           </div>
         )}
       </div>

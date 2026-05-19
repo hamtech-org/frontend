@@ -6,25 +6,14 @@ import { ReactionType, REACTION_META } from '@/types/reaction.types';
 interface EmojiPickerProps {
   isVisible: boolean;
   onReact: (type: ReactionType) => void;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
 }
 
-export const EmojiPicker: React.FC<EmojiPickerProps> = ({
-  isVisible,
-  onReact,
-  onMouseEnter,
-  onMouseLeave,
-}) => {
+export const EmojiPicker: React.FC<EmojiPickerProps> = ({ isVisible, onReact }) => {
   if (!isVisible) return null;
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div
-        className="absolute bottom-full left-0 mb-2 flex items-center gap-1 rounded-full bg-background p-1.5 shadow-xl animate-in fade-in zoom-in slide-in-from-bottom-2 duration-200 z-50"
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
-      >
+      <div className="flex items-center gap-1">
         {(
           Object.entries(REACTION_META) as [ReactionType, (typeof REACTION_META)[ReactionType]][]
         ).map(([type, meta]) => (
