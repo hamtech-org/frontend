@@ -112,6 +112,9 @@ export function ConversationSearchPanel({
   conversations = [],
   onSelectConversation,
 }: ConversationSearchPanelProps) {
+  /** Tìm trong panel info chat: chỉ tin/file của hội thoại đang mở, không liệt kê hội thoại. */
+  const showConversationMatches = Boolean(onSelectConversation) && !conversationId?.trim();
+
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [senderUserId, setSenderUserId] = useState('');
@@ -221,7 +224,7 @@ export function ConversationSearchPanel({
 
   const filteredConversationsFull = useMemo(() => {
     const needle = debouncedQ.trim().toLowerCase();
-    if (!needle || !onSelectConversation) return [] as IConversation[];
+    if (!needle || !showConversationMatches) return [] as IConversation[];
     const hit = listableConversations.filter((c) => {
       const name = (c.name ?? '').toLowerCase();
       const preview = formatConversationListLastPreview(c, currentUserId ?? '').toLowerCase();
@@ -232,7 +235,7 @@ export function ConversationSearchPanel({
       );
     });
     return sortConversationsForSidebar(hit);
-  }, [listableConversations, debouncedQ, currentUserId, onSelectConversation]);
+  }, [listableConversations, debouncedQ, currentUserId, showConversationMatches]);
 
   const filteredConversationsDisplay = filteredConversationsFull.slice(0, 8);
   const conversationMatchCount = filteredConversationsFull.length;
@@ -278,11 +281,11 @@ export function ConversationSearchPanel({
     if (lastEmptyToastNeedle.current === toastKey) return;
     lastEmptyToastNeedle.current = toastKey;
     toast.info(
-      onSelectConversation
+      showConversationMatches
         ? 'Không tìm thấy hội thoại, tin nhắn hoặc file phù hợp (đã gộp tin tải thêm từ máy chủ nếu có).'
         : 'Không tìm thấy tin nhắn hoặc file phù hợp (đã gộp tin tải thêm từ máy chủ nếu có).',
     );
-  }, [debouncedQ, totalHits, onSelectConversation, senderUserId, dateFilter]);
+  }, [debouncedQ, totalHits, showConversationMatches, senderUserId, dateFilter]);
 
   const needleForUi = debouncedQ.trim();
   const shownMessages = messageHits.slice(0, msgLimit);
@@ -396,7 +399,7 @@ export function ConversationSearchPanel({
               <Search className="h-12 w-12 stroke-[1.25]" />
             </div>
             <p className="max-w-sm text-sm font-medium leading-relaxed text-muted-foreground">
-              {onSelectConversation
+              {showConversationMatches
                 ? 'Chọn thành viên hoặc ngày để xem tin; có thể thêm từ khóa để thu hẹp. Hoặc chỉ nhập từ khóa để tìm hội thoại / tin.'
                 : 'Chọn thành viên hoặc ngày để xem tin; có thể thêm từ khóa để thu hẹp.'}
               {conversationTitle ? (
@@ -411,7 +414,7 @@ export function ConversationSearchPanel({
             <Search className="mb-2 h-8 w-8 text-muted-foreground/30" />
             <p className="text-sm font-medium text-muted-foreground">Không tìm thấy kết quả</p>
             <p className="mt-1 max-w-xs text-[12px] text-muted-foreground/80">
-              {onSelectConversation
+              {showConversationMatches
                 ? 'Thử tên hội thoại, nội dung tin hoặc file (trong chat đang mở).'
                 : 'Thử từ khóa khác hoặc cuộn lịch sử để tải thêm tin.'}
             </p>
@@ -423,7 +426,7 @@ export function ConversationSearchPanel({
                 Đang tải tin từ máy chủ theo bộ lọc…
               </p>
             ) : null}
-            {onSelectConversation && filteredConversationsDisplay.length > 0 ? (
+            {showConversationMatches && filteredConversationsDisplay.length > 0 ? (
               <section>
                 <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">
                   Hội thoại ({conversationMatchCount})
@@ -476,7 +479,7 @@ export function ConversationSearchPanel({
 
             <section>
               <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">
-                Tin nhắn (trong hội thoại hiện tại)
+                {conversationId?.trim() ? 'Tin nhắn' : 'Tin nhắn (trong hội thoại hiện tại)'}
               </h4>
               {messageHits.length === 0 ? (
                 <p className="px-2 py-4 text-center text-[13px] text-muted-foreground">
