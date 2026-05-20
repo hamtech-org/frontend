@@ -51,7 +51,8 @@ export function navigateFromNotification(navigate: NavigateFunction, item: INoti
       else navigate('/profile');
       return;
     case 'live':
-      navigate('/studio');
+      if (entityId) navigate(`/live/${encodeURIComponent(entityId)}`);
+      else navigate('/live');
       return;
     case 'ai':
       navigate('/ai-studio');

@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 import type { INotification } from '@/types/notification.types';
+import { countBellUnread, countsTowardBell } from '@/utils/notificationBellCount';
 
 interface NotificationState {
   notifications: INotification[];
@@ -18,7 +19,7 @@ const notificationSlice = createSlice({
   reducers: {
     setNotifications: (state, action: PayloadAction<INotification[]>) => {
       state.notifications = action.payload;
-      state.unreadCount = action.payload.filter((n) => !n.isRead).length;
+      state.unreadCount = countBellUnread(action.payload);
     },
     setUnreadCount: (state, action: PayloadAction<number>) => {
       state.unreadCount = action.payload;
@@ -29,13 +30,17 @@ const notificationSlice = createSlice({
       );
       if (exists) return;
       state.notifications.unshift(action.payload);
-      if (!action.payload.isRead) state.unreadCount += 1;
+      if (!action.payload.isRead && countsTowardBell(action.payload.type)) {
+        state.unreadCount += 1;
+      }
     },
     markAsRead: (state, action: PayloadAction<string>) => {
       const notif = state.notifications.find((n) => n.notificationId === action.payload);
       if (notif && !notif.isRead) {
         notif.isRead = true;
-        state.unreadCount = Math.max(0, state.unreadCount - 1);
+        if (countsTowardBell(notif.type)) {
+          state.unreadCount = Math.max(0, state.unreadCount - 1);
+        }
       }
     },
     markAllAsRead: (state) => {

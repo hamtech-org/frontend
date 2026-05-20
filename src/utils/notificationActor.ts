@@ -14,6 +14,7 @@ const TYPE_ICON_LABEL: Partial<Record<NotificationType, string>> = {
   post_comment: '💭',
   reel_new: '🎬',
   reel_comment: '💭',
+  live_started: '🔴',
   system: '🔔',
   mention: '@',
 };
