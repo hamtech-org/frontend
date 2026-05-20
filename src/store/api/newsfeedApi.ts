@@ -19,6 +19,8 @@ import type { ReactionType, IReactionSummary } from '@/types/reaction.types';
 
 export interface CreatePostBody {
   content: string;
+  groupId?: string;
+  communityId?: string;
   type: 'text' | 'image' | 'video' | 'link';
   visibility: PostVisibility;
   publicationStatus: PostPublicationStatus;

@@ -51,6 +51,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   editingPost?: IPost;
+  communityGroupId?: string;
 };
 
 const VISIBILITY_CONFIG = {
@@ -63,7 +64,7 @@ const VISIBILITY_CONFIG = {
 const isVideoUrl = (url: string): boolean =>
   /\.(mp4|webm|mov|avi|mkv)/i.test(url) || url.includes('video');
 
-export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
+export function CreatePostModal({ isOpen, onClose, editingPost, communityGroupId }: Props) {
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const { theme } = useTheme();
   const isEdit = !!editingPost;
@@ -192,6 +193,7 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
       type: postType,
       visibility,
       publicationStatus: status,
+      ...(communityGroupId ? { groupId: communityGroupId, communityId: communityGroupId } : {}),
       categories: [] as string[],
       tags,
       mediaUrls: finalMediaUrls,
