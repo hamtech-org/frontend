@@ -568,7 +568,8 @@ export function AIAssistantPanel({
             <h2 className="text-sm md:text-base font-semibold">Trợ lý HAMTECH</h2>
           </div>
           <p className="mt-1 text-xs md:text-sm text-muted-foreground">
-            Tin nhắn được lưu trên server; tìm kiếm & công cụ do AI gọi qua backend.
+            Hãy cùng HAMTECH khám phá những thông tin hữu ích. Bạn có thể hỏi về tin nhắn, bạn bè,
+            nhóm hoặc bất cứ điều gì bạn muốn biết!
           </p>
         </div>
 
