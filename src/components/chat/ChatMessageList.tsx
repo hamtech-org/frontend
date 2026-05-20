@@ -44,6 +44,7 @@ import {
   formatGroupSystemChatLine,
   formatLegacyGroupProfileSystemLine,
 } from '@/utils/groupSystemMessage';
+import { resolveTaskAssigneeDisplayLabel } from '@/utils/syncAssignToAllGroupTasks';
 import { resolveGroupJoinLinkFromMessageContent } from '@/utils/groupJoinLinkMessage';
 import { GroupJoinLinkCard } from '@/components/chat/GroupJoinLinkCard';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
@@ -53,7 +54,15 @@ import { ChatFileMessageCard } from '@/components/chat/ChatFileMessageCard';
 import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMenu';
 import { ForwardMediaPickerModal } from '@/components/chat/ForwardMediaPickerModal';
 import { formatFileSize } from '@/utils/fileHelper';
-import { downloadAuthedChatMedia, resolveChatMediaDownloadUrl } from '@/utils/chatMediaDownload';
+import {
+  jumpHighlightMediaShellClass,
+  jumpHighlightTextBubbleClass,
+} from '@/utils/chatJumpHighlight';
+import {
+  downloadAuthedChatMedia,
+  fetchChatMediaBlob,
+  resolveChatMediaDownloadUrl,
+} from '@/utils/chatMediaDownload';
 import { toast } from 'react-toastify';
 import { Dialog, DialogContent, DialogHeader } from '@/components/ui/dialog';
 import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
@@ -311,49 +320,44 @@ function ReplyQuoteStrip({
           : 'bg-black/5 border-blue-500/50 hover:bg-black/10 dark:hover:bg-white/5'
       }`}
     >
-      <div className="shrink-0">
-        {details.type === 'image' && thumbSrc ? (
-          <div className="w-11 h-11 rounded-lg overflow-hidden bg-black/10 ring-1 ring-black/10 dark:ring-white/10">
-            <AuthenticatedMedia
-              src={thumbSrc}
-              kind="image"
-              className="h-full w-full object-cover"
-              alt=""
-            />
-          </div>
-        ) : details.type === 'image' ? (
-          <div className="w-11 h-11 rounded-lg bg-slate-200/90 dark:bg-slate-700/90 flex items-center justify-center ring-1 ring-black/10">
-            <LucideImage className="w-5 h-5 text-slate-500 dark:text-slate-400" aria-hidden />
-          </div>
-        ) : details.type === 'video' && thumbSrc ? (
-          <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-zinc-900 ring-1 ring-black/10">
-            <AuthenticatedMedia
-              src={thumbSrc}
-              kind="image"
-              className="h-full w-full object-cover"
-              alt=""
-            />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/25 pointer-events-none">
-              <Video className="w-5 h-5 text-white drop-shadow-md" aria-hidden />
+      {(details.type === 'image' || details.type === 'video' || details.type === 'file') && (
+        <div className="shrink-0">
+          {details.type === 'image' && thumbSrc ? (
+            <div className="w-11 h-11 rounded-lg overflow-hidden bg-black/10 ring-1 ring-black/10 dark:ring-white/10">
+              <AuthenticatedMedia
+                src={thumbSrc}
+                kind="image"
+                className="h-full w-full object-cover"
+                alt=""
+              />
             </div>
-          </div>
-        ) : details.type === 'video' ? (
-          <div className="w-11 h-11 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center ring-1 ring-black/5">
-            <Video className="w-5 h-5 text-violet-600 dark:text-violet-400" aria-hidden />
-          </div>
-        ) : details.type === 'file' ? (
-          <div className="w-11 h-11 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center ring-1 ring-black/5">
-            <FileText className="w-5 h-5 text-amber-700 dark:text-amber-400" aria-hidden />
-          </div>
-        ) : (
-          <ZaloStyleAvatar
-            userId={details.senderId}
-            displayName={name}
-            avatarUrl={null}
-            className="w-11 h-11"
-          />
-        )}
-      </div>
+          ) : details.type === 'image' ? (
+            <div className="w-11 h-11 rounded-lg bg-slate-200/90 dark:bg-slate-700/90 flex items-center justify-center ring-1 ring-black/10">
+              <LucideImage className="w-5 h-5 text-slate-500 dark:text-slate-400" aria-hidden />
+            </div>
+          ) : details.type === 'video' && thumbSrc ? (
+            <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-zinc-900 ring-1 ring-black/10">
+              <AuthenticatedMedia
+                src={thumbSrc}
+                kind="image"
+                className="h-full w-full object-cover"
+                alt=""
+              />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/25 pointer-events-none">
+                <Video className="w-5 h-5 text-white drop-shadow-md" aria-hidden />
+              </div>
+            </div>
+          ) : details.type === 'video' ? (
+            <div className="w-11 h-11 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center ring-1 ring-black/5">
+              <Video className="w-5 h-5 text-violet-600 dark:text-violet-400" aria-hidden />
+            </div>
+          ) : (
+            <div className="w-11 h-11 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center ring-1 ring-black/5">
+              <FileText className="w-5 h-5 text-amber-700 dark:text-amber-400" aria-hidden />
+            </div>
+          )}
+        </div>
+      )}
       <div className="min-w-0 flex-1 text-left">
         <p
           className={`text-[10px] font-bold truncate ${
@@ -641,14 +645,14 @@ export function ChatMessageList({
       const topAssignees = Array.isArray(t.assignees)
         ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
         : [];
-      const isAll = Boolean(t.assignToAll) || Boolean(t.broadcast);
-      const assigneeLabel = isAll
-        ? 'Cả nhóm'
-        : (subs.length > 0 ? subAssigneeIds : topAssignees).length > 0
-          ? (subs.length > 0 ? subAssigneeIds : topAssignees)
-              .map((id) => nameById.get(id) || id)
-              .join(', ')
-          : (prev?.assigneeLabel ?? undefined);
+      const assigneeLabel = resolveTaskAssigneeDisplayLabel({
+        assignToAll: Boolean(t.assignToAll),
+        broadcast: Boolean(t.broadcast),
+        assigneeIds: subs.length > 0 ? subAssigneeIds : topAssignees,
+        memberCount: groupMembers?.length ?? 0,
+        nameById,
+        fallbackLabel: prev?.assigneeLabel,
+      });
       const noteFromApi =
         t.description != null && String(t.description).trim() !== ''
           ? String(t.description)
@@ -711,12 +715,7 @@ export function ChatMessageList({
 
   const copyImageToClipboard = useCallback(async (url: string) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error('fetch');
-      const blob = await res.blob();
+      const blob = await fetchChatMediaBlob(url);
       const type = blob.type || 'image/png';
       if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
         toast.error('Trình duyệt không hỗ trợ copy ảnh (cần HTTPS).');
@@ -990,6 +989,14 @@ export function ChatMessageList({
                                 ]),
                               );
                               const t = tBoard;
+                              const cardTitle =
+                                String((t as any)?.title ?? taskCard.title ?? '').trim() ||
+                                taskCard.title;
+                              const cardDueDate =
+                                (t as any)?.dueDate != null &&
+                                String((t as any).dueDate).trim() !== ''
+                                  ? String((t as any).dueDate)
+                                  : taskCard.dueDate;
                               const assignees = Array.isArray((t as any)?.assignees)
                                 ? ((t as any).assignees as string[])
                                 : [];
@@ -1021,9 +1028,11 @@ export function ChatMessageList({
                                 String(currentUserId),
                               );
                               const topIds =
-                                taskCard.assigneeUserIds.length > 0
-                                  ? taskCard.assigneeUserIds
-                                  : assignees;
+                                assignees.length > 0
+                                  ? assignees
+                                  : taskCard.assigneeUserIds.length > 0
+                                    ? taskCard.assigneeUserIds
+                                    : [];
                               const isTopLevelAssignee = topIds
                                 .map(String)
                                 .includes(String(currentUserId));
@@ -1072,26 +1081,23 @@ export function ChatMessageList({
                                             .filter(Boolean),
                                         ),
                                       );
-                                      const topIds =
-                                        taskCard.assigneeUserIds.length > 0
+                                      const topIds = Array.isArray(tt?.assignees)
+                                        ? (tt.assignees as unknown[])
+                                            .map((x) => String(x))
+                                            .filter(Boolean)
+                                        : taskCard.assigneeUserIds.length > 0
                                           ? taskCard.assigneeUserIds
-                                          : Array.isArray(tt?.assignees)
-                                            ? (tt.assignees as unknown[])
-                                                .map((x) => String(x))
-                                                .filter(Boolean)
-                                            : [];
-                                      const isAll =
-                                        Boolean(tt?.assignToAll) ||
-                                        Boolean(tt?.broadcast) ||
-                                        Boolean(taskCard.assignToAll) ||
-                                        Boolean(taskCard.broadcast);
-                                      const assigneeDisplay = isAll
-                                        ? 'Cả nhóm'
-                                        : (subs.length > 0 ? subAssigneeIds : topIds).length > 0
-                                          ? (subs.length > 0 ? subAssigneeIds : topIds)
-                                              .map((id) => byId.get(String(id)) ?? String(id))
-                                              .join(', ')
-                                          : taskCard.assigneeLabel;
+                                          : [];
+                                      const assigneeDisplay = resolveTaskAssigneeDisplayLabel({
+                                        assignToAll:
+                                          Boolean(tt?.assignToAll) || Boolean(taskCard.assignToAll),
+                                        broadcast:
+                                          Boolean(tt?.broadcast) || Boolean(taskCard.broadcast),
+                                        assigneeIds: subs.length > 0 ? subAssigneeIds : topIds,
+                                        memberCount: groupMembers?.length ?? 0,
+                                        nameById: byId,
+                                        fallbackLabel: taskCard.assigneeLabel,
+                                      });
                                       setTaskDetailTaskId(String(taskCard.taskId));
                                       setTaskDetail({
                                         title: taskCard.title,
@@ -1136,7 +1142,7 @@ export function ChatMessageList({
                                       id={`task-card-${taskCard.taskId}-title`}
                                       className="text-[16px] font-black text-foreground break-words leading-snug mb-3.5 pr-2"
                                     >
-                                      {taskCard.title}
+                                      {cardTitle}
                                     </div>
 
                                     {/* Assignees & Deadline */}
@@ -1163,28 +1169,32 @@ export function ChatMessageList({
                                                     ),
                                                   )
                                                 : [];
+                                            const boardAssignees = Array.isArray(
+                                              (tBoard as any)?.assignees,
+                                            )
+                                              ? (
+                                                  ((tBoard as any).assignees as unknown[]) ?? []
+                                                ).map((x) => String(x))
+                                              : [];
                                             const topIds =
-                                              taskCard.assigneeUserIds.length > 0
-                                                ? taskCard.assigneeUserIds
-                                                : Array.isArray((tBoard as any)?.assignees)
-                                                  ? (
-                                                      ((tBoard as any).assignees as unknown[]) ?? []
-                                                    ).map((x) => String(x))
+                                              boardAssignees.length > 0
+                                                ? boardAssignees
+                                                : taskCard.assigneeUserIds.length > 0
+                                                  ? taskCard.assigneeUserIds
                                                   : [];
                                             const ids = subs.length > 0 ? subAssignees : topIds;
-                                            const display =
-                                              Boolean((tBoard as any)?.assignToAll) ||
-                                              Boolean((tBoard as any)?.broadcast) ||
-                                              Boolean(taskCard.assignToAll) ||
-                                              Boolean(taskCard.broadcast)
-                                                ? 'Cả nhóm'
-                                                : ids.length > 0
-                                                  ? ids
-                                                      .map(
-                                                        (id) => byId.get(String(id)) ?? String(id),
-                                                      )
-                                                      .join(', ')
-                                                  : taskCard.assigneeLabel;
+                                            const display = resolveTaskAssigneeDisplayLabel({
+                                              assignToAll:
+                                                Boolean((tBoard as any)?.assignToAll) ||
+                                                Boolean(taskCard.assignToAll),
+                                              broadcast:
+                                                Boolean((tBoard as any)?.broadcast) ||
+                                                Boolean(taskCard.broadcast),
+                                              assigneeIds: ids,
+                                              memberCount: groupMembers?.length ?? 0,
+                                              nameById: byId,
+                                              fallbackLabel: taskCard.assigneeLabel,
+                                            });
                                             return (
                                               <span
                                                 className="font-bold text-foreground truncate"
@@ -1196,7 +1206,7 @@ export function ChatMessageList({
                                           })()}
                                         </div>
                                       </div>
-                                      {taskCard.dueDate ? (
+                                      {cardDueDate ? (
                                         <div className="flex items-center gap-2.5 text-[13px]">
                                           <AlarmClock className="w-4 h-4 text-muted-foreground shrink-0" />
                                           <div className="min-w-0 flex-1 flex items-center flex-wrap gap-1.5">
@@ -1205,7 +1215,7 @@ export function ChatMessageList({
                                             </span>
                                             <div id={`task-card-${taskCard.taskId}-dueDate`}>
                                               <TaskDeadlineCalendar
-                                                dateIso={taskCard.dueDate}
+                                                dateIso={cardDueDate}
                                                 size="sm"
                                               />
                                             </div>
@@ -1789,13 +1799,6 @@ export function ChatMessageList({
                   transition={{ duration: 0.18, ease: 'easeOut' }}
                   className={`flex items-end gap-2 group/msg relative ${isMe ? 'flex-row-reverse' : 'flex-row'} ${isSameSenderAsPrev ? 'mt-0' : 'mt-1'}`}
                 >
-                  {isJumpHighlight && (
-                    <div
-                      key={jumpFlashNonce}
-                      className="absolute -inset-x-1 -inset-y-0.5 z-[1] rounded-2xl pointer-events-none chat-msg-jump-highlight"
-                      aria-hidden
-                    />
-                  )}
                   {showAvatar ? (
                     <ZaloStyleAvatar
                       userId={msg.senderId}
@@ -1832,7 +1835,8 @@ export function ChatMessageList({
                           Tin nhắn đã được thu hồi
                         </div>
                       ) : (
-                        <div
+                        <motion.div
+                          key={isJumpHighlight ? jumpFlashNonce : undefined}
                           className={
                             isMediaMsg || isJoinLinkMsg
                               ? `relative flex max-w-full min-w-0 flex-col px-0 py-0 rounded-xl text-[13px] leading-snug shadow-none break-words whitespace-pre-wrap bg-transparent border-0 text-foreground selection:bg-blue-200 selection:text-black dark:selection:bg-blue-300 dark:selection:text-black ${
@@ -1842,7 +1846,7 @@ export function ChatMessageList({
                                   isMe
                                     ? 'bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-br-sm'
                                     : 'bg-white dark:bg-white/8 border border-black/8 dark:border-white/10 text-foreground rounded-bl-sm'
-                                }`
+                                } ${!isMediaMsg && !isJoinLinkMsg ? jumpHighlightTextBubbleClass(isJumpHighlight, isMe) : ''}`
                           }
                         >
                           {msg.replyToDetails && (
@@ -1858,7 +1862,10 @@ export function ChatMessageList({
                             <div
                               className={`w-full ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
                             >
-                              <div className="w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900">
+                              <motion.div
+                                key={isJumpHighlight ? jumpFlashNonce : undefined}
+                                className={`w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900 ${jumpHighlightMediaShellClass(isJumpHighlight)}`}
+                              >
                                 <button
                                   type="button"
                                   aria-label="Xem ảnh lớn"
@@ -1886,14 +1893,17 @@ export function ChatMessageList({
                                     alt="Ảnh đính kèm"
                                   />
                                 </button>
-                              </div>
+                              </motion.div>
                             </div>
                           )}
                           {msg.type === 'video' && msg.mediaUrl && (
                             <div
                               className={`w-full min-w-0 ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
                             >
-                              <div className="w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900">
+                              <motion.div
+                                key={isJumpHighlight ? jumpFlashNonce : undefined}
+                                className={`w-full overflow-hidden rounded-xl border border-[#B8C9E8] bg-white shadow-sm dark:border-white/15 dark:bg-zinc-900 ${jumpHighlightMediaShellClass(isJumpHighlight)}`}
+                              >
                                 <div
                                   className="relative w-full aspect-video max-h-[min(78vh,640px)] bg-zinc-950"
                                   onContextMenuCapture={(e) => {
@@ -1989,7 +1999,7 @@ export function ChatMessageList({
                                     </button>
                                   </div>
                                 </div>
-                              </div>
+                              </motion.div>
                             </div>
                           )}
                           {msg.type === 'file' && msg.mediaUrl && (
@@ -1998,6 +2008,7 @@ export function ChatMessageList({
                                 msg={msg}
                                 mediaSavedOnDevice={mediaSavedOnDevice}
                                 showCaption={showCaption}
+                                isJumpHighlighted={isJumpHighlight}
                                 captionBlock={
                                   <LinkifiedChatText text={msg.content ?? ''} isMe={false} />
                                 }
@@ -2080,7 +2091,7 @@ export function ChatMessageList({
                               ))}
                             </div>
                           )}
-                        </div>
+                        </motion.div>
                       )}
 
                       {!msg.isDeleted && !msg.isRecalled && (
@@ -2387,13 +2398,15 @@ export function ChatMessageList({
                         const topAssignees = Array.isArray(t?.assignees)
                           ? (t.assignees as unknown[]).map((x) => String(x)).filter(Boolean)
                           : [];
-                        const isAll = Boolean(t?.assignToAll) || Boolean(t?.broadcast);
                         const ids = subs.length > 0 ? subAssignees : topAssignees;
-                        const display = isAll
-                          ? 'Cả nhóm'
-                          : ids.length > 0
-                            ? ids.map((id) => nameById.get(id) || id).join(', ')
-                            : (taskDetail.assigneeLabel ?? '');
+                        const display = resolveTaskAssigneeDisplayLabel({
+                          assignToAll: Boolean(t?.assignToAll),
+                          broadcast: Boolean(t?.broadcast),
+                          assigneeIds: ids,
+                          memberCount: groupMembers?.length ?? 0,
+                          nameById,
+                          fallbackLabel: taskDetail.assigneeLabel,
+                        });
                         if (!display.trim()) return null;
                         return (
                           <div className="flex items-start gap-3 text-[14px]">

@@ -70,6 +70,24 @@ export function useDirectConversationActions({
     setGroupName,
   ]);
 
+  // Mở chat nhóm từ danh sách nhóm
+  const handleGroupClick = useCallback(
+    async (conversationIdOrGroupId: string, _groupName: string) => {
+      const existingConversation = conversations.find(
+        (c) =>
+          c.type === 'group' &&
+          (c.conversationId === conversationIdOrGroupId ||
+            String((c as { groupId?: string }).groupId ?? '') === conversationIdOrGroupId),
+      );
+      const targetId = existingConversation?.conversationId ?? conversationIdOrGroupId;
+
+      setShowContactsManagement(false);
+      socketService.emit('conversation:join', targetId);
+      void navigate(`/chat/${targetId}`);
+    },
+    [conversations, navigate, setShowContactsManagement],
+  );
+
   // Mở/tạo chat với bạn bè từ contacts list
   const handleFriendClick = useCallback(
     async (friendId: string, _friendName: string) => {
@@ -153,6 +171,7 @@ export function useDirectConversationActions({
   return useMemo(
     () => ({
       handleConfirmCreateGroup,
+      handleGroupClick,
       handleFriendClick,
       handleFriendRequestAccepted,
       handleToggleGroupMember,
@@ -163,6 +182,7 @@ export function useDirectConversationActions({
     }),
     [
       handleConfirmCreateGroup,
+      handleGroupClick,
       handleFriendClick,
       handleFriendRequestAccepted,
       handleToggleGroupMember,

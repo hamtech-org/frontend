@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { Bell, PanelLeft, PanelLeftClose, Search } from 'lucide-react';
+import { useSelector } from 'react-redux';
 import { cn } from '@/utils/cn';
 import GlobalSearchBox from '@/components/search/GlobalSearchBox';
-import {
-  Popover,
-  PopoverContent,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { NotificationPanel } from '@/components/layout/NotificationPanel';
+import type { RootState } from '@/store/store';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import logoUrl from '@/assets/images/logo_vuong.png';
 import type { IUser } from '@/types/user.types';
 
@@ -37,6 +36,25 @@ const AppHeader: React.FC<AppHeaderProps> = ({
 }) => {
   const isSidebarExpanded = isMobile ? isMobileSidebarOpen : isSidebarOpen;
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const unreadBellCount = useSelector((s: RootState) => s.notification.unreadCount);
+  const isDesktop = useBreakpoint('md');
+
+  const bellButton = (
+    <button
+      type="button"
+      className="relative p-2 rounded-full hover:bg-muted transition-colors"
+      aria-label="Thông báo"
+      aria-expanded={notificationsOpen}
+      aria-haspopup="dialog"
+    >
+      <Bell className="size-5" />
+      {unreadBellCount > 0 ? (
+        <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white border-2 border-background">
+          {unreadBellCount > 99 ? '99+' : unreadBellCount}
+        </span>
+      ) : null}
+    </button>
+  );
 
   return (
     <header
@@ -80,37 +98,61 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         >
           <Search className="size-5" />
         </button>
-        <Popover open={notificationsOpen} onOpenChange={setNotificationsOpen}>
-          <PopoverTrigger asChild>
+
+        {isDesktop ? (
+          <Popover open={notificationsOpen} onOpenChange={setNotificationsOpen}>
+            <PopoverTrigger asChild>{bellButton}</PopoverTrigger>
+            <PopoverContent
+              side="bottom"
+              align="end"
+              sideOffset={8}
+              className={cn(
+                'w-[min(100vw-1.5rem,24rem)] sm:w-[26rem] p-0 overflow-hidden',
+                isDarkMode ? 'border-midnight-border bg-midnight-bg text-foreground' : '',
+              )}
+              onOpenAutoFocus={(e) => e.preventDefault()}
+            >
+              <NotificationPanel
+                isDarkMode={isDarkMode}
+                onClose={() => setNotificationsOpen(false)}
+              />
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <>
             <button
               type="button"
               className="relative p-2 rounded-full hover:bg-muted transition-colors"
               aria-label="Thông báo"
-              aria-expanded={notificationsOpen}
-              aria-haspopup="dialog"
+              onClick={() => setNotificationsOpen(true)}
             >
               <Bell className="size-5" />
-              <span className="absolute top-2 right-2 size-2 bg-primary rounded-full border-2 border-background" />
+              {unreadBellCount > 0 ? (
+                <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white border-2 border-background">
+                  {unreadBellCount > 99 ? '99+' : unreadBellCount}
+                </span>
+              ) : null}
             </button>
-          </PopoverTrigger>
-          <PopoverContent
-            side="bottom"
-            align="end"
-            sideOffset={8}
-            className={cn(
-              'w-[min(100vw-1.5rem,22rem)] sm:w-96 p-0 overflow-hidden',
-              isDarkMode ? 'border-midnight-border bg-midnight-bg text-foreground' : '',
-            )}
-            onOpenAutoFocus={(e) => e.preventDefault()}
-          >
-            <PopoverHeader className="px-4 py-3 border-b border-border shrink-0">
-              <PopoverTitle className="text-base font-semibold">Thông báo</PopoverTitle>
-            </PopoverHeader>
-            <div className="max-h-[min(70vh,20rem)] overflow-y-auto px-4 py-8 text-center text-sm text-muted-foreground">
-              Chưa có thông báo mới.
-            </div>
-          </PopoverContent>
-        </Popover>
+            <Sheet open={notificationsOpen} onOpenChange={setNotificationsOpen}>
+              <SheetContent
+                side="right"
+                className={cn(
+                  'w-full sm:max-w-md p-0 flex flex-col',
+                  isDarkMode ? 'bg-midnight-bg border-midnight-border' : '',
+                )}
+                showCloseButton
+              >
+                <SheetTitle className="sr-only">Thông báo</SheetTitle>
+                <NotificationPanel
+                  isDarkMode={isDarkMode}
+                  onClose={() => setNotificationsOpen(false)}
+                  className="flex-1 min-h-0"
+                />
+              </SheetContent>
+            </Sheet>
+          </>
+        )}
+
         <div
           className="flex items-center gap-2 md:gap-3 md:pl-6 md:border-l md:border-inherit cursor-pointer hover:opacity-75 transition-opacity"
           onClick={onOpenProfile}

@@ -1,5 +1,7 @@
 import type { RefObject, SetStateAction, Dispatch, ReactNode } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import { ChevronDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { FriendsListView } from '@/components/chat/FriendsListView';
 import { FriendRequestsView } from '@/components/chat/FriendRequestsView';
 import { ChatHeader } from '@/components/chat/ChatHeader';
@@ -9,7 +11,6 @@ import { ChatComposer } from '@/components/chat/ChatComposer';
 import type { ContactsTabId } from '@/components/chat/ContactsManagementPanel';
 import type { IConversation, IMessage, TypingUserEntry } from '@/types/chat.types';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
-import { useDispatch } from 'react-redux';
 import type { AppDispatch, RootState } from '@/store/store';
 import { setReplyingTo } from '@/store/slices/chatSlice';
 import { useCallContext } from '@/contexts/CallContext';
@@ -40,6 +41,7 @@ interface ChatMainContentProps {
     endRef: RefObject<HTMLDivElement>;
     allMessages: IMessage[];
     unreadIncomingCount: number;
+    isScrolledUp: boolean;
     onJumpToLatest: () => void;
   };
 
@@ -63,6 +65,8 @@ interface ChatMainContentProps {
 
   // Friend click for contacts view
   onFriendClick?: (friendId: string, friendName: string) => Promise<void>;
+  onGroupClick?: (conversationId: string, groupName: string) => Promise<void>;
+  groupConversations?: IConversation[];
 
   /** Khi không truyền (layout tối giản), chuyển tiếp media bị tắt. */
   shareTargetConversations?: IConversation[];
@@ -131,6 +135,8 @@ export function ChatMainContent(props: ChatMainContentProps) {
     onSearchMessages,
     resolvedMemberCount,
     onFriendClick,
+    onGroupClick,
+    groupConversations = [],
     shareTargetConversations = [],
     onForwardMediaMessage = async () => {},
     onBack,
@@ -146,6 +152,52 @@ export function ChatMainContent(props: ChatMainContentProps) {
           <FriendRequestsView />
         ) : contactsTab === 'friends' ? (
           <FriendsListView onFriendClick={onFriendClick ?? directActions.handleFriendClick} />
+        ) : contactsTab === 'groups' ? (
+          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-1">
+            {groupConversations.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Chưa có nhóm nào.</p>
+            ) : (
+              groupConversations.map((conv) => {
+                const name = conv.name ?? 'Nhóm';
+                return (
+                  <button
+                    key={conv.conversationId}
+                    type="button"
+                    onClick={() =>
+                      void (onGroupClick ?? directActions.handleGroupClick)(
+                        conv.conversationId,
+                        name,
+                      )
+                    }
+                    className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+                  >
+                    <div className="relative shrink-0 w-11 h-11 rounded-full overflow-hidden">
+                      {conv.avatar ? (
+                        <img
+                          src={conv.avatar}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-sm font-bold text-blue-600">
+                          {name.trim().slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-black dark:text-white truncate">
+                        {name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {conv.memberCount != null ? `${conv.memberCount} thành viên` : 'Nhóm'}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
             Chưa hỗ trợ màn hình này.
@@ -195,42 +247,62 @@ export function ChatMainContent(props: ChatMainContentProps) {
             </div>
           )}
 
-          <ChatMessageList
-            messagesContainerRef={scroll.containerRef}
-            messagesEndRef={scroll.endRef}
-            allMessages={scroll.allMessages}
-            activeConversationId={core.activeConversationId}
-            activeConversation={core.activeConversation}
-            currentUserId={core.currentUserId}
-            typingUsers={[...typingUsers]}
-            unreadIncomingCount={scroll.unreadIncomingCount}
-            jumpHighlightMessageId={jumpHighlightMessageId}
-            jumpFlashNonce={jumpFlashNonce}
-            onJumpToMessage={onJumpToMessage}
-            actionMenuMsgId={actionMenuMsgId}
-            onActionMenuMsgIdChange={onActionMenuMsgIdChange}
-            onStartEdit={onStartEdit}
-            onTogglePin={pinned.onTogglePin}
-            onRecall={messageActions.handleRecallMsg}
-            onDelete={messageActions.handleDeleteMsg}
-            onReply={(msg) => dispatch(setReplyingTo(msg))}
-            onReact={messageActions.handleReactMessage}
-            onJumpToLatest={scroll.onJumpToLatest}
-            groupTasks={group.tasks}
-            groupMembers={group.members}
-            onTaskJoined={
-              core.activeConversation?.type === 'group'
-                ? (taskId) => {
-                    void groupActions.handleTaskJoined(String(taskId));
-                  }
-                : undefined
-            }
-            onOpenPollVote={groupActions.openPollVoteModal}
-            shareTargetConversations={shareTargetConversations}
-            onForwardMediaMessage={onForwardMediaMessage}
-            onEditGroupTask={onEditGroupTask}
-            onDeleteGroupTask={onDeleteGroupTask}
-          />
+          <div className="relative flex flex-1 min-h-0 flex-col">
+            <ChatMessageList
+              messagesContainerRef={scroll.containerRef}
+              messagesEndRef={scroll.endRef}
+              allMessages={scroll.allMessages}
+              activeConversationId={core.activeConversationId}
+              activeConversation={core.activeConversation}
+              currentUserId={core.currentUserId}
+              typingUsers={[...typingUsers]}
+              unreadIncomingCount={scroll.unreadIncomingCount}
+              jumpHighlightMessageId={jumpHighlightMessageId}
+              jumpFlashNonce={jumpFlashNonce}
+              onJumpToMessage={onJumpToMessage}
+              actionMenuMsgId={actionMenuMsgId}
+              onActionMenuMsgIdChange={onActionMenuMsgIdChange}
+              onStartEdit={onStartEdit}
+              onTogglePin={pinned.onTogglePin}
+              onRecall={messageActions.handleRecallMsg}
+              onDelete={messageActions.handleDeleteMsg}
+              onReply={(msg) => dispatch(setReplyingTo(msg))}
+              onReact={messageActions.handleReactMessage}
+              onJumpToLatest={scroll.onJumpToLatest}
+              groupTasks={group.tasks}
+              groupMembers={group.members}
+              onTaskJoined={
+                core.activeConversation?.type === 'group'
+                  ? (taskId) => {
+                      void groupActions.handleTaskJoined(String(taskId));
+                    }
+                  : undefined
+              }
+              onOpenPollVote={groupActions.openPollVoteModal}
+              shareTargetConversations={shareTargetConversations}
+              onForwardMediaMessage={onForwardMediaMessage}
+              onEditGroupTask={onEditGroupTask}
+              onDeleteGroupTask={onDeleteGroupTask}
+            />
+
+            {scroll.isScrolledUp && core.activeConversationId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-lg"
+                onClick={scroll.onJumpToLatest}
+                className="absolute bottom-4 right-5 z-30 rounded-full bg-background/95 shadow-lg shadow-black/10 backdrop-blur-sm hover:scale-105 active:scale-95"
+                aria-label="Cuộn xuống tin mới nhất"
+              >
+                <ChevronDown className="text-foreground/70" />
+                {scroll.unreadIncomingCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
+                    {scroll.unreadIncomingCount > 99 ? '99+' : scroll.unreadIncomingCount}
+                  </span>
+                )}
+              </Button>
+            )}
+          </div>
 
           {postMessageListSlot}
 

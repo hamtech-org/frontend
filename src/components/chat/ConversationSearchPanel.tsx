@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Calendar, File, Search, User, Users, X } from 'lucide-react';
+import { Calendar, Search, User, Users, X } from 'lucide-react';
+import { ChatFileTypeBadge } from '@/components/chat/ChatFileTypeBadge';
+import { ConversationSearchMessageCard } from '@/components/chat/conversationGallery/ConversationSearchMessageCard';
+import { resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 import type { IConversation, IMessage } from '@/types/chat.types';
 import {
   formatConversationListLastPreview,
   isSystemChatNotificationMessage,
-  lastMessagePreviewContentFromMessage,
   sortConversationsForSidebar,
 } from '@/utils/chatUtils';
 import { formatZaloConversationTime } from '@/utils/formatDate';
@@ -110,6 +112,9 @@ export function ConversationSearchPanel({
   conversations = [],
   onSelectConversation,
 }: ConversationSearchPanelProps) {
+  /** Tìm trong panel info chat: chỉ tin/file của hội thoại đang mở, không liệt kê hội thoại. */
+  const showConversationMatches = Boolean(onSelectConversation) && !conversationId?.trim();
+
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [senderUserId, setSenderUserId] = useState('');
@@ -129,8 +134,7 @@ export function ConversationSearchPanel({
       if (!id || seen.has(id)) continue;
       seen.add(id);
       const raw = (row.displayName ?? row.name ?? '').trim();
-      const label =
-        currentUserId && id === currentUserId ? 'Bạn' : raw || 'Thành viên';
+      const label = currentUserId && id === currentUserId ? 'Bạn' : raw || 'Thành viên';
       out.push({ userId: id, label });
     }
     out.sort((a, b) => a.label.localeCompare(b.label, 'vi'));
@@ -164,9 +168,12 @@ export function ConversationSearchPanel({
       }
     }
     void apiClient
-      .get<ApiSuccessResponse<IMessage[]>>(`/chat/conversations/${conversationId}/messages/browse`, {
-        params,
-      })
+      .get<ApiSuccessResponse<IMessage[]>>(
+        `/chat/conversations/${conversationId}/messages/browse`,
+        {
+          params,
+        },
+      )
       .then((res) => {
         if (cancelled) return;
         const payload = res.data?.data;
@@ -217,7 +224,7 @@ export function ConversationSearchPanel({
 
   const filteredConversationsFull = useMemo(() => {
     const needle = debouncedQ.trim().toLowerCase();
-    if (!needle || !onSelectConversation) return [] as IConversation[];
+    if (!needle || !showConversationMatches) return [] as IConversation[];
     const hit = listableConversations.filter((c) => {
       const name = (c.name ?? '').toLowerCase();
       const preview = formatConversationListLastPreview(c, currentUserId ?? '').toLowerCase();
@@ -228,7 +235,7 @@ export function ConversationSearchPanel({
       );
     });
     return sortConversationsForSidebar(hit);
-  }, [listableConversations, debouncedQ, currentUserId, onSelectConversation]);
+  }, [listableConversations, debouncedQ, currentUserId, showConversationMatches]);
 
   const filteredConversationsDisplay = filteredConversationsFull.slice(0, 8);
   const conversationMatchCount = filteredConversationsFull.length;
@@ -274,30 +281,17 @@ export function ConversationSearchPanel({
     if (lastEmptyToastNeedle.current === toastKey) return;
     lastEmptyToastNeedle.current = toastKey;
     toast.info(
-      onSelectConversation
+      showConversationMatches
         ? 'Không tìm thấy hội thoại, tin nhắn hoặc file phù hợp (đã gộp tin tải thêm từ máy chủ nếu có).'
         : 'Không tìm thấy tin nhắn hoặc file phù hợp (đã gộp tin tải thêm từ máy chủ nếu có).',
     );
-  }, [debouncedQ, totalHits, onSelectConversation, senderUserId, dateFilter]);
+  }, [debouncedQ, totalHits, showConversationMatches, senderUserId, dateFilter]);
 
   const needleForUi = debouncedQ.trim();
   const shownMessages = messageHits.slice(0, msgLimit);
   const shownFiles = fileHits.slice(0, fileLimit);
   const hasMoreMsg = messageHits.length > msgLimit;
   const hasMoreFile = fileHits.length > fileLimit;
-
-  const renderAvatar = (senderId: string, label: string) => {
-    const url = memberAvatarById.get(senderId);
-    const initial = label.trim().charAt(0).toUpperCase() || '?';
-    if (url) {
-      return <img src={url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />;
-    }
-    return (
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/10 text-[14px] font-semibold dark:bg-white/10">
-        {initial}
-      </div>
-    );
-  };
 
   const jump = (messageId: string) => {
     onSelectMessage(messageId);
@@ -311,21 +305,6 @@ export function ConversationSearchPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-[#1a1a1a]">
-      <div className="flex shrink-0 items-center justify-between border-b border-black/5 px-5 py-4 dark:border-white/5">
-        <div className="h-8 w-8 shrink-0" aria-hidden />
-        <h3 className="min-w-0 flex-1 truncate text-center text-[17px] font-bold text-black dark:text-white">
-          Tìm kiếm trong trò chuyện
-        </h3>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/5 transition-colors hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
-          title="Quay lại thông tin"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-
       <div className="shrink-0 border-b border-black/5 px-4 py-3 dark:border-white/5">
         <div className="relative">
           <Search
@@ -353,61 +332,63 @@ export function ConversationSearchPanel({
           ) : null}
         </div>
         <div className="mt-3 flex min-w-0 items-center gap-1.5 whitespace-nowrap">
-  <span className="flex h-7 shrink-0 items-center text-[10px] font-semibold text-muted-foreground">
-    Lọc theo
-  </span>
+          <span className="flex h-7 shrink-0 items-center text-[10px] font-semibold text-muted-foreground">
+            Lọc theo
+          </span>
 
-  {memberSelectOptions.length > 0 ? (
-    <label className="flex h-7 min-w-0 max-w-[140px] items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 shadow-sm dark:border-white/[0.1] dark:bg-white/[0.05]">
-      <User className="h-3 w-3 shrink-0 text-muted-foreground" />
+          {memberSelectOptions.length > 0 ? (
+            <label className="flex h-7 min-w-0 max-w-[140px] items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 shadow-sm dark:border-white/[0.1] dark:bg-white/[0.05]">
+              <User className="h-3 w-3 shrink-0 text-muted-foreground" />
 
-      <select
-        value={senderUserId}
-        onChange={(e) => setSenderUserId(e.target.value)}
-        className="min-w-0 flex-1 truncate border-0 bg-transparent text-[11px] font-medium outline-none"
-      >
-        <option value="">Người gửi</option>
-        {memberSelectOptions.map((opt) => (
-          <option key={opt.userId} value={opt.userId}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  ) : (
-    <button
-      type="button"
-      disabled
-      className="flex h-7 items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 text-[11px] text-muted-foreground opacity-60 dark:border-white/[0.1] dark:bg-white/[0.05]"
-    >
-      <User className="h-3 w-3" />
-      Người gửi
-    </button>
-  )}
+              <select
+                value={senderUserId}
+                onChange={(e) => setSenderUserId(e.target.value)}
+                className="min-w-0 flex-1 truncate border-0 bg-transparent text-[11px] font-medium outline-none"
+              >
+                <option value="">Người gửi</option>
+                {memberSelectOptions.map((opt) => (
+                  <option key={opt.userId} value={opt.userId}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="flex h-7 items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 text-[11px] text-muted-foreground opacity-60 dark:border-white/[0.1] dark:bg-white/[0.05]"
+            >
+              <User className="h-3 w-3" />
+              Người gửi
+            </button>
+          )}
 
-  <div className="flex h-7 items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 shadow-sm dark:border-white/[0.1] dark:bg-white/[0.05]">
-    <Calendar className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <div className="flex h-7 items-center gap-1 rounded-lg border border-black/[0.08] bg-black/[0.04] px-2 shadow-sm dark:border-white/[0.1] dark:bg-white/[0.05]">
+            <Calendar className="h-3 w-3 shrink-0 text-muted-foreground" />
 
-    <input
-      type="date"
-      value={dateFilter}
-      onChange={(e) => setDateFilter(e.target.value)}
-      className="w-[105px] border-0 bg-transparent text-[11px] font-medium outline-none"
-    />
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="w-[105px] border-0 bg-transparent text-[11px] font-medium outline-none"
+            />
 
-    {dateFilter && (
-      <button
-        type="button"
-        onClick={() => setDateFilter("")}
-        className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10"
-      >
-        <X className="h-3 w-3" />
-      </button>
-    )}
-  </div>
-</div>
+            {dateFilter && (
+              <button
+                type="button"
+                onClick={() => setDateFilter('')}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        </div>
         {browseError ? (
-          <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">{browseError}</p>
+          <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+            {browseError}
+          </p>
         ) : null}
       </div>
 
@@ -418,11 +399,13 @@ export function ConversationSearchPanel({
               <Search className="h-12 w-12 stroke-[1.25]" />
             </div>
             <p className="max-w-sm text-sm font-medium leading-relaxed text-muted-foreground">
-              {onSelectConversation
+              {showConversationMatches
                 ? 'Chọn thành viên hoặc ngày để xem tin; có thể thêm từ khóa để thu hẹp. Hoặc chỉ nhập từ khóa để tìm hội thoại / tin.'
                 : 'Chọn thành viên hoặc ngày để xem tin; có thể thêm từ khóa để thu hẹp.'}
               {conversationTitle ? (
-                <span className="mt-1 block truncate text-xs font-semibold text-foreground/80">{conversationTitle}</span>
+                <span className="mt-1 block truncate text-xs font-semibold text-foreground/80">
+                  {conversationTitle}
+                </span>
               ) : null}
             </p>
           </div>
@@ -431,7 +414,7 @@ export function ConversationSearchPanel({
             <Search className="mb-2 h-8 w-8 text-muted-foreground/30" />
             <p className="text-sm font-medium text-muted-foreground">Không tìm thấy kết quả</p>
             <p className="mt-1 max-w-xs text-[12px] text-muted-foreground/80">
-              {onSelectConversation
+              {showConversationMatches
                 ? 'Thử tên hội thoại, nội dung tin hoặc file (trong chat đang mở).'
                 : 'Thử từ khóa khác hoặc cuộn lịch sử để tải thêm tin.'}
             </p>
@@ -443,7 +426,7 @@ export function ConversationSearchPanel({
                 Đang tải tin từ máy chủ theo bộ lọc…
               </p>
             ) : null}
-            {onSelectConversation && filteredConversationsDisplay.length > 0 ? (
+            {showConversationMatches && filteredConversationsDisplay.length > 0 ? (
               <section>
                 <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">
                   Hội thoại ({conversationMatchCount})
@@ -495,35 +478,33 @@ export function ConversationSearchPanel({
             ) : null}
 
             <section>
-              <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">Tin nhắn (trong hội thoại hiện tại)</h4>
+              <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">
+                {conversationId?.trim() ? 'Tin nhắn' : 'Tin nhắn (trong hội thoại hiện tại)'}
+              </h4>
               {messageHits.length === 0 ? (
-                <p className="px-2 py-4 text-center text-[13px] text-muted-foreground">Không có tin nhắn khớp.</p>
+                <p className="px-2 py-4 text-center text-[13px] text-muted-foreground">
+                  Không có tin nhắn khớp.
+                </p>
               ) : (
                 <>
-                  <ul className="space-y-0">
+                  <ul className="space-y-2">
                     {shownMessages.map((m) => {
                       const isMe = m.senderId === currentUserId;
-                      const who = isMe ? 'Bạn' : (m.senderDisplayName?.trim() || m.senderId || 'Thành viên');
-                      const preview = lastMessagePreviewContentFromMessage(m);
+                      const who = isMe
+                        ? 'Bạn'
+                        : m.senderDisplayName?.trim() || m.senderId || 'Thành viên';
                       const time = formatZaloConversationTime(m.createdAt);
                       return (
-                        <li key={m.messageId} className="border-b border-black/[0.04] last:border-0 dark:border-white/[0.06]">
-                          <button
-                            type="button"
+                        <li key={m.messageId}>
+                          <ConversationSearchMessageCard
+                            message={m}
+                            currentUserId={currentUserId}
+                            senderLabel={who}
+                            avatarUrl={memberAvatarById.get(m.senderId) ?? null}
+                            timeLabel={time}
+                            needle={needleForUi}
                             onClick={() => jump(m.messageId)}
-                            className="flex w-full gap-2.5 px-2 py-3 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                          >
-                            {renderAvatar(m.senderId, who)}
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="truncate text-[14px] font-bold text-foreground">{who}</span>
-                                <span className="shrink-0 text-xs text-muted-foreground">{time}</span>
-                              </div>
-                              <p className="mt-0.5 line-clamp-2 text-[13px] text-muted-foreground">
-                                <HighlightMatch text={preview} needle={needleForUi} />
-                              </p>
-                            </div>
-                          </button>
+                          />
                         </li>
                       );
                     })}
@@ -544,28 +525,33 @@ export function ConversationSearchPanel({
             <section>
               <h4 className="mb-2 px-1 text-[13px] font-bold text-foreground">File</h4>
               {fileHits.length === 0 ? (
-                <p className="px-2 py-4 text-center text-[13px] text-muted-foreground">Không có file khớp.</p>
+                <p className="px-2 py-4 text-center text-[13px] text-muted-foreground">
+                  Không có file khớp.
+                </p>
               ) : (
                 <>
                   <ul className="space-y-2">
                     {shownFiles.map((m) => {
                       const isMe = m.senderId === currentUserId;
-                      const who = isMe ? 'Bạn' : (m.senderDisplayName?.trim() || m.senderId || 'Thành viên');
-                      const name = m.mediaOriginalName?.trim() || 'Tập tin';
+                      const who = isMe
+                        ? 'Bạn'
+                        : m.senderDisplayName?.trim() || m.senderId || 'Thành viên';
+                      const { fileName: name, mimeType } = resolveChatFileBubbleMeta(m);
                       const sizeStr = formatFileSize(m.mediaSize ?? null);
                       const dateStr = m.createdAt
-                        ? new Date(m.createdAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
+                        ? new Date(m.createdAt).toLocaleDateString('vi-VN', {
+                            day: '2-digit',
+                            month: '2-digit',
+                          })
                         : '';
                       return (
                         <li key={m.messageId}>
                           <button
                             type="button"
                             onClick={() => jump(m.messageId)}
-                            className="flex w-full gap-3 rounded-xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:border-blue-600/25 dark:border-white/10 dark:bg-[#242424]"
+                            className="flex w-full gap-3 rounded-xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition-colors hover:border-[#5C6BC0]/35 dark:border-white/10 dark:bg-[#242424]"
                           >
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-red-500/12 text-red-600 dark:bg-red-500/20 dark:text-red-400">
-                              <File className="h-6 w-6" strokeWidth={2} />
-                            </div>
+                            <ChatFileTypeBadge fileName={name} mimeType={mimeType} size="md" />
                             <div className="min-w-0 flex-1">
                               <p className="line-clamp-2 text-[13px] font-semibold text-foreground">
                                 <HighlightMatch text={name} needle={needleForUi} />

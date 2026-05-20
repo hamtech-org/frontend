@@ -8,7 +8,12 @@ import {
 } from '@/services/callGroupReduxSync';
 import { useAuth } from '@/hooks/useAuth';
 import { GlobalChatSocketBridge } from '@/components/GlobalChatSocketBridge';
+import { NotificationBootstrap } from '@/components/layout/NotificationBootstrap';
 import { authApi } from '@/store/api/authApi';
+import { notificationsApi } from '@/store/api/notificationsApi';
+import { addNotification, setUnreadCount } from '@/store/slices/notificationSlice';
+import { contactApi } from '@/store/api/contactApi';
+import type { INotification } from '@/types/notification.types';
 import type { AppDispatch } from '@/store/store';
 import { Button } from '@/components/ui/button';
 import {
@@ -92,11 +97,31 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       dispatch(authApi.util.invalidateTags(['AuthSessions']));
     };
 
+    const handleNotificationNew = (data: unknown) => {
+      const p = data as { notification?: INotification; unreadCount?: number };
+      if (p.notification) dispatch(addNotification(p.notification));
+      if (typeof p.unreadCount === 'number') dispatch(setUnreadCount(p.unreadCount));
+      dispatch(notificationsApi.util.invalidateTags(['Notifications']));
+    };
+
+    const handleNotificationUnreadCount = (data: unknown) => {
+      const p = data as { unreadCount?: number };
+      if (typeof p.unreadCount === 'number') dispatch(setUnreadCount(p.unreadCount));
+    };
+
+    const handleFriendRequestNew = () => {
+      dispatch(contactApi.util.invalidateTags(['Friends']));
+    };
+
     socketService.on('connect', handleSocketConnect);
     socketService.on('disconnect', handleSocketDisconnect);
     socketService.on('auth:force_logout', handleForceLogout);
     socketService.on('auth:sessions_changed', handleAuthSessionsChanged);
     socketService.on('auth:new_device_login', handleNewDeviceLogin);
+    socketService.on('notification:new', handleNotificationNew);
+    socketService.on('notification:unread_count', handleNotificationUnreadCount);
+    socketService.on('friendRequest:new', handleFriendRequestNew);
+    socketService.on('friendRequest:accepted', handleFriendRequestNew);
 
     try {
       if (socketService.getSocket().connected) {
@@ -112,6 +137,10 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       socketService.off('auth:force_logout', handleForceLogout);
       socketService.off('auth:sessions_changed', handleAuthSessionsChanged);
       socketService.off('auth:new_device_login', handleNewDeviceLogin);
+      socketService.off('notification:new', handleNotificationNew);
+      socketService.off('notification:unread_count', handleNotificationUnreadCount);
+      socketService.off('friendRequest:new', handleFriendRequestNew);
+      socketService.off('friendRequest:accepted', handleFriendRequestNew);
       resetCallGroupSocketReduxAttachment();
       socketService.disconnect();
     };
@@ -120,6 +149,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   return (
     <SocketContext.Provider value={{ isConnected }}>
       <GlobalChatSocketBridge />
+      <NotificationBootstrap />
       {children}
 
       <Dialog

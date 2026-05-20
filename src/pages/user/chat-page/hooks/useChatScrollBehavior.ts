@@ -9,6 +9,10 @@ interface UseChatScrollBehaviorParams {
   typingUsers: ReadonlyArray<TypingUserEntry>;
   actionMenuMsgId: string | null;
   setActionMenuMsgId: (id: string | null) => void;
+  /** Trigger loading older messages (cursor pagination). */
+  loadOlderMessages?: () => void;
+  hasMore?: boolean;
+  isLoadingOlder?: boolean;
 }
 
 export function useChatScrollBehavior({
@@ -18,12 +22,18 @@ export function useChatScrollBehavior({
   typingUsers,
   actionMenuMsgId,
   setActionMenuMsgId,
+  loadOlderMessages,
+  hasMore,
+  isLoadingOlder,
 }: UseChatScrollBehaviorParams) {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevLastMessageIdRef = useRef<string | null>(null);
   const scrollRafRef = useRef<number | null>(null);
+  const prevScrollHeightRef = useRef<number>(0);
+  const prevItemCountRef = useRef<number>(0);
   const [unreadIncomingCount, setUnreadIncomingCount] = useState(0);
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
     if (scrollRafRef.current !== null) {
@@ -37,12 +47,14 @@ export function useChatScrollBehavior({
 
   const handleJumpToLatest = useCallback(() => {
     setUnreadIncomingCount(0);
+    setIsScrolledUp(false);
     scrollToBottom('smooth');
   }, [scrollToBottom]);
 
   useEffect(() => {
     prevLastMessageIdRef.current = null;
     setUnreadIncomingCount(0);
+    setIsScrolledUp(false);
   }, [activeConversationId]);
 
   useEffect(() => {
@@ -74,8 +86,10 @@ export function useChatScrollBehavior({
 
     if (isMyMessage || isNearBottom || !isOverflowing) {
       setUnreadIncomingCount(0);
+      setIsScrolledUp(false);
       scrollToBottom('smooth');
     } else {
+      setIsScrolledUp(true);
       setUnreadIncomingCount((count) => count + 1);
     }
 
@@ -87,13 +101,28 @@ export function useChatScrollBehavior({
     if (!container) return;
 
     let isTicking = false;
+    const LOAD_MORE_THRESHOLD = 200; // px from top
     const handleScroll = () => {
       if (isTicking) return;
       isTicking = true;
       requestAnimationFrame(() => {
-        const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+        const distanceToBottom =
+          container.scrollHeight - container.scrollTop - container.clientHeight;
         if (distanceToBottom < CHAT_NEAR_BOTTOM_PX) {
           setUnreadIncomingCount(0);
+          setIsScrolledUp(false);
+        } else {
+          setIsScrolledUp(true);
+        }
+        // Load older messages when scrolled near top
+        if (
+          container.scrollTop < LOAD_MORE_THRESHOLD &&
+          hasMore &&
+          !isLoadingOlder &&
+          loadOlderMessages
+        ) {
+          prevScrollHeightRef.current = container.scrollHeight;
+          loadOlderMessages();
         }
         isTicking = false;
       });
@@ -101,7 +130,26 @@ export function useChatScrollBehavior({
 
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [hasMore, isLoadingOlder, loadOlderMessages]);
+
+  // Scroll anchoring: maintain scroll position when older messages are prepended
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const currentCount = allMessages.length;
+    const prevCount = prevItemCountRef.current;
+    const prevHeight = prevScrollHeightRef.current;
+    prevItemCountRef.current = currentCount;
+
+    // Older messages were prepended (count increased, was near top)
+    if (currentCount > prevCount && prevHeight > 0 && container.scrollTop < 200) {
+      const heightDiff = container.scrollHeight - prevHeight;
+      if (heightDiff > 0) {
+        container.scrollTop += heightDiff;
+      }
+      prevScrollHeightRef.current = 0;
+    }
+  }, [allMessages.length]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -125,6 +173,7 @@ export function useChatScrollBehavior({
     messagesEndRef,
     unreadIncomingCount,
     setUnreadIncomingCount,
+    isScrolledUp,
     scrollToBottom,
     handleJumpToLatest,
   };

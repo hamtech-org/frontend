@@ -1,12 +1,19 @@
 export * from './chat/types';
 export { chatApi } from './chat/core';
-export { patchConversationsFromNewMessage, patchMessageInGetMessagesCache } from './chat/cache';
+export {
+  patchConversationsFromNewMessage,
+  patchMessageInGetMessagesCache,
+  patchMessageInPaginatedCache,
+  appendMessageToPaginatedCache,
+} from './chat/cache';
 
 import { chatApi } from './chat/core';
 
 export const {
   useGetConversationsQuery,
   useGetMessagesQuery,
+  useGetMessagesPaginatedQuery,
+  useLazyGetMessagesPaginatedQuery,
   useGetConversationMembersQuery,
   useCreateConversationMutation,
   useSendMessageMutation,

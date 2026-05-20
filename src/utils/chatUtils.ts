@@ -166,7 +166,13 @@ export function lastMessagePreviewContentFromMessage(
     });
     if (line) return line;
   }
-  if (c !== '') return msg.content ?? '';
+  if (c !== '') {
+    if (msg.type === 'text') {
+      const joinPreview = formatGroupJoinLinkListPreview(c);
+      if (joinPreview) return joinPreview;
+    }
+    return msg.content ?? '';
+  }
   if (msg.type === 'image') return 'Hình ảnh';
   if (msg.type === 'video') return 'Video';
   if (msg.type === 'file') return msg.mediaOriginalName?.trim() || 'Tệp tin';

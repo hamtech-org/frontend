@@ -342,15 +342,23 @@ export default function ChatPage() {
     },
   });
 
-  const { messagesContainerRef, messagesEndRef, unreadIncomingCount, handleJumpToLatest } =
-    useChatScrollBehavior({
-      allMessages: messageData.allMessages,
-      activeConversationId,
-      currentUserId,
-      typingUsers,
-      actionMenuMsgId: modalState.actionMenuMsgId,
-      setActionMenuMsgId: modalActions.setActionMenuMsgId,
-    });
+  const {
+    messagesContainerRef,
+    messagesEndRef,
+    unreadIncomingCount,
+    isScrolledUp,
+    handleJumpToLatest,
+  } = useChatScrollBehavior({
+    allMessages: messageData.allMessages,
+    activeConversationId,
+    currentUserId,
+    typingUsers,
+    actionMenuMsgId: modalState.actionMenuMsgId,
+    setActionMenuMsgId: modalActions.setActionMenuMsgId,
+    loadOlderMessages: messageData.loadOlderMessages,
+    hasMore: messageData.hasMore,
+    isLoadingOlder: messageData.isLoadingOlder,
+  });
 
   useEffect(() => {
     modalActions.setMessageConfirm(null);
@@ -388,6 +396,13 @@ export default function ChatPage() {
   const handleFriendClick = useCallback(
     async (friendId: string, friendName: string) => {
       await directActions.handleFriendClick(friendId, friendName);
+    },
+    [directActions],
+  );
+
+  const handleGroupClick = useCallback(
+    async (conversationId: string, groupName: string) => {
+      await directActions.handleGroupClick(conversationId, groupName);
     },
     [directActions],
   );
@@ -563,8 +578,6 @@ export default function ChatPage() {
       conversationMessages={messageData.allMessages}
       conversationSearchRequestTick={conversationSearchRequestTick}
       onJumpToMessage={scrollToMessageBubble}
-      conversations={conversations}
-      onSelectConversation={handleSelectConversation}
       onTaskJoined={(taskId) => void groupController.handleTaskJoined(taskId)}
       onEditTaskFromBulletin={(t) => groupController.openEditTaskFromGroupTask(String(t.taskId))}
       onDeleteTaskFromBulletin={(id) => void groupController.handleDeleteGroupTask(id)}
@@ -639,6 +652,7 @@ export default function ChatPage() {
                 endRef: messagesEndRef,
                 allMessages: messageData.allMessages,
                 unreadIncomingCount,
+                isScrolledUp,
                 onJumpToLatest: handleJumpToLatest,
               }}
               jumpHighlightMessageId={jumpHighlightMessageId}
@@ -656,6 +670,8 @@ export default function ChatPage() {
                   : undefined
               }
               onFriendClick={handleFriendClick}
+              onGroupClick={handleGroupClick}
+              groupConversations={conversations.filter((c) => c.type === 'group')}
               shareTargetConversations={conversations}
               onForwardMediaMessage={handleForwardMediaMessage}
               onBack={!isTabletOrDesktop ? handleBackToList : undefined}

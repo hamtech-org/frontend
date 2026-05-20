@@ -543,6 +543,7 @@ export function useGroupConversationController({
         subtasks: cleanSubtaskRows.length > 0 ? cleanSubtaskRows : undefined,
       });
       toast.success('Đã tạo công việc');
+      await fetchGroupMembers(activeConversationId);
       await fetchGroupTasks(activeConversationId);
       // Server đã `createAndBroadcastSystemMessage` (`task_assigned`) — không bơm local / emit socket (tránh banner đúp).
       modalActions.closeTaskModal();
@@ -564,6 +565,7 @@ export function useGroupConversationController({
     taskDeadline,
     editingTaskId,
     modalActions,
+    fetchGroupMembers,
     fetchGroupTasks,
     setActionBusy,
     dispatch,
@@ -1289,6 +1291,10 @@ export function useGroupConversationController({
       }
       try {
         await groupApi.approveRequest(activeConversationId, userId);
+        await Promise.all([
+          fetchGroupMembers(activeConversationId, { force: true }),
+          fetchGroupTasks(activeConversationId),
+        ]);
         toast.success('Đã duyệt yêu cầu');
       } catch (err) {
         setGroupRequests(beforeRequests);
@@ -1304,6 +1310,8 @@ export function useGroupConversationController({
       currentUserRole,
       groupRequests,
       groupMembers,
+      fetchGroupMembers,
+      fetchGroupTasks,
       setActionBusy,
       setGroupMembers,
       setGroupRequests,
@@ -1370,6 +1378,7 @@ export function useGroupConversationController({
         syncGroupMemberCount?.(activeConversationId, nextMemberCount);
         await Promise.all([
           fetchGroupMembers(activeConversationId, { force: true }),
+          fetchGroupTasks(activeConversationId),
           refetchConversations?.() ?? Promise.resolve(),
         ]);
       } catch (err) {
@@ -1386,6 +1395,7 @@ export function useGroupConversationController({
       currentUserRole,
       dispatch,
       fetchGroupMembers,
+      fetchGroupTasks,
       groupMembers,
       refetchConversations,
       syncGroupMemberCount,

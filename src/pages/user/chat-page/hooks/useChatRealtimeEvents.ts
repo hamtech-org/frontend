@@ -16,6 +16,7 @@ import {
 import { socketService } from '@/services/socket';
 import type { AppDispatch } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
+import { lastMessagePreviewContentFromMessage } from '@/utils/chatUtils';
 import {
   groupProfilePatchFromPayload,
   patchGroupProfileInConversationsCache,
@@ -70,11 +71,11 @@ export function useChatRealtimeEvents({
           if (!conv) return;
           conv.lastMessage = {
             messageId: msg.messageId,
-            content: msg.content,
+            content: lastMessagePreviewContentFromMessage(msg, currentUserId),
             senderId: msg.senderId,
             type: msg.type,
             createdAt: msg.createdAt,
-            senderDisplayName: msg.senderDisplayName,
+            senderDisplayName: msg.senderDisplayName?.trim() ?? null,
           };
         }),
       );

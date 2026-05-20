@@ -1,7 +1,10 @@
 import type { AppDispatch } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
 import { chatApi } from '@/store/api/chat/core';
-import { sortConversationsForSidebar } from '@/utils/chatUtils';
+import {
+  lastMessagePreviewContentFromMessage,
+  sortConversationsForSidebar,
+} from '@/utils/chatUtils';
 
 /** Cập nhật preview lastMessage + unread trên cache getConversations (gọi sau khi module đã export chatApi). */
 export function patchConversationsFromNewMessage(
@@ -15,16 +18,7 @@ export function patchConversationsFromNewMessage(
       if (!draft?.data) return;
       const conv = draft.data.find((c) => c.conversationId === msg.conversationId);
       if (!conv) return;
-      const previewContent =
-        msg.content?.trim() !== ''
-          ? msg.content
-          : msg.type === 'image'
-            ? '[Ảnh]'
-            : msg.type === 'video'
-              ? '[Video]'
-              : msg.type === 'file'
-                ? '[File]'
-                : msg.content;
+      const previewContent = lastMessagePreviewContentFromMessage(msg, currentUserId ?? undefined);
       const alreadySamePreview =
         conv.lastMessage &&
         conv.lastMessage.content === previewContent &&
@@ -67,5 +61,46 @@ export function patchMessageInGetMessagesCache(
       const m = draft.data.find((x) => String(x.messageId) === mid);
       if (m) Object.assign(m, patch);
     }),
+  );
+}
+
+/** Cập nhật một tin trong cache `getMessagesPaginated` (items array bên trong .data). */
+export function patchMessageInPaginatedCache(
+  dispatch: AppDispatch,
+  conversationId: string,
+  messageId: string,
+  patch: Partial<IMessage>,
+): void {
+  const mid = String(messageId);
+  dispatch(
+    chatApi.util.updateQueryData(
+      'getMessagesPaginated',
+      { conversationId } as never,
+      (draft: { data: { items: IMessage[] } }) => {
+        if (!draft.data?.items) return;
+        const m = draft.data.items.find((x: IMessage) => String(x.messageId) === mid);
+        if (m) Object.assign(m, patch);
+      },
+    ),
+  );
+}
+
+/** Append a new message to the paginated cache (oldest→newest order). */
+export function appendMessageToPaginatedCache(
+  dispatch: AppDispatch,
+  conversationId: string,
+  message: IMessage,
+): void {
+  dispatch(
+    chatApi.util.updateQueryData(
+      'getMessagesPaginated',
+      { conversationId } as never,
+      (draft: { data: { items: IMessage[] } }) => {
+        if (!draft.data?.items) return;
+        const mid = String(message.messageId);
+        if (draft.data.items.some((m: IMessage) => String(m.messageId) === mid)) return;
+        draft.data.items.push(message);
+      },
+    ),
   );
 }
