@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MessageSquare, Send, Sparkles, Square, User } from 'lucide-react';
+import { MessageSquare, Send, Sparkles, Square, User, Users } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { cn } from '@/utils/cn';
 import { ConversationInfoPanelAIRight } from '@/components/chat/ConversationInfoPanelAIRight';
@@ -31,10 +31,19 @@ type AIAssistantMessageResultsMessage = {
   query: string;
 };
 
+type AIAssistantGroupResultsMessage = {
+  id: string;
+  role: 'assistant';
+  kind: 'group_results';
+  groups: ShowGroupResultsAction['payload']['groups'];
+  query: string;
+};
+
 type AIAssistantChatItem =
   | AIAssistantMessage
   | AIAssistantUserCardsMessage
-  | AIAssistantMessageResultsMessage;
+  | AIAssistantMessageResultsMessage
+  | AIAssistantGroupResultsMessage;
 
 type AiClientAction = {
   type: string;
@@ -86,6 +95,21 @@ type ShowMessageResultsAction = {
       senderDisplayName?: string | null;
       content: string;
       createdAt: string;
+    }>;
+  };
+};
+
+type ShowGroupResultsAction = {
+  type: 'show_group_results';
+  payload: {
+    source: 'search_groups';
+    query: string;
+    groups: Array<{
+      groupId: string;
+      name: string;
+      description: string | null;
+      memberCount: number;
+      type: string;
     }>;
   };
 };
@@ -176,6 +200,10 @@ function chatItemsFromAssistantActions(
     (a): a is ShowMessageResultsAction =>
       a.type === 'show_message_results' && Array.isArray(a.payload?.messages),
   );
+  const showGroupActions = actions.filter(
+    (a): a is ShowGroupResultsAction =>
+      a.type === 'show_group_results' && Array.isArray(a.payload?.groups),
+  );
 
   for (const act of showUsersActions) {
     if (!act.payload?.users?.length) continue;
@@ -198,15 +226,27 @@ function chatItemsFromAssistantActions(
       messages: act.payload.messages.slice(0, 8),
     });
   }
+  for (const act of showGroupActions) {
+    if (!act.payload?.groups?.length) continue;
+    items.push({
+      id: `assistant-groups-${baseId}`,
+      role: 'assistant',
+      kind: 'group_results',
+      query: act.payload.query,
+      groups: act.payload.groups.slice(0, 8),
+    });
+  }
   return items;
 }
 
 export function AIAssistantPanel({
   onOpenDirectChat,
   onOpenMessage,
+  onOpenGroup,
 }: {
   onOpenDirectChat?: (otherUserId: string, otherDisplayName: string) => Promise<void> | void;
   onOpenMessage?: (conversationId: string, messageId: string) => Promise<void> | void;
+  onOpenGroup?: (groupId: string) => Promise<void> | void;
 }) {
   const { accessToken } = useAuth();
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -218,8 +258,30 @@ export function AIAssistantPanel({
   const lastSentUserText = useRef('');
   const currentRequestId = useRef<string | null>(null);
   const cancelledRequestIds = useRef(new Set<string>());
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const canSend = useMemo(() => draft.trim().length > 0 && !sending, [draft, sending]);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    requestAnimationFrame(() => {
+      const end = messagesEndRef.current;
+      if (end) {
+        end.scrollIntoView({ behavior, block: 'end' });
+        return;
+      }
+      const box = messagesScrollRef.current;
+      if (box) box.scrollTop = box.scrollHeight;
+    });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom('auto');
+  }, [scrollToBottom]);
+
+  useEffect(() => {
+    scrollToBottom('smooth');
+  }, [messages.length, sending, sendingStatus, lastActions.length, scrollToBottom]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -485,6 +547,18 @@ export function AIAssistantPanel({
     [onOpenMessage],
   );
 
+  const handleOpenGroupResult = useCallback(
+    async (groupId: string) => {
+      if (!groupId) return;
+      try {
+        await onOpenGroup?.(groupId);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Không mở được nhóm');
+      }
+    },
+    [onOpenGroup],
+  );
+
   return (
     <div className="flex-1 min-w-0 min-h-0 flex bg-background">
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
@@ -498,7 +572,10 @@ export function AIAssistantPanel({
           </p>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 py-4 md:px-5 flex flex-col gap-3">
+        <div
+          ref={messagesScrollRef}
+          className="flex-1 overflow-y-auto px-3 py-4 md:px-5 flex flex-col gap-3"
+        >
           {messages.map((message) => {
             if (message.kind === 'user_cards') {
               return (
@@ -595,6 +672,46 @@ export function AIAssistantPanel({
               );
             }
 
+            if (message.kind === 'group_results') {
+              return (
+                <div
+                  key={message.id}
+                  className="max-w-[92%] md:max-w-[80%] self-start rounded-2xl border border-border/60 bg-muted/40 p-3"
+                >
+                  <p className="text-xs font-semibold text-foreground mb-2">Kết quả tìm nhóm</p>
+                  <div className="space-y-2">
+                    {message.groups.map((group) => (
+                      <button
+                        key={group.groupId}
+                        type="button"
+                        onClick={() => void handleOpenGroupResult(group.groupId)}
+                        className="w-full rounded-xl border border-border/50 bg-background/70 p-3 text-left transition-colors hover:bg-background"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="size-10 shrink-0 rounded-xl border border-border bg-muted flex items-center justify-center">
+                            <Users className="size-5 text-muted-foreground" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-sm font-semibold text-foreground">
+                                {group.name}
+                              </p>
+                              <span className="shrink-0 text-[10px] text-muted-foreground">
+                                {group.memberCount.toLocaleString('vi-VN')} thành viên
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                              {group.description?.trim() || 'Chưa có mô tả'}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div
                 key={message.id}
@@ -614,6 +731,7 @@ export function AIAssistantPanel({
               {sendingStatus || 'AI dang tra loi...'}
             </div>
           ) : null}
+          <div ref={messagesEndRef} className="h-px shrink-0" />
         </div>
 
         {lastActions.length > 0 ? (

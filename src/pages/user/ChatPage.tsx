@@ -435,6 +435,14 @@ export default function ChatPage() {
     [handleSelectConversation, scrollToMessageBubble],
   );
 
+  const handleOpenAiGroupResult = useCallback(
+    async (groupId: string) => {
+      setShowAIAssistant(false);
+      handleSelectConversation(groupId);
+    },
+    [handleSelectConversation],
+  );
+
   const handleOpenProfile = useCallback(() => {
     navigate('/profile');
   }, [navigate]);
@@ -631,6 +639,7 @@ export default function ChatPage() {
               setShowAIAssistant(false);
             }}
             onOpenMessage={handleOpenAiMessageResult}
+            onOpenGroup={handleOpenAiGroupResult}
           />
         ) : (
           (isTabletOrDesktop || mobileView === 'chat') && (
