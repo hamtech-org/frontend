@@ -28,6 +28,7 @@ import type {
   ISearchGroupResult,
   ISearchPostResult,
 } from '@/types/search.types';
+import defaultAvatarGroup from '@/assets/images/avatar-group-default..jpg';
 
 const SearchPage = () => {
   const navigate = useNavigate();
@@ -474,12 +475,14 @@ const SearchPage = () => {
                     key={group.groupId}
                     whileHover={{ y: -4 }}
                     className="p-4 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all cursor-pointer"
-                    onClick={() => navigate(`/group/${group.groupId}`)}
+                    onClick={() => navigate(`/communities/${group.groupId}`)}
                   >
                     <div className="flex flex-col items-center text-center">
-                      <div className="w-16 h-16 rounded-lg mb-3 object-cover bg-gradient-to-tr from-emerald-600 to-teal-600 flex items-center justify-center text-white font-bold text-xl">
-                        {group.name.charAt(0)}
-                      </div>
+                      <img
+                        src={group.avatar ?? defaultAvatarGroup}
+                        alt={group.name}
+                        className="w-16 h-16 rounded-lg mb-3 object-cover border border-gray-100 dark:border-gray-700 shadow-sm"
+                      />
                       <h3 className="font-semibold text-gray-900 dark:text-white">{group.name}</h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                         {group.memberCount.toLocaleString()} thành viên

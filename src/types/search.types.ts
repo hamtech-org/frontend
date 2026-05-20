@@ -39,6 +39,8 @@ export interface ISearchGroupResult {
   description: string | null;
   memberCount: number;
   type: string;
+  avatar?: string | null;
+  coverUrl?: string | null;
 }
 
 export interface ISearchMessageResult {
