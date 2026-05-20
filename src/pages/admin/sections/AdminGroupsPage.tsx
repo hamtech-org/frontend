@@ -1,7 +1,11 @@
-// TODO(team): replace mocks with RTK Query / API
+import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog';
+import AdminFormDialog from '@/components/admin/AdminFormDialog';
+import AdminRowActions from '@/components/admin/AdminRowActions';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -9,70 +13,141 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import groupData from '@/pages/admin/mocks/groupManagement.json';
-import { Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { searchService } from '@/services/search.service';
+import type { AdminGroupListItem, GroupAdminStatus } from '@/types/adminCrud.types';
+import {
+  useCreateAdminGroupMutation,
+  useDeleteAdminGroupMutation,
+  useListAdminGroupsQuery,
+  useUpdateAdminGroupMutation,
+} from '@/store/api/adminApi';
+import { Plus, Search } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'react-toastify';
 
-type GroupStatusFilter = 'all' | 'active' | 'locked' | 'archived';
+type GroupStatusFilter = 'all' | GroupAdminStatus;
 
 export default function AdminGroupsPage() {
-  const { groupInteractions, groups, groupMembers } = groupData;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<GroupStatusFilter>('all');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editGroup, setEditGroup] = useState<AdminGroupListItem | null>(null);
+  const [deleteGroup, setDeleteGroup] = useState<AdminGroupListItem | null>(null);
 
-  const q = search.trim().toLowerCase();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [ownerQuery, setOwnerQuery] = useState('');
+  const [ownerId, setOwnerId] = useState('');
+  const [ownerLabel, setOwnerLabel] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editStatus, setEditStatus] = useState<GroupAdminStatus>('active');
 
-  const filteredInteractions = useMemo(
-    () => groupInteractions.filter((row) => row.name.toLowerCase().includes(q)),
-    [groupInteractions, q],
-  );
-  const filteredGroups = useMemo(
-    () =>
-      groups
-        .filter((g) => (statusFilter === 'all' ? true : g.status === statusFilter))
-        .filter((g) => g.name.toLowerCase().includes(q)),
-    [groups, q, statusFilter],
-  );
-  const filteredMembers = useMemo(
-    () =>
-      groupMembers.filter(
-        (m) =>
-          m.displayName.toLowerCase().includes(q) ||
-          m.userId.toLowerCase().includes(q) ||
-          m.groupId.toLowerCase().includes(q),
-      ),
-    [groupMembers, q],
-  );
+  const listQuery = {
+    query: search.trim() || undefined,
+    status: statusFilter === 'all' ? undefined : statusFilter,
+    limit: 50,
+  };
 
-  const activeCount = groups.filter((g) => g.status === 'active').length;
-  const totalMembers = groups.reduce((s, g) => s + g.memberCount, 0);
+  const { data, isLoading, isError, refetch } = useListAdminGroupsQuery(listQuery);
+  const [createGroup, { isLoading: creating }] = useCreateAdminGroupMutation();
+  const [updateGroup, { isLoading: updating }] = useUpdateAdminGroupMutation();
+  const [removeGroup, { isLoading: deleting }] = useDeleteAdminGroupMutation();
+
+  const groups = data?.data.items ?? [];
+  const activeCount = useMemo(() => groups.filter((g) => g.status === 'active').length, [groups]);
+
+  useEffect(() => {
+    const q = ownerQuery.trim();
+    if (q.length < 2) return;
+    const t = window.setTimeout(() => {
+      void searchService.searchUsers({ q, pageSize: 8 }).then((res) => {
+        const first = res?.items?.[0];
+        if (first) {
+          setOwnerId(first.userId);
+          setOwnerLabel(first.displayName);
+        }
+      });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [ownerQuery]);
+
+  const openEdit = (group: AdminGroupListItem) => {
+    setEditGroup(group);
+    setEditName(group.name);
+    setEditDescription(group.description ?? '');
+    setEditStatus(group.status);
+  };
+
+  const handleCreate = async () => {
+    if (!ownerId) {
+      toast.error('Chọn chủ nhóm (gõ tên rồi chọn từ kết quả tìm kiếm)');
+      return;
+    }
+    try {
+      await createGroup({ name, description: description || undefined, ownerId }).unwrap();
+      toast.success('Đã tạo nhóm');
+      setCreateOpen(false);
+      setName('');
+      setDescription('');
+      setOwnerQuery('');
+      setOwnerId('');
+      setOwnerLabel('');
+    } catch {
+      toast.error('Không thể tạo nhóm');
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!editGroup) return;
+    try {
+      await updateGroup({
+        groupId: editGroup.groupId,
+        body: { name: editName, description: editDescription, status: editStatus },
+      }).unwrap();
+      toast.success('Đã cập nhật nhóm');
+      setEditGroup(null);
+    } catch {
+      toast.error('Không thể cập nhật');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteGroup) return;
+    try {
+      await removeGroup(deleteGroup.groupId).unwrap();
+      toast.success('Đã giải tán nhóm');
+      setDeleteGroup(null);
+    } catch {
+      toast.error('Không thể xóa nhóm');
+    }
+  };
 
   return (
     <div className="w-full min-w-0 space-y-6">
-      <div>
-        <h1 className="text-3xl font-display font-extrabold tracking-tight">Quản lý nhóm</h1>
-        <p className="text-sm text-muted-foreground mt-1">Dữ liệu mẫu (JSON) — nối backend sau.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-display font-extrabold tracking-tight">Quản lý nhóm</h1>
+          <p className="text-sm text-muted-foreground mt-1">CRUD nhóm chat</p>
+        </div>
+        <Button className="rounded-xl" onClick={() => setCreateOpen(true)}>
+          <Plus className="size-4 mr-2" />
+          Tạo nhóm
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <div className="rounded-2xl border border-border/60 bg-card/80 p-4 shadow-sm ring-1 ring-foreground/5">
+        <div className="rounded-2xl border border-border/60 bg-card/80 p-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Tổng nhóm
+            Tổng (trang)
           </p>
           <p className="mt-2 text-2xl font-display font-bold tabular-nums">{groups.length}</p>
         </div>
-        <div className="rounded-2xl border border-border/60 bg-card/80 p-4 shadow-sm ring-1 ring-foreground/5">
+        <div className="rounded-2xl border border-border/60 bg-card/80 p-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Đang hoạt động
           </p>
           <p className="mt-2 text-2xl font-display font-bold tabular-nums">{activeCount}</p>
-        </div>
-        <div className="rounded-2xl border border-border/60 bg-card/80 p-4 shadow-sm ring-1 ring-foreground/5 col-span-2 lg:col-span-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Thành viên (tổng mẫu)
-          </p>
-          <p className="mt-2 text-2xl font-display font-bold tabular-nums">{totalMembers}</p>
         </div>
       </div>
 
@@ -82,16 +157,12 @@ export default function AdminGroupsPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm theo tên nhóm, thành viên..."
+            placeholder="Tìm tên nhóm, groupId…"
             className="w-full rounded-xl pl-10"
-            aria-label="Tìm kiếm"
           />
         </div>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as GroupStatusFilter)}>
-          <SelectTrigger
-            className="w-full rounded-xl sm:w-[200px]"
-            aria-label="Lọc trạng thái nhóm"
-          >
+          <SelectTrigger className="w-full rounded-xl sm:w-[200px]">
             <SelectValue placeholder="Trạng thái" />
           </SelectTrigger>
           <SelectContent>
@@ -101,112 +172,125 @@ export default function AdminGroupsPage() {
             <SelectItem value="archived">archived</SelectItem>
           </SelectContent>
         </Select>
+        <Button variant="outline" className="rounded-xl" onClick={() => refetch()}>
+          Tải lại
+        </Button>
       </div>
 
-      <Tabs defaultValue="interaction" className="w-full min-w-0 gap-4">
-        <TabsList
-          variant="line"
-          className="w-full flex-wrap justify-start h-auto min-h-9 py-1.5 gap-1"
-        >
-          <TabsTrigger value="interaction">Thống kê tương tác</TabsTrigger>
-          <TabsTrigger value="status">Trạng thái nhóm</TabsTrigger>
-          <TabsTrigger value="members">Thành viên (mẫu)</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="interaction" className="mt-4">
-          <Card className="glass-card w-full min-w-0 border-none shadow-lg">
-            <CardHeader>
-              <CardTitle>Mức độ tương tác (7 ngày)</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <table className="w-full min-w-[480px] text-left text-sm">
-                <thead>
-                  <tr className="border-b text-muted-foreground">
-                    <th className="py-2 pr-4">Nhóm</th>
-                    <th className="py-2 pr-4">Tin nhắn</th>
-                    <th className="py-2 pr-4">TV hoạt động</th>
-                    <th className="py-2">Reaction</th>
+      <Card className="glass-card border-none shadow-lg">
+        <CardHeader>
+          <CardTitle>Danh sách nhóm</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Đang tải…</p>
+          ) : isError ? (
+            <p className="text-sm text-destructive">Không tải được dữ liệu.</p>
+          ) : (
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground">
+                  <th className="py-2 pr-4">Tên</th>
+                  <th className="py-2 pr-4">Chủ nhóm</th>
+                  <th className="py-2 pr-4">Thành viên</th>
+                  <th className="py-2 pr-4">Trạng thái</th>
+                  <th className="py-2 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((row) => (
+                  <tr key={row.groupId} className="border-b border-border/40">
+                    <td className="py-3 pr-4 font-medium">{row.name}</td>
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {row.ownerDisplayName ?? row.ownerId}
+                    </td>
+                    <td className="py-3 pr-4">{row.memberCount}</td>
+                    <td className="py-3 pr-4">
+                      <Badge variant="outline">{row.status}</Badge>
+                    </td>
+                    <td className="py-3">
+                      <AdminRowActions
+                        onEdit={() => openEdit(row)}
+                        onDelete={() => setDeleteGroup(row)}
+                      />
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {filteredInteractions.map((row) => (
-                    <tr key={row.groupId} className="border-b border-border/60">
-                      <td className="py-3 pr-4 font-medium">{row.name}</td>
-                      <td className="py-3 pr-4 tabular-nums">{row.messages7d}</td>
-                      <td className="py-3 pr-4 tabular-nums">{row.activeMembers7d}</td>
-                      <td className="py-3 tabular-nums">{row.reactions7d}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
 
-        <TabsContent value="status" className="mt-4">
-          <Card className="glass-card w-full min-w-0 border-none shadow-lg">
-            <CardHeader>
-              <CardTitle>Cập nhật trạng thái nhóm</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {filteredGroups.map((g) => (
-                <div
-                  key={g.groupId}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 bg-muted/30 px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium">{g.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {g.memberCount} thành viên · cập nhật {g.updatedAt}
-                    </p>
-                  </div>
-                  <Badge
-                    variant={
-                      g.status === 'active'
-                        ? 'default'
-                        : g.status === 'locked'
-                          ? 'destructive'
-                          : 'secondary'
-                    }
-                  >
-                    {g.status}
-                  </Badge>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </TabsContent>
+      <AdminFormDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title="Tạo nhóm"
+        submitLabel="Tạo"
+        loading={creating}
+        onSubmit={handleCreate}
+      >
+        <div className="space-y-2">
+          <Label>Tên nhóm</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label>Mô tả</Label>
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label>Chủ nhóm (tìm kiếm)</Label>
+          <Input
+            value={ownerQuery}
+            onChange={(e) => setOwnerQuery(e.target.value)}
+            placeholder="Gõ tên hoặc email…"
+          />
+          {ownerId ? (
+            <p className="text-xs text-muted-foreground">
+              Đã chọn: {ownerLabel || ownerId} ({ownerId})
+            </p>
+          ) : null}
+        </div>
+      </AdminFormDialog>
 
-        <TabsContent value="members" className="mt-4">
-          <Card className="glass-card w-full min-w-0 border-none shadow-lg">
-            <CardHeader>
-              <CardTitle>Danh sách thành viên (nhóm mẫu)</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <table className="w-full min-w-[520px] text-left text-sm">
-                <thead>
-                  <tr className="border-b text-muted-foreground">
-                    <th className="py-2 pr-4">Tên</th>
-                    <th className="py-2 pr-4">Vai trò</th>
-                    <th className="py-2 pr-4">Nhóm</th>
-                    <th className="py-2">Tham gia</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMembers.map((m) => (
-                    <tr key={`${m.groupId}-${m.userId}`} className="border-b border-border/60">
-                      <td className="py-3 pr-4 font-medium">{m.displayName}</td>
-                      <td className="py-3 pr-4">{m.role}</td>
-                      <td className="py-3 pr-4 font-mono text-xs">{m.groupId}</td>
-                      <td className="py-3">{m.joinedAt}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <AdminFormDialog
+        open={!!editGroup}
+        onOpenChange={(o) => !o && setEditGroup(null)}
+        title="Sửa nhóm"
+        loading={updating}
+        onSubmit={handleUpdate}
+      >
+        <div className="space-y-2">
+          <Label>Tên</Label>
+          <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label>Mô tả</Label>
+          <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label>Trạng thái</Label>
+          <Select value={editStatus} onValueChange={(v) => setEditStatus(v as GroupAdminStatus)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">active</SelectItem>
+              <SelectItem value="locked">locked</SelectItem>
+              <SelectItem value="archived">archived</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </AdminFormDialog>
+
+      <AdminConfirmDialog
+        open={!!deleteGroup}
+        onOpenChange={(o) => !o && setDeleteGroup(null)}
+        title="Giải tán nhóm?"
+        description={`Nhóm "${deleteGroup?.name}" sẽ bị giải tán và thành viên nhận sự kiện realtime.`}
+        loading={deleting}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }
