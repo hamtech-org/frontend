@@ -162,6 +162,36 @@ export const communityApi = createApi({
       }),
       providesTags: (_res, _err, { groupId }) => [{ type: 'CommunityPosts', id: groupId }],
     }),
+    pinCommunityPost: builder.mutation<
+      ApiSuccessResponse<null>,
+      { groupId: string; postId: string }
+    >({
+      query: ({ groupId, postId }) => ({
+        url: `/communities/${groupId}/posts/${postId}/pin`,
+        method: 'PUT',
+      }),
+      invalidatesTags: (_res, _err, { groupId }) => [{ type: 'CommunityPosts', id: groupId }],
+    }),
+    unpinCommunityPost: builder.mutation<
+      ApiSuccessResponse<null>,
+      { groupId: string; postId: string }
+    >({
+      query: ({ groupId, postId }) => ({
+        url: `/communities/${groupId}/posts/${postId}/unpin`,
+        method: 'PUT',
+      }),
+      invalidatesTags: (_res, _err, { groupId }) => [{ type: 'CommunityPosts', id: groupId }],
+    }),
+    reportCommunity: builder.mutation<
+      ApiSuccessResponse<null>,
+      { groupId: string; reason: string; details?: string }
+    >({
+      query: ({ groupId, ...body }) => ({
+        url: `/communities/${groupId}/reports`,
+        method: 'POST',
+        body,
+      }),
+    }),
   }),
 });
 
@@ -180,4 +210,7 @@ export const {
   useTransferCommunityOwnerMutation,
   useUpdateCommunityMemberRoleMutation,
   useUpdateCommunityMutation,
+  usePinCommunityPostMutation,
+  useUnpinCommunityPostMutation,
+  useReportCommunityMutation,
 } = communityApi;

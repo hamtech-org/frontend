@@ -8,6 +8,7 @@ import {
   Trash2,
   Flag,
   EyeOff,
+  Pin,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -20,6 +21,10 @@ import {
   useReactToPostMutation,
   useToggleSavePostMutation,
 } from '@/store/api/newsfeedApi';
+import {
+  usePinCommunityPostMutation,
+  useUnpinCommunityPostMutation,
+} from '@/store/api/communityApi';
 import { formatRelative } from '@/utils/formatDate';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HashtagText } from './HashtagText';
@@ -46,9 +51,10 @@ interface Props {
   post: IPost;
   onEditPost?: (post: IPost) => void;
   className?: string;
+  communityRole?: 'owner' | 'admin' | 'moderator' | 'member' | null;
 }
 
-export const PostCard = ({ post, onEditPost, className }: Props) => {
+export const PostCard = ({ post, onEditPost, className, communityRole }: Props) => {
   const vm = toPostCardViewModel(post);
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const isOwner = currentUser?.userId === vm.authorId;
@@ -80,6 +86,11 @@ export const PostCard = ({ post, onEditPost, className }: Props) => {
   const [reactToPost] = useReactToPostMutation();
   const [deletePost, { isLoading: isDeleting }] = useDeletePostMutation();
   const [toggleSavePost] = useToggleSavePostMutation();
+  const [pinPost] = usePinCommunityPostMutation();
+  const [unpinPost] = useUnpinCommunityPostMutation();
+
+  const isModeratorOrAbove =
+    communityRole === 'owner' || communityRole === 'admin' || communityRole === 'moderator';
 
   const myName = currentUser?.displayName?.trim() || 'Bạn';
   const myAvatar = currentUser?.avatar || '';
@@ -143,6 +154,12 @@ export const PostCard = ({ post, onEditPost, className }: Props) => {
       viewport={{ once: true }}
       className={`feed-card-virtualized glass-card rounded-2xl overflow-hidden border-none shadow-lg shadow-black/5 dark:shadow-white/5 ${className || 'max-w-3xl mx-auto'}`}
     >
+      {post.isPinned && (
+        <div className="px-3 pt-3 md:px-4 flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400">
+          <Pin className="w-3.5 h-3.5 fill-current" />
+          <span>Được ghim bởi Quản trị viên</span>
+        </div>
+      )}
       <div className="px-3 py-2 md:px-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="size-9 rounded-full overflow-hidden bg-muted/40 flex items-center justify-center shrink-0">
@@ -212,6 +229,30 @@ export const PostCard = ({ post, onEditPost, className }: Props) => {
                 >
                   <EyeOff className="h-4 w-4 text-muted-foreground" />
                   Ẩn bài viết
+                </button>
+              </>
+            )}
+
+            {isModeratorOrAbove && post.groupId && (
+              <>
+                <div className="my-1 border-t border-border/50" />
+                <button
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+                  onClick={async () => {
+                    setIsMenuOpen(false);
+                    try {
+                      if (post.isPinned) {
+                        await unpinPost({ groupId: post.groupId!, postId: post.postId }).unwrap();
+                      } else {
+                        await pinPost({ groupId: post.groupId!, postId: post.postId }).unwrap();
+                      }
+                    } catch (err: any) {
+                      alert(err?.data?.message || 'Có lỗi xảy ra');
+                    }
+                  }}
+                >
+                  <Pin className="h-4 w-4 text-muted-foreground" />
+                  {post.isPinned ? 'Bỏ ghim bài viết' : 'Ghim bài viết'}
                 </button>
               </>
             )}

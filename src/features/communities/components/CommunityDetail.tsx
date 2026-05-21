@@ -19,6 +19,7 @@ import {
   AlertCircle,
   ArrowLeft,
   RefreshCw,
+  Flag,
 } from 'lucide-react';
 
 import {
@@ -73,6 +74,7 @@ import { CommunityAvatar } from './CommunityAvatar';
 import { CommunitySidebar } from './CommunitySidebar';
 import { EmptyState } from './EmptyState';
 import { CommunityFormDialog } from './CommunityFormDialog';
+import { CommunityReportDialog } from './CommunityReportDialog';
 
 export function CommunityDetail({ groupId }: { groupId: string }) {
   const currentUser = useSelector((state: RootState) => state.auth.user);
@@ -81,6 +83,7 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
   const [confirmAction, setConfirmAction] = useState<'leave' | 'archive' | null>(null);
   const [memberToKick, setMemberToKick] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('posts');
+  const [reportOpen, setReportOpen] = useState(false);
   const { data, isLoading, isError, error } = useGetCommunityQuery(groupId);
   const community = data?.data;
   const canManage = canManageCommunity(community?.viewerRole);
@@ -290,23 +293,23 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
                 </Button>
               )}
 
-              {isMember && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-10 w-10 rounded-xl border-border/60 hover:bg-muted cursor-pointer flex items-center justify-center"
-                    >
-                      <MoreHorizontal className="size-5 text-muted-foreground" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-48 p-1.5 rounded-xl border border-border/60 bg-popover shadow-xl"
-                    align="end"
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 rounded-xl border-border/60 hover:bg-muted cursor-pointer flex items-center justify-center"
                   >
-                    <div className="flex flex-col gap-1">
-                      {(community.viewerRole === 'owner' || community.viewerRole === 'admin') && (
+                    <MoreHorizontal className="size-5 text-muted-foreground" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-48 p-1.5 rounded-xl border border-border/60 bg-popover shadow-xl"
+                  align="end"
+                >
+                  <div className="flex flex-col gap-1">
+                    {isMember &&
+                      (community.viewerRole === 'owner' || community.viewerRole === 'admin') && (
                         <Button
                           variant="ghost"
                           onClick={() => setEditOpen(true)}
@@ -316,16 +319,17 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
                           Chỉnh sửa nhóm
                         </Button>
                       )}
-                      {isOwner && (
-                        <Button
-                          variant="ghost"
-                          onClick={() => setConfirmAction('archive')}
-                          className="h-9 w-full justify-start px-3 rounded-lg text-xs font-bold gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-                        >
-                          <Trash2 className="size-4" />
-                          Lưu trữ nhóm
-                        </Button>
-                      )}
+                    {isMember && isOwner && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => setConfirmAction('archive')}
+                        className="h-9 w-full justify-start px-3 rounded-lg text-xs font-bold gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                      >
+                        <Trash2 className="size-4" />
+                        Lưu trữ nhóm
+                      </Button>
+                    )}
+                    {isMember && (
                       <Button
                         variant="ghost"
                         onClick={() => setConfirmAction('leave')}
@@ -335,10 +339,20 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
                         <UserMinus className="size-4" />
                         Rời cộng đồng
                       </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              )}
+                    )}
+                    {!isOwner && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => setReportOpen(true)}
+                        className="h-9 w-full justify-start px-3 rounded-lg text-xs font-bold gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                      >
+                        <Flag className="size-4 text-red-500" />
+                        Báo cáo cộng đồng
+                      </Button>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
@@ -500,7 +514,12 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
                 </div>
               ) : (posts?.data.items ?? []).length ? (
                 posts!.data.items.map((post) => (
-                  <PostCard key={post.postId} post={post} className="w-full max-w-full" />
+                  <PostCard
+                    key={post.postId}
+                    post={post}
+                    className="w-full max-w-full"
+                    communityRole={community?.viewerRole}
+                  />
                 ))
               ) : (
                 <EmptyState
@@ -912,6 +931,11 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
         community={community}
         open={editOpen}
         onClose={() => setEditOpen(false)}
+      />
+      <CommunityReportDialog
+        groupId={groupId}
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
       />
       <CreatePostModal
         isOpen={postModalOpen}
