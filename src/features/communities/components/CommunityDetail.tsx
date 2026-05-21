@@ -16,6 +16,9 @@ import {
   Calendar,
   Tag,
   Link2,
+  AlertCircle,
+  ArrowLeft,
+  RefreshCw,
 } from 'lucide-react';
 
 import {
@@ -78,7 +81,7 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
   const [confirmAction, setConfirmAction] = useState<'leave' | 'archive' | null>(null);
   const [memberToKick, setMemberToKick] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('posts');
-  const { data, isLoading } = useGetCommunityQuery(groupId);
+  const { data, isLoading, isError, error } = useGetCommunityQuery(groupId);
   const community = data?.data;
   const canManage = canManageCommunity(community?.viewerRole);
   const isOwner = community?.viewerRole === 'owner';
@@ -137,11 +140,51 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
     }
   }, [members, requests, fetchUsers]);
 
-  if (isLoading || !community) {
+  if (isLoading) {
     return (
       <main className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-6">
         <Skeleton className="h-72 rounded-3xl" />
         <Skeleton className="h-36 rounded-2xl" />
+      </main>
+    );
+  }
+
+  if (isError || !community) {
+    const status = (error as any)?.status;
+    const message = (error as any)?.data?.message || '';
+
+    let title = 'Không thể truy cập cộng đồng';
+    let description = 'Đã xảy ra lỗi không xác định khi tải dữ liệu cộng đồng.';
+
+    if (status === 404) {
+      title = 'Cộng đồng không tồn tại';
+      description = 'Cộng đồng này không tồn tại, đã bị xóa hoặc lưu trữ bởi ban quản trị.';
+    } else if (status === 403) {
+      title = 'Truy cập bị từ chối';
+      description = message.includes('chặn')
+        ? 'Bạn đã bị chặn khỏi cộng đồng này bởi ban quản trị.'
+        : 'Cộng đồng này là riêng tư. Bạn cần là thành viên để xem nội dung.';
+    }
+
+    return (
+      <main className="mx-auto flex max-w-2xl flex-col items-center justify-center gap-6 px-4 py-16 text-center">
+        <div className="flex h-24 w-24 items-center justify-center rounded-full bg-destructive/10 dark:bg-destructive/20 shadow-inner">
+          <AlertCircle className="h-12 w-12 text-destructive" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-3xl font-display font-bold tracking-tight text-foreground">
+            {title}
+          </h1>
+          <p className="text-muted-foreground max-w-md mx-auto">{description}</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 mt-4">
+          <Button variant="outline" className="gap-2" onClick={() => window.history.back()}>
+            <ArrowLeft className="h-4 w-4" /> Quay lại
+          </Button>
+          <Button variant="default" className="gap-2" onClick={() => window.location.reload()}>
+            <RefreshCw className="h-4 w-4" /> Tải lại trang
+          </Button>
+        </div>
       </main>
     );
   }
