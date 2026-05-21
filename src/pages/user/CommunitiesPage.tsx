@@ -1342,6 +1342,19 @@ function CommunityDetail({ groupId }: { groupId: string }) {
         <TabsList className="w-fit">
           <TabsTrigger value="posts">Bài viết</TabsTrigger>
           <TabsTrigger value="members">Thành viên</TabsTrigger>
+          {canManage && community.joinPolicy === 'approval' && (
+            <TabsTrigger value="requests">
+              Yêu cầu duyệt
+              {(requests?.data ?? []).length > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="ml-1.5 px-1 py-0 h-4 min-w-4 flex items-center justify-center text-[10px] rounded-full shrink-0"
+                >
+                  {(requests?.data ?? []).length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="about">Giới thiệu</TabsTrigger>
         </TabsList>
 
@@ -1368,74 +1381,14 @@ function CommunityDetail({ groupId }: { groupId: string }) {
           )}
         </TabsContent>
 
-        <TabsContent value="members" className="m-0 grid gap-4 lg:grid-cols-[360px_1fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Yêu cầu tham gia</CardTitle>
+        <TabsContent value="members" className="m-0">
+          <Card className="rounded-2xl border border-border bg-card shadow-sm">
+            <CardHeader className="px-5 py-4 border-b border-border/50">
+              <CardTitle className="text-base font-bold">
+                Thành viên ({members?.data?.length ?? community.memberCount})
+              </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {!canManage ? (
-                <p className="text-sm text-muted-foreground">
-                  Chỉ mod trở lên mới xem được danh sách chờ.
-                </p>
-              ) : (requests?.data ?? []).length ? (
-                requests!.data.map((request) => {
-                  const profile = userProfiles[request.userId];
-                  const displayName = profile?.displayName ?? request.userId;
-                  const avatarUrl = profile?.avatar ?? undefined;
-                  return (
-                    <div
-                      key={request.userId}
-                      className="flex flex-col gap-3 rounded-2xl border border-border p-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage src={avatarUrl} alt={displayName} />
-                          <AvatarFallback>{getInitials(displayName) || 'U'}</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <div className="truncate font-medium text-foreground">{displayName}</div>
-                          <div className="text-xs text-muted-foreground">Muốn tham gia nhóm</div>
-                        </div>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {request.message || 'Không có lời nhắn'}
-                      </p>
-                      <div className="mt-2 flex gap-2">
-                        <Button
-                          size="sm"
-                          disabled={resolveState.isLoading}
-                          onClick={() =>
-                            resolveRequest({ groupId, userId: request.userId, action: 'approve' })
-                          }
-                        >
-                          Duyệt
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={resolveState.isLoading}
-                          onClick={() =>
-                            resolveRequest({ groupId, userId: request.userId, action: 'reject' })
-                          }
-                        >
-                          Từ chối
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="text-sm text-muted-foreground">Không có yêu cầu đang chờ.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Thành viên</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
+            <CardContent className="flex flex-col gap-2 p-5">
               {(members?.data ?? []).map((member) => {
                 const profile = userProfiles[member.userId];
                 const displayName = profile?.displayName ?? member.userId;
@@ -1513,6 +1466,74 @@ function CommunityDetail({ groupId }: { groupId: string }) {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {canManage && community.joinPolicy === 'approval' && (
+          <TabsContent value="requests" className="m-0">
+            <Card className="rounded-2xl border border-border bg-card shadow-sm">
+              <CardHeader className="px-5 py-4 border-b border-border/50">
+                <CardTitle className="text-base font-bold">
+                  Yêu cầu gia nhập ({requests?.data?.length ?? 0})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 p-5">
+                {(requests?.data ?? []).length ? (
+                  requests!.data.map((request) => {
+                    const profile = userProfiles[request.userId];
+                    const displayName = profile?.displayName ?? request.userId;
+                    const avatarUrl = profile?.avatar ?? undefined;
+                    return (
+                      <div
+                        key={request.userId}
+                        className="flex flex-col gap-3 rounded-2xl border border-border p-4"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarImage src={avatarUrl} alt={displayName} />
+                            <AvatarFallback>{getInitials(displayName) || 'U'}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold text-foreground">
+                              {displayName}
+                            </div>
+                            <div className="text-xs text-muted-foreground">Muốn tham gia nhóm</div>
+                          </div>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {request.message || 'Không có lời nhắn'}
+                        </p>
+                        <div className="mt-2 flex gap-2">
+                          <Button
+                            size="sm"
+                            disabled={resolveState.isLoading}
+                            onClick={() =>
+                              resolveRequest({ groupId, userId: request.userId, action: 'approve' })
+                            }
+                          >
+                            Duyệt
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={resolveState.isLoading}
+                            onClick={() =>
+                              resolveRequest({ groupId, userId: request.userId, action: 'reject' })
+                            }
+                          >
+                            Từ chối
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-center text-sm text-muted-foreground py-8">
+                    Không có yêu cầu đang chờ duyệt.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="about" className="m-0 grid gap-4 lg:grid-cols-[1fr_360px]">
           <Card>
