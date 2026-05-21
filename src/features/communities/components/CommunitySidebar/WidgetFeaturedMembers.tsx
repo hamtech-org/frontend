@@ -28,7 +28,7 @@ export function WidgetFeaturedMembers({
   const remainingCount = Math.max(0, members.length - staff.length - displayPile.length);
 
   return (
-    <Card className="rounded-2xl border border-border/40 bg-card/50 backdrop-blur-xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.15)] hover:border-primary/20 transition-all duration-300">
+    <Card className="rounded-2xl border border-border/40 bg-card/50 backdrop-blur-xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.15)] hover:border-primary/20 transition-all duration-300">
       <div className="flex flex-col gap-3">
         <div className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between">
           <span>Ban quản trị & Thành viên</span>

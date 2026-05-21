@@ -4,6 +4,7 @@ import { toast } from 'react-toastify';
 import {
   Crown,
   ShieldCheck,
+  Sparkles,
   Pencil,
   Trash2,
   UserMinus,
@@ -12,6 +13,9 @@ import {
   Users,
   FileText,
   MoreHorizontal,
+  Calendar,
+  Tag,
+  Link2,
 } from 'lucide-react';
 
 import {
@@ -37,7 +41,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import type { RootState } from '@/store/store';
 import { CreatePostModal } from '@/features/newsfeed/components/CreatePostModal';
@@ -483,12 +486,12 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
         {activeTab === 'members' && (
           <div className="m-0">
             <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg">
-              <CardHeader className="px-6 py-4 border-b border-border/40">
+              <CardHeader className="px-4 py-3 border-b border-border/40">
                 <CardTitle className="text-base font-extrabold text-foreground">
                   Thành viên ({members?.data?.length ?? community.memberCount})
                 </CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-col gap-3 p-6">
+              <CardContent className="flex flex-col gap-3 p-4">
                 {(members?.data ?? []).map((member) => {
                   const profile = userProfiles[member.userId];
                   const displayName = profile?.displayName ?? member.userId;
@@ -589,12 +592,12 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
         {canManage && community.joinPolicy === 'approval' && activeTab === 'requests' && (
           <div className="m-0">
             <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg">
-              <CardHeader className="px-6 py-4 border-b border-border/40">
+              <CardHeader className="px-4 py-3 border-b border-border/40">
                 <CardTitle className="text-base font-extrabold text-foreground">
                   Yêu cầu gia nhập ({requests?.data?.length ?? 0})
                 </CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-col gap-3.5 p-6">
+              <CardContent className="flex flex-col gap-3.5 p-4">
                 {(requests?.data ?? []).length ? (
                   requests!.data.map((request) => {
                     const profile = userProfiles[request.userId];
@@ -664,14 +667,161 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
 
         {activeTab === 'about' && (
           <div className="m-0 grid gap-6 lg:grid-cols-[1fr_360px]">
-            <div className="flex flex-col gap-4 min-w-0">
-              <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg">
-                <CardHeader className="px-6 py-4 border-b border-border/40">
-                  <CardTitle className="text-base font-extrabold text-foreground">
+            <div className="flex flex-col gap-6 min-w-0">
+              {/* Tổng quan nhóm Card */}
+              <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg hover:border-primary/10 transition-all duration-300">
+                <CardHeader className="px-4 py-3 border-b border-border/40">
+                  <CardTitle className="text-base font-extrabold text-foreground flex items-center gap-2">
+                    <Globe2 className="size-5 text-primary" />
+                    Tổng quan cộng đồng
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 flex flex-col gap-4">
+                  <div className="flex flex-col gap-2">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                      Mô tả nhóm
+                    </h3>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium whitespace-pre-wrap">
+                      {community.description || 'Cộng đồng chưa có mô tả.'}
+                    </p>
+                  </div>
+
+                  <div className="h-px bg-border/25" />
+
+                  {/* Grid thông tin chi tiết */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex items-center gap-3 p-3.5 rounded-xl bg-background/50 border border-border/20 hover:border-border/40 hover:bg-background/80 transition-all duration-200">
+                      <div className="p-2.5 rounded-lg bg-primary/10 text-primary">
+                        <Tag className="size-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          Danh mục
+                        </span>
+                        <span className="text-sm font-bold text-foreground">
+                          {CATEGORY_LABEL[community.category]}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3.5 rounded-xl bg-background/50 border border-border/20 hover:border-border/40 hover:bg-background/80 transition-all duration-200">
+                      <div className="p-2.5 rounded-lg bg-primary/10 text-primary">
+                        {community.type === 'public' ? (
+                          <Globe2 className="size-4" />
+                        ) : (
+                          <Lock className="size-4" />
+                        )}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          Quyền riêng tư
+                        </span>
+                        <span className="text-sm font-bold text-foreground">
+                          {community.type === 'public' ? 'Công khai' : 'Riêng tư'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3.5 rounded-xl bg-background/50 border border-border/20 hover:border-border/40 hover:bg-background/80 transition-all duration-200">
+                      <div className="p-2.5 rounded-lg bg-primary/10 text-primary">
+                        <Calendar className="size-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          Ngày thành lập
+                        </span>
+                        <span className="text-sm font-bold text-foreground">
+                          {new Date(community.createdAt).toLocaleDateString('vi-VN')}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3.5 rounded-xl bg-background/50 border border-border/20 hover:border-border/40 hover:bg-background/80 transition-all duration-200">
+                      <div className="p-2.5 rounded-lg bg-primary/10 text-primary">
+                        <Link2 className="size-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          Slug nhóm
+                        </span>
+                        <span className="text-sm font-bold text-foreground truncate max-w-[180px]">
+                          {community.slug}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3.5 rounded-xl bg-background/50 border border-border/20 hover:border-border/40 hover:bg-background/80 transition-all duration-200">
+                      <div className="p-2.5 rounded-lg bg-primary/10 text-primary">
+                        <Users className="size-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          Chế độ tham gia
+                        </span>
+                        <span className="text-sm font-bold text-foreground">
+                          {community.joinPolicy === 'open'
+                            ? 'Tham gia trực tiếp'
+                            : 'Cần quản trị viên duyệt'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3.5 rounded-xl bg-background/50 border border-border/20 hover:border-border/40 hover:bg-background/80 transition-all duration-200">
+                      <div className="p-2.5 rounded-lg bg-primary/10 text-primary">
+                        <Sparkles className="size-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                          Tìm kiếm nhóm
+                        </span>
+                        <span className="text-sm font-bold text-foreground">
+                          {community.type === 'public'
+                            ? 'Hiển thị công khai'
+                            : 'Chỉ thành viên qua link'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Thống kê hoạt động */}
+              <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg hover:border-primary/10 transition-all duration-300">
+                <CardHeader className="px-4 py-3 border-b border-border/40">
+                  <CardTitle className="text-base font-extrabold text-foreground flex items-center gap-2">
+                    <Users className="size-5 text-primary" />
+                    Thống kê hoạt động
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 grid grid-cols-2 gap-4">
+                  <div className="flex flex-col items-center justify-center p-3.5 bg-background/50 rounded-xl border border-border/10">
+                    <span className="text-2xl font-extrabold text-foreground">
+                      {community.memberCount.toLocaleString('vi-VN')}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-1">
+                      Thành viên
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-center justify-center p-3.5 bg-background/50 rounded-xl border border-border/10">
+                    <span className="text-2xl font-extrabold text-foreground">
+                      {community.postCount.toLocaleString('vi-VN')}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-1">
+                      Bài viết
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Nội quy cộng đồng Card */}
+              <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg hover:border-primary/10 transition-all duration-300">
+                <CardHeader className="px-4 py-3 border-b border-border/40">
+                  <CardTitle className="text-base font-extrabold text-foreground flex items-center gap-2">
+                    <ShieldCheck className="size-5 text-primary" />
                     Nội quy cộng đồng
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="flex flex-col gap-3.5 p-6">
+                <CardContent className="flex flex-col gap-3.5 p-4">
                   {community.rules?.length ? (
                     community.rules.map((rule, index) => (
                       <div
@@ -694,32 +844,6 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
                       Cộng đồng chưa có nội quy riêng.
                     </p>
                   )}
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg lg:hidden">
-                <CardHeader className="px-6 py-4 border-b border-border/40">
-                  <CardTitle className="text-base font-extrabold text-foreground">
-                    Thông tin chi tiết
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3.5 p-6 text-sm">
-                  <div className="flex justify-between gap-3 font-semibold text-xs border-b border-border/20 pb-3">
-                    <span className="text-slate-500 dark:text-slate-400">Slug</span>
-                    <span className="text-foreground font-bold">{community.slug}</span>
-                  </div>
-                  <div className="flex justify-between gap-3 font-semibold text-xs border-b border-border/20 pb-3">
-                    <span className="text-slate-500 dark:text-slate-400">Ngày tạo</span>
-                    <span className="text-foreground font-bold">
-                      {new Date(community.createdAt).toLocaleDateString('vi-VN')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-3 font-semibold text-xs">
-                    <span className="text-slate-500 dark:text-slate-400">Trạng thái</span>
-                    <span className="text-foreground font-bold">
-                      {community.status === 'active' ? 'Đang hoạt động' : 'Đã lưu trữ'}
-                    </span>
-                  </div>
                 </CardContent>
               </Card>
             </div>
