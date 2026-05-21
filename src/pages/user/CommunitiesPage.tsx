@@ -24,6 +24,8 @@ import {
   X,
   Camera,
   Loader2,
+  Calendar,
+  ChevronDown,
 } from 'lucide-react';
 
 import {
@@ -149,27 +151,6 @@ function CommunityAvatar({
   );
 }
 
-function CategoryPill({
-  active,
-  category,
-  onClick,
-}: {
-  active: boolean;
-  category: CommunityCategory;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      variant={active ? 'default' : 'outline'}
-      size="sm"
-      onClick={onClick}
-      className="rounded-full"
-    >
-      {CATEGORY_LABEL[category]}
-    </Button>
-  );
-}
-
 function EmptyState({
   icon: Icon,
   title,
@@ -247,49 +228,58 @@ function CommunityDiscoveryCard({
   const cta = joined ? 'Đã tham gia' : requested ? 'Đã gửi yêu cầu' : 'Tham gia nhóm';
 
   return (
-    <Card className="overflow-hidden rounded-xl py-0 shadow-sm">
-      <div className="relative aspect-[16/9] bg-muted">
-        <img
-          src={community.coverUrl ?? defaultCoverGroup}
-          alt={community.name}
-          className="size-full object-cover"
-        />
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="secondary"
-          className="absolute right-3 top-3 rounded-full"
-          onClick={onDismiss}
-          aria-label="Ẩn gợi ý"
-        >
-          <X className="size-4" />
-        </Button>
-      </div>
-      <CardContent className="flex flex-col gap-3 p-4">
-        <Link to={`/communities/${community.groupId}`} className="flex flex-col gap-1">
-          <h3 className="line-clamp-2 text-base font-bold leading-snug text-foreground">
-            {community.name}
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            {community.memberCount.toLocaleString('vi-VN')} thành viên ·{' '}
-            {community.postCount || '10+'} bài viết/ngày
-          </p>
-        </Link>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="secondary">{CATEGORY_LABEL[community.category]}</Badge>
-          <span>{community.type === 'public' ? 'Công khai' : 'Riêng tư'}</span>
-          <span>{community.joinPolicy === 'approval' ? 'Cần duyệt' : 'Mở'}</span>
+    <Link to={`/communities/${community.groupId}`} className="block group h-full">
+      <Card className="overflow-hidden rounded-xl py-0 shadow-sm transition hover:shadow-md h-full flex flex-col">
+        <div className="relative aspect-[16/9] bg-muted">
+          <img
+            src={community.coverUrl ?? defaultCoverGroup}
+            alt={community.name}
+            className="size-full object-cover"
+          />
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="secondary"
+            className="absolute right-3 top-3 rounded-full opacity-90 hover:opacity-100"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDismiss();
+            }}
+            aria-label="Ẩn gợi ý"
+          >
+            <X className="size-4" />
+          </Button>
         </div>
-        <Button
-          variant={joined || requested ? 'secondary' : 'outline'}
-          disabled={joining || joined || requested}
-          onClick={onJoin}
-          className="mt-auto w-full"
-        >
-          {cta}
-        </Button>
-      </CardContent>
-    </Card>
+        <CardContent className="flex flex-col gap-3 p-4 flex-1">
+          <div className="flex flex-col gap-1 flex-1">
+            <h3 className="line-clamp-2 text-base font-bold leading-snug text-foreground group-hover:text-primary transition-colors">
+              {community.name}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {community.memberCount.toLocaleString('vi-VN')} thành viên ·{' '}
+              {community.postCount || 0} bài viết
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Badge variant="secondary">{CATEGORY_LABEL[community.category]}</Badge>
+            <span>{community.type === 'public' ? 'Công khai' : 'Riêng tư'}</span>
+          </div>
+          <Button
+            variant={joined || requested ? 'secondary' : 'outline'}
+            disabled={joining || joined || requested}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onJoin();
+            }}
+            className="mt-auto w-full"
+          >
+            {cta}
+          </Button>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 
@@ -708,7 +698,7 @@ function CommunityFormDialog({
 }
 
 function CommunitiesList() {
-  const [category, setCategory] = useState<CommunityCategory>('general');
+  const [category, setCategory] = useState<CommunityCategory | undefined>(undefined);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [mode, setMode] = useState<CommunityBrowseMode>('discover');
   const [searchQuery, setSearchQuery] = useState('');
@@ -897,18 +887,26 @@ function CommunitiesList() {
 
             <section className="flex flex-col gap-2">
               <h2 className="px-2 text-sm font-bold text-foreground">Chủ đề</h2>
-              <div className="flex flex-wrap gap-2 px-2 lg:flex-col lg:px-0">
-                {COMMUNITY_CATEGORIES.map((item) => (
-                  <CategoryPill
-                    key={item}
-                    category={item}
-                    active={category === item}
-                    onClick={() => {
-                      setCategory(item);
-                      setMode('discover');
-                    }}
-                  />
-                ))}
+              <div className="px-2 lg:px-0">
+                <Select
+                  value={category || 'all'}
+                  onValueChange={(val) => {
+                    setCategory(val === 'all' ? undefined : (val as CommunityCategory));
+                    setMode('discover');
+                  }}
+                >
+                  <SelectTrigger className="w-full rounded-xl bg-card border border-border h-10">
+                    <SelectValue placeholder="Chọn chủ đề" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="all">Tất cả chủ đề</SelectItem>
+                    {COMMUNITY_CATEGORIES.map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {CATEGORY_LABEL[item]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </section>
 
@@ -1009,18 +1007,26 @@ function CommunitiesList() {
                     );
                   })}
                 </div>
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                  {COMMUNITY_CATEGORIES.map((item) => (
-                    <CategoryPill
-                      key={item}
-                      category={item}
-                      active={category === item}
-                      onClick={() => {
-                        setCategory(item);
-                        setMode('discover');
-                      }}
-                    />
-                  ))}
+                <div className="flex w-full mt-1">
+                  <Select
+                    value={category || 'all'}
+                    onValueChange={(val) => {
+                      setCategory(val === 'all' ? undefined : (val as CommunityCategory));
+                      setMode('discover');
+                    }}
+                  >
+                    <SelectTrigger className="w-full rounded-xl bg-background border border-border h-10">
+                      <SelectValue placeholder="Chọn chủ đề" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl">
+                      <SelectItem value="all">Tất cả chủ đề</SelectItem>
+                      {COMMUNITY_CATEGORIES.map((item) => (
+                        <SelectItem key={item} value={item}>
+                          {CATEGORY_LABEL[item]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
@@ -1151,11 +1157,402 @@ function CommunityStat({
   );
 }
 
+interface CommunitySidebarProps {
+  community: ICommunity;
+  members?: Array<{ userId: string; role: CommunityMemberRole; joinedAt: string }>;
+  requests?: Array<{ userId: string; requestedAt: string; message?: string }>;
+  userProfiles: Record<string, IUser>;
+  isMember: boolean;
+  canManage: boolean;
+  onResolveRequest: (userId: string, action: 'approve' | 'reject') => Promise<void>;
+  resolveLoading: boolean;
+  onViewAllMembers: () => void;
+}
+
+function WidgetAbout({ community, ownerProfile }: { community: ICommunity; ownerProfile?: IUser }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const desc = community.description || 'Cộng đồng chưa có mô tả.';
+  const shouldTruncate = desc.length > 100;
+  const displayText = isExpanded ? desc : shouldTruncate ? desc.slice(0, 100) + '...' : desc;
+
+  return (
+    <Card className="rounded-2xl border border-border/40 bg-card/60 backdrop-blur-md p-5 shadow-sm">
+      <div className="flex flex-col gap-3">
+        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Giới thiệu nhóm
+        </div>
+        <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+          {displayText}
+          {shouldTruncate && (
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="ml-1 text-xs font-semibold text-primary hover:underline cursor-pointer bg-transparent border-none p-0"
+            >
+              {isExpanded ? 'Thu gọn' : 'Xem thêm'}
+            </button>
+          )}
+        </div>
+
+        <div className="h-px bg-border/50 my-1" />
+
+        <div className="flex flex-col gap-2.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Globe2 className="size-4 shrink-0 text-muted-foreground/80" />
+            <span>
+              Nhóm <strong>{community.type === 'public' ? 'Công khai' : 'Riêng tư'}</strong>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="size-4 shrink-0 text-muted-foreground/80" />
+            <span>
+              Cơ chế{' '}
+              <strong>
+                {community.joinPolicy === 'approval' ? 'Cần duyệt thành viên' : 'Tham gia tự do'}
+              </strong>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Calendar className="size-4 shrink-0 text-muted-foreground/80" />
+            <span>
+              Thành lập ngày{' '}
+              <strong>{new Date(community.createdAt).toLocaleDateString('vi-VN')}</strong>
+            </span>
+          </div>
+        </div>
+
+        {ownerProfile && (
+          <>
+            <div className="h-px bg-border/50 my-1" />
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="text-muted-foreground">Sáng lập bởi:</span>
+              <Link
+                to={`/profile/${ownerProfile.userId}`}
+                className="flex items-center gap-1.5 font-medium text-foreground hover:text-primary transition-colors duration-150"
+              >
+                <Avatar className="size-5">
+                  <AvatarImage
+                    src={ownerProfile.avatar ?? undefined}
+                    alt={ownerProfile.displayName}
+                  />
+                  <AvatarFallback className="text-[9px]">
+                    {getInitials(ownerProfile.displayName) || 'O'}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="truncate max-w-[120px]">{ownerProfile.displayName}</span>
+              </Link>
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function WidgetAdminQuick({
+  requests,
+  userProfiles,
+  onResolveRequest,
+  resolveLoading,
+}: {
+  requests: Array<{ userId: string; requestedAt: string; message?: string }>;
+  userProfiles: Record<string, IUser>;
+  onResolveRequest: (userId: string, action: 'approve' | 'reject') => Promise<void>;
+  resolveLoading: boolean;
+}) {
+  const pendingRequests = requests.filter((r) => r.userId);
+  if (pendingRequests.length === 0) return null;
+
+  const displayRequests = pendingRequests.slice(0, 2);
+
+  return (
+    <Card className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 shadow-sm transition-all duration-200">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+            <div className="size-2 rounded-full bg-amber-500 animate-pulse" />
+            Yêu cầu gia nhập
+          </div>
+          <Badge className="bg-amber-500 hover:bg-amber-600 text-white border-none rounded-full px-2 py-0.5 text-[10px] h-5 flex items-center justify-center">
+            {pendingRequests.length}
+          </Badge>
+        </div>
+
+        <div className="flex flex-col gap-3 mt-1">
+          {displayRequests.map((req) => {
+            const profile = userProfiles[req.userId];
+            const displayName = profile?.displayName ?? req.userId;
+            const avatarUrl = profile?.avatar ?? undefined;
+
+            return (
+              <div
+                key={req.userId}
+                className="flex flex-col gap-2 rounded-xl border border-border/40 bg-card p-3 shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition-opacity duration-300"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Avatar className="size-8">
+                    <AvatarImage src={avatarUrl} alt={displayName} />
+                    <AvatarFallback className="text-[10px]">
+                      {getInitials(displayName) || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-semibold text-foreground">
+                      {displayName}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground truncate">
+                      {new Date(req.requestedAt).toLocaleDateString('vi-VN')}
+                    </div>
+                  </div>
+                </div>
+                {req.message && (
+                  <p className="text-[11px] text-muted-foreground bg-muted/40 rounded-lg p-2 leading-relaxed italic line-clamp-2">
+                    "{req.message}"
+                  </p>
+                )}
+                <div className="flex gap-2 mt-1 justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-[10px] px-2.5 rounded-lg border-border/60 hover:bg-muted"
+                    disabled={resolveLoading}
+                    onClick={() => onResolveRequest(req.userId, 'reject')}
+                  >
+                    Từ chối
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-7 text-[10px] px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+                    disabled={resolveLoading}
+                    onClick={() => onResolveRequest(req.userId, 'approve')}
+                  >
+                    Phê duyệt
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function WidgetFeaturedMembers({
+  members,
+  userProfiles,
+  onViewAllMembers,
+}: {
+  members: Array<{ userId: string; role: CommunityMemberRole; joinedAt: string }>;
+  userProfiles: Record<string, IUser>;
+  onViewAllMembers: () => void;
+}) {
+  if (!members || members.length === 0) return null;
+
+  const staff = members.filter(
+    (m) => m.role === 'owner' || m.role === 'admin' || m.role === 'moderator',
+  );
+  const normalMembers = members.filter((m) => m.role === 'member');
+
+  const displayStaff = staff.slice(0, 3);
+  const displayPile = normalMembers.slice(0, 6);
+  const remainingCount = Math.max(0, members.length - staff.length - displayPile.length);
+
+  return (
+    <Card className="rounded-2xl border border-border/40 bg-card/60 backdrop-blur-md p-5 shadow-sm">
+      <div className="flex flex-col gap-3">
+        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+          <span>Ban quản trị & Thành viên</span>
+          <span className="text-[10px] font-semibold text-primary bg-primary/10 rounded-full px-2 py-0.5">
+            {members.length} thành viên
+          </span>
+        </div>
+
+        {displayStaff.length > 0 && (
+          <div className="flex flex-col gap-2 mt-1">
+            {displayStaff.map((st) => {
+              const profile = userProfiles[st.userId];
+              const displayName = profile?.displayName ?? st.userId;
+              const avatarUrl = profile?.avatar ?? undefined;
+
+              return (
+                <div key={st.userId} className="flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Avatar className="size-7 ring-1 ring-border/20">
+                      <AvatarImage src={avatarUrl} alt={displayName} />
+                      <AvatarFallback className="text-[10px]">
+                        {getInitials(displayName) || 'S'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="truncate text-xs font-medium text-foreground hover:text-primary transition-colors cursor-pointer">
+                      {displayName}
+                    </span>
+                  </div>
+                  <Badge
+                    variant={st.role === 'owner' ? 'default' : 'secondary'}
+                    className="h-4 text-[9px] px-1 py-0 rounded flex items-center gap-0.5 font-bold shrink-0"
+                  >
+                    {st.role === 'owner' ? (
+                      <Crown className="size-2 text-yellow-500" />
+                    ) : (
+                      <ShieldCheck className="size-2" />
+                    )}
+                    {st.role === 'owner' ? 'Owner' : st.role === 'admin' ? 'Admin' : 'Mod'}
+                  </Badge>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {displayStaff.length > 0 && displayPile.length > 0 && (
+          <div className="h-px bg-border/50 my-1" />
+        )}
+
+        {displayPile.length > 0 && (
+          <div className="flex items-center justify-between gap-3 mt-1">
+            <div className="flex items-center -space-x-2.5 overflow-hidden">
+              {displayPile.map((mb) => {
+                const profile = userProfiles[mb.userId];
+                const displayName = profile?.displayName ?? mb.userId;
+                const avatarUrl = profile?.avatar ?? undefined;
+
+                return (
+                  <div
+                    key={mb.userId}
+                    className="relative group transition-transform duration-200 hover:-translate-y-0.5 hover:z-10 cursor-pointer shrink-0"
+                    title={displayName}
+                  >
+                    <Avatar className="size-7 border-2 border-card ring-1 ring-border/10 shadow-sm">
+                      <AvatarImage src={avatarUrl} alt={displayName} />
+                      <AvatarFallback className="text-[8px]">
+                        {getInitials(displayName) || 'M'}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                );
+              })}
+              {remainingCount > 0 && (
+                <div className="size-7 rounded-full border-2 border-card bg-muted flex items-center justify-center text-[9px] font-bold text-muted-foreground ring-1 ring-border/10 shadow-sm shrink-0">
+                  +{remainingCount}
+                </div>
+              )}
+            </div>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onViewAllMembers}
+              className="h-7 text-[10px] text-primary hover:text-primary/80 hover:bg-primary/5 rounded-lg px-2 font-bold cursor-pointer"
+            >
+              Xem tất cả
+            </Button>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function WidgetRulesAccordion({ rules }: { rules?: ICommunityRule[] }) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  if (!rules || rules.length === 0) return null;
+
+  return (
+    <Card className="rounded-2xl border border-border/40 bg-card/60 backdrop-blur-md p-5 shadow-sm">
+      <div className="flex flex-col gap-3">
+        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Nội quy cộng đồng
+        </div>
+
+        <div className="flex flex-col gap-2 mt-1">
+          {rules.map((rule, index) => {
+            const isOpen = activeIndex === index;
+            return (
+              <div
+                key={rule.id}
+                className="rounded-xl border border-border/30 bg-muted/10 overflow-hidden transition-all duration-200"
+              >
+                <button
+                  type="button"
+                  onClick={() => setActiveIndex(isOpen ? null : index)}
+                  className="w-full flex items-center justify-between p-3 text-left text-xs font-semibold text-foreground hover:bg-muted/30 transition-colors cursor-pointer bg-transparent border-none"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-[10px] font-bold text-primary bg-primary/10 rounded px-1.5 py-0.5 shrink-0">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <span className="truncate font-bold">{rule.title}</span>
+                  </div>
+                  <ChevronDown
+                    className={`size-3 text-muted-foreground shrink-0 transition-transform duration-200 ${
+                      isOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                <div
+                  className={`transition-all duration-200 ease-in-out ${
+                    isOpen
+                      ? 'max-h-40 border-t border-border/30 opacity-100'
+                      : 'max-h-0 opacity-0 pointer-events-none'
+                  } overflow-hidden`}
+                >
+                  <p className="p-3 text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                    {rule.description}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function CommunitySidebar({
+  community,
+  members = [],
+  requests = [],
+  userProfiles,
+  canManage,
+  onResolveRequest,
+  resolveLoading,
+  onViewAllMembers,
+}: CommunitySidebarProps) {
+  const ownerMember = members.find((m) => m.role === 'owner');
+  const ownerProfile = ownerMember ? userProfiles[ownerMember.userId] : undefined;
+
+  return (
+    <div className="flex flex-col gap-4 sticky top-[80px] h-fit">
+      <WidgetAbout community={community} ownerProfile={ownerProfile} />
+
+      {canManage && community.joinPolicy === 'approval' && (
+        <WidgetAdminQuick
+          requests={requests}
+          userProfiles={userProfiles}
+          onResolveRequest={onResolveRequest}
+          resolveLoading={resolveLoading}
+        />
+      )}
+
+      <WidgetFeaturedMembers
+        members={members}
+        userProfiles={userProfiles}
+        onViewAllMembers={onViewAllMembers}
+      />
+
+      <WidgetRulesAccordion rules={community.rules} />
+    </div>
+  );
+}
+
 function CommunityDetail({ groupId }: { groupId: string }) {
   const [postModalOpen, setPostModalOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'leave' | 'archive' | null>(null);
   const [memberToKick, setMemberToKick] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('posts');
   const { data, isLoading } = useGetCommunityQuery(groupId);
   const community = data?.data;
   const canManage = canManageCommunity(community?.viewerRole);
@@ -1174,6 +1571,20 @@ function CommunityDetail({ groupId }: { groupId: string }) {
   const [removeMember, removeState] = useRemoveCommunityMemberMutation();
   const [updateRole, updateRoleState] = useUpdateCommunityMemberRoleMutation();
   const [transferOwner, transferState] = useTransferCommunityOwnerMutation();
+
+  const handleResolveRequest = async (
+    userId: string,
+    action: 'approve' | 'reject',
+  ): Promise<void> => {
+    try {
+      await resolveRequest({ groupId, userId, action }).unwrap();
+      toast.success(
+        action === 'approve' ? 'Đã duyệt yêu cầu gia nhập' : 'Đã từ chối yêu cầu gia nhập',
+      );
+    } catch {
+      toast.error('Không thể xử lý yêu cầu gia nhập');
+    }
+  };
 
   const [fetchUsers] = usePostMultipleUsersMutation();
   const [userProfiles, setUserProfiles] = useState<Record<string, IUser>>({});
@@ -1338,7 +1749,7 @@ function CommunityDetail({ groupId }: { groupId: string }) {
         </div>
       </section>
 
-      <Tabs defaultValue="posts" className="flex flex-col gap-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-4">
         <TabsList className="w-fit">
           <TabsTrigger value="posts">Bài viết</TabsTrigger>
           <TabsTrigger value="members">Thành viên</TabsTrigger>
@@ -1358,27 +1769,42 @@ function CommunityDetail({ groupId }: { groupId: string }) {
           <TabsTrigger value="about">Giới thiệu</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="posts" className="m-0 flex flex-col gap-4">
-          {!isMember && community.type === 'private' ? (
-            <EmptyState
-              icon={Lock}
-              title="Cộng đồng riêng tư"
-              description="Bạn cần là thành viên để xem bài viết."
+        <TabsContent value="posts" className="m-0 grid gap-6 lg:grid-cols-[1fr_360px]">
+          <div className="flex flex-col gap-4 min-w-0">
+            {!isMember && community.type === 'private' ? (
+              <EmptyState
+                icon={Lock}
+                title="Cộng đồng riêng tư"
+                description="Bạn cần là thành viên để xem bài viết."
+              />
+            ) : postsLoading ? (
+              <div className="flex flex-col gap-3">
+                <Skeleton className="h-40 rounded-2xl" />
+                <Skeleton className="h-40 rounded-2xl" />
+              </div>
+            ) : (posts?.data.items ?? []).length ? (
+              posts!.data.items.map((post) => <PostCard key={post.postId} post={post} />)
+            ) : (
+              <EmptyState
+                icon={FileText}
+                title="Chưa có bài viết"
+                description="Hãy mở đầu cuộc trò chuyện trong cộng đồng này."
+              />
+            )}
+          </div>
+          <div className="hidden lg:block">
+            <CommunitySidebar
+              community={community}
+              members={members?.data}
+              requests={requests?.data}
+              userProfiles={userProfiles}
+              isMember={isMember}
+              canManage={canManage}
+              onResolveRequest={handleResolveRequest}
+              resolveLoading={resolveState.isLoading}
+              onViewAllMembers={() => setActiveTab('members')}
             />
-          ) : postsLoading ? (
-            <div className="flex flex-col gap-3">
-              <Skeleton className="h-40 rounded-2xl" />
-              <Skeleton className="h-40 rounded-2xl" />
-            </div>
-          ) : (posts?.data.items ?? []).length ? (
-            posts!.data.items.map((post) => <PostCard key={post.postId} post={post} />)
-          ) : (
-            <EmptyState
-              icon={FileText}
-              title="Chưa có bài viết"
-              description="Hãy mở đầu cuộc trò chuyện trong cộng đồng này."
-            />
-          )}
+          </div>
         </TabsContent>
 
         <TabsContent value="members" className="m-0">
@@ -1535,48 +1961,67 @@ function CommunityDetail({ groupId }: { groupId: string }) {
           </TabsContent>
         )}
 
-        <TabsContent value="about" className="m-0 grid gap-4 lg:grid-cols-[1fr_360px]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Nội quy</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {community.rules?.length ? (
-                community.rules.map((rule, index) => (
-                  <div key={rule.id} className="rounded-2xl border border-border p-4">
-                    <div className="text-sm font-semibold text-primary">#{index + 1}</div>
-                    <div className="mt-1 font-semibold">{rule.title}</div>
-                    <p className="mt-1 text-sm text-muted-foreground">{rule.description}</p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">Cộng đồng chưa có nội quy riêng.</p>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Thông tin</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3 text-sm">
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Slug</span>
-                <span className="font-medium">{community.slug}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Ngày tạo</span>
-                <span className="font-medium">
-                  {new Date(community.createdAt).toLocaleDateString('vi-VN')}
-                </span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Trạng thái</span>
-                <span className="font-medium">
-                  {community.status === 'active' ? 'Đang hoạt động' : 'Đã lưu trữ'}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="about" className="m-0 grid gap-6 lg:grid-cols-[1fr_360px]">
+          <div className="flex flex-col gap-4 min-w-0">
+            <Card className="rounded-2xl border border-border bg-card shadow-sm">
+              <CardHeader className="px-5 py-4 border-b border-border/50">
+                <CardTitle className="text-base font-bold">Nội quy cộng đồng</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 p-5">
+                {community.rules?.length ? (
+                  community.rules.map((rule, index) => (
+                    <div key={rule.id} className="rounded-2xl border border-border p-4 bg-muted/10">
+                      <div className="text-sm font-semibold text-primary">#{index + 1}</div>
+                      <div className="mt-1 font-semibold">{rule.title}</div>
+                      <p className="mt-1 text-sm text-muted-foreground">{rule.description}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    Cộng đồng chưa có nội quy riêng.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-2xl border border-border bg-card shadow-sm lg:hidden">
+              <CardHeader className="px-5 py-4 border-b border-border/50">
+                <CardTitle className="text-base font-bold">Thông tin chi tiết</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 p-5 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Slug</span>
+                  <span className="font-medium">{community.slug}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Ngày tạo</span>
+                  <span className="font-medium">
+                    {new Date(community.createdAt).toLocaleDateString('vi-VN')}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Trạng thái</span>
+                  <span className="font-medium">
+                    {community.status === 'active' ? 'Đang hoạt động' : 'Đã lưu trữ'}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="hidden lg:block">
+            <CommunitySidebar
+              community={community}
+              members={members?.data}
+              requests={requests?.data}
+              userProfiles={userProfiles}
+              isMember={isMember}
+              canManage={canManage}
+              onResolveRequest={handleResolveRequest}
+              resolveLoading={resolveState.isLoading}
+              onViewAllMembers={() => setActiveTab('members')}
+            />
+          </div>
         </TabsContent>
       </Tabs>
 
