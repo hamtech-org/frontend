@@ -22,6 +22,7 @@ export const communityApi = createApi({
     'CommunityMembers',
     'CommunityRequests',
     'CommunityPosts',
+    'CommunityPendingPosts',
   ],
   endpoints: (builder) => ({
     listCommunities: builder.query<
@@ -192,6 +193,26 @@ export const communityApi = createApi({
         body,
       }),
     }),
+    getPendingPosts: builder.query<IPost[], string>({
+      query: (groupId) => `/communities/${groupId}/moderation/posts`,
+      transformResponse: (response: ApiSuccessResponse<ICommunityContentPage<IPost>>) =>
+        response.data.items ?? [],
+      providesTags: (_res, _err, groupId) => [{ type: 'CommunityPendingPosts', id: groupId }],
+    }),
+    resolvePendingPost: builder.mutation<
+      ApiSuccessResponse<null>,
+      { groupId: string; postId: string; action: 'approve' | 'reject'; rejectReason?: string }
+    >({
+      query: ({ groupId, postId, action, rejectReason }) => ({
+        url: `/communities/${groupId}/moderation/posts/${postId}/resolve`,
+        method: 'POST',
+        body: { action, rejectReason },
+      }),
+      invalidatesTags: (_res, _err, { groupId }) => [
+        { type: 'CommunityPendingPosts', id: groupId },
+        { type: 'CommunityPosts', id: groupId },
+      ],
+    }),
   }),
 });
 
@@ -213,4 +234,6 @@ export const {
   usePinCommunityPostMutation,
   useUnpinCommunityPostMutation,
   useReportCommunityMutation,
+  useGetPendingPostsQuery,
+  useResolvePendingPostMutation,
 } = communityApi;

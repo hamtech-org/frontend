@@ -42,6 +42,7 @@ export interface ICommunity {
   viewerRole?: CommunityMemberRole | null;
   viewerStatus?: 'active' | 'banned' | null;
   joinRequestStatus?: CommunityRequestStatus | null;
+  isPostApprovalRequired?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -83,4 +84,5 @@ export interface ICreateCommunityDto {
   rules?: ICommunityRule[];
   type: CommunityType;
   joinPolicy?: CommunityJoinPolicy;
+  isPostApprovalRequired?: boolean;
 }

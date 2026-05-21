@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import {
@@ -20,6 +20,7 @@ import {
   ArrowLeft,
   RefreshCw,
   Flag,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 import {
@@ -61,8 +62,12 @@ import {
   useRemoveCommunityMemberMutation,
   useUpdateCommunityMemberRoleMutation,
   useTransferCommunityOwnerMutation,
+  useGetPendingPostsQuery,
+  useResolvePendingPostMutation,
 } from '@/store/api/communityApi';
 import { usePostMultipleUsersMutation } from '@/store/api/userApi';
+import { MediaGallery } from '@/features/newsfeed/components/MediaGallery';
+import { extractTextFromTiptapJson } from '@/utils/tiptapText';
 
 import type { CommunityMemberRole } from '@/types/community.types';
 import type { IUser } from '@/types/user.types';
@@ -84,9 +89,23 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
   const [memberToKick, setMemberToKick] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('posts');
   const [reportOpen, setReportOpen] = useState(false);
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [rejectPostId, setRejectPostId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+
   const { data, isLoading, isError, error } = useGetCommunityQuery(groupId);
   const community = data?.data;
   const canManage = canManageCommunity(community?.viewerRole);
+
+  const { data: pendingPostsRes } = useGetPendingPostsQuery(groupId, { skip: !canManage });
+  const pendingPosts = pendingPostsRes || [];
+  const pendingPostsCount = pendingPosts.length;
+
+  const [resolvePendingPost, { isLoading: resolvePendingLoading }] =
+    useResolvePendingPostMutation();
   const isOwner = community?.viewerRole === 'owner';
   const isMember = community?.viewerStatus === 'active';
   const { data: members } = useGetCommunityMembersQuery(groupId, { skip: !community });
@@ -119,18 +138,29 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
 
   const [fetchUsers] = usePostMultipleUsersMutation();
   const [userProfiles, setUserProfiles] = useState<Record<string, IUser>>({});
+  const fetchedIdsRef = useRef<Set<string>>(new Set());
+
+  const memberData = members?.data;
+  const requestData = requests?.data;
+  const pendingPostsData = pendingPostsRes;
 
   useEffect(() => {
     const ids: string[] = [];
-    if (members?.data) {
-      members.data.forEach((m) => ids.push(m.userId));
+    if (memberData) {
+      memberData.forEach((m) => ids.push(m.userId));
     }
-    if (requests?.data) {
-      requests.data.forEach((r) => ids.push(r.userId));
+    if (requestData) {
+      requestData.forEach((r) => ids.push(r.userId));
+    }
+    if (pendingPostsData) {
+      pendingPostsData.forEach((p) => ids.push(p.authorId));
     }
     const uniqueIds = Array.from(new Set(ids));
-    if (uniqueIds.length > 0) {
-      fetchUsers({ userIds: uniqueIds })
+    const missingIds = uniqueIds.filter((id) => !fetchedIdsRef.current.has(id));
+
+    if (missingIds.length > 0) {
+      missingIds.forEach((id) => fetchedIdsRef.current.add(id));
+      fetchUsers({ userIds: missingIds })
         .unwrap()
         .then((res) => {
           const map: Record<string, IUser> = {};
@@ -139,9 +169,12 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
           });
           setUserProfiles((prev) => ({ ...prev, ...map }));
         })
-        .catch((err) => console.error('Error fetching user profiles:', err));
+        .catch((err) => {
+          console.error('Error fetching user profiles:', err);
+          missingIds.forEach((id) => fetchedIdsRef.current.delete(id));
+        });
     }
-  }, [members, requests, fetchUsers]);
+  }, [memberData, requestData, pendingPostsData, fetchUsers]);
 
   if (isLoading) {
     return (
@@ -219,6 +252,57 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
       );
     } finally {
       setConfirmAction(null);
+    }
+  };
+
+  const handleShortcutClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setStagedFiles(Array.from(e.target.files));
+      setPostModalOpen(true);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      setStagedFiles(Array.from(e.dataTransfer.files));
+      setPostModalOpen(true);
+    }
+  };
+
+  const scrollToRules = () => {
+    const element = document.getElementById('community-rules-card');
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      setActiveTab('about');
+      setTimeout(() => {
+        const el = document.getElementById('community-rules-card');
+        el?.scrollIntoView({ behavior: 'smooth' });
+      }, 150);
+    }
+  };
+
+  const handleApprovePost = async (postId: string) => {
+    try {
+      await resolvePendingPost({ groupId, postId, action: 'approve' }).unwrap();
+      toast.success('Đã duyệt bài viết thành công');
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Không thể duyệt bài viết');
     }
   };
 
@@ -473,13 +557,50 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
               )}
             </button>
           )}
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('moderation')}
+              className={`relative rounded-none border-b-[3px] px-1 pb-3 pt-2 text-sm font-bold transition-all cursor-pointer flex items-center gap-2 bg-transparent hover:bg-transparent ${
+                activeTab === 'moderation'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Duyệt bài viết
+              {pendingPostsCount > 0 && (
+                <span className="flex size-4.5 items-center justify-center rounded-full bg-destructive text-[10px] font-extrabold text-destructive-foreground animate-pulse">
+                  {pendingPostsCount}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {activeTab === 'posts' && (
           <div className="m-0 grid gap-6 lg:grid-cols-[1fr_360px]">
             <div className="flex flex-col gap-4 min-w-0">
               {isMember && (
-                <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.02)] hover:border-primary/20 transition-all duration-300 flex flex-col gap-3">
+                <Card
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`relative rounded-2xl border bg-card/65 backdrop-blur-xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.02)] transition-all duration-300 flex flex-col gap-3.5 ${
+                    isDragging
+                      ? 'border-primary ring-2 ring-primary/20 bg-primary/5'
+                      : 'border-border/40 hover:border-primary/20'
+                  }`}
+                >
+                  {isDragging && (
+                    <div className="absolute inset-0 bg-primary/5 rounded-2xl flex items-center justify-center border-2 border-dashed border-primary z-20 pointer-events-none animate-pulse">
+                      <div className="flex flex-col items-center gap-2">
+                        <ImageIcon className="size-10 text-primary animate-bounce" />
+                        <span className="text-xs font-bold text-primary">
+                          Thả ảnh/video tại đây để đăng bài...
+                        </span>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center gap-3">
                     <Avatar className="size-9 border border-border/20 shadow-sm rounded-full overflow-hidden">
                       <AvatarImage
@@ -492,11 +613,60 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
                       </AvatarFallback>
                     </Avatar>
                     <div
-                      onClick={() => setPostModalOpen(true)}
+                      onClick={() => {
+                        setStagedFiles([]);
+                        setPostModalOpen(true);
+                      }}
                       className="flex-1 rounded-full bg-muted/50 hover:bg-muted/80 text-muted-foreground px-4 py-2.5 text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer border border-border/10 flex items-center"
                     >
                       Bạn đang nghĩ gì? Hãy chia sẻ điều gì đó với cộng đồng...
                     </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-border/25 pt-2.5 px-1">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        multiple
+                        accept="image/*,video/*"
+                        className="hidden"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={handleShortcutClick}
+                        className="h-8.5 rounded-lg text-xs font-bold gap-2 text-slate-600 dark:text-slate-400 hover:text-primary hover:bg-primary/5 transition-all duration-200 cursor-pointer"
+                      >
+                        <ImageIcon className="size-4 text-emerald-500" />
+                        Ảnh/Video
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setStagedFiles([]);
+                          setPostModalOpen(true);
+                        }}
+                        className="h-8.5 rounded-lg text-xs font-bold gap-2 text-slate-600 dark:text-slate-400 hover:text-primary hover:bg-primary/5 transition-all duration-200 cursor-pointer"
+                      >
+                        <Tag className="size-4 text-sky-500" />
+                        Gắn thẻ
+                      </Button>
+                    </div>
+
+                    {community.rules && community.rules.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={scrollToRules}
+                        className="h-8.5 rounded-lg text-xs font-bold gap-2 text-slate-600 dark:text-slate-400 hover:text-primary hover:bg-primary/5 transition-all duration-200 cursor-pointer"
+                      >
+                        <ShieldCheck className="size-4 text-amber-500" />
+                        Nội quy nhóm
+                      </Button>
+                    )}
                   </div>
                 </Card>
               )}
@@ -876,7 +1046,10 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
               </Card>
 
               {/* Nội quy cộng đồng Card */}
-              <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg hover:border-primary/10 transition-all duration-300">
+              <Card
+                id="community-rules-card"
+                className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg hover:border-primary/10 transition-all duration-300"
+              >
                 <CardHeader className="px-4 py-3 border-b border-border/40">
                   <CardTitle className="text-base font-extrabold text-foreground flex items-center gap-2">
                     <ShieldCheck className="size-5 text-primary" />
@@ -939,9 +1112,160 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
       />
       <CreatePostModal
         isOpen={postModalOpen}
-        onClose={() => setPostModalOpen(false)}
+        onClose={() => {
+          setPostModalOpen(false);
+          setStagedFiles([]);
+        }}
         communityGroupId={groupId}
+        initialFiles={stagedFiles}
       />
+
+      {canManage && activeTab === 'moderation' && (
+        <div className="m-0 max-w-4xl mx-auto flex flex-col gap-6">
+          <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg">
+            <CardHeader className="px-4 py-3 border-b border-border/40 flex flex-row items-center justify-between">
+              <CardTitle className="text-base font-extrabold text-foreground flex items-center gap-2">
+                <ShieldCheck className="size-5 text-primary" />
+                Hàng đợi kiểm duyệt bài viết ({pendingPostsCount})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4.5 p-4">
+              {pendingPosts.length > 0 ? (
+                pendingPosts.map((post) => {
+                  const profile = userProfiles[post.authorId];
+                  const displayName = profile?.displayName ?? post.authorId;
+                  const avatarUrl = profile?.avatar ?? undefined;
+                  const postText = extractTextFromTiptapJson(post.content);
+
+                  return (
+                    <Card
+                      key={post.postId}
+                      className="rounded-xl border border-border/40 bg-background/50 hover:bg-background/80 hover:border-border/80 p-5 transition-all duration-200 shadow-[0_2px_8px_rgba(0,0,0,0.01)] flex flex-col gap-4"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="size-10 border border-border/20 shadow-sm">
+                            <AvatarImage src={avatarUrl} alt={displayName} />
+                            <AvatarFallback className="font-bold text-xs bg-muted text-foreground flex items-center justify-center rounded-full">
+                              {getInitials(displayName) || 'U'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <h4 className="font-bold text-foreground text-sm leading-snug">
+                              {displayName}
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                              Gửi lúc: {new Date(post.createdAt).toLocaleString('vi-VN')}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={resolvePendingLoading}
+                            onClick={() => setRejectPostId(post.postId)}
+                            className="h-8.5 px-3.5 text-xs font-bold rounded-lg text-destructive hover:bg-destructive/10 border-border/60 cursor-pointer transition-all duration-200"
+                          >
+                            Từ chối
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={resolvePendingLoading}
+                            onClick={() => void handleApprovePost(post.postId)}
+                            className="h-8.5 px-4.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-sm shadow-emerald-500/10 cursor-pointer transition-all duration-200"
+                          >
+                            Phê duyệt
+                          </Button>
+                        </div>
+                      </div>
+
+                      {postText && (
+                        <p className="text-sm text-slate-600 dark:text-slate-400 font-medium whitespace-pre-wrap leading-relaxed px-1">
+                          {postText}
+                        </p>
+                      )}
+
+                      {post.mediaUrls && post.mediaUrls.length > 0 && (
+                        <div className="rounded-xl overflow-hidden max-h-[350px] border border-border/10 bg-black/5 dark:bg-white/5">
+                          <MediaGallery mediaUrls={post.mediaUrls} />
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })
+              ) : (
+                <EmptyState
+                  icon={FileText}
+                  title="Không có bài viết chờ duyệt"
+                  description="Tất cả bài viết trong cộng đồng đã được xử lý sạch sẽ."
+                />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Dialog nhập lý do từ chối bài viết */}
+      <AlertDialog
+        open={rejectPostId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRejectPostId(null);
+            setRejectReason('');
+          }
+        }}
+      >
+        <AlertDialogContent className="rounded-2xl max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-extrabold text-foreground">
+              Từ chối bài viết
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Vui lòng nhập lý do từ chối bài viết. Tác giả bài viết sẽ nhận được thông báo giải
+              thích lý do này.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-3">
+            <textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Ví dụ: Nội dung vi phạm quy định cộng đồng về ngôn từ hoặc mang tính chất quảng cáo không được phép..."
+              className="w-full min-h-[100px] text-sm p-3 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none font-medium text-foreground"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl font-bold cursor-pointer">
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (rejectPostId) {
+                  try {
+                    await resolvePendingPost({
+                      groupId,
+                      postId: rejectPostId,
+                      action: 'reject',
+                      rejectReason: rejectReason.trim() || undefined,
+                    }).unwrap();
+                    toast.success('Đã từ chối bài viết');
+                  } catch (err: any) {
+                    toast.error(err?.data?.message || 'Không thể từ chối bài viết');
+                  } finally {
+                    setRejectPostId(null);
+                    setRejectReason('');
+                  }
+                }
+              }}
+              disabled={resolvePendingLoading}
+              className="bg-destructive hover:bg-destructive/90 text-white rounded-xl font-bold border-none cursor-pointer"
+            >
+              Từ chối bài
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog
         open={confirmAction !== null}
         onOpenChange={(open) => !open && setConfirmAction(null)}

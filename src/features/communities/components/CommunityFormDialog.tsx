@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   Pencil,
   Plus,
@@ -63,6 +63,7 @@ export function CommunityFormDialog({
   const [type, setType] = useState<CommunityType>('public');
   const [joinPolicy, setJoinPolicy] = useState<CommunityJoinPolicy>('open');
   const [rules, setRules] = useState<ICommunityRule[]>([]);
+  const [isPostApprovalRequired, setIsPostApprovalRequired] = useState(false);
 
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -82,6 +83,7 @@ export function CommunityFormDialog({
     setType(community?.type ?? 'public');
     setJoinPolicy(community?.joinPolicy ?? 'open');
     setRules(community?.rules ?? []);
+    setIsPostApprovalRequired(community?.isPostApprovalRequired ?? false);
   }, [community, open]);
 
   const handleFileChange = async (
@@ -131,6 +133,7 @@ export function CommunityFormDialog({
       category,
       type,
       joinPolicy,
+      isPostApprovalRequired,
       rules: validRules.length ? validRules : undefined,
     };
 
@@ -412,6 +415,65 @@ export function CommunityFormDialog({
                     </p>
                     <p className="text-xs text-muted-foreground leading-normal">
                       Người dùng gửi yêu cầu tham gia và cần quản trị viên duyệt để vào nhóm.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Kiểm duyệt bài viết
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div
+                  onClick={() => setIsPostApprovalRequired(false)}
+                  className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-all duration-200 select-none ${
+                    !isPostApprovalRequired
+                      ? 'border-primary bg-primary/5 shadow-[0_0_12px_rgba(var(--primary),0.06)]'
+                      : 'border-border bg-card hover:border-border/80 hover:bg-muted/10'
+                  }`}
+                >
+                  <div
+                    className={`mt-0.5 rounded-lg p-1.5 ${!isPostApprovalRequired ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
+                  >
+                    <Users className="size-4" />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p
+                      className={`text-sm font-bold ${!isPostApprovalRequired ? 'text-primary' : 'text-foreground'}`}
+                    >
+                      Đăng trực tiếp
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-normal">
+                      Thành viên có thể đăng bài viết thảo luận ngay lập tức mà không cần kiểm
+                      duyệt.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setIsPostApprovalRequired(true)}
+                  className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-all duration-200 select-none ${
+                    isPostApprovalRequired
+                      ? 'border-primary bg-primary/5 shadow-[0_0_12px_rgba(var(--primary),0.06)]'
+                      : 'border-border bg-card hover:border-border/80 hover:bg-muted/10'
+                  }`}
+                >
+                  <div
+                    className={`mt-0.5 rounded-lg p-1.5 ${isPostApprovalRequired ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
+                  >
+                    <ShieldCheck className="size-4" />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p
+                      className={`text-sm font-bold ${isPostApprovalRequired ? 'text-primary' : 'text-foreground'}`}
+                    >
+                      Duyệt trước khi đăng
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-normal">
+                      Bài viết từ thành viên cần được quản trị viên duyệt trước khi hiển thị cho mọi
+                      người.
                     </p>
                   </div>
                 </div>
