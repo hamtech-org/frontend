@@ -42,6 +42,7 @@ export interface IPost {
   moderationStatus: ModerationStatus;
   currentUserReaction?: ReactionType | null;
   isSaved?: boolean; // Enriched from BE
+  isPinned?: boolean;
   sharedFrom?: ISharedPostInfo; // Present if this post is a share
   createdAt: string;
   updatedAt: string;
