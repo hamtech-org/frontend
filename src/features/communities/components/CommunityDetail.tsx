@@ -46,6 +46,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
 
 import type { RootState } from '@/store/store';
 import { CreatePostModal } from '@/features/newsfeed/components/CreatePostModal';
@@ -95,6 +96,12 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
 
   const [rejectPostId, setRejectPostId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+
+  const [transferTarget, setTransferTarget] = useState<{
+    userId: string;
+    displayName: string;
+  } | null>(null);
+  const [confirmGroupNameInput, setConfirmGroupNameInput] = useState('');
 
   const { data, isLoading, isError, error } = useGetCommunityQuery(groupId);
   const community = data?.data;
@@ -792,7 +799,10 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
                               variant="outline"
                               disabled={transferState.isLoading}
                               onClick={() =>
-                                transferOwner({ groupId, targetUserId: member.userId })
+                                setTransferTarget({
+                                  userId: member.userId,
+                                  displayName: displayName,
+                                })
                               }
                               className="h-8.5 text-xs font-bold px-3 rounded-lg border-border/60 hover:bg-muted transition-colors duration-200 cursor-pointer"
                             >
@@ -1326,6 +1336,79 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
               }}
             >
               Xác nhận xóa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog xác nhận chuyển quyền sở hữu */}
+      <AlertDialog
+        open={transferTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setTransferTarget(null);
+            setConfirmGroupNameInput('');
+          }
+        }}
+      >
+        <AlertDialogContent className="rounded-2xl max-w-md border border-destructive/20 shadow-lg">
+          <AlertDialogHeader>
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive mb-2">
+              <AlertCircle className="h-6 w-6" />
+            </div>
+            <AlertDialogTitle className="font-extrabold text-foreground text-center">
+              Cảnh báo: Chuyển quyền sở hữu
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-center font-medium leading-relaxed">
+              Bạn sắp chuyển giao quyền Chủ sở hữu cộng đồng{' '}
+              <strong className="text-foreground font-extrabold">{community?.name}</strong> cho{' '}
+              <strong className="text-foreground font-extrabold">
+                {transferTarget?.displayName}
+              </strong>
+              . Hành động này{' '}
+              <strong className="text-destructive font-extrabold">không thể hoàn tác</strong>. Bạn
+              sẽ bị hạ cấp xuống Admin và không còn quyền quản trị tối cao của nhóm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4 flex flex-col gap-2.5">
+            <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Nhập chính xác tên cộng đồng để xác nhận
+            </label>
+            <Input
+              type="text"
+              value={confirmGroupNameInput}
+              onChange={(e) => setConfirmGroupNameInput(e.target.value)}
+              placeholder={community?.name}
+              className="w-full text-sm font-semibold"
+            />
+          </div>
+          <AlertDialogFooter className="sm:flex-row gap-2">
+            <AlertDialogCancel className="rounded-xl font-bold cursor-pointer flex-1 sm:order-first">
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                confirmGroupNameInput.trim() !== community?.name?.trim() || transferState.isLoading
+              }
+              onClick={async () => {
+                if (transferTarget) {
+                  try {
+                    await transferOwner({
+                      groupId,
+                      targetUserId: transferTarget.userId,
+                    }).unwrap();
+                    toast.success('Đã chuyển quyền chủ sở hữu thành công');
+                  } catch (err: any) {
+                    toast.error(err?.data?.message || 'Không thể chuyển quyền chủ sở hữu');
+                  } finally {
+                    setTransferTarget(null);
+                    setConfirmGroupNameInput('');
+                  }
+                }
+              }}
+              className="bg-destructive hover:bg-destructive/90 text-white rounded-xl font-bold border-none cursor-pointer flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Xác nhận chuyển
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
