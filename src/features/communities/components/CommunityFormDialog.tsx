@@ -9,6 +9,7 @@ import {
   Users,
   ShieldCheck,
   BookOpen,
+  X,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import {
@@ -61,8 +62,7 @@ export function CommunityFormDialog({
   const [category, setCategory] = useState<CommunityCategory>('general');
   const [type, setType] = useState<CommunityType>('public');
   const [joinPolicy, setJoinPolicy] = useState<CommunityJoinPolicy>('open');
-  const [ruleTitle, setRuleTitle] = useState('');
-  const [ruleDescription, setRuleDescription] = useState('');
+  const [rules, setRules] = useState<ICommunityRule[]>([]);
 
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -81,20 +81,8 @@ export function CommunityFormDialog({
     setCategory(community?.category ?? 'general');
     setType(community?.type ?? 'public');
     setJoinPolicy(community?.joinPolicy ?? 'open');
-    setRuleTitle(community?.rules?.[0]?.title ?? '');
-    setRuleDescription(community?.rules?.[0]?.description ?? '');
+    setRules(community?.rules ?? []);
   }, [community, open]);
-
-  const rules: ICommunityRule[] = useMemo(() => {
-    if (!ruleTitle.trim() || !ruleDescription.trim()) return [];
-    return [
-      {
-        id: community?.rules?.[0]?.id ?? 'rule-1',
-        title: ruleTitle.trim(),
-        description: ruleDescription.trim(),
-      },
-    ];
-  }, [community?.rules, ruleDescription, ruleTitle]);
 
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -131,7 +119,10 @@ export function CommunityFormDialog({
   };
 
   const submit = async (): Promise<void> => {
-    if (!name.trim()) return;
+    const validRules = rules
+      .map((r) => ({ id: r.id, title: r.title.trim(), description: r.description.trim() }))
+      .filter((r) => r.title && r.description);
+
     const body = {
       name: name.trim(),
       description: description.trim() || null,
@@ -140,7 +131,7 @@ export function CommunityFormDialog({
       category,
       type,
       joinPolicy,
-      rules: rules.length ? rules : undefined,
+      rules: validRules.length ? validRules : undefined,
     };
 
     try {
@@ -429,34 +420,82 @@ export function CommunityFormDialog({
           </div>
 
           <div className="rounded-2xl border border-border/60 bg-muted/20 p-4 flex flex-col gap-3 border-l-4 border-l-primary/70">
-            <div className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
-              <BookOpen className="size-4 text-primary" />
-              Nội quy đầu tiên của nhóm
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-semibold text-muted-foreground">
-                  Tiêu đề nội quy
-                </label>
-                <Input
-                  value={ruleTitle}
-                  onChange={(e) => setRuleTitle(e.target.value)}
-                  placeholder="Ví dụ: Tôn trọng lẫn nhau"
-                  className="rounded-lg h-9 transition-all duration-200 focus-visible:ring-primary/20 focus-visible:border-primary focus-visible:ring-offset-0"
-                />
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
+                <BookOpen className="size-4 text-primary" />
+                Nội quy cộng đồng ({rules.length})
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-semibold text-muted-foreground">
-                  Mô tả nội quy
-                </label>
-                <Input
-                  value={ruleDescription}
-                  onChange={(e) => setRuleDescription(e.target.value)}
-                  placeholder="Ví dụ: Không dùng từ ngữ xúc phạm..."
-                  className="rounded-lg h-9 transition-all duration-200 focus-visible:ring-primary/20 focus-visible:border-primary focus-visible:ring-offset-0"
-                />
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-lg text-xs gap-1 cursor-pointer"
+                onClick={() =>
+                  setRules([...rules, { id: `rule-${Date.now()}`, title: '', description: '' }])
+                }
+              >
+                <Plus className="size-3.5" />
+                Thêm nội quy
+              </Button>
             </div>
+
+            {rules.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic text-center py-2">
+                Chưa có nội quy nào. Hãy thêm nội quy để thành viên tuân thủ.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {rules.map((rule, index) => (
+                  <div
+                    key={rule.id}
+                    className="flex items-start gap-2 bg-background p-3 rounded-xl border border-border/50 shadow-sm relative group"
+                  >
+                    <div className="flex-1 grid gap-3 sm:grid-cols-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[11px] font-semibold text-muted-foreground">
+                          Tiêu đề nội quy #{index + 1}
+                        </label>
+                        <Input
+                          value={rule.title}
+                          onChange={(e) => {
+                            const newRules = [...rules];
+                            newRules[index] = { ...newRules[index], title: e.target.value };
+                            setRules(newRules);
+                          }}
+                          placeholder="Ví dụ: Tôn trọng lẫn nhau"
+                          className="rounded-lg h-9 transition-all duration-200 focus-visible:ring-primary/20 focus-visible:border-primary focus-visible:ring-offset-0"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[11px] font-semibold text-muted-foreground">
+                          Mô tả nội quy
+                        </label>
+                        <Input
+                          value={rule.description}
+                          onChange={(e) => {
+                            const newRules = [...rules];
+                            newRules[index] = { ...newRules[index], description: e.target.value };
+                            setRules(newRules);
+                          }}
+                          placeholder="Ví dụ: Không dùng từ ngữ xúc phạm..."
+                          className="rounded-lg h-9 transition-all duration-200 focus-visible:ring-primary/20 focus-visible:border-primary focus-visible:ring-offset-0"
+                        />
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 self-end cursor-pointer"
+                      onClick={() => setRules(rules.filter((r) => r.id !== rule.id))}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
