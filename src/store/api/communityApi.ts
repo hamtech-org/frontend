@@ -11,6 +11,7 @@ import type {
   ICommunityMember,
   ICreateCommunityDto,
   CommunityMemberRole,
+  ICommunityModerationLogsPage,
 } from '@/types/community.types';
 
 export const communityApi = createApi({
@@ -23,6 +24,7 @@ export const communityApi = createApi({
     'CommunityRequests',
     'CommunityPosts',
     'CommunityPendingPosts',
+    'CommunityModerationLogs',
   ],
   endpoints: (builder) => ({
     listCommunities: builder.query<
@@ -61,6 +63,7 @@ export const communityApi = createApi({
       invalidatesTags: (_res, _err, { groupId }) => [
         'Communities',
         { type: 'CommunityDetail', id: groupId },
+        { type: 'CommunityModerationLogs', id: groupId },
       ],
     }),
     archiveCommunity: builder.mutation<ApiSuccessResponse<null>, string>({
@@ -103,6 +106,7 @@ export const communityApi = createApi({
       invalidatesTags: (_res, _err, { groupId }) => [
         { type: 'CommunityMembers', id: groupId },
         { type: 'CommunityDetail', id: groupId },
+        { type: 'CommunityModerationLogs', id: groupId },
       ],
     }),
     updateCommunityMemberRole: builder.mutation<
@@ -117,6 +121,7 @@ export const communityApi = createApi({
       invalidatesTags: (_res, _err, { groupId }) => [
         { type: 'CommunityMembers', id: groupId },
         { type: 'CommunityDetail', id: groupId },
+        { type: 'CommunityModerationLogs', id: groupId },
       ],
     }),
     transferCommunityOwner: builder.mutation<
@@ -132,6 +137,7 @@ export const communityApi = createApi({
         'Communities',
         { type: 'CommunityMembers', id: groupId },
         { type: 'CommunityDetail', id: groupId },
+        { type: 'CommunityModerationLogs', id: groupId },
       ],
     }),
     getCommunityRequests: builder.query<ApiSuccessResponse<ICommunityJoinRequest[]>, string>({
@@ -151,6 +157,7 @@ export const communityApi = createApi({
         { type: 'CommunityRequests', id: groupId },
         { type: 'CommunityMembers', id: groupId },
         { type: 'CommunityDetail', id: groupId },
+        { type: 'CommunityModerationLogs', id: groupId },
       ],
     }),
     getCommunityPosts: builder.query<
@@ -171,7 +178,10 @@ export const communityApi = createApi({
         url: `/communities/${groupId}/posts/${postId}/pin`,
         method: 'PUT',
       }),
-      invalidatesTags: (_res, _err, { groupId }) => [{ type: 'CommunityPosts', id: groupId }],
+      invalidatesTags: (_res, _err, { groupId }) => [
+        { type: 'CommunityPosts', id: groupId },
+        { type: 'CommunityModerationLogs', id: groupId },
+      ],
     }),
     unpinCommunityPost: builder.mutation<
       ApiSuccessResponse<null>,
@@ -181,7 +191,10 @@ export const communityApi = createApi({
         url: `/communities/${groupId}/posts/${postId}/unpin`,
         method: 'PUT',
       }),
-      invalidatesTags: (_res, _err, { groupId }) => [{ type: 'CommunityPosts', id: groupId }],
+      invalidatesTags: (_res, _err, { groupId }) => [
+        { type: 'CommunityPosts', id: groupId },
+        { type: 'CommunityModerationLogs', id: groupId },
+      ],
     }),
     reportCommunity: builder.mutation<
       ApiSuccessResponse<null>,
@@ -211,7 +224,18 @@ export const communityApi = createApi({
       invalidatesTags: (_res, _err, { groupId }) => [
         { type: 'CommunityPendingPosts', id: groupId },
         { type: 'CommunityPosts', id: groupId },
+        { type: 'CommunityModerationLogs', id: groupId },
       ],
+    }),
+    getCommunityModerationLogs: builder.query<
+      ApiSuccessResponse<ICommunityModerationLogsPage>,
+      { groupId: string; limit?: number; cursor?: string | null }
+    >({
+      query: ({ groupId, limit, cursor }) => ({
+        url: `/communities/${groupId}/moderation/logs`,
+        params: { limit, cursor: cursor ?? undefined },
+      }),
+      providesTags: (_res, _err, { groupId }) => [{ type: 'CommunityModerationLogs', id: groupId }],
     }),
   }),
 });
@@ -236,4 +260,5 @@ export const {
   useReportCommunityMutation,
   useGetPendingPostsQuery,
   useResolvePendingPostMutation,
+  useGetCommunityModerationLogsQuery,
 } = communityApi;

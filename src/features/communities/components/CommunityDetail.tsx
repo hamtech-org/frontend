@@ -21,6 +21,13 @@ import {
   RefreshCw,
   Flag,
   Image as ImageIcon,
+  History,
+  CheckCircle2,
+  XCircle,
+  ShieldAlert,
+  Pin,
+  PinOff,
+  Settings,
 } from 'lucide-react';
 
 import {
@@ -65,12 +72,13 @@ import {
   useTransferCommunityOwnerMutation,
   useGetPendingPostsQuery,
   useResolvePendingPostMutation,
+  useGetCommunityModerationLogsQuery,
 } from '@/store/api/communityApi';
 import { usePostMultipleUsersMutation } from '@/store/api/userApi';
 import { MediaGallery } from '@/features/newsfeed/components/MediaGallery';
 import { extractTextFromTiptapJson } from '@/utils/tiptapText';
 
-import type { CommunityMemberRole } from '@/types/community.types';
+import type { CommunityMemberRole, ICommunityModerationLog } from '@/types/community.types';
 import type { IUser } from '@/types/user.types';
 
 import defaultCoverGroup from '@/assets/images/cover-group-default.jpg';
@@ -580,6 +588,20 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
                   {pendingPostsCount}
                 </span>
               )}
+            </button>
+          )}
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('moderation-logs')}
+              className={`relative rounded-none border-b-[3px] px-1 pb-3 pt-2 text-sm font-bold transition-all cursor-pointer flex items-center gap-2 bg-transparent hover:bg-transparent ${
+                activeTab === 'moderation-logs'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <History className="size-4" />
+              Nhật ký kiểm duyệt
             </button>
           )}
         </div>
@@ -1216,6 +1238,10 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
         </div>
       )}
 
+      {canManage && activeTab === 'moderation-logs' && (
+        <CommunityModerationLogsView groupId={groupId} />
+      )}
+
       {/* Dialog nhập lý do từ chối bài viết */}
       <AlertDialog
         open={rejectPostId !== null}
@@ -1416,4 +1442,332 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
     </main>
   );
 }
+
+interface LogActorTargetProps {
+  displayName: string;
+  avatar: string | null;
+}
+
+function LogActorAvatar({ actor }: { actor?: LogActorTargetProps }) {
+  return (
+    <Avatar className="size-8 border border-border/20 shadow-sm rounded-full shrink-0">
+      <AvatarImage src={actor?.avatar || undefined} alt={actor?.displayName} />
+      <AvatarFallback className="text-[10px] font-extrabold bg-muted text-foreground flex items-center justify-center rounded-full">
+        {actor?.displayName ? getInitials(actor.displayName) : 'QTV'}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+function getTruncatedPostText(content: string | undefined | null, maxLen: number = 60): string {
+  if (!content) return '';
+  const plainText = extractTextFromTiptapJson(content);
+  if (plainText.length > maxLen) {
+    return plainText.substring(0, maxLen) + '...';
+  }
+  return plainText;
+}
+
+function CommunityModerationLogsView({ groupId }: { groupId: string }) {
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [accumulatedLogs, setAccumulatedLogs] = useState<ICommunityModerationLog[]>([]);
+
+  const {
+    data: logsRes,
+    isLoading,
+    isFetching,
+  } = useGetCommunityModerationLogsQuery({
+    groupId,
+    limit: 20,
+    cursor: cursor || undefined,
+  });
+
+  useEffect(() => {
+    setAccumulatedLogs([]);
+    setCursor(null);
+  }, [groupId]);
+
+  useEffect(() => {
+    if (logsRes?.data?.items) {
+      setAccumulatedLogs((prev) => {
+        const existingIds = new Set(prev.map((item) => item.logId));
+        const newItems = logsRes.data.items.filter((item) => !existingIds.has(item.logId));
+        return [...prev, ...newItems];
+      });
+    }
+  }, [logsRes]);
+
+  if (isLoading && accumulatedLogs.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto flex flex-col gap-4">
+        <Skeleton className="h-60 rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (accumulatedLogs.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <EmptyState
+          icon={History}
+          title="Chưa có hoạt động nào"
+          description="Lịch sử kiểm duyệt của các thành viên Ban quản trị cộng đồng sẽ hiển thị ở đây."
+        />
+      </div>
+    );
+  }
+
+  const roleLabels: Record<string, string> = {
+    owner: 'Chủ sở hữu',
+    admin: 'Quản trị viên',
+    moderator: 'Kiểm duyệt viên',
+    member: 'Thành viên',
+  };
+
+  const fieldLabels: Record<string, string> = {
+    name: 'Tên nhóm',
+    slug: 'Đường dẫn nhóm (Slug)',
+    type: 'Quyền riêng tư',
+    joinPolicy: 'Chế độ tham gia',
+    isPostApprovalRequired: 'Yêu cầu duyệt bài viết',
+    description: 'Mô tả nhóm',
+    avatar: 'Ảnh đại diện',
+    coverUrl: 'Ảnh bìa',
+    category: 'Danh mục nhóm',
+    rules: 'Quy định nhóm',
+  };
+
+  const formatVal = (field: string, v: any) => {
+    if (v === null || v === undefined) return 'Trống';
+    if (typeof v === 'boolean') return v ? 'Bật' : 'Tắt';
+    if (field === 'type') return v === 'public' ? 'Công khai' : 'Riêng tư';
+    if (field === 'joinPolicy') return v === 'open' ? 'Tự do' : 'Phê duyệt';
+    if (field === 'category') {
+      const labels: Record<string, string> = {
+        general: 'Chung',
+        tech: 'Công nghệ',
+        study: 'Học tập',
+        entertainment: 'Giải trí',
+        sports: 'Thể thao',
+        beauty: 'Làm đẹp',
+        gaming: 'Trò chơi',
+      };
+      return labels[v] || String(v);
+    }
+    if (field === 'rules' && Array.isArray(v)) {
+      return v.map((r: any) => `"${r.title}"`).join(', ') || 'Trống';
+    }
+    return String(v);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto flex flex-col gap-6">
+      <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg">
+        <CardHeader className="px-4 py-3 border-b border-border/40">
+          <CardTitle className="text-base font-extrabold text-foreground flex items-center gap-2">
+            <History className="size-5 text-primary" />
+            Nhật ký kiểm duyệt cộng đồng
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="relative border-l border-border/60 ml-4 pl-6 sm:pl-8 space-y-8 py-2">
+            {accumulatedLogs.map((log) => {
+              let Icon = Settings;
+              let colorClass = 'bg-slate-500/10 text-slate-500 border-slate-500';
+              let logText = '';
+
+              const actorName = log.actorInfo?.displayName || 'Thành viên BQT';
+              const targetName = log.targetUserInfo?.displayName || log.targetName || 'Thành viên';
+
+              switch (log.action) {
+                case 'approve_join':
+                  Icon = CheckCircle2;
+                  colorClass =
+                    'bg-emerald-500/10 text-emerald-500 border-emerald-500 dark:bg-emerald-500/20';
+                  logText = `đã duyệt yêu cầu gia nhập của`;
+                  break;
+                case 'reject_join':
+                  Icon = XCircle;
+                  colorClass = 'bg-rose-500/10 text-rose-500 border-rose-500 dark:bg-rose-500/20';
+                  logText = `đã từ chối yêu cầu gia nhập của`;
+                  break;
+                case 'ban_member':
+                  Icon = UserMinus;
+                  colorClass = 'bg-rose-500/10 text-rose-500 border-rose-500 dark:bg-rose-500/20';
+                  logText = `đã chặn thành viên`;
+                  break;
+                case 'unban_member':
+                  Icon = Users;
+                  colorClass = 'bg-blue-500/10 text-blue-500 border-blue-500 dark:bg-blue-500/20';
+                  logText = `đã gỡ chặn thành viên`;
+                  break;
+                case 'change_role': {
+                  Icon = ShieldAlert;
+                  colorClass =
+                    'bg-amber-500/10 text-amber-500 border-amber-500 dark:bg-amber-500/20';
+                  const oldRole = roleLabels[log.metadata?.oldRole] || log.metadata?.oldRole;
+                  const newRole = roleLabels[log.metadata?.newRole] || log.metadata?.newRole;
+                  logText = `đã thay đổi vai trò của <strong>${targetName}</strong> từ <strong>${oldRole}</strong> thành <strong>${newRole}</strong>`;
+                  break;
+                }
+                case 'transfer_ownership':
+                  Icon = Crown;
+                  colorClass =
+                    'bg-amber-500/10 text-amber-500 border-amber-500 dark:bg-amber-500/20';
+                  logText = `đã chuyển quyền sở hữu cộng đồng cho`;
+                  break;
+                case 'approve_post': {
+                  Icon = CheckCircle2;
+                  colorClass =
+                    'bg-emerald-500/10 text-emerald-500 border-emerald-500 dark:bg-emerald-500/20';
+                  const approvedText = getTruncatedPostText(log.targetName, 60) || 'Bài viết';
+                  logText = `đã phê duyệt bài viết "${approvedText}"`;
+                  break;
+                }
+                case 'reject_post': {
+                  Icon = XCircle;
+                  colorClass = 'bg-rose-500/10 text-rose-500 border-rose-500 dark:bg-rose-500/20';
+                  const rejectedText = getTruncatedPostText(log.targetName, 60) || 'Bài viết';
+                  logText = `đã từ chối bài viết "${rejectedText}"`;
+                  break;
+                }
+                case 'delete_post': {
+                  Icon = Trash2;
+                  colorClass = 'bg-rose-500/10 text-rose-500 border-rose-500 dark:bg-rose-500/20';
+                  const deletedText = getTruncatedPostText(log.targetName, 60) || 'Bài viết';
+                  logText = `đã xóa bài viết "${deletedText}"`;
+                  break;
+                }
+                case 'pin_post':
+                  Icon = Pin;
+                  colorClass = 'bg-blue-500/10 text-blue-500 border-blue-500 dark:bg-blue-500/20';
+                  logText = `đã ghim một bài viết`;
+                  break;
+                case 'unpin_post':
+                  Icon = PinOff;
+                  colorClass =
+                    'bg-slate-500/10 text-slate-500 border-slate-500 dark:bg-slate-500/20';
+                  logText = `đã bỏ ghim một bài viết`;
+                  break;
+                case 'update_settings':
+                  Icon = Settings;
+                  colorClass =
+                    'bg-slate-500/10 text-slate-500 border-slate-500 dark:bg-slate-500/20';
+                  logText = `đã cập nhật cài đặt nhóm`;
+                  break;
+              }
+
+              return (
+                <div key={log.logId} className="relative group">
+                  <div
+                    className={`absolute -left-[31px] sm:-left-[39px] top-1.5 rounded-full border-2 border-card p-1 shadow-sm shrink-0 transition-transform duration-200 group-hover:scale-110 ${colorClass}`}
+                  >
+                    <Icon className="size-3.5" />
+                  </div>
+
+                  <div className="flex items-start gap-3 rounded-xl border border-border/40 bg-background/50 hover:bg-background/80 hover:border-border/80 p-4 transition-all duration-200 shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
+                    <LogActorAvatar actor={log.actorInfo} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-foreground leading-relaxed font-medium">
+                        <strong className="font-extrabold text-foreground">{actorName}</strong>{' '}
+                        {log.action === 'change_role' ? (
+                          <span dangerouslySetInnerHTML={{ __html: logText }} />
+                        ) : (
+                          <>
+                            {logText}{' '}
+                            {[
+                              'approve_join',
+                              'reject_join',
+                              'ban_member',
+                              'unban_member',
+                              'transfer_ownership',
+                            ].includes(log.action) && (
+                              <strong className="font-extrabold text-foreground">
+                                {targetName}
+                              </strong>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      <div className="text-xs text-slate-400 dark:text-slate-500 mt-1 font-semibold">
+                        {new Date(log.createdAt).toLocaleString('vi-VN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                        })}
+                      </div>
+
+                      {log.reason && (
+                        <p className="mt-2.5 text-xs text-rose-600 dark:text-rose-400 bg-rose-500/5 dark:bg-rose-500/10 rounded-xl p-3 border border-rose-500/10 leading-relaxed font-medium italic">
+                          Lý do: "{log.reason}"
+                        </p>
+                      )}
+
+                      {log.action === 'update_settings' &&
+                        log.metadata?.changedFields &&
+                        (() => {
+                          const changedEntries = Object.entries(log.metadata.changedFields).filter(
+                            ([_, diff]: [string, any]) => {
+                              if (!diff) return false;
+                              return JSON.stringify(diff.old) !== JSON.stringify(diff.new);
+                            },
+                          );
+                          if (changedEntries.length === 0) return null;
+                          return (
+                            <div className="mt-2.5 text-xs border border-border/40 rounded-xl p-3 bg-muted/40 max-w-md animate-in fade-in duration-200">
+                              <div className="font-extrabold text-slate-500 mb-1.5">
+                                Chi tiết thay đổi:
+                              </div>
+                              <ul className="space-y-1.5">
+                                {changedEntries.map(([field, diff]: [string, any]) => {
+                                  const label = fieldLabels[field] || field;
+                                  return (
+                                    <li
+                                      key={field}
+                                      className="text-slate-600 dark:text-slate-400 flex flex-wrap items-center gap-1.5"
+                                    >
+                                      <span className="font-bold text-foreground">{label}:</span>
+                                      <span className="line-through text-slate-400 font-semibold">
+                                        {formatVal(field, diff.old)}
+                                      </span>
+                                      <span className="text-primary font-bold">→</span>
+                                      <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                                        {formatVal(field, diff.new)}
+                                      </span>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
+                          );
+                        })()}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {logsRes?.data?.hasMore && (
+            <div className="flex justify-center pt-4 border-t border-border/40 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setCursor(logsRes.data.nextCursor)}
+                disabled={isFetching}
+                className="h-9 px-6 rounded-xl text-xs font-bold border-border/60 hover:bg-muted transition-all cursor-pointer gap-2"
+              >
+                {isFetching && <RefreshCw className="size-3.5 animate-spin" />}
+                Tải thêm hoạt động
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default CommunityDetail;
