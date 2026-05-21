@@ -159,7 +159,7 @@ export function CommunityFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-w-2xl p-0" showCloseButton={false}>
+      <DialogContent className="sm:max-w-3xl p-0" showCloseButton={false}>
         <DialogHeader className="px-5 py-4">
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
