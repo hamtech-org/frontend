@@ -28,7 +28,7 @@ import type {
   ISearchGroupResult,
   ISearchPostResult,
 } from '@/types/search.types';
-import defaultAvatarGroup from '@/assets/images/avatar-group-default..jpg';
+import defaultAvatarGroup from '@/assets/images/avatar-group-default.jpg';
 
 const SearchPage = () => {
   const navigate = useNavigate();
@@ -481,7 +481,7 @@ const SearchPage = () => {
                       <img
                         src={group.avatar ?? defaultAvatarGroup}
                         alt={group.name}
-                        className="w-16 h-16 rounded-lg mb-3 object-cover border border-gray-100 dark:border-gray-700 shadow-sm"
+                        className="w-16 h-16 rounded-full mb-3 object-cover border border-gray-100 dark:border-gray-700 shadow-sm"
                       />
                       <h3 className="font-semibold text-gray-900 dark:text-white">{group.name}</h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">

@@ -45,9 +45,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 interface Props {
   post: IPost;
   onEditPost?: (post: IPost) => void;
+  className?: string;
 }
 
-export const PostCard = ({ post, onEditPost }: Props) => {
+export const PostCard = ({ post, onEditPost, className }: Props) => {
   const vm = toPostCardViewModel(post);
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const isOwner = currentUser?.userId === vm.authorId;
@@ -140,7 +141,7 @@ export const PostCard = ({ post, onEditPost }: Props) => {
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      className="feed-card-virtualized glass-card max-w-3xl mx-auto rounded-2xl overflow-hidden border-none shadow-lg shadow-black/5 dark:shadow-white/5"
+      className={`feed-card-virtualized glass-card rounded-2xl overflow-hidden border-none shadow-lg shadow-black/5 dark:shadow-white/5 ${className || 'max-w-3xl mx-auto'}`}
     >
       <div className="px-3 py-2 md:px-4 flex items-center justify-between">
         <div className="flex items-center gap-3">

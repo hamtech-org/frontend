@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import defaultAvatarGroup from '@/assets/images/avatar-group-default..jpg';
+import defaultAvatarGroup from '@/assets/images/avatar-group-default.jpg';
 import { cn } from '@/utils/cn';
 import type { IConversation } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/types/chat.types';
