@@ -22,7 +22,9 @@ export const useAppShellState = (pathname: string): UseAppShellStateResult => {
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isTabletViewport, setIsTabletViewport] = useState(false);
 
-  const isDesktopSidebarExpanded = !isTabletViewport && isSidebarOpen;
+  const isImmersiveSidebarRoute =
+    pathname.startsWith('/communities') || pathname.startsWith('/chat');
+  const isDesktopSidebarExpanded = !isTabletViewport && isSidebarOpen && !isImmersiveSidebarRoute;
 
   useEffect(() => {
     const mobileQuery = window.matchMedia('(max-width: 767px)');
@@ -71,6 +73,16 @@ export const useAppShellState = (pathname: string): UseAppShellStateResult => {
       document.body.style.overflow = '';
     };
   }, [isMobileSidebarOpen, isMobileViewport]);
+
+  useEffect(() => {
+    const handleToggleMobileSidebar = () => {
+      setIsMobileSidebarOpen((previousState) => !previousState);
+    };
+    window.addEventListener('toggle-mobile-sidebar', handleToggleMobileSidebar);
+    return () => {
+      window.removeEventListener('toggle-mobile-sidebar', handleToggleMobileSidebar);
+    };
+  }, []);
 
   const handleToggleSidebar = useCallback((): void => {
     if (isMobileViewport) {

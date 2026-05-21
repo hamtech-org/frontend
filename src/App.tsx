@@ -40,7 +40,7 @@ const App: React.FC = () => {
   const isImmersiveRoute = isChatRoute || isReelsRoute;
   const routeTransitionKey = isChatRoute ? 'chat' : location.pathname;
   const shouldRenderAppShell =
-    !isGuestRoute && !isCallRoute && !isChatRoute && !isLiveImmersiveRoute && !isJoinRoute;
+    !isGuestRoute && !isCallRoute && !isLiveImmersiveRoute && !isJoinRoute;
   const {
     isMobileViewport,
     isMobileSidebarOpen,
