@@ -28,6 +28,7 @@ import {
   Pin,
   PinOff,
   Settings,
+  MessageSquare,
 } from 'lucide-react';
 
 import {
@@ -40,6 +41,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useGetConversationsQuery } from '@/store/api/chatApi';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -73,6 +84,9 @@ import {
   useGetPendingPostsQuery,
   useResolvePendingPostMutation,
   useGetCommunityModerationLogsQuery,
+  useJoinCommunityChatMutation,
+  useLinkExistingChatMutation,
+  useUnlinkChatMutation,
 } from '@/store/api/communityApi';
 import { usePostMultipleUsersMutation } from '@/store/api/userApi';
 import { MediaGallery } from '@/features/newsfeed/components/MediaGallery';
@@ -92,6 +106,9 @@ import { CommunityReportDialog } from './CommunityReportDialog';
 
 export function CommunityDetail({ groupId }: { groupId: string }) {
   const currentUser = useSelector((state: RootState) => state.auth.user);
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [postModalOpen, setPostModalOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'leave' | 'archive' | null>(null);
@@ -101,6 +118,18 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [linkChatDialogOpen, setLinkChatDialogOpen] = useState(false);
+  const [selectedConversationId, setSelectedConversationId] = useState<string>('');
+  const [unlinkConfirmOpen, setUnlinkConfirmOpen] = useState(false);
+
+  const [joinCommunityChat, { isLoading: joinChatLoading }] = useJoinCommunityChatMutation();
+  const [linkExistingChat, { isLoading: linkChatLoading }] = useLinkExistingChatMutation();
+  const [unlinkChat, { isLoading: unlinkChatLoading }] = useUnlinkChatMutation();
+
+  const { data: conversationsRes } = useGetConversationsQuery(undefined, {
+    skip: !currentUser,
+  });
 
   const [rejectPostId, setRejectPostId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -190,6 +219,48 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
         });
     }
   }, [memberData, requestData, pendingPostsData, fetchUsers]);
+
+  // Auto-join community chat if joinChat=true query param is present
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('joinChat') === 'true' && community?.chatEnabled && isMember) {
+      const performAutoJoin = async () => {
+        try {
+          const res = await joinCommunityChat({ groupId }).unwrap();
+          const conversationId = res?.data?.conversationId || community?.conversationId;
+          if (conversationId) {
+            navigate(`/chat/${encodeURIComponent(conversationId)}`, { replace: true });
+          }
+        } catch (err: any) {
+          toast.error(err?.data?.message || 'Không thể tự động tham gia phòng chat');
+        }
+      };
+      void performAutoJoin();
+    }
+  }, [
+    location.search,
+    community?.chatEnabled,
+    community?.conversationId,
+    isMember,
+    groupId,
+    joinCommunityChat,
+    navigate,
+  ]);
+
+  const handleJoinChat = async () => {
+    if (!community || !community.chatEnabled) return;
+    try {
+      const res = await joinCommunityChat({ groupId }).unwrap();
+      const conversationId = res?.data?.conversationId || community?.conversationId;
+      if (conversationId) {
+        navigate(`/chat/${encodeURIComponent(conversationId)}`);
+      } else {
+        toast.error('Không tìm thấy phòng trò chuyện');
+      }
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Không thể tham gia phòng chat');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -374,6 +445,16 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
             </div>
 
             <div className="flex flex-wrap items-center justify-center lg:justify-end gap-2.5 shrink-0">
+              {isMember && community.chatEnabled && (
+                <Button
+                  onClick={() => void handleJoinChat()}
+                  disabled={joinChatLoading}
+                  className="h-10 px-6 bg-primary hover:bg-primary/90 text-white rounded-xl shadow-md shadow-primary/10 font-bold transition-all duration-200 cursor-pointer gap-2"
+                >
+                  <MessageSquare className="size-4.5" />
+                  Trò chuyện
+                </Button>
+              )}
               {isMember ? (
                 <Button
                   variant="secondary"
@@ -418,6 +499,29 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
                           Chỉnh sửa nhóm
                         </Button>
                       )}
+                    {isOwner &&
+                      (community.conversationId ? (
+                        <Button
+                          variant="ghost"
+                          onClick={() => setUnlinkConfirmOpen(true)}
+                          className="h-9 w-full justify-start px-3 rounded-lg text-xs font-bold gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                        >
+                          <MessageSquare className="size-4 text-destructive" />
+                          Hủy liên kết chat
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            setSelectedConversationId('');
+                            setLinkChatDialogOpen(true);
+                          }}
+                          className="h-9 w-full justify-start px-3 rounded-lg text-xs font-bold gap-2 text-foreground cursor-pointer"
+                        >
+                          <MessageSquare className="size-4 text-slate-500" />
+                          Liên kết phòng chat
+                        </Button>
+                      ))}
                     {isMember && isOwner && (
                       <Button
                         variant="ghost"
@@ -1435,6 +1539,138 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
               className="bg-destructive hover:bg-destructive/90 text-white rounded-xl font-bold border-none cursor-pointer flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Xác nhận chuyển
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog Liên kết cuộc trò chuyện */}
+      <Dialog open={linkChatDialogOpen} onOpenChange={setLinkChatDialogOpen}>
+        <DialogContent className="rounded-2xl max-w-md bg-card border border-border/40 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-extrabold text-foreground text-lg">
+              Liên kết cuộc trò chuyện nhóm
+            </DialogTitle>
+            <DialogDescription className="text-slate-500 dark:text-slate-400 font-medium">
+              Chọn một cuộc trò chuyện nhóm mà bạn làm trưởng nhóm để liên kết làm phòng chat chính
+              thức của cộng đồng này.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {(() => {
+              const eligibleConversations = (conversationsRes?.data ?? []).filter(
+                (conv) =>
+                  conv.type === 'group' &&
+                  conv.leaderId === currentUser?.userId &&
+                  (!conv.groupId || conv.groupId === ''),
+              );
+
+              if (eligibleConversations.length > 0) {
+                return (
+                  <div className="flex flex-col gap-2.5">
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                      Chọn nhóm chat trò chuyện
+                    </label>
+                    <Select
+                      value={selectedConversationId}
+                      onValueChange={setSelectedConversationId}
+                    >
+                      <SelectTrigger className="w-full h-11 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm font-semibold">
+                        <SelectValue placeholder="Chọn nhóm chat trò chuyện..." />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl border border-border max-h-60">
+                        {eligibleConversations.map((conv) => (
+                          <SelectItem
+                            key={conv.conversationId}
+                            value={conv.conversationId}
+                            className="text-sm font-semibold cursor-pointer py-2.5 rounded-lg"
+                          >
+                            {conv.name || 'Trò chuyện nhóm không tên'} ({conv.memberCount} thành
+                            viên)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="text-center py-6 px-4 bg-muted/30 rounded-2xl border border-border/10">
+                  <p className="text-sm text-slate-500 dark:text-slate-400 font-semibold leading-relaxed">
+                    Không tìm thấy cuộc trò chuyện nhóm hợp lệ. Bạn phải là trưởng nhóm của nhóm
+                    chat và nhóm chat đó chưa được liên kết với cộng đồng nào khác.
+                  </p>
+                </div>
+              );
+            })()}
+          </div>
+          <DialogFooter className="sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setLinkChatDialogOpen(false)}
+              className="rounded-xl font-bold cursor-pointer flex-1"
+            >
+              Hủy
+            </Button>
+            <Button
+              disabled={!selectedConversationId || linkChatLoading}
+              onClick={async () => {
+                if (selectedConversationId) {
+                  try {
+                    await linkExistingChat({
+                      groupId,
+                      conversationId: selectedConversationId,
+                    }).unwrap();
+                    toast.success('Liên kết phòng chat thành công!');
+                    setLinkChatDialogOpen(false);
+                  } catch (err: any) {
+                    toast.error(err?.data?.message || 'Không thể liên kết phòng chat');
+                  }
+                }
+              }}
+              className="bg-primary hover:bg-primary/90 text-white rounded-xl font-bold flex-1"
+            >
+              Xác nhận liên kết
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Hủy liên kết cuộc trò chuyện */}
+      <AlertDialog open={unlinkConfirmOpen} onOpenChange={setUnlinkConfirmOpen}>
+        <AlertDialogContent className="rounded-2xl max-w-md border border-destructive/20 shadow-lg">
+          <AlertDialogHeader>
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive mb-2">
+              <AlertCircle className="h-6 w-6" />
+            </div>
+            <AlertDialogTitle className="font-extrabold text-foreground text-center">
+              Hủy liên kết phòng chat?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-center font-medium leading-relaxed">
+              Bạn có chắc chắn muốn hủy liên kết phòng chat của cộng đồng này? Thành viên cộng đồng
+              sẽ không thể truy cập phòng chat này từ cộng đồng nữa. Cuộc trò chuyện nhóm thực tế
+              vẫn sẽ được giữ lại.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:flex-row gap-2">
+            <AlertDialogCancel className="rounded-xl font-bold cursor-pointer flex-1">
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={unlinkChatLoading}
+              onClick={async () => {
+                try {
+                  await unlinkChat(groupId).unwrap();
+                  toast.success('Hủy liên kết phòng chat thành công!');
+                  setUnlinkConfirmOpen(false);
+                } catch (err: any) {
+                  toast.error(err?.data?.message || 'Không thể hủy liên kết phòng chat');
+                }
+              }}
+              className="bg-destructive hover:bg-destructive/90 text-white rounded-xl font-bold border-none cursor-pointer flex-1"
+            >
+              Xác nhận hủy
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -237,6 +237,34 @@ export const communityApi = createApi({
       }),
       providesTags: (_res, _err, { groupId }) => [{ type: 'CommunityModerationLogs', id: groupId }],
     }),
+    joinCommunityChat: builder.mutation<
+      ApiSuccessResponse<{ conversationId: string }>,
+      { groupId: string }
+    >({
+      query: ({ groupId }) => ({
+        url: `/communities/${groupId}/join-chat`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_res, _err, { groupId }) => [{ type: 'CommunityDetail', id: groupId }],
+    }),
+    linkExistingChat: builder.mutation<
+      ApiSuccessResponse<null>,
+      { groupId: string; conversationId: string }
+    >({
+      query: ({ groupId, conversationId }) => ({
+        url: `/communities/${groupId}/link-chat`,
+        method: 'POST',
+        body: { conversationId },
+      }),
+      invalidatesTags: (_res, _err, { groupId }) => [{ type: 'CommunityDetail', id: groupId }],
+    }),
+    unlinkChat: builder.mutation<ApiSuccessResponse<null>, string>({
+      query: (groupId) => ({
+        url: `/communities/${groupId}/link-chat`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_res, _err, groupId) => [{ type: 'CommunityDetail', id: groupId }],
+    }),
   }),
 });
 
@@ -261,4 +289,7 @@ export const {
   useGetPendingPostsQuery,
   useResolvePendingPostMutation,
   useGetCommunityModerationLogsQuery,
+  useJoinCommunityChatMutation,
+  useLinkExistingChatMutation,
+  useUnlinkChatMutation,
 } = communityApi;

@@ -10,6 +10,8 @@ import {
   ShieldCheck,
   BookOpen,
   X,
+  MessageSquare,
+  MessageSquareOff,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import {
@@ -64,6 +66,7 @@ export function CommunityFormDialog({
   const [joinPolicy, setJoinPolicy] = useState<CommunityJoinPolicy>('open');
   const [rules, setRules] = useState<ICommunityRule[]>([]);
   const [isPostApprovalRequired, setIsPostApprovalRequired] = useState(false);
+  const [chatEnabled, setChatEnabled] = useState(true);
 
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -84,6 +87,7 @@ export function CommunityFormDialog({
     setJoinPolicy(community?.joinPolicy ?? 'open');
     setRules(community?.rules ?? []);
     setIsPostApprovalRequired(community?.isPostApprovalRequired ?? false);
+    setChatEnabled(community?.chatEnabled ?? true);
   }, [community, open]);
 
   const handleFileChange = async (
@@ -134,6 +138,7 @@ export function CommunityFormDialog({
       type,
       joinPolicy,
       isPostApprovalRequired,
+      chatEnabled,
       rules: validRules.length ? validRules : undefined,
     };
 
@@ -474,6 +479,63 @@ export function CommunityFormDialog({
                     <p className="text-xs text-muted-foreground leading-normal">
                       Bài viết từ thành viên cần được quản trị viên duyệt trước khi hiển thị cho mọi
                       người.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Phòng trò chuyện
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div
+                  onClick={() => setChatEnabled(true)}
+                  className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-all duration-200 select-none ${
+                    chatEnabled
+                      ? 'border-primary bg-primary/5 shadow-[0_0_12px_rgba(var(--primary),0.06)]'
+                      : 'border-border bg-card hover:border-border/80 hover:bg-muted/10'
+                  }`}
+                >
+                  <div
+                    className={`mt-0.5 rounded-lg p-1.5 ${chatEnabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
+                  >
+                    <MessageSquare className="size-4" />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p
+                      className={`text-sm font-bold ${chatEnabled ? 'text-primary' : 'text-foreground'}`}
+                    >
+                      Bật trò chuyện
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-normal">
+                      Thành viên có thể tham gia phòng trò chuyện chung của cộng đồng.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setChatEnabled(false)}
+                  className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-all duration-200 select-none ${
+                    !chatEnabled
+                      ? 'border-primary bg-primary/5 shadow-[0_0_12px_rgba(var(--primary),0.06)]'
+                      : 'border-border bg-card hover:border-border/80 hover:bg-muted/10'
+                  }`}
+                >
+                  <div
+                    className={`mt-0.5 rounded-lg p-1.5 ${!chatEnabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
+                  >
+                    <MessageSquareOff className="size-4" />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p
+                      className={`text-sm font-bold ${!chatEnabled ? 'text-primary' : 'text-foreground'}`}
+                    >
+                      Tắt trò chuyện
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-normal">
+                      Vô hiệu hóa và hủy liên kết phòng trò chuyện của cộng đồng.
                     </p>
                   </div>
                 </div>
