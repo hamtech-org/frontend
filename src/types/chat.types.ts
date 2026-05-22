@@ -68,6 +68,8 @@ export interface IConversation {
   leaderId?: string;
   /** Nhóm đã giải tán (META); không còn thành viên trong GSI — có thể chỉ còn khi cache chưa refetch. */
   isDeleted?: boolean;
+  /** ID nhóm/cộng đồng liên kết */
+  groupId?: string | null;
 }
 
 export interface ILastMessage {
