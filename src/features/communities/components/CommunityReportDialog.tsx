@@ -10,43 +10,72 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { useReportCommunityMutation } from '@/store/api/communityApi';
+import { useReportEntityMutation } from '@/store/api/communityApi';
 
 const REPORT_REASONS = [
   { value: 'spam', label: 'Spam hoặc lừa đảo' },
-  { value: 'nudity', label: 'Hình ảnh khỏa thân hoặc nhạy cảm' },
-  { value: 'hate', label: 'Ngôn từ kích động thù hận' },
-  { value: 'violence', label: 'Bạo lực hoặc nguy hiểm' },
+  { value: 'harassment', label: 'Quấy rối hoặc quấy nhiễu' },
+  { value: 'hate_speech', label: 'Ngôn từ thù hận' },
+  { value: 'inappropriate', label: 'Nội dung không thích hợp' },
+  { value: 'rules_violation', label: 'Vi phạm quy tắc cộng đồng' },
   { value: 'other', label: 'Lý do khác' },
 ] as const;
 
+type ReportReasonType = (typeof REPORT_REASONS)[number]['value'];
+
 export function CommunityReportDialog({
   groupId,
+  entityType = 'GROUP',
+  entityId,
+  postId,
+  createdAt,
   open,
   onClose,
 }: {
   groupId: string;
+  entityType?: 'POST' | 'CMT' | 'GROUP';
+  entityId: string;
+  postId?: string;
+  createdAt?: string;
   open: boolean;
   onClose: () => void;
 }) {
-  const [reportCommunity, { isLoading }] = useReportCommunityMutation();
-  const [reason, setReason] = useState<'spam' | 'nudity' | 'hate' | 'violence' | 'other'>('spam');
+  const [reportEntity, { isLoading }] = useReportEntityMutation();
+  const [reason, setReason] = useState<ReportReasonType>('spam');
   const [details, setDetails] = useState('');
 
   const handleSubmit = async () => {
     try {
-      await reportCommunity({
+      await reportEntity({
         groupId,
+        entityType,
+        entityId,
         reason,
         details: details.trim() || undefined,
+        postId,
+        createdAt,
       }).unwrap();
-      toast.success('Báo cáo cộng đồng thành công. Ban quản trị sẽ sớm xem xét.');
+      toast.success('Báo cáo nội dung thành công. Ban quản trị sẽ xem xét xử lý.');
       onClose();
       setDetails('');
       setReason('spam');
     } catch (err: any) {
-      toast.error(err?.data?.message || 'Không thể gửi báo cáo cộng đồng');
+      toast.error(err?.data?.message || 'Không thể gửi báo cáo nội dung');
     }
+  };
+
+  const getTitle = () => {
+    if (entityType === 'POST') return 'Báo cáo bài viết';
+    if (entityType === 'CMT') return 'Báo cáo bình luận';
+    return 'Báo cáo cộng đồng';
+  };
+
+  const getDescription = () => {
+    if (entityType === 'POST')
+      return 'Báo cáo nếu bài viết này vi phạm tiêu chuẩn hoặc quy tắc cộng đồng.';
+    if (entityType === 'CMT')
+      return 'Báo cáo nếu bình luận này vi phạm tiêu chuẩn hoặc quy tắc cộng đồng.';
+    return 'Báo cáo nếu cộng đồng này vi phạm quy chuẩn hoặc quy tắc.';
   };
 
   return (
@@ -58,10 +87,8 @@ export function CommunityReportDialog({
               <AlertTriangle className="size-4 text-red-600 dark:text-red-400" />
             </div>
             <div>
-              <DialogTitle>Báo cáo cộng đồng</DialogTitle>
-              <DialogDescription>
-                Báo cáo nếu cộng đồng này vi phạm quy chuẩn cộng đồng.
-              </DialogDescription>
+              <DialogTitle>{getTitle()}</DialogTitle>
+              <DialogDescription>{getDescription()}</DialogDescription>
             </div>
           </div>
         </DialogHeader>
@@ -103,7 +130,7 @@ export function CommunityReportDialog({
               value={details}
               onChange={(e) => setDetails(e.target.value)}
               maxLength={500}
-              placeholder="Cung cấp thêm thông tin giúp chúng tôi hiểu rõ hơn..."
+              placeholder="Cung cấp thêm thông tin giúp ban quản trị hiểu rõ hơn..."
               className="min-h-20 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all duration-200 resize-none"
             />
             <div className="text-right text-xs text-muted-foreground">

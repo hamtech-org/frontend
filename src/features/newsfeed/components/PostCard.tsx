@@ -32,6 +32,7 @@ import { MediaGallery } from './MediaGallery';
 import { ReactionButton } from '@/components/common/ReactionButton';
 import { ReactionSummary } from '@/components/common/ReactionButton/ReactionSummary';
 import { CommentItem } from './CommentItem';
+import { CommunityReportDialog } from '@/features/communities/components/CommunityReportDialog';
 import { CommentInput } from './CommentInput';
 import { SharedPostPreview } from './SharedPostPreview';
 import { SharePostModal } from './SharePostModal';
@@ -81,6 +82,7 @@ export const PostCard = ({ post, onEditPost, className, communityRole }: Props) 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [isSaved, setIsSaved] = useState(post.isSaved ?? false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
 
   const [getCommentsPage] = useLazyGetCommentsQuery();
   const [reactToPost] = useReactToPostMutation();
@@ -218,7 +220,10 @@ export const PostCard = ({ post, onEditPost, className, communityRole }: Props) 
               <>
                 <button
                   className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
-                  onClick={() => setIsMenuOpen(false)}
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setShowReportDialog(true);
+                  }}
                 >
                   <Flag className="h-4 w-4 text-muted-foreground" />
                   Báo cáo
@@ -374,7 +379,12 @@ export const PostCard = ({ post, onEditPost, className, communityRole }: Props) 
             ) : (
               <>
                 {comments.map((comment) => (
-                  <CommentItem key={comment.commentId} comment={comment} postId={post.postId} />
+                  <CommentItem
+                    key={comment.commentId}
+                    comment={comment}
+                    postId={post.postId}
+                    groupId={post.groupId || undefined}
+                  />
                 ))}
                 {isLoadingMoreComments && (
                   <div className="flex flex-col gap-2 py-1">
@@ -440,6 +450,17 @@ export const PostCard = ({ post, onEditPost, className, communityRole }: Props) 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Report dialog ── */}
+      {post.groupId && (
+        <CommunityReportDialog
+          groupId={post.groupId}
+          entityType="POST"
+          entityId={post.postId}
+          open={showReportDialog}
+          onClose={() => setShowReportDialog(false)}
+        />
+      )}
     </motion.article>
   );
 };

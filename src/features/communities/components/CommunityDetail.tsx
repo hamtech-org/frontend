@@ -77,12 +77,18 @@ import {
   useGetCommunityModerationLogsQuery,
   useJoinCommunityChatMutation,
   useUnlinkChatMutation,
+  useGetCommunityReportsQuery,
+  useResolveCommunityReportMutation,
 } from '@/store/api/communityApi';
 import { usePostMultipleUsersMutation } from '@/store/api/userApi';
 import { MediaGallery } from '@/features/newsfeed/components/MediaGallery';
 import { extractTextFromTiptapJson } from '@/utils/tiptapText';
 
-import type { CommunityMemberRole, ICommunityModerationLog } from '@/types/community.types';
+import type {
+  CommunityMemberRole,
+  ICommunityModerationLog,
+  ICommunityReport,
+} from '@/types/community.types';
 import type { IUser } from '@/types/user.types';
 
 import defaultCoverGroup from '@/assets/images/cover-group-default.jpg';
@@ -133,6 +139,12 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
 
   const [resolvePendingPost, { isLoading: resolvePendingLoading }] =
     useResolvePendingPostMutation();
+
+  const { data: reportsRes } = useGetCommunityReportsQuery({ groupId }, { skip: !canManage });
+  const reportsData = reportsRes?.data?.items || [];
+  const pendingReportsCount = reportsData.filter((r) => r.status === 'pending').length;
+
+  const [resolveReport, { isLoading: resolveReportLoading }] = useResolveCommunityReportMutation();
   const isOwner = community?.viewerRole === 'owner';
   const isMember = community?.viewerStatus === 'active';
   const { data: members } = useGetCommunityMembersQuery(groupId, { skip: !community });
@@ -181,6 +193,12 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
     }
     if (pendingPostsData) {
       pendingPostsData.forEach((p) => ids.push(p.authorId));
+    }
+    if (reportsData) {
+      reportsData.forEach((r) => {
+        if (r.reporterId) ids.push(r.reporterId);
+        if (r.targetAuthorId) ids.push(r.targetAuthorId);
+      });
     }
     const uniqueIds = Array.from(new Set(ids));
     const missingIds = uniqueIds.filter((id) => !fetchedIdsRef.current.has(id));
@@ -676,6 +694,25 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
             >
               <History className="size-4" />
               Nhật ký kiểm duyệt
+            </button>
+          )}
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('reports')}
+              className={`relative rounded-none border-b-[3px] px-1 pb-3 pt-2 text-sm font-bold transition-all cursor-pointer flex items-center gap-2 bg-transparent hover:bg-transparent ${
+                activeTab === 'reports'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <Flag className="size-4" />
+              Báo cáo vi phạm
+              {pendingReportsCount > 0 && (
+                <span className="flex size-4.5 items-center justify-center rounded-full bg-destructive text-[10px] font-extrabold text-destructive-foreground animate-pulse">
+                  {pendingReportsCount}
+                </span>
+              )}
             </button>
           )}
         </div>
@@ -1213,6 +1250,7 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
       />
       <CommunityReportDialog
         groupId={groupId}
+        entityId={groupId}
         open={reportOpen}
         onClose={() => setReportOpen(false)}
       />
@@ -1314,6 +1352,15 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
 
       {canManage && activeTab === 'moderation-logs' && (
         <CommunityModerationLogsView groupId={groupId} />
+      )}
+
+      {canManage && activeTab === 'reports' && (
+        <CommunityReportsView
+          groupId={groupId}
+          userProfiles={userProfiles}
+          resolveReport={resolveReport}
+          resolveReportLoading={resolveReportLoading}
+        />
       )}
 
       {/* Dialog nhập lý do từ chối bài viết */}
@@ -1878,6 +1925,287 @@ function CommunityModerationLogsView({ groupId }: { groupId: string }) {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function CommunityReportsView({
+  groupId,
+  userProfiles,
+  resolveReport,
+  resolveReportLoading,
+}: {
+  groupId: string;
+  userProfiles: Record<string, IUser>;
+  resolveReport: any;
+  resolveReportLoading: boolean;
+}) {
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'resolved'>('pending');
+  const { data: reportsRes, refetch } = useGetCommunityReportsQuery({
+    groupId,
+    status: statusFilter,
+  });
+  const reports = reportsRes?.data?.items || [];
+
+  const [warningReport, setWarningReport] = useState<ICommunityReport | null>(null);
+  const [warningNotes, setWarningNotes] = useState('');
+
+  const REASON_LABEL: Record<string, string> = {
+    spam: 'Spam hoặc lừa đảo',
+    harassment: 'Quấy rối hoặc quấy nhiễu',
+    hate_speech: 'Ngôn từ thù hận',
+    inappropriate: 'Nội dung không thích hợp',
+    rules_violation: 'Vi phạm quy tắc',
+    other: 'Lý do khác',
+  };
+
+  const handleResolve = async (
+    report: ICommunityReport,
+    action: 'dismiss' | 'delete_content' | 'warn_user' | 'ban_user',
+    notes?: string,
+  ) => {
+    try {
+      await resolveReport({
+        groupId,
+        entityType: report.entityType,
+        entityId: report.entityId,
+        createdAt: report.createdAt,
+        reporterId: report.reporterId,
+        action,
+        notes,
+      }).unwrap();
+      toast.success('Đã xử lý báo cáo thành công');
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Không thể xử lý báo cáo');
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto flex flex-col gap-6">
+      <div className="flex items-center justify-between border-b border-border/40 pb-2">
+        <div className="flex gap-4">
+          <button
+            onClick={() => setStatusFilter('pending')}
+            className={`pb-2 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+              statusFilter === 'pending'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-slate-500'
+            }`}
+          >
+            Chờ xử lý ({reports.filter((r) => r.status === 'pending').length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('resolved')}
+            className={`pb-2 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+              statusFilter === 'resolved'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-slate-500'
+            }`}
+          >
+            Đã giải quyết
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {reports.length > 0 ? (
+          reports.map((report) => {
+            const reporter = userProfiles[report.reporterId];
+            const targetAuthor = userProfiles[report.targetAuthorId];
+            const reporterName = reporter?.displayName ?? report.reporterId;
+            const targetAuthorName = targetAuthor?.displayName ?? report.targetAuthorId;
+
+            return (
+              <Card
+                key={report.reportId}
+                className="rounded-2xl border border-border/40 bg-card p-5 shadow-md flex flex-col gap-4"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/20 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold px-2 py-1 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 uppercase tracking-wider">
+                      {report.entityType === 'POST'
+                        ? 'Bài viết'
+                        : report.entityType === 'CMT'
+                          ? 'Bình luận'
+                          : 'Cộng đồng'}
+                    </span>
+                    <span className="text-xs font-bold px-2 py-1 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                      {REASON_LABEL[report.reason] || report.reason}
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    Gửi lúc: {new Date(report.createdAt).toLocaleString('vi-VN')}
+                  </span>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4 text-sm font-semibold">
+                  <div>
+                    <span className="text-xs text-slate-400 block mb-0.5">Người báo cáo:</span>
+                    <span>{reporterName}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-400 block mb-0.5">Tác giả bị báo cáo:</span>
+                    <span>{targetAuthorName}</span>
+                  </div>
+                </div>
+
+                {report.details && (
+                  <div className="bg-muted/30 border border-border/40 rounded-xl p-3 text-xs italic text-slate-600 dark:text-slate-400">
+                    <span className="font-extrabold text-foreground not-italic block mb-0.5">
+                      Chi tiết lý do:
+                    </span>
+                    "{report.details}"
+                  </div>
+                )}
+
+                {/* Content Preview */}
+                {report.contentPreview && (
+                  <div className="bg-muted/10 border border-dashed border-border/60 rounded-xl p-4 flex flex-col gap-2">
+                    <span className="text-xs font-bold text-slate-400 tracking-wide uppercase">
+                      Nội dung bị báo cáo:
+                    </span>
+                    {report.contentPreview.text && (
+                      <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                        {report.entityType === 'POST'
+                          ? getTruncatedPostText(report.contentPreview.text, 300)
+                          : report.contentPreview.text}
+                      </p>
+                    )}
+                    {report.contentPreview.mediaUrls &&
+                      report.contentPreview.mediaUrls.length > 0 && (
+                        <div className="rounded-xl overflow-hidden max-h-[200px] border border-border/10">
+                          <MediaGallery mediaUrls={report.contentPreview.mediaUrls} />
+                        </div>
+                      )}
+                  </div>
+                )}
+
+                {report.status === 'pending' ? (
+                  <div className="flex flex-wrap gap-2 justify-end mt-2 pt-3 border-t border-border/20">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={resolveReportLoading}
+                      onClick={() => handleResolve(report, 'dismiss')}
+                      className="text-xs font-bold rounded-lg cursor-pointer transition-colors text-slate-600 hover:bg-slate-100"
+                    >
+                      Bỏ qua
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={resolveReportLoading}
+                      onClick={() => handleResolve(report, 'delete_content')}
+                      className="text-xs font-bold rounded-lg border-red-500/20 text-red-500 hover:bg-red-500/10 cursor-pointer"
+                    >
+                      Xóa nội dung
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={resolveReportLoading}
+                      onClick={() => setWarningReport(report)}
+                      className="text-xs font-bold rounded-lg border-amber-500/20 text-amber-600 hover:bg-amber-500/10 cursor-pointer"
+                    >
+                      Cảnh cáo tác giả
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={resolveReportLoading}
+                      onClick={() => handleResolve(report, 'ban_user')}
+                      className="text-xs font-bold rounded-lg bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+                    >
+                      Trục xuất & Chặn
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-2 pt-3 border-t border-border/20 flex flex-col gap-1.5 text-xs">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-500">
+                      <CheckCircle2 className="size-4 text-emerald-500" />
+                      <span>
+                        Đã xử lý:{' '}
+                        {report.status === 'resolved_dismissed'
+                          ? 'Bỏ qua'
+                          : report.status === 'resolved_deleted'
+                            ? 'Đã xóa nội dung / chặn'
+                            : 'Đã cảnh cáo tác giả'}
+                      </span>
+                    </div>
+                    {report.resolutionNotes && (
+                      <span className="text-slate-400 italic block pl-5">
+                        Ghi chú: "{report.resolutionNotes}"
+                      </span>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })
+        ) : (
+          <EmptyState
+            icon={Flag}
+            title={
+              statusFilter === 'pending' ? 'Không có báo cáo chờ xử lý' : 'Chưa xử lý báo cáo nào'
+            }
+            description={
+              statusFilter === 'pending'
+                ? 'Cộng đồng của bạn đang hoạt động cực kỳ lành mạnh.'
+                : 'Lịch sử giải quyết các báo cáo vi phạm sẽ hiển thị ở đây.'
+            }
+          />
+        )}
+      </div>
+
+      {/* Dialog Cảnh cáo tác giả */}
+      <AlertDialog
+        open={warningReport !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setWarningReport(null);
+            setWarningNotes('');
+          }
+        }}
+      >
+        <AlertDialogContent className="rounded-2xl max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-extrabold text-foreground">
+              Cảnh cáo tác giả vi phạm
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Vui lòng nhập ghi chú cảnh cáo. Hệ thống sẽ gửi thông báo cảnh cáo trực tiếp đến tác
+              giả của nội dung vi phạm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-3">
+            <textarea
+              value={warningNotes}
+              onChange={(e) => setWarningNotes(e.target.value)}
+              placeholder="Ví dụ: Nội dung của bạn mang tính chất quấy rối thành viên khác, vui lòng đọc kỹ nội quy cộng đồng..."
+              className="w-full min-h-[100px] text-sm p-3 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none font-medium text-foreground"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl font-bold cursor-pointer">
+              Hủy
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (warningReport) {
+                  await handleResolve(warningReport, 'warn_user', warningNotes.trim() || undefined);
+                  setWarningReport(null);
+                  setWarningNotes('');
+                }
+              }}
+              disabled={resolveReportLoading}
+              className="bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold border-none cursor-pointer"
+            >
+              Gửi cảnh cáo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

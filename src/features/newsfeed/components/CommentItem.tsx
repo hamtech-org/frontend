@@ -10,15 +10,17 @@ import { HashtagText } from './HashtagText';
 import { MediaLightbox } from './MediaLightbox';
 import { formatRelative } from '@/utils/formatDate';
 import { cn } from '@/utils/cn';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, Flag } from 'lucide-react';
+import { CommunityReportDialog } from '@/features/communities/components/CommunityReportDialog';
 
 interface CommentItemProps {
   comment: IComment;
   postId: string;
   isNested?: boolean;
+  groupId?: string;
 }
 
-export const CommentItem = ({ comment, postId, isNested = false }: CommentItemProps) => {
+export const CommentItem = ({ comment, postId, isNested = false, groupId }: CommentItemProps) => {
   const currentUser = useSelector((state: RootState) => state.auth.user);
 
   const [showReplyInput, setShowReplyInput] = useState(false);
@@ -33,6 +35,7 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
     import('@/types/reaction.types').ReactionType | null
   >(comment.currentUserReaction ?? null);
   const [localReactionsCount, setLocalReactionsCount] = useState(comment.reactionsCount || {});
+  const [showReportDialog, setShowReportDialog] = useState(false);
 
   const [reactToComment] = useReactToCommentMutation();
   const [fetchReplies, { isLoading: isLoadingReplies }] = useLazyGetCommentRepliesQuery();
@@ -192,6 +195,17 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
               <MessageCircle size={14} />
             </button>
           )}
+
+          {groupId && (
+            <button
+              type="button"
+              className="hover:text-red-500 transition-colors"
+              onClick={() => setShowReportDialog(true)}
+              title="Báo cáo bình luận"
+            >
+              <Flag size={11} />
+            </button>
+          )}
         </div>
 
         {/* "Xem N trả lời" toggle */}
@@ -212,7 +226,13 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
         {!isNested && showReplies && replies.length > 0 && (
           <div className="mt-2 flex flex-col gap-2">
             {replies.map((reply) => (
-              <CommentItem key={reply.commentId} comment={reply} postId={postId} isNested />
+              <CommentItem
+                key={reply.commentId}
+                comment={reply}
+                postId={postId}
+                isNested
+                groupId={groupId}
+              />
             ))}
             {hasMoreReplies && (
               <button
@@ -242,6 +262,18 @@ export const CommentItem = ({ comment, postId, isNested = false }: CommentItemPr
           </div>
         )}
       </div>
+
+      {groupId && (
+        <CommunityReportDialog
+          groupId={groupId}
+          entityType="CMT"
+          entityId={comment.commentId}
+          postId={postId}
+          createdAt={comment.createdAt}
+          open={showReportDialog}
+          onClose={() => setShowReportDialog(false)}
+        />
+      )}
     </div>
   );
 };
