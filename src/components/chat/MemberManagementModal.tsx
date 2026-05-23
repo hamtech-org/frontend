@@ -50,6 +50,7 @@ type MemberManagementModalProps = {
   onRefreshMembers?: (opts?: { force?: boolean }) => Promise<GroupMember[] | void>;
   /** Chỉ hiển thị trưởng & phó nhóm (từ Quản lý nhóm). */
   leadersOnly?: boolean;
+  isCommunityChat?: boolean;
 };
 
 export function MemberManagementModal({
@@ -76,6 +77,7 @@ export function MemberManagementModal({
   conversationCreatorId,
   onRefreshMembers: _onRefreshMembers,
   leadersOnly = false,
+  isCommunityChat = false,
 }: MemberManagementModalProps) {
   const [brokenAvatars, setBrokenAvatars] = useState<Record<string, true>>({});
   const [kickConfirmUserId, setKickConfirmUserId] = useState<string | null>(null);
@@ -188,9 +190,9 @@ export function MemberManagementModal({
   const adminSlotsFull = useMemo(() => isGroupAdminSlotsFull(activeMembers), [activeMembers]);
 
   const memberTabs = useMemo(() => {
-    if (leadersOnly) return ['list'] as const;
+    if (leadersOnly || isCommunityChat) return ['list'] as const;
     return ['list', ...(canModerate ? (['pending'] as const) : [])] as const;
-  }, [canModerate, leadersOnly]);
+  }, [canModerate, leadersOnly, isCommunityChat]);
 
   useEffect(() => {
     if (!(memberTabs as readonly MemberTab[]).includes(memberTab)) {
@@ -271,7 +273,7 @@ export function MemberManagementModal({
   };
 
   const renderPromoteHeaderButton = (className: string) => {
-    if (!canKick) return null;
+    if (!canKick || isCommunityChat) return null;
     return (
       <button
         type="button"
@@ -338,6 +340,12 @@ export function MemberManagementModal({
             )
           : null}
         <div className="flex-1 overflow-y-auto px-5 pb-4 pt-4 custom-scrollbar space-y-2">
+          {isCommunityChat && (
+            <div className="mb-3 rounded-lg bg-blue-50/70 p-3 text-[12px] font-medium text-blue-700 dark:bg-blue-950/20 dark:text-blue-300">
+              Thành viên và vai trò được đồng bộ từ Cộng đồng. Vui lòng quản lý thành viên tại trang
+              quản trị Cộng đồng.
+            </div>
+          )}
           {memberTab === 'list' ? (
             listMembers.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
@@ -348,9 +356,14 @@ export function MemberManagementModal({
                 const menuOpen = actionMenuUserId === member.userId;
                 const isSelfAdmin = currentUserId === member.userId && member.role === 'admin';
                 const canKickThis =
-                  canKick && member.role !== 'owner' && member.userId !== currentUserId;
-                const canDemote = (canKick || isSelfAdmin) && member.role === 'admin';
-                const canPromote = canKick && member.role === 'member' && !adminSlotsFull;
+                  canKick &&
+                  !isCommunityChat &&
+                  member.role !== 'owner' &&
+                  member.userId !== currentUserId;
+                const canDemote =
+                  (canKick || isSelfAdmin) && !isCommunityChat && member.role === 'admin';
+                const canPromote =
+                  canKick && !isCommunityChat && member.role === 'member' && !adminSlotsFull;
                 return (
                   <div
                     key={member.userId}
@@ -700,14 +713,25 @@ export function MemberManagementModal({
             {renderMemberTabBar('flex shrink-0 gap-1 px-5 pt-4')}
 
             <div className="flex-1 overflow-y-auto px-5 py-4 custom-scrollbar space-y-2">
+              {isCommunityChat && (
+                <div className="mb-2 rounded-lg bg-blue-50/70 p-3 text-[12px] font-medium text-blue-700 dark:bg-blue-950/20 dark:text-blue-300">
+                  Thành viên và vai trò được đồng bộ từ Cộng đồng. Vui lòng quản lý thành viên tại
+                  trang quản trị Cộng đồng.
+                </div>
+              )}
               {memberTab === 'list'
                 ? members.map((member) => {
                     const menuOpen = actionMenuUserId === member.userId;
                     const isSelfAdmin = currentUserId === member.userId && member.role === 'admin';
                     const canKickThis =
-                      canKick && member.role !== 'owner' && member.userId !== currentUserId;
-                    const canDemote = (canKick || isSelfAdmin) && member.role === 'admin';
-                    const canPromote = canKick && member.role === 'member' && !adminSlotsFull;
+                      canKick &&
+                      !isCommunityChat &&
+                      member.role !== 'owner' &&
+                      member.userId !== currentUserId;
+                    const canDemote =
+                      (canKick || isSelfAdmin) && !isCommunityChat && member.role === 'admin';
+                    const canPromote =
+                      canKick && !isCommunityChat && member.role === 'member' && !adminSlotsFull;
                     return (
                       <div
                         key={member.userId}

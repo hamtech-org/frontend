@@ -7,6 +7,7 @@ export type GroupUpdatedPayload = {
   actorId?: string;
   actorName?: string;
   changed?: { name?: boolean; avatar?: boolean };
+  chatEnabled?: boolean;
 };
 
 /** Một dòng thông báo ngắn: xưng «Bạn» nếu chính người cập nhật. */
