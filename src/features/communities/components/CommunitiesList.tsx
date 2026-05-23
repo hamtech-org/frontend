@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Settings, Search, Plus, Newspaper, Users } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { Button } from '@/components/ui/button';
@@ -34,7 +35,12 @@ import { Loader2 } from 'lucide-react';
 export function CommunitiesList() {
   const [category, setCategory] = useState<CommunityCategory | undefined>(undefined);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [mode, setMode] = useState<CommunityBrowseMode>('discover');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const mode = (searchParams.get('tab') as CommunityBrowseMode) || 'discover';
+
+  const setMode = (newMode: CommunityBrowseMode) => {
+    setSearchParams({ tab: newMode });
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [searchResults, setSearchResults] = useState<ISearchGroupResult[]>([]);
