@@ -27,6 +27,9 @@ import { CommunityGridSection } from './CommunityGridSection';
 import { CommunityFormDialog } from './CommunityFormDialog';
 import { EmptyState } from './EmptyState';
 import { CommunityDiscoveryCard } from './CommunityDiscoveryCard';
+import { useCommunityFeedPagination } from '../hooks/useCommunityFeedPagination';
+import { PostCard } from '@/features/newsfeed/components/PostCard';
+import { Loader2 } from 'lucide-react';
 
 export function CommunitiesList() {
   const [category, setCategory] = useState<CommunityCategory | undefined>(undefined);
@@ -45,6 +48,13 @@ export function CommunitiesList() {
     limit: 50,
   });
   const [joinCommunity, joinState] = useJoinCommunityMutation();
+  const {
+    posts: feedPosts,
+    hasMore: feedHasMore,
+    isLoadingInitial: feedLoadingInitial,
+    isFetchingNext: feedFetchingNext,
+    loadMoreRef: feedLoadMoreRef,
+  } = useCommunityFeedPagination();
   const communities = data?.data.items ?? [];
   const joinedCommunities = joined?.data.items ?? [];
   const managedCommunities = joinedCommunities.filter((community) =>
@@ -429,30 +439,40 @@ export function CommunitiesList() {
             )}
 
             {mode === 'feed' && (
-              <section className="flex flex-col gap-4">
+              <section className="flex flex-col gap-6 max-w-[680px] mx-auto w-full">
                 <div>
-                  <h2 className="text-xl font-bold text-foreground">Bảng feed của bạn</h2>
+                  <h2 className="text-xl font-bold text-foreground">Bảng tin cộng đồng</h2>
                   <p className="text-sm text-muted-foreground">
-                    Chưa có endpoint tổng hợp feed nhóm, tạm thời hiển thị các nhóm bạn đã tham gia.
+                    Bài viết mới nhất từ các cộng đồng bạn đã tham gia.
                   </p>
                 </div>
-                {joinedCommunities.length ? (
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    {joinedCommunities.map((community) => (
-                      <CommunityDiscoveryCard
-                        key={community.groupId}
-                        community={community}
-                        joining={joinState.isLoading}
-                        onDismiss={() => dismissCommunity(community.groupId)}
-                        onJoin={() => void handleJoin(community.groupId)}
-                      />
+
+                {feedLoadingInitial ? (
+                  <div className="flex flex-col gap-4">
+                    <Skeleton className="h-64 rounded-2xl w-full" />
+                    <Skeleton className="h-64 rounded-2xl w-full" />
+                  </div>
+                ) : feedPosts.length ? (
+                  <div className="flex flex-col gap-4">
+                    {feedPosts.map((post) => (
+                      <PostCard key={post.postId} post={post} className="w-full max-w-full" />
                     ))}
+
+                    {feedHasMore && (
+                      <div ref={feedLoadMoreRef} className="flex justify-center p-4">
+                        {feedFetchingNext ? (
+                          <Loader2 className="animate-spin size-6 text-primary" />
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Đang tải thêm...</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <EmptyState
                     icon={Newspaper}
-                    title="Chưa có nhóm trong feed"
-                    description="Tham gia một nhóm để xem hoạt động của nhóm tại đây."
+                    title="Chưa có bài viết nào"
+                    description="Hãy tham gia các cộng đồng và cùng thảo luận với mọi người."
                   />
                 )}
               </section>

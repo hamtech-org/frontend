@@ -173,6 +173,16 @@ export const communityApi = createApi({
       }),
       providesTags: (_res, _err, { groupId }) => [{ type: 'CommunityPosts', id: groupId }],
     }),
+    getJoinedCommunitiesFeed: builder.query<
+      ApiSuccessResponse<ICommunityContentPage<IPost>>,
+      { limit?: number; cursor?: string | null } | void
+    >({
+      query: (params) => ({
+        url: '/communities/feed',
+        params: { limit: params?.limit, cursor: params?.cursor ?? undefined },
+      }),
+      providesTags: ['CommunityPosts'],
+    }),
     pinCommunityPost: builder.mutation<
       ApiSuccessResponse<null>,
       { groupId: string; postId: string }
@@ -347,4 +357,6 @@ export const {
   useJoinCommunityChatMutation,
   useLinkExistingChatMutation,
   useUnlinkChatMutation,
+  useGetJoinedCommunitiesFeedQuery,
+  useLazyGetJoinedCommunitiesFeedQuery,
 } = communityApi;

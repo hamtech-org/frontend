@@ -164,21 +164,74 @@ export const PostCard = ({ post, onEditPost, className, communityRole }: Props) 
       )}
       <div className="px-3 py-2 md:px-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="size-9 rounded-full overflow-hidden bg-muted/40 flex items-center justify-center shrink-0">
-            {vm.avatar ? (
-              <img
-                src={vm.avatar}
-                alt={vm.displayName}
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <span className="text-sm font-bold text-muted-foreground">{vm.initial}</span>
-            )}
-          </div>
+          {vm.communityInfo ? (
+            <div className="relative size-10 shrink-0">
+              <div className="w-9 h-9 rounded-xl overflow-hidden bg-muted/40 flex items-center justify-center">
+                {vm.communityInfo.avatar ? (
+                  <img
+                    src={vm.communityInfo.avatar}
+                    alt={vm.communityInfo.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-xs font-bold text-muted-foreground">
+                    {vm.communityInfo.name.charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-5.5 h-5.5 rounded-full overflow-hidden border-2 border-background bg-card flex items-center justify-center shadow-sm">
+                {vm.avatar ? (
+                  <img
+                    src={vm.avatar}
+                    alt={vm.displayName}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span className="text-[10px] font-bold text-muted-foreground">{vm.initial}</span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="size-9 rounded-full overflow-hidden bg-muted/40 flex items-center justify-center shrink-0">
+              {vm.avatar ? (
+                <img
+                  src={vm.avatar}
+                  alt={vm.displayName}
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="text-sm font-bold text-muted-foreground">{vm.initial}</span>
+              )}
+            </div>
+          )}
           <div>
-            <h3 className="font-bold text-sm leading-tight">{vm.displayName}</h3>
-            <p className="text-xs text-muted-foreground">{formatRelative(post.createdAt)}</p>
+            {vm.communityInfo ? (
+              <div className="flex flex-col">
+                <a
+                  href={`/communities/${vm.communityInfo.groupId}`}
+                  className="font-bold text-sm text-foreground hover:underline leading-tight"
+                >
+                  {vm.communityInfo.name}
+                </a>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-none">
+                  <a
+                    href={`/users/${vm.authorId}`}
+                    className="font-semibold hover:underline text-muted-foreground hover:text-foreground"
+                  >
+                    {vm.displayName}
+                  </a>
+                  <span className="mx-1">·</span>
+                  {formatRelative(post.createdAt)}
+                </p>
+              </div>
+            ) : (
+              <div>
+                <h3 className="font-bold text-sm leading-tight">{vm.displayName}</h3>
+                <p className="text-xs text-muted-foreground">{formatRelative(post.createdAt)}</p>
+              </div>
+            )}
           </div>
         </div>
 

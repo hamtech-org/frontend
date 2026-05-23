@@ -11,6 +11,12 @@ export interface IAuthorInfo {
   avatar: string | null;
 }
 
+export interface ICommunityInfo {
+  groupId: string;
+  name: string;
+  avatar: string | null;
+}
+
 export interface ISharedPostInfo {
   postId: string;
   authorId: string;
@@ -46,6 +52,7 @@ export interface IPost {
   sharedFrom?: ISharedPostInfo; // Present if this post is a share
   createdAt: string;
   updatedAt: string;
+  communityInfo?: ICommunityInfo; // Enriched from BE
 }
 
 export interface ISavedPost {
