@@ -17,6 +17,16 @@ const TYPE_ICON_LABEL: Partial<Record<NotificationType, string>> = {
   live_started: '🔴',
   system: '🔔',
   mention: '@',
+  community_invite: '👥',
+  community_invite_accepted: '✅',
+  community_join_request: '👥',
+  community_request_resolved: '✅',
+  community_member_kicked: '🚫',
+  community_role_changed: '⭐',
+  community_ownership_transferred: '👑',
+  community_chat_enabled: '💬',
+  post_approved: '✅',
+  post_rejected: '❌',
 };
 
 /** Trích actor từ payload notification (extra / data top-level). */
