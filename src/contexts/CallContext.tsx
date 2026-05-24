@@ -194,6 +194,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const detachInitiateListeners = () => {
         socketService.off('call:channel-ready', onChannelReady);
         socketService.off('call:busy', onBusy);
+        socketService.off('call:blocked', onBlocked);
       };
 
       const onBusy = (raw: unknown) => {
@@ -202,6 +203,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         detachInitiateListeners();
         playCuocGoiNhoTone();
         toast.info('Đang bận');
+      };
+
+      const onBlocked = (raw: unknown) => {
+        const p = raw as { conversationId?: string };
+        if (p?.conversationId !== conversationId) return;
+        detachInitiateListeners();
+        toast.error('Không thể gọi vì một trong hai bên đã chặn người còn lại.');
       };
 
       const onChannelReady = (data: unknown) => {
@@ -231,6 +239,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       socketService.on('call:busy', onBusy);
+      socketService.on('call:blocked', onBlocked);
       socketService.on('call:channel-ready', onChannelReady);
       socketService.emit('call:initiate', { calleeId, type, conversationId, scope: 'direct' });
     },

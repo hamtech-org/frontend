@@ -2,6 +2,7 @@ import { createApi } from '@reduxjs/toolkit/query/react';
 import type { IUser } from '@/types/user.types';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import { baseQueryWithReauth } from './baseQuery';
+import { chatApi } from './chatApi';
 
 export const userApi = createApi({
   reducerPath: 'userApi',
@@ -45,6 +46,14 @@ export const userApi = createApi({
         method: 'POST',
       }),
       invalidatesTags: ['Friend'],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          dispatch(chatApi.util.invalidateTags(['Conversations']));
+        } catch {
+          // no-op
+        }
+      },
     }),
 
     cancelFriendRequest: builder.mutation<ApiSuccessResponse<null>, { friendId: string }>({
@@ -61,6 +70,14 @@ export const userApi = createApi({
         method: 'POST',
       }),
       invalidatesTags: ['Friend'],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          dispatch(chatApi.util.invalidateTags(['Conversations']));
+        } catch {
+          // no-op
+        }
+      },
     }),
 
     rejectFriendRequest: builder.mutation<ApiSuccessResponse<null>, { senderId: string }>({
@@ -77,6 +94,56 @@ export const userApi = createApi({
         method: 'DELETE',
       }),
       invalidatesTags: ['Friend'],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          dispatch(chatApi.util.invalidateTags(['Conversations']));
+        } catch {
+          // no-op
+        }
+      },
+    }),
+
+    blockFriend: builder.mutation<ApiSuccessResponse<null>, { friendId: string }>({
+      query: ({ friendId }) => ({
+        url: `/users/friends/${friendId}/block`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['Friend'],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          dispatch(chatApi.util.invalidateTags(['Conversations']));
+        } catch {
+          // no-op
+        }
+      },
+    }),
+
+    unblockFriend: builder.mutation<ApiSuccessResponse<null>, { friendId: string }>({
+      query: ({ friendId }) => ({
+        url: `/users/friends/${friendId}/unblock`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['Friend'],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          dispatch(chatApi.util.invalidateTags(['Conversations']));
+        } catch {
+          // no-op
+        }
+      },
+    }),
+
+    getFriendRequestStatus: builder.query<
+      ApiSuccessResponse<{
+        status: 'friend' | 'pending_sent' | 'pending_received' | 'blocked' | 'none';
+      }>,
+      { userId: string }
+    >({
+      query: ({ userId }) => `/users/friends/${userId}/status`,
+      providesTags: (_result, _error, { userId }) => [{ type: 'Friend', id: userId }],
     }),
 
     getFriends: builder.query<ApiSuccessResponse<IUser[]>, { limit?: number; offset?: number }>({
@@ -117,6 +184,9 @@ export const {
   useAcceptFriendRequestMutation,
   useRejectFriendRequestMutation,
   useRemoveFriendMutation,
+  useBlockFriendMutation,
+  useUnblockFriendMutation,
+  useGetFriendRequestStatusQuery,
   useGetFriendsQuery,
   useGetPendingRequestsQuery,
   useGetSuggestedFriendsQuery,

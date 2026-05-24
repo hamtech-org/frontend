@@ -1,6 +1,5 @@
 import type { ApiSuccessResponse } from '@/types/api.types';
-
-const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1';
+import { apiClient } from '@/services/api';
 
 export type AiAssistantThreadMessage = {
   messageId: string;
@@ -8,25 +7,24 @@ export type AiAssistantThreadMessage = {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  actions?: Array<{
+    type: string;
+    payload?: Record<string, unknown>;
+  }>;
 };
 
 export async function fetchAiAssistantThread(threadId?: string): Promise<{
   threadId: string;
   messages: AiAssistantThreadMessage[];
 }> {
-  const token = localStorage.getItem('accessToken');
-  const qs = threadId ? `?threadId=${encodeURIComponent(threadId)}` : '';
-  const res = await fetch(`${baseUrl}/ai/assistant/thread${qs}`, {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+  const res = await apiClient.get<
+    ApiSuccessResponse<{
+      threadId: string;
+      messages: AiAssistantThreadMessage[];
+    }>
+  >('/ai/assistant/thread', {
+    params: threadId ? { threadId } : undefined,
   });
-  const json = (await res.json()) as ApiSuccessResponse<{
-    threadId: string;
-    messages: AiAssistantThreadMessage[];
-  }> & { success?: boolean; error?: { message?: string } };
-  if (!res.ok || !json.success) {
-    throw new Error(json.error?.message ?? `HTTP ${res.status}`);
-  }
+  const json = res.data;
   return json.data;
 }

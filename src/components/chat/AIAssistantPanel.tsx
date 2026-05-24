@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Sparkles, User } from 'lucide-react';
+import { MessageSquare, Send, Sparkles, Square, User, Users } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { cn } from '@/utils/cn';
 import { ConversationInfoPanelAIRight } from '@/components/chat/ConversationInfoPanelAIRight';
@@ -23,7 +23,27 @@ type AIAssistantUserCardsMessage = {
   query: string;
 };
 
-type AIAssistantChatItem = AIAssistantMessage | AIAssistantUserCardsMessage;
+type AIAssistantMessageResultsMessage = {
+  id: string;
+  role: 'assistant';
+  kind: 'message_results';
+  messages: ShowMessageResultsAction['payload']['messages'];
+  query: string;
+};
+
+type AIAssistantGroupResultsMessage = {
+  id: string;
+  role: 'assistant';
+  kind: 'group_results';
+  groups: ShowGroupResultsAction['payload']['groups'];
+  query: string;
+};
+
+type AIAssistantChatItem =
+  | AIAssistantMessage
+  | AIAssistantUserCardsMessage
+  | AIAssistantMessageResultsMessage
+  | AIAssistantGroupResultsMessage;
 
 type AiClientAction = {
   type: string;
@@ -61,8 +81,42 @@ type ShowUserCardsAction = {
   };
 };
 
+type ShowMessageResultsAction = {
+  type: 'show_message_results';
+  payload: {
+    source: 'search_messages';
+    query: string;
+    messages: Array<{
+      resultKey?: string;
+      messageId: string;
+      conversationId: string;
+      conversationName?: string | null;
+      senderId: string;
+      senderDisplayName?: string | null;
+      content: string;
+      createdAt: string;
+    }>;
+  };
+};
+
+type ShowGroupResultsAction = {
+  type: 'show_group_results';
+  payload: {
+    source: 'search_groups';
+    query: string;
+    groups: Array<{
+      groupId: string;
+      name: string;
+      description: string | null;
+      memberCount: number;
+      type: string;
+    }>;
+  };
+};
+
 type AiMessageDonePayload = {
   threadId: string;
+  requestId?: string;
   reply: string;
   model: string;
   tokensUsed: number;
@@ -73,9 +127,15 @@ type AiMessageDonePayload = {
 
 type AiStatusPayload = {
   threadId?: string;
+  requestId?: string;
   stage?: string;
   label?: string;
   detail?: string;
+};
+
+type AiMessageCancelledPayload = {
+  threadId?: string;
+  requestId?: string;
 };
 
 const WELCOME: AIAssistantMessage = {
@@ -86,10 +146,107 @@ const WELCOME: AIAssistantMessage = {
     'Chào bạn, mình là trợ lý HAMTECH. Bạn có thể hỏi hoặc nhờ mình tìm tin nhắn, bạn bè, nhóm.',
 };
 
+function createAiRequestId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function unwrapAiReply(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith('{') || !trimmed.includes('"reply"')) return content;
+  try {
+    const parsed = JSON.parse(trimmed) as { reply?: unknown };
+    return typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply.trim() : content;
+  } catch {
+    const match = trimmed.match(/"reply"\s*:\s*"((?:\\.|[^"\\])*)"/s);
+    if (!match?.[1]) return content;
+    try {
+      return JSON.parse(`"${match[1]}"`) as string;
+    } catch {
+      return match[1]
+        .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) =>
+          String.fromCharCode(Number.parseInt(hex, 16)),
+        )
+        .replace(/\\"/g, '"')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\r')
+        .replace(/\\t/g, '\t')
+        .replace(/\\\\/g, '\\');
+    }
+  }
+}
+
+function formatMessageResultTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date);
+}
+
+function chatItemsFromAssistantActions(
+  actions: AiClientAction[] | undefined,
+  baseId: string,
+): AIAssistantChatItem[] {
+  if (!actions?.length) return [];
+  const items: AIAssistantChatItem[] = [];
+  const showUsersActions = actions.filter(
+    (a): a is ShowUserCardsAction => a.type === 'show_user_cards',
+  );
+  const showMessageActions = actions.filter(
+    (a): a is ShowMessageResultsAction =>
+      a.type === 'show_message_results' && Array.isArray(a.payload?.messages),
+  );
+  const showGroupActions = actions.filter(
+    (a): a is ShowGroupResultsAction =>
+      a.type === 'show_group_results' && Array.isArray(a.payload?.groups),
+  );
+
+  for (const act of showUsersActions) {
+    if (!act.payload?.users?.length) continue;
+    items.push({
+      id: `assistant-cards-${baseId}-${act.payload.source}`,
+      role: 'assistant',
+      kind: 'user_cards',
+      source: act.payload.source,
+      query: act.payload.query,
+      users: act.payload.users.slice(0, 8),
+    });
+  }
+  for (const act of showMessageActions) {
+    if (!act.payload?.messages?.length) continue;
+    items.push({
+      id: `assistant-messages-${baseId}`,
+      role: 'assistant',
+      kind: 'message_results',
+      query: act.payload.query,
+      messages: act.payload.messages.slice(0, 8),
+    });
+  }
+  for (const act of showGroupActions) {
+    if (!act.payload?.groups?.length) continue;
+    items.push({
+      id: `assistant-groups-${baseId}`,
+      role: 'assistant',
+      kind: 'group_results',
+      query: act.payload.query,
+      groups: act.payload.groups.slice(0, 8),
+    });
+  }
+  return items;
+}
+
 export function AIAssistantPanel({
   onOpenDirectChat,
+  onOpenMessage,
+  onOpenGroup,
 }: {
   onOpenDirectChat?: (otherUserId: string, otherDisplayName: string) => Promise<void> | void;
+  onOpenMessage?: (conversationId: string, messageId: string) => Promise<void> | void;
+  onOpenGroup?: (groupId: string) => Promise<void> | void;
 }) {
   const { accessToken } = useAuth();
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -99,8 +256,32 @@ export function AIAssistantPanel({
   const [sendingStatus, setSendingStatus] = useState<string>('');
   const [lastActions, setLastActions] = useState<AiClientAction[]>([]);
   const lastSentUserText = useRef('');
+  const currentRequestId = useRef<string | null>(null);
+  const cancelledRequestIds = useRef(new Set<string>());
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const canSend = useMemo(() => draft.trim().length > 0 && !sending, [draft, sending]);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    requestAnimationFrame(() => {
+      const end = messagesEndRef.current;
+      if (end) {
+        end.scrollIntoView({ behavior, block: 'end' });
+        return;
+      }
+      const box = messagesScrollRef.current;
+      if (box) box.scrollTop = box.scrollHeight;
+    });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom('auto');
+  }, [scrollToBottom]);
+
+  useEffect(() => {
+    scrollToBottom('smooth');
+  }, [messages.length, sending, sendingStatus, lastActions.length, scrollToBottom]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -112,14 +293,19 @@ export function AIAssistantPanel({
         if (cancelled) return;
         setThreadId(data.threadId);
         if (data.messages.length > 0) {
-          setMessages(
-            data.messages.map((m) => ({
+          const hydrated: AIAssistantChatItem[] = [];
+          for (const m of data.messages) {
+            hydrated.push({
               id: m.messageId,
               role: m.role,
               kind: 'text',
-              content: m.content,
-            })),
-          );
+              content: m.role === 'assistant' ? unwrapAiReply(m.content) : m.content,
+            });
+            if (m.role === 'assistant') {
+              hydrated.push(...chatItemsFromAssistantActions(m.actions, m.messageId));
+            }
+          }
+          setMessages(hydrated);
         }
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Không tải được lịch sử AI');
@@ -137,13 +323,19 @@ export function AIAssistantPanel({
     const onDone = (raw: unknown) => {
       const data = raw as AiMessageDonePayload;
       if (!data?.reply) return;
+      if (data.requestId && cancelledRequestIds.current.has(data.requestId)) return;
+      if (
+        data.requestId &&
+        currentRequestId.current &&
+        data.requestId !== currentRequestId.current
+      ) {
+        return;
+      }
       setThreadId(data.threadId);
       setSending(false);
       setSendingStatus('');
+      currentRequestId.current = null;
       const userText = lastSentUserText.current;
-      const showUsersActions = (data.actions ?? []).filter(
-        (a): a is ShowUserCardsAction => a.type === 'show_user_cards',
-      );
       const confirmActions = (data.actions ?? []).filter(
         (a): a is ConfirmToolAction => a.type === 'confirm_tool',
       );
@@ -163,20 +355,15 @@ export function AIAssistantPanel({
             id: data.assistantMessageId ?? `assistant-${Date.now()}`,
             role: 'assistant',
             kind: 'text' as const,
-            content: data.reply,
+            content: unwrapAiReply(data.reply),
           },
         ];
-        for (const act of showUsersActions) {
-          if (!act.payload?.users?.length) continue;
-          next.push({
-            id: `assistant-cards-${data.assistantMessageId ?? Date.now()}-${act.payload.source}`,
-            role: 'assistant',
-            kind: 'user_cards',
-            source: act.payload.source,
-            query: act.payload.query,
-            users: act.payload.users.slice(0, 8),
-          });
-        }
+        next.push(
+          ...chatItemsFromAssistantActions(
+            data.actions ?? [],
+            data.assistantMessageId ?? String(Date.now()),
+          ),
+        );
         return next;
       });
       if (confirmActions.length) {
@@ -189,6 +376,7 @@ export function AIAssistantPanel({
     const onError = (raw: unknown) => {
       setSending(false);
       setSendingStatus('');
+      currentRequestId.current = null;
       setMessages((prev) => prev.filter((m) => !m.id.startsWith('temp-user-')));
       const msg =
         raw && typeof raw === 'object' && 'error' in raw
@@ -200,18 +388,41 @@ export function AIAssistantPanel({
     const onStatus = (raw: unknown) => {
       const data = raw as AiStatusPayload;
       if (!data) return;
+      if (
+        data.requestId &&
+        currentRequestId.current &&
+        data.requestId !== currentRequestId.current
+      ) {
+        return;
+      }
       const next = [data.label, data.detail].filter(Boolean).join(' - ');
       if (next) setSendingStatus(next);
+    };
+
+    const onCancelled = (raw: unknown) => {
+      const data = raw as AiMessageCancelledPayload;
+      if (
+        data.requestId &&
+        currentRequestId.current &&
+        data.requestId !== currentRequestId.current
+      ) {
+        return;
+      }
+      setSending(false);
+      setSendingStatus('');
+      currentRequestId.current = null;
     };
 
     socketService.on('ai:message_done', onDone);
     socketService.on('ai:error', onError);
     socketService.on('ai:status', onStatus);
+    socketService.on('ai:message_cancelled', onCancelled);
 
     return () => {
       socketService.off('ai:message_done', onDone);
       socketService.off('ai:error', onError);
       socketService.off('ai:status', onStatus);
+      socketService.off('ai:message_cancelled', onCancelled);
     };
   }, [accessToken]);
 
@@ -227,10 +438,13 @@ export function AIAssistantPanel({
   const handleSend = useCallback(() => {
     const userMessage = draft.trim();
     if (!userMessage || sending) return;
+    const requestId = createAiRequestId();
 
     setSending(true);
     setSendingStatus('Đang gửi yêu cầu đến trợ lý HAMTECH...');
     setLastActions([]);
+    currentRequestId.current = requestId;
+    cancelledRequestIds.current.delete(requestId);
     lastSentUserText.current = userMessage;
     const tempId = `temp-user-${Date.now()}`;
     setMessages((prev) => [
@@ -242,12 +456,14 @@ export function AIAssistantPanel({
     try {
       socketService.emit('ai:message_send', {
         threadId: threadId ?? undefined,
+        requestId,
         message: userMessage,
         locale: 'vi',
       });
     } catch {
       setSending(false);
       toast.error('Socket chưa kết nối');
+      currentRequestId.current = null;
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
     }
   }, [draft, sending, threadId]);
@@ -259,6 +475,7 @@ export function AIAssistantPanel({
   const handleQuickDecision = useCallback(
     (decision: 'approve' | 'reject', action?: ConfirmToolAction) => {
       if (sending) return;
+      const requestId = createAiRequestId();
       const text = decision === 'approve' ? 'đồng ý' : 'không';
       const token =
         decision === 'approve' ? action?.payload.confirmToken : action?.payload.cancelToken;
@@ -268,6 +485,8 @@ export function AIAssistantPanel({
         setSending(true);
         setSendingStatus('Đang gửi xác nhận...');
         setLastActions([]);
+        currentRequestId.current = requestId;
+        cancelledRequestIds.current.delete(requestId);
         lastSentUserText.current = text;
         const tempId = `temp-user-${Date.now()}`;
         setMessages((prev) => [
@@ -278,18 +497,31 @@ export function AIAssistantPanel({
         try {
           socketService.emit('ai:message_send', {
             threadId: threadId ?? undefined,
+            requestId,
             message: outgoingMessage,
             locale: 'vi',
           });
         } catch {
           setSending(false);
           toast.error('Socket chưa kết nối');
+          currentRequestId.current = null;
           setMessages((prev) => prev.filter((m) => m.id !== tempId));
         }
       }, 0);
     },
     [sending, threadId],
   );
+
+  const handleCancel = useCallback(() => {
+    const requestId = currentRequestId.current;
+    if (!requestId) return;
+    cancelledRequestIds.current.add(requestId);
+    setSendingStatus('Đang dừng trợ lý HAMTECH...');
+    socketService.emit('ai:message_cancel', {
+      threadId: threadId ?? undefined,
+      requestId,
+    });
+  }, [threadId]);
 
   const handleOpenUserCard = useCallback(
     async (userId: string, displayName: string) => {
@@ -303,6 +535,30 @@ export function AIAssistantPanel({
     [onOpenDirectChat],
   );
 
+  const handleOpenMessageResult = useCallback(
+    async (conversationId: string, messageId: string) => {
+      if (!conversationId || !messageId) return;
+      try {
+        await onOpenMessage?.(conversationId, messageId);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Không mở được tin nhắn');
+      }
+    },
+    [onOpenMessage],
+  );
+
+  const handleOpenGroupResult = useCallback(
+    async (groupId: string) => {
+      if (!groupId) return;
+      try {
+        await onOpenGroup?.(groupId);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Không mở được nhóm');
+      }
+    },
+    [onOpenGroup],
+  );
+
   return (
     <div className="flex-1 min-w-0 min-h-0 flex bg-background">
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
@@ -312,11 +568,15 @@ export function AIAssistantPanel({
             <h2 className="text-sm md:text-base font-semibold">Trợ lý HAMTECH</h2>
           </div>
           <p className="mt-1 text-xs md:text-sm text-muted-foreground">
-            Tin nhắn được lưu trên server; tìm kiếm & công cụ do AI gọi qua backend.
+            Hãy cùng HAMTECH khám phá những thông tin hữu ích. Bạn có thể hỏi về tin nhắn, bạn bè,
+            nhóm hoặc bất cứ điều gì bạn muốn biết!
           </p>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 py-4 md:px-5 flex flex-col gap-3">
+        <div
+          ref={messagesScrollRef}
+          className="flex-1 overflow-y-auto px-3 py-4 md:px-5 flex flex-col gap-3"
+        >
           {messages.map((message) => {
             if (message.kind === 'user_cards') {
               return (
@@ -370,6 +630,89 @@ export function AIAssistantPanel({
               );
             }
 
+            if (message.kind === 'message_results') {
+              return (
+                <div
+                  key={message.id}
+                  className="max-w-[92%] md:max-w-[80%] self-start rounded-2xl border border-border/60 bg-muted/40 p-3"
+                >
+                  <p className="text-xs font-semibold text-foreground mb-2">Kết quả tìm tin nhắn</p>
+                  <div className="space-y-2">
+                    {message.messages.map((m) => (
+                      <button
+                        key={m.messageId}
+                        type="button"
+                        onClick={() => void handleOpenMessageResult(m.conversationId, m.messageId)}
+                        className="w-full rounded-xl border border-border/50 bg-background/70 p-3 text-left transition-colors hover:bg-background"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="size-9 shrink-0 rounded-full border border-border bg-muted flex items-center justify-center">
+                            <MessageSquare className="size-4 text-muted-foreground" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-xs font-medium text-muted-foreground">
+                                {m.conversationName?.trim() || 'Hội thoại'}
+                              </p>
+                              <span className="shrink-0 text-[10px] text-muted-foreground">
+                                {formatMessageResultTime(m.createdAt)}
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm text-foreground">
+                              {m.content}
+                            </p>
+                            <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                              Người gửi: {m.senderDisplayName?.trim() || 'Thành viên'}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            if (message.kind === 'group_results') {
+              return (
+                <div
+                  key={message.id}
+                  className="max-w-[92%] md:max-w-[80%] self-start rounded-2xl border border-border/60 bg-muted/40 p-3"
+                >
+                  <p className="text-xs font-semibold text-foreground mb-2">Kết quả tìm nhóm</p>
+                  <div className="space-y-2">
+                    {message.groups.map((group) => (
+                      <button
+                        key={group.groupId}
+                        type="button"
+                        onClick={() => void handleOpenGroupResult(group.groupId)}
+                        className="w-full rounded-xl border border-border/50 bg-background/70 p-3 text-left transition-colors hover:bg-background"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="size-10 shrink-0 rounded-xl border border-border bg-muted flex items-center justify-center">
+                            <Users className="size-5 text-muted-foreground" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-sm font-semibold text-foreground">
+                                {group.name}
+                              </p>
+                              <span className="shrink-0 text-[10px] text-muted-foreground">
+                                {group.memberCount.toLocaleString('vi-VN')} thành viên
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                              {group.description?.trim() || 'Chưa có mô tả'}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div
                 key={message.id}
@@ -389,6 +732,7 @@ export function AIAssistantPanel({
               {sendingStatus || 'AI dang tra loi...'}
             </div>
           ) : null}
+          <div ref={messagesEndRef} className="h-px shrink-0" />
         </div>
 
         {lastActions.length > 0 ? (
@@ -444,11 +788,12 @@ export function AIAssistantPanel({
             />
             <button
               type="button"
-              disabled={!canSend}
-              onClick={handleSend}
+              disabled={!sending && !canSend}
+              onClick={sending ? handleCancel : handleSend}
               className="h-11 shrink-0 rounded-xl px-3 bg-primary text-primary-foreground disabled:opacity-50 disabled:pointer-events-none hover:opacity-90 transition-opacity"
+              title={sending ? 'Dừng AI' : 'Gửi'}
             >
-              <Send className="size-4" />
+              {sending ? <Square className="size-4" /> : <Send className="size-4" />}
             </button>
           </div>
         </div>
