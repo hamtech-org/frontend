@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { GlobalChatSocketBridge } from '@/components/GlobalChatSocketBridge';
 import { NotificationBootstrap } from '@/components/layout/NotificationBootstrap';
 import { authApi } from '@/store/api/authApi';
+import { chatApi } from '@/store/api/chatApi';
 import { notificationsApi } from '@/store/api/notificationsApi';
 import { addNotification, setUnreadCount } from '@/store/slices/notificationSlice';
 import { contactApi } from '@/store/api/contactApi';
@@ -113,6 +114,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       dispatch(contactApi.util.invalidateTags(['Friends']));
     };
 
+    const handleFriendAdded = () => {
+      dispatch(contactApi.util.invalidateTags(['Friends']));
+      dispatch(chatApi.util.invalidateTags(['Conversations']));
+    };
+
     socketService.on('connect', handleSocketConnect);
     socketService.on('disconnect', handleSocketDisconnect);
     socketService.on('auth:force_logout', handleForceLogout);
@@ -122,6 +128,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     socketService.on('notification:unread_count', handleNotificationUnreadCount);
     socketService.on('friendRequest:new', handleFriendRequestNew);
     socketService.on('friendRequest:accepted', handleFriendRequestNew);
+    socketService.on('friend:added', handleFriendAdded);
 
     try {
       if (socketService.getSocket().connected) {
@@ -141,6 +148,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       socketService.off('notification:unread_count', handleNotificationUnreadCount);
       socketService.off('friendRequest:new', handleFriendRequestNew);
       socketService.off('friendRequest:accepted', handleFriendRequestNew);
+      socketService.off('friend:added', handleFriendAdded);
       resetCallGroupSocketReduxAttachment();
       socketService.disconnect();
     };
