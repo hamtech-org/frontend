@@ -13,7 +13,7 @@ import type { RootState } from '@/store/store';
 import type { AppDispatch } from '@/store/store';
 import type { INotification } from '@/types/notification.types';
 import { navigateFromNotification } from '@/utils/notificationNavigation';
-import { getNotificationActor, getNotificationFallbackInitial } from '@/utils/notificationActor';
+import { getNotificationPresentation } from '@/utils/notificationPresentation';
 import { formatRelative } from '@/utils/formatDate';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -38,7 +38,7 @@ function NotificationListItem({
   isDarkMode: boolean;
   onOpen: (item: INotification) => void;
 }) {
-  const actor = getNotificationActor(item);
+  const presentation = getNotificationPresentation(item);
 
   return (
     <li>
@@ -51,24 +51,33 @@ function NotificationListItem({
         onClick={() => onOpen(item)}
       >
         <Avatar size="sm" className="size-10 shrink-0 mt-0.5">
-          {actor.avatar ? (
-            <AvatarImage src={actor.avatar} alt={actor.name} referrerPolicy="no-referrer" />
+          {presentation.avatar ? (
+            <AvatarImage
+              src={presentation.avatar}
+              alt={presentation.who}
+              referrerPolicy="no-referrer"
+            />
           ) : null}
-          <AvatarFallback className="text-xs font-semibold">
-            {getNotificationFallbackInitial(item)}
-          </AvatarFallback>
+          <AvatarFallback className="text-xs font-semibold">{presentation.fallback}</AvatarFallback>
         </Avatar>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-start gap-2">
-            <p
-              className={cn(
-                'text-sm leading-snug flex-1 min-w-0',
-                item.isRead ? 'font-medium text-foreground' : 'font-semibold text-foreground',
-              )}
-            >
-              {item.title}
-            </p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <p
+                  className={cn(
+                    'text-sm leading-snug truncate',
+                    item.isRead ? 'font-medium text-foreground' : 'font-semibold text-foreground',
+                  )}
+                >
+                  {presentation.title}
+                </p>
+                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium leading-none text-primary">
+                  {presentation.label}
+                </span>
+              </div>
+            </div>
             {!item.isRead ? (
               <span
                 className="size-2 rounded-full bg-red-500 shrink-0 mt-1.5"
@@ -76,7 +85,7 @@ function NotificationListItem({
               />
             ) : null}
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.body}</p>
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{presentation.body}</p>
           <p className="text-[11px] text-muted-foreground/80 mt-1">
             {formatRelative(item.createdAt)}
           </p>
