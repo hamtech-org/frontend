@@ -31,6 +31,7 @@ import {
   Settings,
   MessageSquare,
   Loader2,
+  X,
 } from 'lucide-react';
 
 import {
@@ -83,6 +84,8 @@ import {
   useResolveCommunityReportMutation,
   useAcceptInvitationMutation,
   useDeclineInvitationMutation,
+  useGetCommunityAutoModQuery,
+  useUpdateCommunityAutoModMutation,
 } from '@/store/api/communityApi';
 import { usePostMultipleUsersMutation } from '@/store/api/userApi';
 import { MediaGallery } from '@/features/newsfeed/components/MediaGallery';
@@ -798,6 +801,21 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
               )}
             </button>
           )}
+          {canManage &&
+            (community?.viewerRole === 'owner' || community?.viewerRole === 'admin') && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('automod')}
+                className={`relative rounded-none border-b-[3px] px-1 pb-3 pt-2 text-sm font-bold transition-all cursor-pointer flex items-center gap-2 bg-transparent hover:bg-transparent ${
+                  activeTab === 'automod'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <ShieldCheck className="size-4" />
+                Bộ lọc từ khóa
+              </button>
+            )}
         </div>
 
         {activeTab === 'posts' && (
@@ -1445,6 +1463,10 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
           resolveReportLoading={resolveReportLoading}
         />
       )}
+
+      {canManage &&
+        (community?.viewerRole === 'owner' || community?.viewerRole === 'admin') &&
+        activeTab === 'automod' && <CommunityAutoModView groupId={groupId} />}
 
       {/* Dialog nhập lý do từ chối bài viết */}
       <AlertDialog
@@ -2295,6 +2317,293 @@ function CommunityReportsView({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+interface CommunityAutoModViewProps {
+  groupId: string;
+}
+
+function CommunityAutoModView({ groupId }: CommunityAutoModViewProps) {
+  const { data: autoModRes, isLoading, isError, refetch } = useGetCommunityAutoModQuery(groupId);
+  const [updateAutoMod, { isLoading: isUpdating }] = useUpdateCommunityAutoModMutation();
+
+  const [enabled, setEnabled] = useState(false);
+  const [action, setAction] = useState<'censor' | 'block'>('censor');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [newKeyword, setNewKeyword] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Sync state from fetched data
+  useEffect(() => {
+    if (autoModRes?.data) {
+      setEnabled(autoModRes.data.autoModerateEnabled);
+      setAction(autoModRes.data.autoModerateAction);
+      setKeywords(autoModRes.data.blacklistedKeywords || []);
+    }
+  }, [autoModRes]);
+
+  const handleAddKeyword = (e: React.FormEvent) => {
+    e.preventDefault();
+    const kw = newKeyword.trim().toLowerCase();
+
+    if (!kw) return;
+
+    if (keywords.includes(kw)) {
+      setErrorMsg('Từ khóa này đã tồn tại trong danh sách.');
+      return;
+    }
+
+    if (keywords.length >= 100) {
+      setErrorMsg('Chỉ cho phép tối đa 100 từ khóa cấm.');
+      return;
+    }
+
+    if (kw.length > 50) {
+      setErrorMsg('Từ khóa không được vượt quá 50 ký tự.');
+      return;
+    }
+
+    if (/[\r\n\t]/.test(kw)) {
+      setErrorMsg('Từ khóa chứa ký tự không hợp lệ.');
+      return;
+    }
+
+    setKeywords([...keywords, kw]);
+    setNewKeyword('');
+    setErrorMsg('');
+  };
+
+  const handleRemoveKeyword = (indexToRemove: number) => {
+    setKeywords(keywords.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const handleSave = async () => {
+    try {
+      await updateAutoMod({
+        groupId,
+        body: {
+          autoModerateEnabled: enabled,
+          autoModerateAction: action,
+          blacklistedKeywords: keywords,
+        },
+      }).unwrap();
+      toast.success('Đã cập nhật cấu hình Tự động kiểm duyệt thành công!');
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Không thể cập nhật cấu hình Auto-Mod');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto flex flex-col gap-4">
+        <Skeleton className="h-60 rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <EmptyState
+          icon={ShieldAlert}
+          title="Không thể tải cấu hình"
+          description="Đã xảy ra lỗi khi tải cấu hình kiểm duyệt của cộng đồng này."
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto flex flex-col gap-6">
+      <Card className="rounded-2xl border border-border/40 bg-card/65 backdrop-blur-xl shadow-lg">
+        <CardHeader className="px-4 py-3 border-b border-border/40 flex flex-row items-center justify-between">
+          <CardTitle className="text-base font-extrabold text-foreground flex items-center gap-2">
+            <ShieldCheck className="size-5 text-primary" />
+            Tự động kiểm duyệt tin nhắn (Auto-Mod)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6 flex flex-col gap-6">
+          {/* Switch Enable AutoMod */}
+          <div className="flex items-center justify-between p-4 rounded-xl border border-border/20 bg-background/30">
+            <div className="flex flex-col gap-1 pr-4">
+              <span className="text-sm font-bold text-foreground">Kích hoạt Auto-Mod</span>
+              <span className="text-xs text-muted-foreground">
+                Tự động rà quét và lọc bỏ tin nhắn vi phạm tiêu chuẩn cộng đồng trong nhóm chat.
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => setEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-300 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+            </label>
+          </div>
+
+          {enabled && (
+            <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-top-2 duration-200">
+              {/* Select Action Mode */}
+              <div className="flex flex-col gap-3">
+                <span className="text-xs font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                  Chế độ kiểm duyệt
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div
+                    onClick={() => setAction('censor')}
+                    className={`p-4 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col gap-1.5 ${
+                      action === 'censor'
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                        : 'border-border/40 bg-background/30 hover:border-border/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-foreground">
+                        Censor (Che dấu từ cấm)
+                      </span>
+                      {action === 'censor' && (
+                        <Badge className="bg-primary/10 text-primary hover:bg-primary/20 border-none font-bold text-[10px]">
+                          Khuyên dùng
+                        </Badge>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      Tin nhắn vi phạm sẽ tự động được che các từ cấm thành dạng *** và vẫn được gửi
+                      đi bình thường.
+                    </span>
+                  </div>
+
+                  <div
+                    onClick={() => setAction('block')}
+                    className={`p-4 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col gap-1.5 ${
+                      action === 'block'
+                        ? 'border-destructive bg-destructive/5 ring-1 ring-destructive/20'
+                        : 'border-border/40 bg-background/30 hover:border-border/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-foreground">
+                        Block (Chặn hoàn toàn)
+                      </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      Tin nhắn chứa từ cấm sẽ bị chặn lại ngay từ server, trả về thông báo lỗi cho
+                      người gửi.
+                    </span>
+                  </div>
+                </div>
+
+                {action === 'block' && (
+                  <div className="flex items-center gap-2 p-3.5 rounded-xl bg-destructive/5 dark:bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold animate-in zoom-in-95 duration-150">
+                    <AlertCircle className="size-4 shrink-0" />
+                    <span>
+                      Lưu ý: Tin nhắn của thành viên chứa từ khóa cấm sẽ bị chặn hoàn toàn và không
+                      thể gửi đi.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Keywords Tag Input */}
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Danh sách từ khóa cấm ({keywords.length} / 100)
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                    Nhấn Enter để thêm
+                  </span>
+                </div>
+
+                {/* Input form */}
+                <form onSubmit={handleAddKeyword} className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <Input
+                      type="text"
+                      value={newKeyword}
+                      onChange={(e) => {
+                        setNewKeyword(e.target.value);
+                        if (errorMsg) setErrorMsg('');
+                      }}
+                      placeholder="Thêm từ khóa cấm mới..."
+                      className="w-full text-sm font-semibold rounded-xl bg-background/40"
+                    />
+                    {errorMsg && (
+                      <span className="text-[10px] text-destructive font-bold mt-1 block absolute left-1">
+                        {errorMsg}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    type="submit"
+                    className="h-10 px-5 rounded-xl font-bold bg-primary hover:bg-primary/95 text-white flex items-center justify-center cursor-pointer shadow-md shadow-primary/10 shrink-0"
+                  >
+                    Thêm
+                  </Button>
+                </form>
+
+                {/* Tag Container */}
+                <div className="mt-2 min-h-[120px] p-4 rounded-xl border border-border/40 bg-background/30 flex flex-wrap gap-2 items-start content-start">
+                  {keywords.length > 0 ? (
+                    keywords.map((kw, idx) => (
+                      <Badge
+                        key={`${kw}-${idx}`}
+                        className="bg-muted hover:bg-muted/80 text-foreground border border-border/60 font-bold text-xs pl-3.5 pr-2.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all"
+                      >
+                        {kw}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveKeyword(idx)}
+                          className="text-muted-foreground hover:text-foreground shrink-0 focus:outline-none transition-colors cursor-pointer"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </Badge>
+                    ))
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center py-8 text-center gap-2">
+                      <ShieldCheck className="size-8 text-slate-300 dark:text-slate-600" />
+                      <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+                        Chưa thiết lập từ khóa cấm. Cộng đồng đang mở tự do.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex justify-end pt-4 border-t border-border/25 gap-3">
+            <Button
+              variant="outline"
+              disabled={isUpdating}
+              onClick={() => {
+                if (autoModRes?.data) {
+                  setEnabled(autoModRes.data.autoModerateEnabled);
+                  setAction(autoModRes.data.autoModerateAction);
+                  setKeywords(autoModRes.data.blacklistedKeywords || []);
+                }
+              }}
+              className="h-10 px-5 rounded-xl text-xs font-bold border-border/60 hover:bg-muted transition-all cursor-pointer"
+            >
+              Hủy thay đổi
+            </Button>
+            <Button
+              disabled={isUpdating}
+              onClick={handleSave}
+              className="h-10 px-6 bg-primary hover:bg-primary/90 text-white rounded-xl shadow-md shadow-primary/10 font-bold transition-all duration-200 cursor-pointer flex items-center gap-2"
+            >
+              {isUpdating && <RefreshCw className="size-3.5 animate-spin" />}
+              Lưu cấu hình
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -15,6 +15,8 @@ import type {
   ICommunityReport,
   ICommunityReportsPage,
   ICommunityInvitation,
+  ICommunityAutoMod,
+  IUpdateAutoModDto,
 } from '@/types/community.types';
 
 export const communityApi = createApi({
@@ -71,6 +73,25 @@ export const communityApi = createApi({
         { type: 'CommunityModerationLogs', id: groupId },
       ],
     }),
+    getCommunityAutoMod: builder.query<ApiSuccessResponse<ICommunityAutoMod>, string>({
+      query: (groupId) => `/communities/${groupId}/automod`,
+      providesTags: (_res, _err, groupId) => [{ type: 'CommunityDetail', id: groupId }],
+    }),
+    updateCommunityAutoMod: builder.mutation<
+      ApiSuccessResponse<ICommunity>,
+      { groupId: string; body: IUpdateAutoModDto }
+    >({
+      query: ({ groupId, body }) => ({
+        url: `/communities/${groupId}/automod`,
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: (_res, _err, { groupId }) => [
+        { type: 'CommunityDetail', id: groupId },
+        { type: 'CommunityModerationLogs', id: groupId },
+      ],
+    }),
+
     archiveCommunity: builder.mutation<ApiSuccessResponse<null>, string>({
       query: (groupId) => ({ url: `/communities/${groupId}`, method: 'DELETE' }),
       invalidatesTags: ['Communities'],
@@ -420,7 +441,10 @@ export const {
   useTransferCommunityOwnerMutation,
   useUpdateCommunityMemberRoleMutation,
   useUpdateCommunityMutation,
+  useGetCommunityAutoModQuery,
+  useUpdateCommunityAutoModMutation,
   usePinCommunityPostMutation,
+
   useUnpinCommunityPostMutation,
   useReportEntityMutation,
   useGetCommunityReportsQuery,
