@@ -16,6 +16,17 @@ import { clearReplyingTo } from '@/store/slices/chatSlice';
 import { useSendMessageMutation } from '@/store/api/chatApi';
 import { useUploadMediaMultiMutation } from '@/store/api/mediaApi';
 
+function messageSendErrorText(error: unknown): string {
+  const code = (error as { data?: { error?: { code?: string } } })?.data?.error?.code;
+  if (code === 'MESSAGE_BLOCKED_BY_ME') {
+    return 'Bạn đang chặn người dùng này, vui lòng gỡ chặn để tiếp tục nhắn tin.';
+  }
+  if (code === 'MESSAGE_BLOCKED_BY_OTHER') {
+    return 'Bạn đã bị chặn bởi người dùng này.';
+  }
+  return 'Gửi tin nhắn thất bại. Vui lòng thử lại.';
+}
+
 /**
  * Self-contained composer controller.
  * Internally calls RTK mutations and reads Redux state.
@@ -153,7 +164,13 @@ export function useChatComposerController(
           setInputText('');
           clearReply();
           setComposerStatusMessage('Đã gửi tệp thành công.');
-        } catch {
+        } catch (error) {
+          const blockedText = messageSendErrorText(error);
+          if (blockedText !== 'Gửi tin nhắn thất bại. Vui lòng thử lại.') {
+            setComposerStatusMessage(blockedText);
+            toast.error(blockedText);
+            return;
+          }
           setComposerStatusMessage('Gửi tệp thất bại, vui lòng thử lại.');
           toast.error('Gửi tệp thất bại. Bạn có thể thử lại.');
         } finally {
@@ -174,8 +191,12 @@ export function useChatComposerController(
         }).unwrap();
         clearReply();
         setComposerStatusMessage('Đã gửi tin nhắn.');
-      } catch {
+      } catch (error) {
         setInputText(content);
+        const text = messageSendErrorText(error);
+        setComposerStatusMessage(text);
+        toast.error(text);
+        if (text !== 'Gửi tin nhắn thất bại. Vui lòng thử lại.') return;
         setComposerStatusMessage('Gửi tin nhắn thất bại, vui lòng thử lại.');
         toast.error('Gửi tin nhắn thất bại. Vui lòng thử lại.');
       }

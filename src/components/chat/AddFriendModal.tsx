@@ -1,8 +1,17 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Search, UserPlus, X, Loader, Clock, UserCheck, CheckCircle } from 'lucide-react';
+import { Search, UserPlus, X, Loader, Clock, UserCheck, CheckCircle, QrCode } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { QRCodeCanvas } from 'qrcode.react';
+import { useSelector } from 'react-redux';
 import { searchService } from '@/services/search.service';
-import { useSendFriendRequestMutation, useCancelFriendRequestMutation, useAcceptFriendRequestMutation, useRejectFriendRequestMutation } from '@/store/api/userApi';
+import {
+  useSendFriendRequestMutation,
+  useCancelFriendRequestMutation,
+  useAcceptFriendRequestMutation,
+  useRejectFriendRequestMutation,
+} from '@/store/api/userApi';
+import type { RootState } from '@/store/store';
+import { buildUserQrPayload } from '@/utils/userQrPayload';
 
 interface SearchResult {
   userId: string;
@@ -26,11 +35,20 @@ export function AddFriendModal({ open, query, onQueryChange, onClose }: AddFrien
   const trimmed = query.trim();
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showMyQr, setShowMyQr] = useState(false);
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const currentUser = useSelector((state: RootState) => state.auth.user);
   const [sendFriendRequest] = useSendFriendRequestMutation();
   const [cancelFriendRequest] = useCancelFriendRequestMutation();
   const [acceptFriendRequest] = useAcceptFriendRequestMutation();
   const [rejectFriendRequest] = useRejectFriendRequestMutation();
+  const myQrValue = currentUser?.userId
+    ? buildUserQrPayload({
+        userId: currentUser.userId,
+        displayName: currentUser.displayName,
+        avatar: currentUser.avatar,
+      })
+    : '';
 
   // Fetch results when query changes
   useEffect(() => {
@@ -56,74 +74,62 @@ export function AddFriendModal({ open, query, onQueryChange, onClose }: AddFrien
   }, [trimmed]);
 
   const handleSendRequest = async (userId: string) => {
-    setActionLoading(prev => ({ ...prev, [userId]: true }));
+    setActionLoading((prev) => ({ ...prev, [userId]: true }));
     try {
       await sendFriendRequest({ friendId: userId }).unwrap();
-      setResults(prev =>
-        prev.map(user =>
-          user.userId === userId
-            ? { ...user, friendshipStatus: 'pending_sent' }
-            : user
-        )
+      setResults((prev) =>
+        prev.map((user) =>
+          user.userId === userId ? { ...user, friendshipStatus: 'pending_sent' } : user,
+        ),
       );
     } catch (error) {
       console.error('Error sending friend request:', error);
     } finally {
-      setActionLoading(prev => ({ ...prev, [userId]: false }));
+      setActionLoading((prev) => ({ ...prev, [userId]: false }));
     }
   };
 
   const handleCancelRequest = async (userId: string) => {
-    setActionLoading(prev => ({ ...prev, [userId]: true }));
+    setActionLoading((prev) => ({ ...prev, [userId]: true }));
     try {
       await cancelFriendRequest({ friendId: userId }).unwrap();
-      setResults(prev =>
-        prev.map(user =>
-          user.userId === userId
-            ? { ...user, friendshipStatus: 'none' }
-            : user
-        )
+      setResults((prev) =>
+        prev.map((user) => (user.userId === userId ? { ...user, friendshipStatus: 'none' } : user)),
       );
     } catch (error) {
       console.error('Error canceling friend request:', error);
     } finally {
-      setActionLoading(prev => ({ ...prev, [userId]: false }));
+      setActionLoading((prev) => ({ ...prev, [userId]: false }));
     }
   };
 
   const handleAcceptRequest = async (userId: string) => {
-    setActionLoading(prev => ({ ...prev, [userId]: true }));
+    setActionLoading((prev) => ({ ...prev, [userId]: true }));
     try {
       await acceptFriendRequest({ senderId: userId }).unwrap();
-      setResults(prev =>
-        prev.map(user =>
-          user.userId === userId
-            ? { ...user, friendshipStatus: 'friend', isFriend: true }
-            : user
-        )
+      setResults((prev) =>
+        prev.map((user) =>
+          user.userId === userId ? { ...user, friendshipStatus: 'friend', isFriend: true } : user,
+        ),
       );
     } catch (error) {
       console.error('Error accepting friend request:', error);
     } finally {
-      setActionLoading(prev => ({ ...prev, [userId]: false }));
+      setActionLoading((prev) => ({ ...prev, [userId]: false }));
     }
   };
 
   const handleRejectRequest = async (userId: string) => {
-    setActionLoading(prev => ({ ...prev, [userId]: true }));
+    setActionLoading((prev) => ({ ...prev, [userId]: true }));
     try {
       await rejectFriendRequest({ senderId: userId }).unwrap();
-      setResults(prev =>
-        prev.map(user =>
-          user.userId === userId
-            ? { ...user, friendshipStatus: 'none' }
-            : user
-        )
+      setResults((prev) =>
+        prev.map((user) => (user.userId === userId ? { ...user, friendshipStatus: 'none' } : user)),
       );
     } catch (error) {
       console.error('Error rejecting friend request:', error);
     } finally {
-      setActionLoading(prev => ({ ...prev, [userId]: false }));
+      setActionLoading((prev) => ({ ...prev, [userId]: false }));
     }
   };
 
@@ -149,7 +155,11 @@ export function AddFriendModal({ open, query, onQueryChange, onClose }: AddFrien
             disabled={isLoading}
             className="flex items-center gap-1 px-3 py-1 rounded-lg bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-200 dark:hover:bg-yellow-900/50 text-xs font-semibold transition-colors disabled:opacity-50"
           >
-            {isLoading ? <Loader className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
+            {isLoading ? (
+              <Loader className="w-3 h-3 animate-spin" />
+            ) : (
+              <Clock className="w-3 h-3" />
+            )}
             Hủy
           </button>
         );
@@ -161,7 +171,11 @@ export function AddFriendModal({ open, query, onQueryChange, onClose }: AddFrien
               disabled={isLoading}
               className="flex items-center gap-1 px-3 py-1 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-semibold transition-colors disabled:opacity-50"
             >
-              {isLoading ? <Loader className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+              {isLoading ? (
+                <Loader className="w-3 h-3 animate-spin" />
+              ) : (
+                <CheckCircle className="w-3 h-3" />
+              )}
               Chấp nhận
             </button>
             <button
@@ -181,7 +195,11 @@ export function AddFriendModal({ open, query, onQueryChange, onClose }: AddFrien
             disabled={isLoading}
             className="flex items-center gap-1 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors disabled:opacity-50"
           >
-            {isLoading ? <Loader className="w-3 h-3 animate-spin" /> : <UserPlus className="w-3 h-3" />}
+            {isLoading ? (
+              <Loader className="w-3 h-3 animate-spin" />
+            ) : (
+              <UserPlus className="w-3 h-3" />
+            )}
             Kết bạn
           </button>
         );
@@ -207,20 +225,45 @@ export function AddFriendModal({ open, query, onQueryChange, onClose }: AddFrien
                 <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                   <UserPlus className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 </div>
-                <h3 id="add-friend-title" className="font-bold text-[17px] text-black dark:text-white">
+                <h3
+                  id="add-friend-title"
+                  className="font-bold text-[17px] text-black dark:text-white"
+                >
                   Thêm bạn bè
                 </h3>
               </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowMyQr((value) => !value)}
+                  className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                  title="Hiện QR của tôi"
+                >
+                  <QrCode className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-5 custom-scrollbar flex flex-col gap-4">
+              {showMyQr && (
+                <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.04] p-4 flex flex-col items-center">
+                  <p className="text-sm font-bold text-black dark:text-white mb-3">QR của tôi</p>
+                  <div className="rounded-2xl bg-white p-3 shadow-sm">
+                    {myQrValue ? <QRCodeCanvas value={myQrValue} size={190} /> : null}
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-center text-gray-500 dark:text-gray-400">
+                    Đưa mã này cho người khác quét để xem thông tin và gửi lời mời kết bạn.
+                  </p>
+                </div>
+              )}
+
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
@@ -240,13 +283,16 @@ export function AddFriendModal({ open, query, onQueryChange, onClose }: AddFrien
 
               {!loading && results.length > 0 && (
                 <div className="space-y-3">
-                  {results.map(user => (
+                  {results.map((user) => (
                     <div
                       key={user.userId}
                       className="flex items-center gap-3 p-3 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
                     >
                       <img
-                        src={user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.userId}`}
+                        src={
+                          user.avatar ||
+                          `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.userId}`
+                        }
                         alt={user.displayName}
                         className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                       />

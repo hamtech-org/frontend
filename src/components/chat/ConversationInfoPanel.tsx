@@ -1,6 +1,7 @@
 ﻿import {
   Bell,
   BellOff,
+  Ban,
   CheckSquare,
   ChevronDown,
   ChevronLeft,
@@ -49,6 +50,11 @@ import { BulletinTaskCard } from '@/components/chat/BulletinTaskCard';
 import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'react-toastify';
+import {
+  useBlockFriendMutation,
+  useGetFriendRequestStatusQuery,
+  useUnblockFriendMutation,
+} from '@/store/api/userApi';
 import { MIN_GROUP_MEMBERS } from '@/constants/group.constants';
 import {
   ConversationGalleryFileCard,
@@ -512,8 +518,17 @@ export function ConversationInfoPanel({
 }: ConversationInfoPanelProps) {
   const { core, groupActions } = useChatPageContext();
   const { user: authUser } = useAuth();
+  const [blockFriend, { isLoading: isBlockingFriend }] = useBlockFriendMutation();
+  const [unblockFriend, { isLoading: isUnblockingFriend }] = useUnblockFriendMutation();
   const isMuted = !!activeConversation?.isMuted;
   const isConvPinned = !!activeConversation?.isPinnedToTop;
+  const directOtherUserId =
+    activeConversation?.type === 'direct' ? activeConversation.otherUserId?.trim() : '';
+  const { data: directFriendshipStatus } = useGetFriendRequestStatusQuery(
+    { userId: directOtherUserId ?? '' },
+    { skip: !directOtherUserId },
+  );
+  const isDirectBlocked = directFriendshipStatus?.data?.status === 'blocked';
   const scheduledMuteUntil =
     typeof activeConversation?.notificationsMutedUntil === 'string'
       ? activeConversation.notificationsMutedUntil.trim()
@@ -588,6 +603,7 @@ export function ConversationInfoPanel({
     }
   }, [transferOwnerOpen, adminSlotsFull, currentOwnerNewRole]);
   const [deleteGroupModalOpen, setDeleteGroupModalOpen] = useState(false);
+  const [blockFriendModalOpen, setBlockFriendModalOpen] = useState(false);
   const [galleryKind, setGalleryKind] = useState<MessageGalleryKind | null>(null);
   const [galleryItems, setGalleryItems] = useState<MessageGalleryItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
@@ -964,6 +980,38 @@ export function ConversationInfoPanel({
     bulletinModalMode,
     activeConversation?.type,
   ]);
+
+  const handleConfirmBlockFriend = useCallback(async () => {
+    if (!directOtherUserId) return;
+    try {
+      await blockFriend({ friendId: directOtherUserId }).unwrap();
+      toast.success('Đã chặn người dùng');
+      setBlockFriendModalOpen(false);
+    } catch (error) {
+      const message =
+        (error as { data?: { error?: { message?: string }; message?: string } })?.data?.error
+          ?.message ||
+        (error as { data?: { message?: string } })?.data?.message ||
+        'Không thể chặn người dùng';
+      toast.error(message);
+    }
+  }, [blockFriend, directOtherUserId]);
+
+  const handleConfirmUnblockFriend = useCallback(async () => {
+    if (!directOtherUserId) return;
+    try {
+      await unblockFriend({ friendId: directOtherUserId }).unwrap();
+      toast.success('Đã bỏ chặn người dùng');
+      setBlockFriendModalOpen(false);
+    } catch (error) {
+      const message =
+        (error as { data?: { error?: { message?: string }; message?: string } })?.data?.error
+          ?.message ||
+        (error as { data?: { message?: string } })?.data?.message ||
+        'Không thể bỏ chặn người dùng';
+      toast.error(message);
+    }
+  }, [directOtherUserId, unblockFriend]);
 
   return (
     <div className="w-full h-full min-h-0 border-l border-black/5 dark:border-white/5 flex flex-col bg-white dark:bg-[#1a1a1a] overflow-hidden">
@@ -1452,21 +1500,50 @@ export function ConversationInfoPanel({
                     </span>
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={onOpenCreateGroup}
-                    disabled={!onOpenCreateGroup}
-                    className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group disabled:opacity-40 disabled:pointer-events-none"
-                  >
-                    <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
-                      <Users className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
-                    </div>
-                    <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
-                      Tạo nhóm
-                      <br />
-                      trò chuyện
-                    </span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={onOpenCreateGroup}
+                      disabled={!onOpenCreateGroup}
+                      className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <div className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                        <Users className="w-4 h-4 text-muted-foreground group-hover:text-black dark:group-hover:text-white" />
+                      </div>
+                      <span className="text-[10px] sm:text-[11px] text-center font-medium text-muted-foreground group-hover:text-black dark:group-hover:text-white">
+                        Tạo nhóm
+                        <br />
+                        trò chuyện
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBlockFriendModalOpen(true)}
+                      disabled={!directOtherUserId || isBlockingFriend || isUnblockingFriend}
+                      className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <div
+                        className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                          isDirectBlocked
+                            ? 'bg-emerald-500/10 group-hover:bg-emerald-500/15'
+                            : 'bg-red-500/10 group-hover:bg-red-500/15'
+                        }`}
+                      >
+                        <Ban
+                          className={`w-4 h-4 ${isDirectBlocked ? 'text-emerald-600' : 'text-red-500'}`}
+                        />
+                      </div>
+                      <span
+                        className={`text-[10px] sm:text-[11px] text-center font-medium ${
+                          isDirectBlocked ? 'text-emerald-600' : 'text-red-500'
+                        }`}
+                      >
+                        {isDirectBlocked ? 'Bỏ chặn' : 'Chặn'}
+                        <br />
+                        bạn bè
+                      </span>
+                    </button>
+                  </>
                 )}
                 {activeConversation?.type === 'group' && (
                   <button
@@ -1995,6 +2072,26 @@ export function ConversationInfoPanel({
           </div>
         )}
       </AnimatePresence>
+      <ConfirmModal
+        open={blockFriendModalOpen}
+        title={isDirectBlocked ? 'Bỏ chặn người dùng này?' : 'Chặn người dùng này?'}
+        description={
+          isDirectBlocked
+            ? 'Sau khi bỏ chặn, hai bên có thể nhắn tin và gọi lại trong hội thoại này.'
+            : 'Lịch sử hội thoại vẫn được giữ nguyên, nhưng hai bên sẽ không thể nhắn tin hoặc gọi 1-1 cho đến khi bạn bỏ chặn.'
+        }
+        cancelLabel="Không"
+        confirmLabel={isDirectBlocked ? 'Bỏ chặn' : 'Chặn'}
+        variant={isDirectBlocked ? 'primary' : 'danger'}
+        isConfirming={isDirectBlocked ? isUnblockingFriend : isBlockingFriend}
+        onClose={() => {
+          if (!isBlockingFriend && !isUnblockingFriend) setBlockFriendModalOpen(false);
+        }}
+        onConfirm={() => {
+          void (isDirectBlocked ? handleConfirmUnblockFriend() : handleConfirmBlockFriend());
+        }}
+      />
+
       <ConfirmModal
         open={deleteGroupModalOpen}
         title="Giải tán nhóm"
