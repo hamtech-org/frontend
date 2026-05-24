@@ -8,6 +8,7 @@ import {
   Pencil,
   Trash2,
   UserMinus,
+  UserPlus,
   Globe2,
   Lock,
   Users,
@@ -29,6 +30,7 @@ import {
   PinOff,
   Settings,
   MessageSquare,
+  Loader2,
 } from 'lucide-react';
 
 import {
@@ -79,6 +81,8 @@ import {
   useUnlinkChatMutation,
   useGetCommunityReportsQuery,
   useResolveCommunityReportMutation,
+  useAcceptInvitationMutation,
+  useDeclineInvitationMutation,
 } from '@/store/api/communityApi';
 import { usePostMultipleUsersMutation } from '@/store/api/userApi';
 import { MediaGallery } from '@/features/newsfeed/components/MediaGallery';
@@ -99,6 +103,7 @@ import { CommunitySidebar } from './CommunitySidebar';
 import { EmptyState } from './EmptyState';
 import { CommunityFormDialog } from './CommunityFormDialog';
 import { CommunityReportDialog } from './CommunityReportDialog';
+import { InviteFriendsDialog } from './InviteFriendsDialog';
 
 export function CommunityDetail({ groupId }: { groupId: string }) {
   const currentUser = useSelector((state: RootState) => state.auth.user);
@@ -128,10 +133,32 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
     displayName: string;
   } | null>(null);
   const [confirmGroupNameInput, setConfirmGroupNameInput] = useState('');
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const { data, isLoading, isError, error } = useGetCommunityQuery(groupId);
   const community = data?.data;
   const canManage = canManageCommunity(community?.viewerRole);
+
+  const [acceptInvitation, { isLoading: acceptLoading }] = useAcceptInvitationMutation();
+  const [declineInvitation, { isLoading: declineLoading }] = useDeclineInvitationMutation();
+
+  const handleAcceptInvite = async () => {
+    try {
+      await acceptInvitation(groupId).unwrap();
+      toast.success('Chào mừng bạn đến với cộng đồng!');
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Không thể chấp nhận lời mời');
+    }
+  };
+
+  const handleDeclineInvite = async () => {
+    try {
+      await declineInvitation(groupId).unwrap();
+      toast.success('Đã từ chối lời mời');
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Không thể từ chối lời mời');
+    }
+  };
 
   const { data: pendingPostsRes } = useGetPendingPostsQuery(groupId, { skip: !canManage });
   const pendingPosts = pendingPostsRes || [];
@@ -147,6 +174,10 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
   const [resolveReport, { isLoading: resolveReportLoading }] = useResolveCommunityReportMutation();
   const isOwner = community?.viewerRole === 'owner';
   const isMember = community?.viewerStatus === 'active';
+  const canInvite =
+    community?.type === 'public'
+      ? isMember
+      : ['owner', 'admin', 'moderator'].includes(community?.viewerRole || '');
   const { data: members } = useGetCommunityMembersQuery(groupId, { skip: !community });
   const { data: requests } = useGetCommunityRequestsQuery(groupId, { skip: !canManage });
   const { data: posts, isLoading: postsLoading } = useGetCommunityPostsQuery(
@@ -395,6 +426,49 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
 
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
+      {community?.viewerInviteStatus === 'pending' && (
+        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 dark:bg-blue-500/10 backdrop-blur-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg shadow-blue-500/5 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-4 text-center sm:text-left">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600/10 dark:bg-blue-600/20 text-blue-600 dark:text-blue-400">
+              <Sparkles className="size-6 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-foreground">
+                Bạn nhận được lời mời tham gia!
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5 font-medium">
+                Bạn đã được mời tham gia cộng đồng này. Hãy tham gia ngay để bắt đầu chia sẻ ý tưởng
+                và thảo luận cùng mọi người.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <Button
+              variant="ghost"
+              onClick={handleDeclineInvite}
+              disabled={declineLoading || acceptLoading}
+              className="h-10 px-5 rounded-xl font-bold hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+            >
+              {declineLoading ? <Loader2 className="size-4 animate-spin" /> : 'Từ chối'}
+            </Button>
+            <Button
+              onClick={handleAcceptInvite}
+              disabled={declineLoading || acceptLoading}
+              className="h-10 px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-500/20 font-bold transition-all duration-200 cursor-pointer"
+            >
+              {acceptLoading ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  Đang đồng ý...
+                </>
+              ) : (
+                'Đồng ý tham gia'
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <section className="overflow-hidden rounded-3xl border border-border/40 bg-card shadow-[0_8px_30px_rgb(0,0,0,0.02)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.15)] relative">
         <div className="relative h-60 w-full overflow-hidden bg-muted">
           <div
@@ -454,6 +528,15 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
                 >
                   <MessageSquare className="size-4.5" />
                   Trò chuyện
+                </Button>
+              )}
+              {canInvite && (
+                <Button
+                  onClick={() => setInviteOpen(true)}
+                  className="h-10 px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-500/10 font-bold transition-all duration-200 cursor-pointer gap-2"
+                >
+                  <UserPlus className="size-4.5" />
+                  Mời bạn bè
                 </Button>
               )}
               {isMember ? (
@@ -1598,6 +1681,12 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <InviteFriendsDialog
+        groupId={groupId}
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+      />
     </main>
   );
 }

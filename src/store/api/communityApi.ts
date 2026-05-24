@@ -14,6 +14,7 @@ import type {
   ICommunityModerationLogsPage,
   ICommunityReport,
   ICommunityReportsPage,
+  ICommunityInvitation,
 } from '@/types/community.types';
 
 export const communityApi = createApi({
@@ -28,6 +29,7 @@ export const communityApi = createApi({
     'CommunityPendingPosts',
     'CommunityModerationLogs',
     'CommunityReports',
+    'CommunityInvitations',
   ],
   endpoints: (builder) => ({
     listCommunities: builder.query<
@@ -328,6 +330,78 @@ export const communityApi = createApi({
       }),
       invalidatesTags: (_res, _err, groupId) => [{ type: 'CommunityDetail', id: groupId }],
     }),
+    inviteFriends: builder.mutation<
+      ApiSuccessResponse<{ success: boolean; invitedUserIds: string[] }>,
+      { groupId: string; userIds: string[] }
+    >({
+      query: ({ groupId, userIds }) => ({
+        url: `/communities/${groupId}/invites`,
+        method: 'POST',
+        body: { userIds },
+      }),
+      invalidatesTags: (_res, _err, { groupId }) => [{ type: 'CommunityDetail', id: groupId }],
+    }),
+    getReceivedInvitations: builder.query<
+      ApiSuccessResponse<{
+        items: ICommunityInvitation[];
+        nextCursor: string | null;
+        hasMore: boolean;
+      }>,
+      { limit?: number; cursor?: string } | void
+    >({
+      query: (params) => ({
+        url: '/communities/invites',
+        params: { limit: params?.limit, cursor: params?.cursor },
+      }),
+      providesTags: ['CommunityInvitations'],
+    }),
+    acceptInvitation: builder.mutation<ApiSuccessResponse<ICommunity>, string>({
+      query: (groupId) => ({
+        url: `/communities/${groupId}/invites/accept`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_res, _err, groupId) => [
+        'Communities',
+        'CommunityInvitations',
+        { type: 'CommunityDetail', id: groupId },
+      ],
+    }),
+    declineInvitation: builder.mutation<ApiSuccessResponse<null>, string>({
+      query: (groupId) => ({
+        url: `/communities/${groupId}/invites/decline`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['CommunityInvitations'],
+    }),
+    getInviteLink: builder.mutation<
+      ApiSuccessResponse<{ inviteCode: string; inviteCodeEnabled: boolean }>,
+      string
+    >({
+      query: (groupId) => ({
+        url: `/communities/${groupId}/invite-link`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_res, _err, groupId) => [{ type: 'CommunityDetail', id: groupId }],
+    }),
+    disableInviteLink: builder.mutation<ApiSuccessResponse<null>, string>({
+      query: (groupId) => ({
+        url: `/communities/${groupId}/invite-link`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_res, _err, groupId) => [{ type: 'CommunityDetail', id: groupId }],
+    }),
+    getCommunityByInviteCode: builder.query<ApiSuccessResponse<ICommunity>, string>({
+      query: (inviteCode) => ({
+        url: `/communities/join/${inviteCode}`,
+      }),
+    }),
+    acceptInviteLink: builder.mutation<ApiSuccessResponse<ICommunity>, string>({
+      query: (inviteCode) => ({
+        url: `/communities/join/${inviteCode}/accept`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['Communities'],
+    }),
   }),
 });
 
@@ -359,4 +433,12 @@ export const {
   useUnlinkChatMutation,
   useGetJoinedCommunitiesFeedQuery,
   useLazyGetJoinedCommunitiesFeedQuery,
+  useInviteFriendsMutation,
+  useGetReceivedInvitationsQuery,
+  useAcceptInvitationMutation,
+  useDeclineInvitationMutation,
+  useGetInviteLinkMutation,
+  useDisableInviteLinkMutation,
+  useGetCommunityByInviteCodeQuery,
+  useAcceptInviteLinkMutation,
 } = communityApi;

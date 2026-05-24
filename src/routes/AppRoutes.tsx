@@ -22,6 +22,7 @@ const LiveHostPage = React.lazy(() => import('@/pages/user/LiveHostPage'));
 const ReelsPage = React.lazy(() => import('@/pages/user/ReelsPage'));
 const JoinGroupPage = React.lazy(() => import('@/pages/user/JoinGroupPage'));
 const CommunitiesPage = React.lazy(() => import('@/pages/user/CommunitiesPage'));
+const JoinCommunityPage = React.lazy(() => import('@/pages/user/JoinCommunityPage'));
 
 export const liveImmersiveRouteElements = (
   <>
@@ -40,6 +41,7 @@ export const appRouteElements = (
     {/* develop cũ dùng /studio + StudioPage mock — chuyển sang live mới */}
     <Route path="/studio" element={<Navigate to="/live" replace />} />
     <Route path="/join/:suffix" element={<JoinGroupPage />} />
+    <Route path="/c/join/:inviteCode" element={<JoinCommunityPage />} />
     <Route path="/chat/:conversationId" element={<ChatPage />} />
     <Route path="/chat" element={<ChatPage />} />
     <Route path="/search" element={<SearchPage />} />

@@ -1,7 +1,7 @@
-import { Newspaper, Compass, Users } from 'lucide-react';
+import { Newspaper, Compass, Users, MailOpen } from 'lucide-react';
 import type { CommunityCategory, CommunityMemberRole } from '@/types/community.types';
 
-export type CommunityBrowseMode = 'feed' | 'discover' | 'joined';
+export type CommunityBrowseMode = 'feed' | 'discover' | 'joined' | 'invites';
 
 export const CATEGORY_LABEL: Record<CommunityCategory, string> = {
   general: 'Chung',
@@ -30,4 +30,5 @@ export const NAV_ITEMS: Array<{
   { key: 'feed', label: 'Bảng feed của bạn', icon: Newspaper },
   { key: 'discover', label: 'Khám phá', icon: Compass },
   { key: 'joined', label: 'Nhóm của bạn', icon: Users },
+  { key: 'invites', label: 'Lời mời', icon: MailOpen },
 ];

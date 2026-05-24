@@ -42,9 +42,13 @@ export interface ICommunity {
   viewerRole?: CommunityMemberRole | null;
   viewerStatus?: 'active' | 'banned' | null;
   joinRequestStatus?: CommunityRequestStatus | null;
+  viewerInviteStatus?: 'pending' | null;
   isPostApprovalRequired?: boolean;
   conversationId?: string | null;
   chatEnabled?: boolean;
+  inviteCode?: string | null;
+  inviteCodeEnabled?: boolean;
+  inviteCodeCreatedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -174,4 +178,26 @@ export interface ICommunityReportsPage {
   items: ICommunityReport[];
   nextCursor: string | null;
   hasMore: boolean;
+}
+
+export interface ICommunityInvitation {
+  PK: string;
+  SK: string;
+  groupId: string;
+  communityId: string;
+  userId: string;
+  invitedById: string;
+  status: 'pending';
+  createdAt: string;
+  createdAtMs: number;
+  invitedByInfo?: {
+    userId: string;
+    displayName: string;
+    avatar: string | null;
+  };
+  communityInfo?: {
+    groupId: string;
+    name: string;
+    avatar: string | null;
+  };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Settings, Search, Plus, Newspaper, Users } from 'lucide-react';
+import { Settings, Search, Plus, Newspaper, Users, MailOpen, Calendar } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,13 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { searchService } from '@/services/search.service';
-import { useListCommunitiesQuery, useJoinCommunityMutation } from '@/store/api/communityApi';
+import {
+  useListCommunitiesQuery,
+  useJoinCommunityMutation,
+  useGetReceivedInvitationsQuery,
+  useAcceptInvitationMutation,
+  useDeclineInvitationMutation,
+} from '@/store/api/communityApi';
 import type { ISearchGroupResult } from '@/types/search.types';
 import {
   COMMUNITY_CATEGORIES,
@@ -54,6 +60,28 @@ export function CommunitiesList() {
     limit: 50,
   });
   const [joinCommunity, joinState] = useJoinCommunityMutation();
+
+  const { data: invitesRes, isLoading: invitesLoading } = useGetReceivedInvitationsQuery();
+  const [acceptInvitation, { isLoading: acceptLoading }] = useAcceptInvitationMutation();
+  const [declineInvitation, { isLoading: declineLoading }] = useDeclineInvitationMutation();
+
+  const handleAcceptInvite = async (groupId: string) => {
+    try {
+      await acceptInvitation(groupId).unwrap();
+      toast.success('Đồng ý gia nhập cộng đồng thành công!');
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Không thể đồng ý gia nhập');
+    }
+  };
+
+  const handleDeclineInvite = async (groupId: string) => {
+    try {
+      await declineInvitation(groupId).unwrap();
+      toast.success('Đã từ chối lời mời');
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Không thể từ chối lời mời');
+    }
+  };
   const {
     posts: feedPosts,
     hasMore: feedHasMore,
@@ -154,7 +182,9 @@ export function CommunitiesList() {
       ? 'Gợi ý cho bạn'
       : mode === 'joined'
         ? 'Nhóm của bạn'
-        : 'Bảng feed của bạn';
+        : mode === 'invites'
+          ? 'Lời mời gia nhập cộng đồng'
+          : 'Bảng feed của bạn';
 
   return (
     <main className="min-h-[calc(100dvh-64px)] bg-muted/30">
@@ -479,6 +509,107 @@ export function CommunitiesList() {
                     icon={Newspaper}
                     title="Chưa có bài viết nào"
                     description="Hãy tham gia các cộng đồng và cùng thảo luận với mọi người."
+                  />
+                )}
+              </section>
+            )}
+
+            {mode === 'invites' && (
+              <section className="flex flex-col gap-6 w-full animate-in fade-in duration-300">
+                <div>
+                  <h2 className="text-xl font-bold text-foreground">Lời mời gia nhập cộng đồng</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Các lời mời từ bạn bè gửi đến bạn để cùng kết nối và thảo luận.
+                  </p>
+                </div>
+
+                {invitesLoading ? (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <Skeleton key={index} className="h-44 rounded-2xl w-full" />
+                    ))}
+                  </div>
+                ) : (invitesRes?.data?.items ?? []).length ? (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {(invitesRes?.data?.items ?? []).map((invite) => {
+                      const communityName = invite.communityInfo?.name ?? 'Cộng đồng Zalogram';
+                      const inviterName =
+                        invite.invitedByInfo?.displayName ?? 'Người dùng Zalogram';
+                      const inviterAvatar = invite.invitedByInfo?.avatar;
+                      const communityAvatar = invite.communityInfo?.avatar;
+
+                      return (
+                        <div
+                          key={invite.groupId}
+                          className="rounded-2xl border border-border/40 bg-card p-5 shadow-sm hover:shadow-md transition-all flex flex-col gap-4 justify-between"
+                        >
+                          <div className="flex gap-3">
+                            <div className="size-12 rounded-2xl bg-blue-100 flex items-center justify-center shrink-0 overflow-hidden border border-border/10">
+                              {communityAvatar ? (
+                                <img
+                                  src={communityAvatar}
+                                  alt={communityName}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <span className="text-blue-600 font-extrabold text-sm">
+                                  {communityName.slice(0, 2).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h4 className="font-bold text-sm text-foreground truncate hover:text-blue-600 transition-colors">
+                                <a href={`/communities/${invite.groupId}`}>{communityName}</a>
+                              </h4>
+                              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1 font-medium truncate">
+                                <span>Được mời bởi:</span>
+                                <span className="font-bold text-foreground inline-flex items-center gap-1 max-w-[120px] truncate">
+                                  {inviterAvatar && (
+                                    <img
+                                      src={inviterAvatar}
+                                      className="size-3.5 rounded-full object-cover shrink-0"
+                                      alt={inviterName}
+                                    />
+                                  )}
+                                  {inviterName}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/10 text-xs text-slate-500 font-semibold">
+                            <Calendar className="size-3.5 text-slate-400 shrink-0" />
+                            <span>
+                              Mời vào {new Date(invite.createdAt).toLocaleDateString('vi-VN')}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 w-full mt-1.5">
+                            <Button
+                              variant="ghost"
+                              disabled={declineLoading || acceptLoading}
+                              onClick={() => void handleDeclineInvite(invite.groupId)}
+                              className="h-9 px-3 rounded-xl flex-1 font-bold text-xs hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+                            >
+                              Từ chối
+                            </Button>
+                            <Button
+                              disabled={declineLoading || acceptLoading}
+                              onClick={() => void handleAcceptInvite(invite.groupId)}
+                              className="h-9 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl flex-1 font-bold text-xs cursor-pointer shadow-sm shadow-blue-500/10"
+                            >
+                              Chấp nhận
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={MailOpen}
+                    title="Hộp thư lời mời đang trống"
+                    description="Bạn chưa nhận được lời mời gia nhập cộng đồng nào."
                   />
                 )}
               </section>
