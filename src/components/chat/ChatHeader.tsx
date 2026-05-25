@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import defaultAvatarGroup from '@/assets/images/avatar-group-default.jpg';
+import { resolveGroupAvatarDisplayUrl } from '@/utils/groupAvatarUrl';
 import { cn } from '@/utils/cn';
 import type { IConversation } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/types/chat.types';
@@ -137,6 +138,16 @@ export function ChatHeader({
         : (activeConversation.memberCount ?? 0)
       : 0;
 
+  const groupAvatarSrc =
+    activeConversation?.type === 'group'
+      ? resolveGroupAvatarDisplayUrl(activeConversation.avatar, {
+          conversationId: activeConversation.conversationId,
+          updatedAt: activeConversation.updatedAt,
+        })
+      : activeConversation?.avatar
+        ? activeConversation.avatar
+        : undefined;
+
   return (
     <TooltipProvider delayDuration={300}>
       {/* h-16 (64px) thay h-20 — chuẩn Zalo/Telegram; border dùng semantic token */}
@@ -169,10 +180,21 @@ export function ChatHeader({
           )}
           {/* Avatar — size-10 thay w-10 h-10 (Rule 8) */}
           <div className="size-10 rounded-full overflow-hidden border-2 border-blue-600/20 bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
-            {activeConversation?.avatar ? (
+            {(
+              activeConversation?.type === 'group' ? groupAvatarSrc : activeConversation?.avatar
+            ) ? (
               <img
-                src={activeConversation.avatar}
-                alt={activeConversation.name ?? 'Chat'}
+                key={
+                  activeConversation?.type === 'group'
+                    ? `${activeConversation.conversationId}:${groupAvatarSrc}`
+                    : activeConversation?.avatar
+                }
+                src={
+                  activeConversation?.type === 'group'
+                    ? (groupAvatarSrc ?? defaultAvatarGroup)
+                    : activeConversation!.avatar!
+                }
+                alt={activeConversation?.name ?? 'Chat'}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />

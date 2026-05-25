@@ -47,6 +47,7 @@ import {
   type MuteNotificationsApplyPayload,
 } from '@/components/chat/MuteNotificationsModal';
 import { ConfirmModal } from '@/components/chat/ConfirmModal';
+import { resolveGroupAvatarDisplayUrl } from '@/utils/groupAvatarUrl';
 import { BulletinPinnedMessageCard } from '@/components/chat/BulletinPinnedMessageCard';
 import { BulletinTaskCard } from '@/components/chat/BulletinTaskCard';
 import { TaskDeadlineCalendar } from '@/components/chat/TaskDeadlineCalendar';
@@ -1390,7 +1391,15 @@ export function ConversationInfoPanel({
             <div className="w-20 h-20 rounded-full overflow-hidden mb-4 relative bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
               {activeConversation?.avatar ? (
                 <img
-                  src={activeConversation.avatar}
+                  key={`${activeConversation.conversationId}:${activeConversation.updatedAt ?? ''}:${activeConversation.avatar}`}
+                  src={
+                    activeConversation.type === 'group'
+                      ? (resolveGroupAvatarDisplayUrl(activeConversation.avatar, {
+                          conversationId: activeConversation.conversationId,
+                          updatedAt: activeConversation.updatedAt,
+                        }) ?? activeConversation.avatar)
+                      : activeConversation.avatar
+                  }
                   alt={activeConversation.name ?? ''}
                   className="w-full h-full object-cover"
                 />

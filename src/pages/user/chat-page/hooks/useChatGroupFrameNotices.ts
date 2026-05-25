@@ -129,6 +129,8 @@ export function useChatGroupFrameNotices({
         }
         // Đã có pill system trong khung chat — không banner trùng.
         if (
+          kind === 'group_created' ||
+          kind === 'group_profile_updated' ||
           kind === 'group_admin_promoted' ||
           kind === 'group_admin_demoted' ||
           kind === 'group_owner_transferred' ||
