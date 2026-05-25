@@ -54,6 +54,20 @@ export function navigateFromNotification(navigate: NavigateFunction, item: INoti
       if (entityId) navigate(`/live/${encodeURIComponent(entityId)}`);
       else navigate('/live');
       return;
+    case 'call': {
+      const conversationId = String(data.conversationId ?? '').trim();
+      const channel = String(data.channelName ?? data.id ?? '').trim();
+      const type = String(data.callType ?? 'audio').trim();
+      const scope = String(data.callScope ?? 'direct').trim();
+      const qs = new URLSearchParams({
+        ...(channel ? { channel } : {}),
+        ...(conversationId ? { conversationId } : {}),
+        type,
+        scope,
+      });
+      navigate(`/call?${qs.toString()}`);
+      return;
+    }
     case 'ai':
       navigate('/ai-studio');
       return;

@@ -31,6 +31,7 @@ export type NotificationRoute =
   | 'friends'
   | 'profile'
   | 'notifications'
+  | 'call'
   | 'live'
   | 'ai'
   | 'community';
@@ -45,6 +46,17 @@ export interface INotificationRouteData {
   actorId?: string;
   actorName?: string;
   actorAvatar?: string | null;
+  senderId?: string;
+  senderName?: string;
+  senderAvatar?: string | null;
+  messageId?: string;
+  messagePreview?: string;
+  conversationType?: 'direct' | 'group';
+  chatScope?: 'direct' | 'group';
+  conversationName?: string | null;
+  conversationAvatar?: string | null;
+  groupName?: string | null;
+  groupAvatar?: string | null;
   extra?: Record<string, unknown>;
 }
 
