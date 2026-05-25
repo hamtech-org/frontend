@@ -14,6 +14,7 @@ import {
   normalizeGroupMembersList,
   resolveGroupMemberRole,
 } from '@/utils/groupConversationPermissions';
+import { normalizeGroupAvatarStoredValue } from '@/utils/groupAvatarUrl';
 import { patchGroupProfileInConversationsCache } from '@/utils/groupRealtimeCache';
 import type {
   GroupActionLoading,
@@ -273,7 +274,9 @@ export function useGroupConversationController({
         const conv = draft?.data?.find((item) => item.conversationId === activeConversationId);
         if (!conv) return;
         conv.name = nextName;
-        if (nextAvatar) conv.avatar = nextAvatar;
+        if (nextAvatar) {
+          conv.avatar = normalizeGroupAvatarStoredValue(nextAvatar, activeConversationId);
+        }
       }),
     );
 

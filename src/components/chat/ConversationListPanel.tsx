@@ -27,6 +27,8 @@ import {
   sortConversationsForSidebar,
 } from '@/utils/chatUtils';
 import { formatZaloConversationTime } from '@/utils/formatDate';
+import { resolveGroupAvatarDisplayUrl } from '@/utils/groupAvatarUrl';
+import { resolveChatMediaFetchUrl } from '@/utils/chatMediaDownload';
 import {
   ContactsManagementPanel,
   type ContactsTabId,
@@ -496,7 +498,19 @@ export function ConversationListPanel({
                           <div className="relative shrink-0">
                             {conv.avatar ? (
                               <img
-                                src={conv.avatar}
+                                key={
+                                  isGroup
+                                    ? `${conv.conversationId}:${conv.updatedAt ?? ''}:${conv.avatar}`
+                                    : conv.avatar
+                                }
+                                src={
+                                  isGroup
+                                    ? (resolveGroupAvatarDisplayUrl(conv.avatar, {
+                                        conversationId: conv.conversationId,
+                                        updatedAt: conv.updatedAt,
+                                      }) ?? conv.avatar)
+                                    : resolveChatMediaFetchUrl(conv.avatar)
+                                }
                                 alt={displayName}
                                 className={`w-11 h-11 rounded-full object-cover border-2 ${isActive ? 'border-blue-500/30' : 'border-transparent'}`}
                                 referrerPolicy="no-referrer"

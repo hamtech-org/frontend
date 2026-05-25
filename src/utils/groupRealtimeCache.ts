@@ -2,6 +2,7 @@ import type { AppDispatch } from '@/store/store';
 import { chatApi } from '@/store/api/chatApi';
 import { bumpGroupBoardRefresh } from '@/store/slices/chatSlice';
 import type { IConversation, IGroupSettings } from '@/types/chat.types';
+import { normalizeGroupAvatarStoredValue } from '@/utils/groupAvatarUrl';
 import { normalizeGroupSettings } from '@/utils/normalizeGroupSettings';
 
 /** Đồng bộ `groupSettings` vào sidebar + query settings (socket / mutation). */
@@ -47,8 +48,8 @@ export function patchGroupProfileInConversationsCache(
   if (!cid) return;
 
   const name = typeof patch.name === 'string' && patch.name.trim() ? patch.name.trim() : undefined;
-  const avatar =
-    typeof patch.avatar === 'string' && patch.avatar.trim() ? patch.avatar.trim() : undefined;
+  const hasAvatarField = patch.avatar !== undefined && patch.avatar !== null;
+  const avatar = hasAvatarField ? String(patch.avatar).trim() : undefined;
   const memberCount =
     typeof patch.memberCount === 'number' && Number.isFinite(patch.memberCount)
       ? patch.memberCount
@@ -63,7 +64,7 @@ export function patchGroupProfileInConversationsCache(
 
   if (
     !name &&
-    !avatar &&
+    !hasAvatarField &&
     memberCount === undefined &&
     !updatedAt &&
     !leaderId &&
@@ -77,7 +78,9 @@ export function patchGroupProfileInConversationsCache(
       const c = draft.data.find((x) => x.conversationId === cid);
       if (!c) return;
       if (name) c.name = name;
-      if (avatar) c.avatar = avatar;
+      if (hasAvatarField) {
+        c.avatar = normalizeGroupAvatarStoredValue(avatar ?? null, cid);
+      }
       if (memberCount !== undefined) c.memberCount = memberCount;
       if (updatedAt) c.updatedAt = updatedAt;
       if (leaderId) (c as IConversation).leaderId = leaderId;

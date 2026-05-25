@@ -2,10 +2,7 @@ import type { IConversation, IMessage, MessageType, TypingUserEntry } from '@/ty
 import { pinnedChatFileDisplayName, resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
 
 export { pinnedChatFileDisplayName } from '@/utils/chatFileDisplay';
-import {
-  formatGroupSystemChatLine,
-  formatLegacyGroupProfileSystemLine,
-} from '@/utils/groupSystemMessage';
+import { resolveGroupSystemDisplayLine } from '@/utils/groupSystemMessage';
 import { formatGroupJoinLinkListPreview } from '@/utils/groupJoinLinkMessage';
 
 /** Màu logo bình chọn (PollVoteModal — orange-500). */
@@ -60,13 +57,11 @@ export function lastMessageLineFromSystemJson(
 ): string | null {
   const trimmed = (raw ?? '').trim();
   if (!trimmed) return null;
-  const groupLine =
-    formatGroupSystemChatLine(trimmed, ctx.currentUserId) ??
-    formatLegacyGroupProfileSystemLine(trimmed, {
-      senderId: ctx.senderId,
-      currentUserId: ctx.currentUserId,
-      senderDisplayName: ctx.senderDisplayName,
-    });
+  const groupLine = resolveGroupSystemDisplayLine(trimmed, {
+    senderId: ctx.senderId,
+    currentUserId: ctx.currentUserId,
+    senderDisplayName: ctx.senderDisplayName,
+  });
   if (groupLine) return groupLine;
   if (!trimmed.startsWith('{')) return null;
   try {
@@ -158,7 +153,7 @@ export function lastMessagePreviewContentFromMessage(
   if (msg.isRecalled) return 'Tin nhắn đã được thu hồi';
   if (msg.isDeleted) return 'Tin nhắn đã xóa';
   const c = (msg.content ?? '').trim();
-  if ((msg as { type?: string }).type === 'system' && c.startsWith('{')) {
+  if ((msg as { type?: string }).type === 'system') {
     const line = lastMessageLineFromSystemJson(c, {
       currentUserId: viewerUserId,
       senderId: String((msg as { senderId?: string }).senderId ?? ''),
@@ -442,7 +437,7 @@ export function formatConversationListLastPreview(
     if (lm.type !== ('system' as any)) return null;
     if (typeof content !== 'string') return null;
     const raw = content.trim();
-    if (!raw.startsWith('{')) return null;
+    if (!raw) return null;
     return lastMessageLineFromSystemJson(raw, {
       currentUserId: currentUserId,
       senderId: lm.senderId,

@@ -40,11 +40,11 @@ import {
   lastMessageLineFromSystemJson,
   typingLabel,
 } from '@/utils/chatUtils';
+import { resolveGroupSystemDisplayLine } from '@/utils/groupSystemMessage';
 import {
-  formatGroupSystemChatLine,
-  formatLegacyGroupProfileSystemLine,
-} from '@/utils/groupSystemMessage';
-import { resolveTaskAssigneeDisplayLabel } from '@/utils/syncAssignToAllGroupTasks';
+  labelTaskPerson,
+  resolveTaskAssigneeDisplayLabel,
+} from '@/utils/syncAssignToAllGroupTasks';
 import { resolveGroupJoinLinkFromMessageContent } from '@/utils/groupJoinLinkMessage';
 import { GroupJoinLinkCard } from '@/components/chat/GroupJoinLinkCard';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
@@ -572,11 +572,14 @@ export function ChatMessageList({
         : [];
       const isAll = Boolean(t?.assignToAll) || Boolean(t?.broadcast);
       const ids = subs.length > 0 ? subAssigneeIds : topAssignees;
-      const assigneeLabel = isAll
-        ? 'Cả nhóm'
-        : ids.length > 0
-          ? ids.map((x) => nameById.get(String(x)) || String(x)).join(', ')
-          : undefined;
+      const assigneeLabel = resolveTaskAssigneeDisplayLabel({
+        assignToAll: isAll,
+        broadcast: Boolean(t?.broadcast),
+        assigneeIds: ids,
+        memberCount: groupMembers?.length ?? 0,
+        nameById,
+        currentUserId,
+      });
 
       const fb = opts?.fallback ?? {};
       const fallbackTitle = String(fb.title ?? '').trim();
@@ -606,10 +609,12 @@ export function ChatMessageList({
         subtasks:
           subs.length > 0
             ? subs.map((s) => ({
-                assigneeName:
-                  String(s?.assigneeName ?? '').trim() ||
-                  nameById.get(String(s?.assigneeId ?? '').trim()) ||
+                assigneeName: labelTaskPerson(
                   String(s?.assigneeId ?? ''),
+                  String(s?.assigneeName ?? ''),
+                  currentUserId,
+                  nameById,
+                ),
                 content: String(s?.content ?? ''),
                 done: Boolean(s?.done),
               }))
@@ -619,7 +624,7 @@ export function ChatMessageList({
       });
       setTaskDetailOpen(true);
     },
-    [groupMembers, groupTasks],
+    [currentUserId, groupMembers, groupTasks],
   );
 
   useEffect(() => {
@@ -652,6 +657,7 @@ export function ChatMessageList({
         memberCount: groupMembers?.length ?? 0,
         nameById,
         fallbackLabel: prev?.assigneeLabel,
+        currentUserId,
       });
       const noteFromApi =
         t.description != null && String(t.description).trim() !== ''
@@ -666,16 +672,18 @@ export function ChatMessageList({
         participantsCount: participantIds.length,
         participantIds,
         subtasks: subs.map((s) => ({
-          assigneeName:
-            String(s?.assigneeName ?? '').trim() ||
-            nameById.get(String(s?.assigneeId ?? '').trim()) ||
+          assigneeName: labelTaskPerson(
             String(s?.assigneeId ?? ''),
+            String(s?.assigneeName ?? ''),
+            currentUserId,
+            nameById,
+          ),
           content: String(s?.content ?? ''),
           done: Boolean(s?.done),
         })),
       };
     });
-  }, [groupMembers, groupTasks, taskDetailOpen, taskDetailTaskId]);
+  }, [currentUserId, groupMembers, groupTasks, taskDetailOpen, taskDetailTaskId]);
 
   const markMediaDownloaded = useCallback((messageId: string) => {
     setDownloadedMediaIds((prev) => {
@@ -768,13 +776,11 @@ export function ChatMessageList({
               const systemJsonRaw = typeof msg.content === 'string' ? msg.content.trim() : '';
               let content = msg.content;
               if (typeof content === 'string') {
-                const groupLine =
-                  formatGroupSystemChatLine(content, currentUserId) ??
-                  formatLegacyGroupProfileSystemLine(content, {
-                    senderId: msg.senderId,
-                    currentUserId,
-                    senderDisplayName: msg.senderDisplayName,
-                  });
+                const groupLine = resolveGroupSystemDisplayLine(content, {
+                  senderId: msg.senderId,
+                  currentUserId,
+                  senderDisplayName: msg.senderDisplayName,
+                });
                 if (groupLine) {
                   content = groupLine;
                 }
@@ -1097,6 +1103,7 @@ export function ChatMessageList({
                                         memberCount: groupMembers?.length ?? 0,
                                         nameById: byId,
                                         fallbackLabel: taskCard.assigneeLabel,
+                                        currentUserId,
                                       });
                                       setTaskDetailTaskId(String(taskCard.taskId));
                                       setTaskDetail({
@@ -1110,20 +1117,16 @@ export function ChatMessageList({
                                           (taskCard.actorId && taskCard.actorId === currentUserId
                                             ? 'Bạn'
                                             : taskCard.actorName) + ' đã giao việc',
-                                        subtasks: subs.map((s) => {
-                                          const assigneeId = String(s?.assigneeId ?? '').trim();
-                                          const nameRaw = String(s?.assigneeName ?? '').trim();
-                                          const name =
-                                            nameRaw ||
-                                            (assigneeId
-                                              ? (byId.get(assigneeId) ?? assigneeId)
-                                              : '');
-                                          return {
-                                            assigneeName: name,
-                                            content: String(s?.content ?? ''),
-                                            done: Boolean(s?.done),
-                                          };
-                                        }),
+                                        subtasks: subs.map((s) => ({
+                                          assigneeName: labelTaskPerson(
+                                            String(s?.assigneeId ?? ''),
+                                            String(s?.assigneeName ?? ''),
+                                            currentUserId,
+                                            byId,
+                                          ),
+                                          content: String(s?.content ?? ''),
+                                          done: Boolean(s?.done),
+                                        })),
                                       });
                                       setTaskDetailOpen(true);
                                     }}
@@ -1194,6 +1197,7 @@ export function ChatMessageList({
                                               memberCount: groupMembers?.length ?? 0,
                                               nameById: byId,
                                               fallbackLabel: taskCard.assigneeLabel,
+                                              currentUserId,
                                             });
                                             return (
                                               <span
@@ -2406,6 +2410,7 @@ export function ChatMessageList({
                           memberCount: groupMembers?.length ?? 0,
                           nameById,
                           fallbackLabel: taskDetail.assigneeLabel,
+                          currentUserId,
                         });
                         if (!display.trim()) return null;
                         return (

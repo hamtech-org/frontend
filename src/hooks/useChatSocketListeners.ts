@@ -33,6 +33,10 @@ import {
   patchGroupProfileInConversationsCache,
   patchGroupSettingsInCaches,
 } from '@/utils/groupRealtimeCache';
+import {
+  parseConversationCreatedPayload,
+  upsertConversationInListCache,
+} from '@/utils/conversationRealtimeCache';
 
 function applyMessageStatusPatch(
   dispatch: AppDispatch,
@@ -92,9 +96,31 @@ export function useChatSocketListeners(
   const typingCleanupTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const activeConversationIdRef = useRef(activeConversationId);
   activeConversationIdRef.current = activeConversationId;
+  const conversationsRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!socketReady) return;
+
+    const scheduleConversationsListRefetch = () => {
+      if (conversationsRefetchTimerRef.current) {
+        clearTimeout(conversationsRefetchTimerRef.current);
+      }
+      conversationsRefetchTimerRef.current = setTimeout(() => {
+        conversationsRefetchTimerRef.current = null;
+        void dispatch(
+          chatApi.endpoints.getConversations.initiate(undefined, { forceRefetch: true }),
+        );
+      }, 350);
+    };
+
+    const handleConversationCreated = (data: unknown) => {
+      const conv = parseConversationCreatedPayload(data);
+      if (!conv) {
+        scheduleConversationsListRefetch();
+        return;
+      }
+      upsertConversationInListCache(dispatch, conv);
+    };
 
     const handleNewMessage = (data: unknown) => {
       const msg = data as IMessage;
@@ -131,32 +157,35 @@ export function useChatSocketListeners(
         });
       }
       // Cập nhật lastMessage, updatedAt, unreadCount và sort lại danh sách
+      let convMissing = false;
       dispatch(
         chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
           if (!draft?.data) return;
           const conv = draft.data.find((c) => c.conversationId === msg.conversationId);
-          if (conv) {
-            conv.lastMessage = {
-              messageId: msg.messageId,
-              content: lastMessagePreviewContentFromMessage(msg, currentUserId),
-              senderId: msg.senderId,
-              type: msg.type,
-              createdAt: msg.createdAt,
-              senderDisplayName: msg.senderDisplayName?.trim() ?? null,
-            };
-            conv.lastMessageAt = msg.createdAt;
-            conv.updatedAt = msg.createdAt;
-            // Chỉ tăng badge khi người khác gửi và user chưa mở hội thoại đó
-            if (
-              msg.senderId !== currentUserId &&
-              activeConversationIdRef.current !== msg.conversationId
-            ) {
-              conv.unreadCount = (conv.unreadCount ?? 0) + 1;
-            }
+          if (!conv) {
+            convMissing = true;
+            return;
+          }
+          conv.lastMessage = {
+            messageId: msg.messageId,
+            content: lastMessagePreviewContentFromMessage(msg, currentUserId),
+            senderId: msg.senderId,
+            type: msg.type,
+            createdAt: msg.createdAt,
+            senderDisplayName: msg.senderDisplayName?.trim() ?? null,
+          };
+          conv.lastMessageAt = msg.createdAt;
+          conv.updatedAt = msg.createdAt;
+          if (
+            msg.senderId !== currentUserId &&
+            activeConversationIdRef.current !== msg.conversationId
+          ) {
+            conv.unreadCount = (conv.unreadCount ?? 0) + 1;
           }
           draft.data = sortConversationsForSidebar(draft.data);
         }),
       );
+      if (convMissing) scheduleConversationsListRefetch();
     };
 
     const handleRecall = (data: unknown) => {
@@ -304,10 +333,16 @@ export function useChatSocketListeners(
       const hasMemberCountPatch =
         typeof profileFromPayload?.patch.memberCount === 'number' &&
         Number.isFinite(profileFromPayload.patch.memberCount);
+      const profileOnlyPatch =
+        Boolean(profileFromPayload) &&
+        !hasMemberCountPatch &&
+        (profileFromPayload.patch.name !== undefined ||
+          profileFromPayload.patch.avatar !== undefined ||
+          profileFromPayload.patch.updatedAt !== undefined);
       if (hasMemberCountPatch) {
         dispatch(chatApi.util.invalidateTags([{ type: 'Tasks', id: groupId }]));
       }
-      if (!hasMemberCountPatch) {
+      if (!profileOnlyPatch) {
         dispatch(chatApi.util.invalidateTags(['Conversations']));
       }
       if (groupId === activeConversationIdRef.current) {
@@ -405,6 +440,7 @@ export function useChatSocketListeners(
       dispatch(chatApi.util.invalidateTags(['Conversations']));
     };
 
+    socketService.on('conversation:created', handleConversationCreated);
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:status', handleMessageStatus);
     socketService.on('message:recall', handleRecall);
@@ -451,6 +487,11 @@ export function useChatSocketListeners(
     socketService.on('group:recap_new', onGroupRecapNew);
 
     return () => {
+      if (conversationsRefetchTimerRef.current) {
+        clearTimeout(conversationsRefetchTimerRef.current);
+        conversationsRefetchTimerRef.current = null;
+      }
+      socketService.off('conversation:created', handleConversationCreated);
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:status', handleMessageStatus);
       socketService.off('message:recall', handleRecall);
