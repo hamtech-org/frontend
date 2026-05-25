@@ -331,10 +331,11 @@ export function useChatSocketListeners(
 
       // Có memberCount trong payload thì đã patch cache — tránh refetch ghi đè tạm thời.
       const hasMemberCountPatch =
-        typeof profileFromPayload?.patch.memberCount === 'number' &&
+        profileFromPayload &&
+        typeof profileFromPayload.patch.memberCount === 'number' &&
         Number.isFinite(profileFromPayload.patch.memberCount);
       const profileOnlyPatch =
-        Boolean(profileFromPayload) &&
+        profileFromPayload &&
         !hasMemberCountPatch &&
         (profileFromPayload.patch.name !== undefined ||
           profileFromPayload.patch.avatar !== undefined ||

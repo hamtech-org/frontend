@@ -25,6 +25,9 @@ export function sanitizeDownloadFilename(name: string): string {
 export function parseMediaIdFromStoredUrl(urlStr: string): string | null {
   const trimmed = urlStr.trim();
   if (!trimmed) return null;
+  if (/\/conversations\/[^/]+\/avatar/i.test(trimmed)) {
+    return null;
+  }
   try {
     const u = /^https?:\/\//i.test(trimmed)
       ? new URL(trimmed)
