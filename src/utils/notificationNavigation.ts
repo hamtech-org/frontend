@@ -71,6 +71,10 @@ export function navigateFromNotification(navigate: NavigateFunction, item: INoti
     case 'ai':
       navigate('/ai-studio');
       return;
+    case 'community':
+      if (entityId) navigate(`/communities/${encodeURIComponent(entityId)}?joinChat=true`);
+      else navigate('/communities');
+      return;
     default:
       if (entityId && data.route === 'chat') {
         navigate(`/chat/${encodeURIComponent(entityId)}`);

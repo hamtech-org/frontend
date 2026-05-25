@@ -8,6 +8,7 @@ import {
   Trash2,
   Flag,
   EyeOff,
+  Pin,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -20,6 +21,10 @@ import {
   useReactToPostMutation,
   useToggleSavePostMutation,
 } from '@/store/api/newsfeedApi';
+import {
+  usePinCommunityPostMutation,
+  useUnpinCommunityPostMutation,
+} from '@/store/api/communityApi';
 import { formatRelative } from '@/utils/formatDate';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { HashtagText } from './HashtagText';
@@ -27,6 +32,7 @@ import { MediaGallery } from './MediaGallery';
 import { ReactionButton } from '@/components/common/ReactionButton';
 import { ReactionSummary } from '@/components/common/ReactionButton/ReactionSummary';
 import { CommentItem } from './CommentItem';
+import { CommunityReportDialog } from '@/features/communities/components/CommunityReportDialog';
 import { CommentInput } from './CommentInput';
 import { SharedPostPreview } from './SharedPostPreview';
 import { SharePostModal } from './SharePostModal';
@@ -45,9 +51,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 interface Props {
   post: IPost;
   onEditPost?: (post: IPost) => void;
+  className?: string;
+  communityRole?: 'owner' | 'admin' | 'moderator' | 'member' | null;
 }
 
-export const PostCard = ({ post, onEditPost }: Props) => {
+export const PostCard = ({ post, onEditPost, className, communityRole }: Props) => {
   const vm = toPostCardViewModel(post);
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const isOwner = currentUser?.userId === vm.authorId;
@@ -74,11 +82,17 @@ export const PostCard = ({ post, onEditPost }: Props) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [isSaved, setIsSaved] = useState(post.isSaved ?? false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
 
   const [getCommentsPage] = useLazyGetCommentsQuery();
   const [reactToPost] = useReactToPostMutation();
   const [deletePost, { isLoading: isDeleting }] = useDeletePostMutation();
   const [toggleSavePost] = useToggleSavePostMutation();
+  const [pinPost] = usePinCommunityPostMutation();
+  const [unpinPost] = useUnpinCommunityPostMutation();
+
+  const isModeratorOrAbove =
+    communityRole === 'owner' || communityRole === 'admin' || communityRole === 'moderator';
 
   const myName = currentUser?.displayName?.trim() || 'Bạn';
   const myAvatar = currentUser?.avatar || '';
@@ -140,25 +154,84 @@ export const PostCard = ({ post, onEditPost }: Props) => {
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      className="feed-card-virtualized glass-card max-w-3xl mx-auto rounded-2xl overflow-hidden border-none shadow-lg shadow-black/5 dark:shadow-white/5"
+      className={`feed-card-virtualized glass-card rounded-2xl overflow-hidden border-none shadow-lg shadow-black/5 dark:shadow-white/5 ${className || 'max-w-3xl mx-auto'}`}
     >
+      {post.isPinned && (
+        <div className="px-3 pt-3 md:px-4 flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400">
+          <Pin className="w-3.5 h-3.5 fill-current" />
+          <span>Được ghim bởi Quản trị viên</span>
+        </div>
+      )}
       <div className="px-3 py-2 md:px-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="size-9 rounded-full overflow-hidden bg-muted/40 flex items-center justify-center shrink-0">
-            {vm.avatar ? (
-              <img
-                src={vm.avatar}
-                alt={vm.displayName}
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <span className="text-sm font-bold text-muted-foreground">{vm.initial}</span>
-            )}
-          </div>
+          {vm.communityInfo ? (
+            <div className="relative size-10 shrink-0">
+              <div className="w-9 h-9 rounded-xl overflow-hidden bg-muted/40 flex items-center justify-center">
+                {vm.communityInfo.avatar ? (
+                  <img
+                    src={vm.communityInfo.avatar}
+                    alt={vm.communityInfo.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-xs font-bold text-muted-foreground">
+                    {vm.communityInfo.name.charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-5.5 h-5.5 rounded-full overflow-hidden border-2 border-background bg-card flex items-center justify-center shadow-sm">
+                {vm.avatar ? (
+                  <img
+                    src={vm.avatar}
+                    alt={vm.displayName}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span className="text-[10px] font-bold text-muted-foreground">{vm.initial}</span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="size-9 rounded-full overflow-hidden bg-muted/40 flex items-center justify-center shrink-0">
+              {vm.avatar ? (
+                <img
+                  src={vm.avatar}
+                  alt={vm.displayName}
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="text-sm font-bold text-muted-foreground">{vm.initial}</span>
+              )}
+            </div>
+          )}
           <div>
-            <h3 className="font-bold text-sm leading-tight">{vm.displayName}</h3>
-            <p className="text-xs text-muted-foreground">{formatRelative(post.createdAt)}</p>
+            {vm.communityInfo ? (
+              <div className="flex flex-col">
+                <a
+                  href={`/communities/${vm.communityInfo.groupId}`}
+                  className="font-bold text-sm text-foreground hover:underline leading-tight"
+                >
+                  {vm.communityInfo.name}
+                </a>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-none">
+                  <a
+                    href={`/users/${vm.authorId}`}
+                    className="font-semibold hover:underline text-muted-foreground hover:text-foreground"
+                  >
+                    {vm.displayName}
+                  </a>
+                  <span className="mx-1">·</span>
+                  {formatRelative(post.createdAt)}
+                </p>
+              </div>
+            ) : (
+              <div>
+                <h3 className="font-bold text-sm leading-tight">{vm.displayName}</h3>
+                <p className="text-xs text-muted-foreground">{formatRelative(post.createdAt)}</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -200,7 +273,10 @@ export const PostCard = ({ post, onEditPost }: Props) => {
               <>
                 <button
                   className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
-                  onClick={() => setIsMenuOpen(false)}
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setShowReportDialog(true);
+                  }}
                 >
                   <Flag className="h-4 w-4 text-muted-foreground" />
                   Báo cáo
@@ -211,6 +287,30 @@ export const PostCard = ({ post, onEditPost }: Props) => {
                 >
                   <EyeOff className="h-4 w-4 text-muted-foreground" />
                   Ẩn bài viết
+                </button>
+              </>
+            )}
+
+            {isModeratorOrAbove && post.groupId && (
+              <>
+                <div className="my-1 border-t border-border/50" />
+                <button
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+                  onClick={async () => {
+                    setIsMenuOpen(false);
+                    try {
+                      if (post.isPinned) {
+                        await unpinPost({ groupId: post.groupId!, postId: post.postId }).unwrap();
+                      } else {
+                        await pinPost({ groupId: post.groupId!, postId: post.postId }).unwrap();
+                      }
+                    } catch (err: any) {
+                      alert(err?.data?.message || 'Có lỗi xảy ra');
+                    }
+                  }}
+                >
+                  <Pin className="h-4 w-4 text-muted-foreground" />
+                  {post.isPinned ? 'Bỏ ghim bài viết' : 'Ghim bài viết'}
                 </button>
               </>
             )}
@@ -332,7 +432,12 @@ export const PostCard = ({ post, onEditPost }: Props) => {
             ) : (
               <>
                 {comments.map((comment) => (
-                  <CommentItem key={comment.commentId} comment={comment} postId={post.postId} />
+                  <CommentItem
+                    key={comment.commentId}
+                    comment={comment}
+                    postId={post.postId}
+                    groupId={post.groupId || undefined}
+                  />
                 ))}
                 {isLoadingMoreComments && (
                   <div className="flex flex-col gap-2 py-1">
@@ -398,6 +503,17 @@ export const PostCard = ({ post, onEditPost }: Props) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Report dialog ── */}
+      {post.groupId && (
+        <CommunityReportDialog
+          groupId={post.groupId}
+          entityType="POST"
+          entityId={post.postId}
+          open={showReportDialog}
+          onClose={() => setShowReportDialog(false)}
+        />
+      )}
     </motion.article>
   );
 };

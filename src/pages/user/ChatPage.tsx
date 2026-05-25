@@ -599,7 +599,6 @@ export default function ChatPage() {
     <ChatPageProvider value={contextValue}>
       <div className="w-full h-full min-h-0 flex overflow-hidden bg-background">
         <ChatNavRail
-          navigate={navigate}
           onOpenProfile={handleOpenProfile}
           showContactsManagement={modalState.showContactsManagement}
           showAIAssistant={showAIAssistant}

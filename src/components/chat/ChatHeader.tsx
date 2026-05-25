@@ -8,12 +8,12 @@ import {
   Search,
   User,
   UserPlus,
-  Users,
   Video,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import defaultAvatarGroup from '@/assets/images/avatar-group-default.jpg';
 import { cn } from '@/utils/cn';
 import type { IConversation } from '@/types/chat.types';
 import type { TypingUserEntry } from '@/types/chat.types';
@@ -177,7 +177,11 @@ export function ChatHeader({
                 referrerPolicy="no-referrer"
               />
             ) : activeConversation?.type === 'group' ? (
-              <Users className="size-5 text-blue-600" />
+              <img
+                src={defaultAvatarGroup}
+                alt={activeConversation.name ?? 'Chat'}
+                className="w-full h-full object-cover"
+              />
             ) : (
               <User className="size-5 text-blue-600" />
             )}

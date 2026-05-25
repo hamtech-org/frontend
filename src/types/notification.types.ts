@@ -12,7 +12,17 @@ export type NotificationType =
   | 'live_started'
   | 'comment_reply'
   | 'ai_job_done'
-  | 'stats_milestone';
+  | 'stats_milestone'
+  | 'community_chat_enabled'
+  | 'post_approved'
+  | 'post_rejected'
+  | 'community_invite'
+  | 'community_invite_accepted'
+  | 'community_join_request'
+  | 'community_request_resolved'
+  | 'community_member_kicked'
+  | 'community_role_changed'
+  | 'community_ownership_transferred';
 
 export type NotificationRoute =
   | 'chat'
@@ -23,7 +33,8 @@ export type NotificationRoute =
   | 'notifications'
   | 'call'
   | 'live'
-  | 'ai';
+  | 'ai'
+  | 'community';
 
 export interface INotificationRouteData {
   route: NotificationRoute;

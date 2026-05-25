@@ -17,6 +17,7 @@ import { adminApi } from './api/adminApi';
 import { mediaApi } from './api/mediaApi';
 import { notificationsApi } from './api/notificationsApi';
 import { liveApi } from './api/liveApi';
+import { communityApi } from './api/communityApi';
 
 export const store = configureStore({
   reducer: {
@@ -37,6 +38,7 @@ export const store = configureStore({
     [mediaApi.reducerPath]: mediaApi.reducer,
     [notificationsApi.reducerPath]: notificationsApi.reducer,
     [liveApi.reducerPath]: liveApi.reducer,
+    [communityApi.reducerPath]: communityApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(
@@ -49,6 +51,7 @@ export const store = configureStore({
       mediaApi.middleware,
       notificationsApi.middleware,
       liveApi.middleware,
+      communityApi.middleware,
     ),
 });
 

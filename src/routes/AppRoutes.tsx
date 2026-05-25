@@ -3,7 +3,6 @@ import { Navigate, Route } from 'react-router-dom';
 
 const HomePage = React.lazy(() => import('@/pages/user/HomePage'));
 const ChatPage = React.lazy(() => import('@/pages/user/ChatPage'));
-const ContactsPage = React.lazy(() => import('@/pages/user/ContactsPage'));
 const AIStudioPage = React.lazy(() => import('@/pages/user/AIStudioPage'));
 const ProfilePage = React.lazy(() => import('@/pages/user/ProfilePage'));
 const SearchPage = React.lazy(() => import('@/pages/user/SearchPage'));
@@ -22,6 +21,8 @@ const LiveWatchPage = React.lazy(() => import('@/pages/user/LiveWatchPage'));
 const LiveHostPage = React.lazy(() => import('@/pages/user/LiveHostPage'));
 const ReelsPage = React.lazy(() => import('@/pages/user/ReelsPage'));
 const JoinGroupPage = React.lazy(() => import('@/pages/user/JoinGroupPage'));
+const CommunitiesPage = React.lazy(() => import('@/pages/user/CommunitiesPage'));
+const JoinCommunityPage = React.lazy(() => import('@/pages/user/JoinCommunityPage'));
 
 export const liveImmersiveRouteElements = (
   <>
@@ -33,11 +34,14 @@ export const liveImmersiveRouteElements = (
 export const appRouteElements = (
   <>
     <Route path="/" element={<HomePage />} />
-    <Route path="/community" element={<ContactsPage />} />
+    <Route path="/community" element={<Navigate to="/communities" replace />} />
+    <Route path="/communities" element={<CommunitiesPage />} />
+    <Route path="/communities/:groupId" element={<CommunitiesPage />} />
     <Route path="/live" element={<LiveDirectoryPage />} />
     {/* develop cũ dùng /studio + StudioPage mock — chuyển sang live mới */}
     <Route path="/studio" element={<Navigate to="/live" replace />} />
     <Route path="/join/:suffix" element={<JoinGroupPage />} />
+    <Route path="/c/join/:inviteCode" element={<JoinCommunityPage />} />
     <Route path="/chat/:conversationId" element={<ChatPage />} />
     <Route path="/chat" element={<ChatPage />} />
     <Route path="/search" element={<SearchPage />} />

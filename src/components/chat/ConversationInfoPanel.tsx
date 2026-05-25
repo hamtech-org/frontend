@@ -1,4 +1,4 @@
-﻿import {
+import {
   Bell,
   BellOff,
   Ban,
@@ -30,6 +30,8 @@ import type {
 } from '@/types/chat.group.types';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 import { useAuth } from '@/hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
+import { useLeaveCommunityMutation } from '@/store/api/communityApi';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import { apiClient } from '@/services/api';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -518,6 +520,8 @@ export function ConversationInfoPanel({
 }: ConversationInfoPanelProps) {
   const { core, groupActions } = useChatPageContext();
   const { user: authUser } = useAuth();
+  const navigate = useNavigate();
+  const [leaveCommunity, { isLoading: leavingCommunityLoading }] = useLeaveCommunityMutation();
   const [blockFriend, { isLoading: isBlockingFriend }] = useBlockFriendMutation();
   const [unblockFriend, { isLoading: isUnblockingFriend }] = useUnblockFriendMutation();
   const isMuted = !!activeConversation?.isMuted;
@@ -574,7 +578,8 @@ export function ConversationInfoPanel({
   const effectiveMemberCount =
     listMemberCount > 0 ? listMemberCount : (activeConversation?.memberCount ?? 0);
   /** Sau khi 1 người rời, nhóm phải còn ≥ MIN_GROUP_MEMBERS → hiện tại phải có > MIN. */
-  const leaveBlockedByMinMembers = effectiveMemberCount <= MIN_GROUP_MEMBERS;
+  const leaveBlockedByMinMembers =
+    !activeConversation?.groupId && effectiveMemberCount <= MIN_GROUP_MEMBERS;
   const leaveMinMembersHint = `Nhóm cần còn tối thiểu ${MIN_GROUP_MEMBERS} thành viên sau khi có người rời (hiện ${effectiveMemberCount} người). Hãy mời thêm thành viên hoặc giải tán nhóm.`;
 
   const adminSlotsFull = useMemo(
@@ -1101,6 +1106,7 @@ export function ConversationInfoPanel({
             canKick={canKickMembers}
             onAddMembersClick={groupActions.openAddMembersModal}
             groupId={activeConversation?.conversationId}
+            isCommunityChat={!!activeConversation?.groupId}
           />
         </div>
       ) : galleryKind !== null ? (
@@ -1413,6 +1419,19 @@ export function ConversationInfoPanel({
                 {effectiveMemberCount} thành viên
               </p>
             )}
+            {activeConversation?.groupId && (
+              <a
+                href={`/communities/${activeConversation.groupId}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(`/communities/${activeConversation.groupId}`);
+                }}
+                className="mt-3 flex items-center gap-1.5 text-xs font-bold text-[#0068ff] hover:underline"
+              >
+                <Users className="w-3.5 h-3.5 shrink-0" />
+                Trang Cộng đồng
+              </a>
+            )}
 
             <div className="mt-4 w-full px-0.5">
               <div className="flex w-full flex-nowrap items-start justify-center gap-0.5 sm:gap-1">
@@ -1486,7 +1505,15 @@ export function ConversationInfoPanel({
                 {activeConversation?.type === 'group' ? (
                   <button
                     type="button"
-                    onClick={onAddMembers}
+                    onClick={() => {
+                      if (activeConversation?.groupId) {
+                        toast.info(
+                          'Vui lòng mời thành viên tham gia Cộng đồng để tham gia phòng chat này.',
+                        );
+                        return;
+                      }
+                      onAddMembers?.();
+                    }}
                     disabled={!onAddMembers}
                     className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-1.5 group disabled:opacity-40 disabled:pointer-events-none"
                   >
@@ -1702,6 +1729,12 @@ export function ConversationInfoPanel({
                 <button
                   type="button"
                   onClick={() => {
+                    if (activeConversation?.groupId) {
+                      toast.info(
+                        'Để chuyển quyền trưởng nhóm, vui lòng thực hiện Chuyển quyền chủ sở hữu từ trang cài đặt Cộng đồng.',
+                      );
+                      return;
+                    }
                     if (successorCandidates.length === 0) {
                       toast.warning(
                         'Không còn thành viên khác để chuyển quyền. Hãy giải tán nhóm.',
@@ -1729,6 +1762,12 @@ export function ConversationInfoPanel({
                     toast.warning(leaveMinMembersHint);
                     return;
                   }
+                  if (activeConversation?.groupId && isOwnerEffective) {
+                    toast.warning(
+                      'Bạn là Quản trị viên sáng lập của Cộng đồng này và không thể rời khỏi phòng trò chuyện. Nếu không muốn sử dụng chat nữa, vui lòng Tắt trò chuyện hoặc Giải tán phòng chat tại trang Cộng đồng.',
+                    );
+                    return;
+                  }
                   if (isOwnerEffective) {
                     if (successorCandidates.length === 0) {
                       toast.warning(
@@ -1752,7 +1791,15 @@ export function ConversationInfoPanel({
               {canDisbandGroup && (
                 <button
                   type="button"
-                  onClick={() => setDeleteGroupModalOpen(true)}
+                  onClick={() => {
+                    if (activeConversation?.groupId) {
+                      toast.info(
+                        'Để giải tán phòng chat này, vui lòng thực hiện từ cài đặt giải tán tại trang chi tiết Cộng đồng.',
+                      );
+                      return;
+                    }
+                    setDeleteGroupModalOpen(true);
+                  }}
                   disabled={!onDeleteGroup || loading?.deleteGroup}
                   className="flex items-center justify-center gap-2 text-sm font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -1764,18 +1811,14 @@ export function ConversationInfoPanel({
         </div>
       )}
 
-      <ConfirmModal
-        open={leaveMemberModalOpen}
-        title="Rời nhóm?"
-        description="Bạn sẽ rời khỏi nhóm và không còn nhận tin nhắn từ nhóm này."
-        confirmLabel="Rời nhóm"
-        variant="danger"
-        isConfirming={!!loading?.leaveGroup}
-        onClose={() => {
-          if (!loading?.leaveGroup) setLeaveMemberModalOpen(false);
-        }}
-        onConfirm={() => {
-          void (async () => {
+      {activeConversation?.groupId ? (
+        <ConfirmCommunityLeaveModal
+          open={leaveMemberModalOpen}
+          isConfirming={!!loading?.leaveGroup || leavingCommunityLoading}
+          onClose={() => {
+            if (!loading?.leaveGroup && !leavingCommunityLoading) setLeaveMemberModalOpen(false);
+          }}
+          onLeaveChat={async () => {
             if (!onLeaveGroup) return;
             try {
               await onLeaveGroup();
@@ -1783,9 +1826,42 @@ export function ConversationInfoPanel({
             } catch {
               /* lỗi đã toast ở ChatPage */
             }
-          })();
-        }}
-      />
+          }}
+          onLeaveBoth={async () => {
+            try {
+              await leaveCommunity(activeConversation.groupId!).unwrap();
+              setLeaveMemberModalOpen(false);
+              toast.success('Đã rời cộng đồng và phòng chat!');
+              navigate('/chat');
+            } catch (err: any) {
+              toast.error(err?.data?.message || 'Không thể rời cộng đồng');
+            }
+          }}
+        />
+      ) : (
+        <ConfirmModal
+          open={leaveMemberModalOpen}
+          title="Rời nhóm?"
+          description="Bạn sẽ rời khỏi nhóm và không còn nhận tin nhắn từ nhóm này."
+          confirmLabel="Rời nhóm"
+          variant="danger"
+          isConfirming={!!loading?.leaveGroup}
+          onClose={() => {
+            if (!loading?.leaveGroup) setLeaveMemberModalOpen(false);
+          }}
+          onConfirm={() => {
+            void (async () => {
+              if (!onLeaveGroup) return;
+              try {
+                await onLeaveGroup();
+                setLeaveMemberModalOpen(false);
+              } catch {
+                /* lỗi đã toast ở ChatPage */
+              }
+            })();
+          }}
+        />
+      )}
 
       <AnimatePresence>
         {leaveOwnerTransferOpen && (
@@ -2146,5 +2222,89 @@ export function ConversationInfoPanel({
         }}
       />
     </div>
+  );
+}
+
+type ConfirmCommunityLeaveModalProps = {
+  open: boolean;
+  isConfirming: boolean;
+  onClose: () => void;
+  onLeaveChat: () => void;
+  onLeaveBoth: () => void;
+};
+
+export function ConfirmCommunityLeaveModal({
+  open,
+  isConfirming,
+  onClose,
+  onLeaveChat,
+  onLeaveBoth,
+}: ConfirmCommunityLeaveModalProps) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 shadow-2xl backdrop-blur-[2px]"
+          role="presentation"
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-community-leave-title"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="bg-white dark:bg-[#1a1a1a] rounded-xl max-w-[420px] w-full overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 dark:border-white/5">
+              <h3 id="confirm-community-leave-title" className="font-bold text-[17px]">
+                Xác nhận rời nhóm
+              </h3>
+              <button
+                type="button"
+                disabled={isConfirming}
+                onClick={onClose}
+                className="text-muted-foreground hover:text-black dark:hover:text-white transition-colors disabled:opacity-50"
+              >
+                <X className="w-6 h-6 stroke-[1.5]" />
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              <div className="text-[15px] text-muted-foreground leading-relaxed font-medium">
+                Cuộc trò chuyện này liên kết với Cộng đồng. Bạn muốn thực hiện hành động nào?
+              </div>
+            </div>
+            <div className="px-6 pb-5 flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={isConfirming}
+                onClick={onLeaveChat}
+                className="w-full px-4 py-2.5 rounded-lg font-bold text-[15px] bg-[#0068ff] text-white hover:bg-blue-700 transition-colors disabled:opacity-50 text-center"
+              >
+                {isConfirming ? 'Đang xử lý…' : 'Chỉ rời phòng chat'}
+              </button>
+              <button
+                type="button"
+                disabled={isConfirming}
+                onClick={onLeaveBoth}
+                className="w-full px-4 py-2.5 rounded-lg font-bold text-[15px] bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-950/45 dark:text-red-200 dark:hover:bg-red-900/55 transition-colors disabled:opacity-50 text-center"
+              >
+                {isConfirming ? 'Đang xử lý…' : 'Rời cả Cộng đồng'}
+              </button>
+              <button
+                type="button"
+                disabled={isConfirming}
+                onClick={onClose}
+                className="w-full px-4 py-2.5 rounded-lg font-bold text-[15px] bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors text-black dark:text-white disabled:opacity-50 text-center"
+              >
+                Hủy
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }

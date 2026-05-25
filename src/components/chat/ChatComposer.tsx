@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import EmojiPicker from 'emoji-picker-react';
 import {
@@ -225,6 +225,8 @@ export function ChatComposer({
   };
 
   const groupDisbanded = activeConversation?.type === 'group' && !!activeConversation.isDeleted;
+  const chatPaused =
+    activeConversation?.type === 'group' && activeConversation.chatEnabled === false;
 
   const canSendInGroup = useMemo(() => {
     if (activeConversation?.type !== 'group') return true;
@@ -244,6 +246,19 @@ export function ChatComposer({
         </p>
         <p className="text-center text-sm text-muted-foreground">
           Không thể gửi tin nhắn mới trong cuộc trò chuyện này.
+        </p>
+      </div>
+    );
+  }
+
+  if (chatPaused) {
+    return (
+      <div className="relative z-20 flex shrink-0 flex-col gap-2 border-t border-black/5 bg-ethereal-bg/80 p-4 backdrop-blur-md dark:border-white/5 dark:bg-midnight-bg/80 sm:p-6">
+        <p className="text-center text-[15px] font-semibold text-slate-700 dark:text-slate-200">
+          Trò chuyện tạm dừng
+        </p>
+        <p className="text-center text-sm text-muted-foreground">
+          Trò chuyện đã bị tắt bởi quản trị viên Cộng đồng.
         </p>
       </div>
     );

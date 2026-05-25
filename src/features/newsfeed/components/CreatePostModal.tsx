@@ -32,6 +32,7 @@ import {
 import type { RootState } from '@/store/store';
 import { useCreatePostMutation, useUpdatePostMutation } from '@/store/api/newsfeedApi';
 import { useUploadMediaMultiMutation } from '@/store/api/mediaApi';
+import { useGetCommunityQuery } from '@/store/api/communityApi';
 import type { IPost, PostVisibility } from '@/types/newsfeed.types';
 import TiptapPostEditor from '@/components/newsfeed/TiptapPostEditor';
 import type { TiptapPostEditorHandle } from '@/components/newsfeed/TiptapPostEditor';
@@ -51,6 +52,8 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   editingPost?: IPost;
+  communityGroupId?: string;
+  initialFiles?: File[];
 };
 
 const VISIBILITY_CONFIG = {
@@ -63,10 +66,21 @@ const VISIBILITY_CONFIG = {
 const isVideoUrl = (url: string): boolean =>
   /\.(mp4|webm|mov|avi|mkv)/i.test(url) || url.includes('video');
 
-export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
+export function CreatePostModal({
+  isOpen,
+  onClose,
+  editingPost,
+  communityGroupId,
+  initialFiles,
+}: Props) {
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const { theme } = useTheme();
   const isEdit = !!editingPost;
+
+  const { data: communityRes } = useGetCommunityQuery(communityGroupId || '', {
+    skip: !communityGroupId,
+  });
+  const community = communityRes?.data;
 
   const emptyTiptapJson = useMemo(
     () => JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }),
@@ -101,6 +115,9 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
   const [updatePost, { isLoading: updating }] = useUpdatePostMutation();
   const [uploadMulti, { isLoading: uploading }] = useUploadMediaMultiMutation();
 
+  const busy = creating || updating || uploading;
+  const isSubmitDisabled = busy || !hasContent;
+
   // Revoke all local blob URLs to prevent memory leaks
   const revokeLocalUrls = (items: MediaItem[]) => {
     items.forEach((item) => {
@@ -125,12 +142,21 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
       setMediaItems((editingPost.mediaUrls ?? []).map((url) => ({ kind: 'remote' as const, url })));
     } else {
       setContent(emptyTiptapJson);
-      setVisibility('public');
+      setVisibility(communityGroupId ? 'friends' : 'public');
       setMediaItems([]);
+
+      if (initialFiles && initialFiles.length > 0) {
+        const newItems: MediaItem[] = initialFiles.slice(0, MAX_MEDIA).map((file) => ({
+          kind: 'local',
+          file,
+          previewUrl: URL.createObjectURL(file),
+        }));
+        setMediaItems(newItems);
+      }
     }
     setActiveEmojiPicker(null);
     setShowDraftDialog(false);
-  }, [isOpen, editingPost, emptyTiptapJson]);
+  }, [isOpen, editingPost, emptyTiptapJson, initialFiles, communityGroupId]);
 
   /** Stage files locally – NO upload yet. Preview via blob URLs. */
   const handleSelectFiles = (files: File[]) => {
@@ -181,9 +207,6 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
       .filter((u): u is string => !!u);
   };
 
-  const busy = creating || updating || uploading;
-  const isSubmitDisabled = busy || !hasContent;
-
   const buildPayload = async (status: 'published' | 'draft') => {
     const tags = extractHashtags(content);
     const finalMediaUrls = await buildFinalMediaUrls();
@@ -192,6 +215,7 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
       type: postType,
       visibility,
       publicationStatus: status,
+      ...(communityGroupId ? { groupId: communityGroupId, communityId: communityGroupId } : {}),
       categories: [] as string[],
       tags,
       mediaUrls: finalMediaUrls,
@@ -269,392 +293,405 @@ export function CreatePostModal({ isOpen, onClose, editingPost }: Props) {
           className="sm:max-w-[500px] p-0 gap-0 rounded-2xl border border-border/50 overflow-hidden"
           showCloseButton={false}
         >
-          {/* ── Header ── */}
-          <div className="relative flex h-14 items-center justify-center border-b border-border px-12 shrink-0">
-            <AnimatePresence mode="wait">
-              {currentView === 'mediaManager' ? (
-                <motion.button
-                  key="back"
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -8 }}
-                  onClick={() => setCurrentView('editor')}
-                  className="absolute left-3 flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground"
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                </motion.button>
-              ) : null}
-            </AnimatePresence>
+          <div className="flex w-full h-full">
+            {/* Left Panel: Editor */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* ── Header ── */}
+              <div className="relative flex h-14 items-center justify-center border-b border-border px-12 shrink-0">
+                <AnimatePresence mode="wait">
+                  {currentView === 'mediaManager' ? (
+                    <motion.button
+                      key="back"
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -8 }}
+                      onClick={() => setCurrentView('editor')}
+                      className="absolute left-3 flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </motion.button>
+                  ) : null}
+                </AnimatePresence>
 
-            <AnimatePresence mode="wait">
-              <DialogTitle asChild>
-                <motion.h2
-                  key={currentView}
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.15 }}
-                  className="text-[17px] font-bold tracking-tight"
-                >
-                  {currentView === 'mediaManager'
-                    ? 'Chỉnh sửa ảnh và video'
-                    : isEdit
-                      ? 'Chỉnh sửa bài viết'
-                      : 'Tạo bài viết'}
-                </motion.h2>
-              </DialogTitle>
-            </AnimatePresence>
+                <AnimatePresence mode="wait">
+                  <DialogTitle asChild>
+                    <motion.h2
+                      key={currentView}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.15 }}
+                      className="text-[17px] font-bold tracking-tight"
+                    >
+                      {currentView === 'mediaManager'
+                        ? 'Chỉnh sửa ảnh và video'
+                        : isEdit
+                          ? 'Chỉnh sửa bài viết'
+                          : communityGroupId && community
+                            ? `Đăng vào ${community.name}`
+                            : 'Tạo bài viết'}
+                    </motion.h2>
+                  </DialogTitle>
+                </AnimatePresence>
 
-            <button
-              onClick={handleRequestClose}
-              disabled={busy}
-              className="absolute right-3 flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground disabled:opacity-40"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* ── Animated Views ── */}
-          <div className="relative overflow-hidden">
-            <AnimatePresence mode="wait" initial={false}>
-              {currentView === 'editor' ? (
-                <motion.div
-                  key="editor"
-                  initial={{ x: '-100%', opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: '-100%', opacity: 0 }}
-                  transition={{ type: 'tween', duration: 0.22, ease: 'easeInOut' }}
+                <button
+                  onClick={handleRequestClose}
+                  disabled={busy}
+                  className="absolute right-3 flex h-9 w-9 items-center justify-center rounded-full bg-muted text-foreground/60 transition-colors hover:bg-muted/80 hover:text-foreground disabled:opacity-40"
                 >
-                  {/* ── Editor Body ── */}
-                  <div className="flex max-h-[65vh] flex-col overflow-y-auto">
-                    {/* User row */}
-                    <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={currentUser?.avatar ?? undefined} />
-                        <AvatarFallback className="font-bold">
-                          {displayName.charAt(0) || 'U'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[15px] font-semibold leading-none">
-                          {displayName}
-                        </span>
-                        <Popover open={isVisOpen} onOpenChange={setIsVisOpen}>
-                          <PopoverTrigger asChild>
-                            <button className="flex items-center gap-1 rounded-md bg-blue-100 px-2 py-0.5 text-[12px] font-semibold text-blue-700 transition-colors hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/60">
-                              <VisIcon className="h-3 w-3" />
-                              {visConfig.label}
-                              <ChevronDown className="h-3 w-3 opacity-60" />
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-52 p-1.5 rounded-xl" align="start">
-                            {(
-                              Object.entries(VISIBILITY_CONFIG) as [
-                                PostVisibility,
-                                typeof visConfig,
-                              ][]
-                            ).map(([key, cfg]) => {
-                              const Icon = cfg.icon;
-                              return (
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* ── Animated Views ── */}
+              <div className="relative overflow-hidden flex-1">
+                <AnimatePresence mode="wait" initial={false}>
+                  {currentView === 'editor' ? (
+                    <motion.div
+                      key="editor"
+                      initial={{ x: '-100%', opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      exit={{ x: '-100%', opacity: 0 }}
+                      transition={{ type: 'tween', duration: 0.22, ease: 'easeInOut' }}
+                      className="flex flex-col h-full"
+                    >
+                      {/* ── Editor Body ── */}
+                      <div className="flex-1 overflow-y-auto max-h-[60vh]">
+                        {/* User row */}
+                        <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src={currentUser?.avatar ?? undefined} />
+                            <AvatarFallback className="font-bold">
+                              {displayName.charAt(0) || 'U'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[15px] font-semibold leading-none">
+                              {displayName}
+                            </span>
+                            <Popover open={isVisOpen} onOpenChange={setIsVisOpen}>
+                              <PopoverTrigger asChild>
                                 <button
-                                  key={key}
-                                  onClick={() => {
-                                    setVisibility(key);
-                                    setIsVisOpen(false);
-                                  }}
-                                  className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted ${visibility === key ? 'bg-muted' : ''}`}
+                                  disabled={!!communityGroupId}
+                                  className={`flex items-center gap-1 rounded-md bg-blue-100 px-2 py-0.5 text-[12px] font-semibold text-blue-700 transition-colors ${!communityGroupId ? 'hover:bg-blue-200 cursor-pointer' : ''} dark:bg-blue-900/40 dark:text-blue-300`}
                                 >
-                                  <Icon className="h-4 w-4 text-muted-foreground" />
-                                  {cfg.label}
+                                  <VisIcon className="h-3 w-3" />
+                                  {communityGroupId ? 'Thành viên nhóm' : visConfig.label}
+                                  {!communityGroupId && (
+                                    <ChevronDown className="h-3 w-3 opacity-60" />
+                                  )}
                                 </button>
-                              );
-                            })}
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
-
-                    {/* Editor */}
-                    <div className="px-4 pb-2">
-                      <TiptapPostEditor
-                        ref={editorRef}
-                        value={content}
-                        onChange={setContent}
-                        placeholderText={placeholder}
-                      />
-                    </div>
-
-                    {/* Emoji trigger row */}
-                    <div className="relative flex justify-end px-4 pb-3">
-                      <Popover
-                        open={activeEmojiPicker === 'main'}
-                        onOpenChange={(open) => setActiveEmojiPicker(open ? 'main' : null)}
-                      >
-                        <PopoverTrigger asChild>
-                          <button className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted">
-                            <Smile className="h-5 w-5" />
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          side="top"
-                          align="end"
-                          className="w-auto p-0 border-none shadow-none bg-transparent"
-                          sideOffset={8}
-                        >
-                          <EmojiPicker
-                            onEmojiClick={handleEmojiClick}
-                            theme={theme as any}
-                            width={320}
-                            height={380}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-
-                    {/* Media gallery preview */}
-                    {previewUrls.length > 0 && (
-                      <div className="mx-4 mb-3">
-                        <div
-                          className={`grid gap-1.5 rounded-xl overflow-hidden ${
-                            previewUrls.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-                          }`}
-                        >
-                          {mediaItems.slice(0, 4).map((item, index) => {
-                            const url = item.kind === 'local' ? item.previewUrl : item.url;
-                            const isVideo =
-                              item.kind === 'local'
-                                ? item.file.type.startsWith('video/')
-                                : isVideoUrl(item.url);
-                            return (
-                              <div
-                                key={`preview-${index}`}
-                                className={`relative overflow-hidden bg-muted/30 ${
-                                  previewUrls.length === 1
-                                    ? 'max-h-72'
-                                    : previewUrls.length === 3 && index === 0
-                                      ? 'row-span-2 h-full'
-                                      : 'h-36'
-                                }`}
-                              >
-                                {isVideo ? (
-                                  <div className="relative h-full w-full bg-black">
-                                    <video
-                                      src={`${url}#t=0.001`}
-                                      controls
-                                      preload="metadata"
-                                      className="h-full w-full object-cover"
-                                    />
-                                  </div>
-                                ) : (
-                                  <img
-                                    src={url}
-                                    alt={`preview ${index + 1}`}
-                                    className="h-full w-full object-cover"
-                                  />
-                                )}
-                                {/* Remove button on preview */}
-                                <button
-                                  onClick={() => removeMediaItem(index)}
-                                  className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                                {/* Badge: local = unsaved, remote = uploaded */}
-                                {item.kind === 'local' && (
-                                  <span className="absolute bottom-1.5 left-1.5 rounded bg-orange-500/90 px-1.5 py-0.5 text-[9px] font-bold text-white leading-none">
-                                    Chưa lưu
-                                  </span>
-                                )}
-                                {index === 3 && previewUrls.length > 4 && (
-                                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                                    <span className="text-xl font-bold text-white">
-                                      +{previewUrls.length - 4}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                              </PopoverTrigger>
+                              {!communityGroupId && (
+                                <PopoverContent className="w-52 p-1.5 rounded-xl" align="start">
+                                  {(
+                                    Object.entries(VISIBILITY_CONFIG) as [
+                                      PostVisibility,
+                                      typeof visConfig,
+                                    ][]
+                                  ).map(([key, cfg]) => {
+                                    const Icon = cfg.icon;
+                                    return (
+                                      <button
+                                        key={key}
+                                        onClick={() => {
+                                          setVisibility(key);
+                                          setIsVisOpen(false);
+                                        }}
+                                        className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted ${visibility === key ? 'bg-muted' : ''}`}
+                                      >
+                                        <Icon className="h-4 w-4 text-muted-foreground" />
+                                        {cfg.label}
+                                      </button>
+                                    );
+                                  })}
+                                </PopoverContent>
+                              )}
+                            </Popover>
+                          </div>
                         </div>
 
-                        <button
-                          onClick={() => setCurrentView('mediaManager')}
-                          className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border/60 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Chỉnh sửa ({previewUrls.length}/{MAX_MEDIA})
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Add to post bar */}
-                    <div className="mx-4 mb-4 flex items-center justify-between rounded-xl border border-border px-3 py-2">
-                      <span className="text-[14px] font-semibold text-foreground/80">
-                        Thêm vào bài viết
-                      </span>
-                      <div className="flex items-center gap-0.5">
-                        {/* Image/Video upload */}
-                        <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-muted">
-                          <ImageIcon className="h-5 w-5 text-green-500" />
-                          <input
-                            type="file"
-                            accept="image/*,video/*"
-                            multiple
-                            className="absolute inset-0 cursor-pointer opacity-0"
-                            disabled={mediaItems.length >= MAX_MEDIA}
-                            onChange={(e) => {
-                              const files = e.target.files;
-                              if (files?.length) handleSelectFiles(Array.from(files));
-                              e.currentTarget.value = '';
-                            }}
+                        {/* Editor */}
+                        <div className="px-4 pb-2">
+                          <TiptapPostEditor
+                            ref={editorRef}
+                            value={content}
+                            onChange={setContent}
+                            placeholderText={placeholder}
                           />
-                        </label>
+                        </div>
 
-                        <button className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted">
-                          <UserPlus className="h-5 w-5 text-blue-500" />
-                        </button>
-
-                        <Popover
-                          open={activeEmojiPicker === 'bottom'}
-                          onOpenChange={(open) => setActiveEmojiPicker(open ? 'bottom' : null)}
-                        >
-                          <PopoverTrigger asChild>
-                            <button className="hidden h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted sm:flex">
-                              <Smile className="h-5 w-5 text-yellow-500" />
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            side="top"
-                            align="center"
-                            className="w-auto p-0 border-none shadow-none bg-transparent"
-                            sideOffset={8}
+                        {/* Emoji trigger row */}
+                        <div className="relative flex justify-end px-4 pb-3">
+                          <Popover
+                            open={activeEmojiPicker === 'main'}
+                            onOpenChange={(open) => setActiveEmojiPicker(open ? 'main' : null)}
                           >
-                            <EmojiPicker
-                              onEmojiClick={handleEmojiClick}
-                              theme={theme as any}
-                              width={320}
-                              height={380}
-                            />
-                          </PopoverContent>
-                        </Popover>
+                            <PopoverTrigger asChild>
+                              <button className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted">
+                                <Smile className="h-5 w-5" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              side="top"
+                              align="end"
+                              className="w-auto p-0 border-none shadow-none bg-transparent"
+                              sideOffset={8}
+                            >
+                              <EmojiPicker
+                                onEmojiClick={handleEmojiClick}
+                                theme={theme as any}
+                                width={320}
+                                height={380}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
 
-                        <button className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted">
-                          <MapPin className="h-5 w-5 text-red-500" />
+                        {/* Media gallery preview */}
+                        {previewUrls.length > 0 && (
+                          <div className="mx-4 mb-3">
+                            <div
+                              className={`grid gap-1.5 rounded-xl overflow-hidden ${
+                                previewUrls.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+                              }`}
+                            >
+                              {mediaItems.slice(0, 4).map((item, index) => {
+                                const url = item.kind === 'local' ? item.previewUrl : item.url;
+                                const isVideo =
+                                  item.kind === 'local'
+                                    ? item.file.type.startsWith('video/')
+                                    : isVideoUrl(item.url);
+                                return (
+                                  <div
+                                    key={`preview-${index}`}
+                                    className={`relative overflow-hidden bg-muted/30 ${
+                                      previewUrls.length === 1
+                                        ? 'max-h-72'
+                                        : previewUrls.length === 3 && index === 0
+                                          ? 'row-span-2 h-full'
+                                          : 'h-36'
+                                    }`}
+                                  >
+                                    {isVideo ? (
+                                      <div className="relative h-full w-full bg-black">
+                                        <video
+                                          src={`${url}#t=0.001`}
+                                          controls
+                                          preload="metadata"
+                                          className="h-full w-full object-cover"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <img
+                                        src={url}
+                                        alt={`preview ${index + 1}`}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    )}
+                                    <button
+                                      onClick={() => removeMediaItem(index)}
+                                      className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                    {item.kind === 'local' && (
+                                      <span className="absolute bottom-1.5 left-1.5 rounded bg-orange-500/90 px-1.5 py-0.5 text-[9px] font-bold text-white leading-none">
+                                        Chưa lưu
+                                      </span>
+                                    )}
+                                    {index === 3 && previewUrls.length > 4 && (
+                                      <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                                        <span className="text-xl font-bold text-white">
+                                          +{previewUrls.length - 4}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <button
+                              onClick={() => setCurrentView('mediaManager')}
+                              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border/60 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Chỉnh sửa ({previewUrls.length}/{MAX_MEDIA})
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Add to post bar */}
+                        <div className="mx-4 mb-4 flex items-center justify-between rounded-xl border border-border px-3 py-2">
+                          <span className="text-[14px] font-semibold text-foreground/80">
+                            Thêm vào bài viết
+                          </span>
+                          <div className="flex items-center gap-0.5">
+                            <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-muted">
+                              <ImageIcon className="h-5 w-5 text-green-500" />
+                              <input
+                                type="file"
+                                accept="image/*,video/*"
+                                multiple
+                                className="absolute inset-0 cursor-pointer opacity-0"
+                                disabled={mediaItems.length >= MAX_MEDIA}
+                                onChange={(e) => {
+                                  const files = e.target.files;
+                                  if (files?.length) handleSelectFiles(Array.from(files));
+                                  e.currentTarget.value = '';
+                                }}
+                              />
+                            </label>
+
+                            <button className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted">
+                              <UserPlus className="h-5 w-5 text-blue-500" />
+                            </button>
+
+                            <Popover
+                              open={activeEmojiPicker === 'bottom'}
+                              onOpenChange={(open) => setActiveEmojiPicker(open ? 'bottom' : null)}
+                            >
+                              <PopoverTrigger asChild>
+                                <button className="hidden h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted sm:flex">
+                                  <Smile className="h-5 w-5 text-yellow-500" />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                side="top"
+                                align="center"
+                                className="w-auto p-0 border-none shadow-none bg-transparent"
+                                sideOffset={8}
+                              >
+                                <EmojiPicker
+                                  onEmojiClick={handleEmojiClick}
+                                  theme={theme as any}
+                                  width={320}
+                                  height={380}
+                                />
+                              </PopoverContent>
+                            </Popover>
+
+                            <button className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted">
+                              <MapPin className="h-5 w-5 text-red-500" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ── Footer / Submit ── */}
+                      <div className="border-t border-border/50 px-4 py-3 flex flex-col gap-2 shrink-0 bg-background z-10">
+                        <button
+                          disabled={isSubmitDisabled}
+                          onClick={() => void onSubmit()}
+                          className={`h-9 w-full rounded-lg text-[15px] font-bold transition-colors ${
+                            isSubmitDisabled
+                              ? 'cursor-not-allowed bg-muted text-muted-foreground'
+                              : 'bg-blue-600 text-white hover:bg-blue-700'
+                          }`}
+                        >
+                          {busy ? 'Đang xử lý...' : isEdit ? 'Lưu' : 'Đăng'}
                         </button>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* ── Footer / Submit ── */}
-                  <div className="border-t border-border/50 px-4 py-3">
-                    <button
-                      disabled={isSubmitDisabled}
-                      onClick={() => void onSubmit()}
-                      className={`h-9 w-full rounded-lg text-[15px] font-bold transition-colors ${
-                        isSubmitDisabled
-                          ? 'cursor-not-allowed bg-muted text-muted-foreground'
-                          : 'bg-blue-600 text-white hover:bg-blue-700'
-                      }`}
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="mediaManager"
+                      initial={{ x: '100%', opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      exit={{ x: '100%', opacity: 0 }}
+                      transition={{ type: 'tween', duration: 0.22, ease: 'easeInOut' }}
+                      className="flex flex-col h-full"
                     >
-                      {busy ? 'Đang xử lý...' : isEdit ? 'Lưu' : 'Đăng'}
-                    </button>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="mediaManager"
-                  initial={{ x: '100%', opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: '100%', opacity: 0 }}
-                  transition={{ type: 'tween', duration: 0.22, ease: 'easeInOut' }}
-                >
-                  {/* ── Media Manager View ── */}
-                  <div className="flex max-h-[65vh] flex-col overflow-y-auto px-4 py-3">
-                    {mediaItems.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-muted-foreground">
-                        Chưa có media nào
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2">
-                        {mediaItems.map((item, index) => {
-                          const url = item.kind === 'local' ? item.previewUrl : item.url;
-                          const isVideo =
-                            item.kind === 'local'
-                              ? item.file.type.startsWith('video/')
-                              : isVideoUrl(item.url);
-                          return (
-                            <div
-                              key={`manage-${index}`}
-                              className="relative aspect-square overflow-hidden rounded-xl bg-muted/30"
-                            >
-                              {isVideo ? (
-                                <div className="relative h-full w-full bg-black">
-                                  <video
-                                    src={`${url}#t=0.001`}
-                                    controls
-                                    preload="metadata"
-                                    className="h-full w-full object-cover"
-                                  />
+                      {/* ── Media Manager View ── */}
+                      <div className="flex-1 overflow-y-auto max-h-[60vh] px-4 py-3">
+                        {mediaItems.length === 0 ? (
+                          <p className="py-8 text-center text-sm text-muted-foreground">
+                            Chưa có media nào
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2">
+                            {mediaItems.map((item, index) => {
+                              const url = item.kind === 'local' ? item.previewUrl : item.url;
+                              const isVideo =
+                                item.kind === 'local'
+                                  ? item.file.type.startsWith('video/')
+                                  : isVideoUrl(item.url);
+                              return (
+                                <div
+                                  key={`manage-${index}`}
+                                  className="relative aspect-square overflow-hidden rounded-xl bg-muted/30"
+                                >
+                                  {isVideo ? (
+                                    <div className="relative h-full w-full bg-black">
+                                      <video
+                                        src={`${url}#t=0.001`}
+                                        controls
+                                        preload="metadata"
+                                        className="h-full w-full object-cover"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <img
+                                      src={url}
+                                      alt={`media ${index + 1}`}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  )}
+                                  <div className="absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1 py-0.5 text-[10px] font-bold text-white">
+                                    {index + 1}
+                                  </div>
+                                  {item.kind === 'local' && (
+                                    <span className="absolute bottom-1.5 right-7 rounded bg-orange-500/90 px-1.5 py-0.5 text-[9px] font-bold text-white leading-none">
+                                      Chưa lưu
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={() => removeMediaItem(index)}
+                                    className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-red-600/80 text-white hover:bg-red-600"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
                                 </div>
-                              ) : (
-                                <img
-                                  src={url}
-                                  alt={`media ${index + 1}`}
-                                  className="h-full w-full object-cover"
-                                />
-                              )}
-                              <div className="absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1 py-0.5 text-[10px] font-bold text-white">
-                                {index + 1}
-                              </div>
-                              {item.kind === 'local' && (
-                                <span className="absolute bottom-1.5 right-7 rounded bg-orange-500/90 px-1.5 py-0.5 text-[9px] font-bold text-white leading-none">
-                                  Chưa lưu
-                                </span>
-                              )}
-                              <button
-                                onClick={() => removeMediaItem(index)}
-                                className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-red-600/80 text-white hover:bg-red-600"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          );
-                        })}
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {mediaItems.length < MAX_MEDIA && (
+                          <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-border/60 py-4 transition-colors hover:bg-muted/30">
+                            <span className="text-sm font-medium text-muted-foreground">
+                              + Thêm media ({mediaItems.length}/{MAX_MEDIA})
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*,video/*"
+                              multiple
+                              className="hidden"
+                              disabled={mediaItems.length >= MAX_MEDIA}
+                              onChange={(e) => {
+                                const files = e.target.files;
+                                if (files?.length) handleSelectFiles(Array.from(files));
+                                e.currentTarget.value = '';
+                              }}
+                            />
+                          </label>
+                        )}
                       </div>
-                    )}
 
-                    {mediaItems.length < MAX_MEDIA && (
-                      <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-border/60 py-4 transition-colors hover:bg-muted/30">
-                        <span className="text-sm font-medium text-muted-foreground">
-                          + Thêm media ({mediaItems.length}/{MAX_MEDIA})
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*,video/*"
-                          multiple
-                          className="hidden"
-                          disabled={mediaItems.length >= MAX_MEDIA}
-                          onChange={(e) => {
-                            const files = e.target.files;
-                            if (files?.length) handleSelectFiles(Array.from(files));
-                            e.currentTarget.value = '';
-                          }}
-                        />
-                      </label>
-                    )}
-                  </div>
-
-                  <div className="border-t border-border/50 px-4 py-3">
-                    <button
-                      onClick={() => setCurrentView('editor')}
-                      className="h-9 w-full rounded-lg bg-blue-600 text-[15px] font-bold text-white transition-colors hover:bg-blue-700"
-                    >
-                      Xong
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                      <div className="border-t border-border/50 px-4 py-3 shrink-0 bg-background">
+                        <button
+                          onClick={() => setCurrentView('editor')}
+                          className="h-9 w-full rounded-lg bg-blue-600 text-[15px] font-bold text-white transition-colors hover:bg-blue-700"
+                        >
+                          Xong
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

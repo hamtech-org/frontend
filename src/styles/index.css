@@ -22,7 +22,7 @@
   --color-midnight-border: rgba(255, 255, 255, 0.05);
 }
 
-@theme inline {
+@theme {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-primary: hsl(var(--primary));
@@ -37,6 +37,8 @@
   --color-destructive: hsl(var(--destructive));
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
 }
 
 @layer base {
@@ -55,6 +57,8 @@
     --destructive: 0 84% 60%;
     --accent: 210 40% 96%;
     --accent-foreground: 0 0% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
   }
 
   .dark {
@@ -72,6 +76,8 @@
     --destructive: 0 62% 50%;
     --accent: 0 0% 15%;
     --accent-foreground: 0 0% 100%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 100%;
   }
 
   body {
@@ -315,5 +321,9 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-200 rounded-full dark:bg-gray-800;
+  @apply bg-gray-200 rounded-full;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  @apply bg-gray-800;
 }

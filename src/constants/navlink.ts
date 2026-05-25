@@ -19,7 +19,7 @@ interface NavItem {
 export const navItems: NavItem[] = [
   { path: '/', icon: Home, label: 'Bảng tin' },
   { path: '/reels', icon: Clapperboard, label: 'Reels' },
-  { path: '/community', icon: Compass, label: 'Cộng đồng' },
+  { path: '/communities', icon: Compass, label: 'Cộng đồng' },
   { path: '/live', icon: Video, label: 'Live Studio' },
   { path: '/chat', icon: MessageSquare, label: 'Tin nhắn' },
   { path: '/analytics', icon: BarChart3, label: 'Thống kê' },

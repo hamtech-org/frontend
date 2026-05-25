@@ -287,6 +287,20 @@ export function useChatRealtimeEvents({
       void navigate('/chat', { replace: true });
     };
 
+    const handleConversationDisbanded = (data: unknown) => {
+      const p = data as { conversationId?: string; reason?: string };
+      const cid = p?.conversationId;
+      if (!cid) return;
+      if (cid !== activeConversationIdRef.current) return;
+      if (p.reason === 'community_archived') {
+        toast.error('Cộng đồng liên kết đã bị lưu trữ. Phòng chat đã đóng.');
+      } else {
+        toast.info('Phòng chat đã bị giải tán.');
+      }
+      dispatch(setActiveConversation(null));
+      void navigate('/chat', { replace: true });
+    };
+
     const wrappedNewMessage = (data: unknown) => handleNewMessage(data as IMessage);
     const wrappedGroupUpdated = (data: unknown) => handleGroupUpdated(data as GroupUpdatedPayload);
     const wrappedEdited = (data: unknown) =>
@@ -309,6 +323,7 @@ export function useChatRealtimeEvents({
     socketService.on('message:new', wrappedNewMessage);
     socketService.on('group:updated', wrappedGroupUpdated);
     socketService.on('group:disbanded', handleGroupDisbanded);
+    socketService.on('conversation:disbanded', handleConversationDisbanded);
     socketService.on('message:edited', wrappedEdited);
     socketService.on('message:recall', wrappedRecalled);
     socketService.on('message:recalled', wrappedRecalled);
@@ -322,6 +337,7 @@ export function useChatRealtimeEvents({
       socketService.off('message:new', wrappedNewMessage);
       socketService.off('group:updated', wrappedGroupUpdated);
       socketService.off('group:disbanded', handleGroupDisbanded);
+      socketService.off('conversation:disbanded', handleConversationDisbanded);
       socketService.off('message:edited', wrappedEdited);
       socketService.off('message:recall', wrappedRecalled);
       socketService.off('message:recalled', wrappedRecalled);

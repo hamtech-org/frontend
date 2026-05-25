@@ -1,6 +1,5 @@
-import { Contact, Home, MessageCircle, Sparkles } from 'lucide-react';
+import { Contact, MessageCircle, Sparkles } from 'lucide-react';
 import { useSelector } from 'react-redux';
-import type { NavigateFunction } from 'react-router-dom';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/utils/cn';
@@ -8,7 +7,6 @@ import type { RootState } from '@/store/store';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 
 type ChatNavRailProps = {
-  navigate: NavigateFunction;
   onOpenProfile: () => void;
   showContactsManagement: boolean;
   showAIAssistant: boolean;
@@ -40,8 +38,8 @@ function NavRailButton({
           className={cn(
             'size-10 md:size-12 shrink-0 rounded-2xl flex items-center justify-center transition-colors',
             isActive
-              ? 'bg-primary-foreground/20 text-primary-foreground'
-              : 'text-primary-foreground/80 hover:bg-primary-foreground/10',
+              ? 'bg-primary/10 text-primary'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
             className,
           )}
         >
@@ -54,7 +52,6 @@ function NavRailButton({
 }
 
 export function ChatNavRail({
-  navigate,
   onOpenProfile,
   showContactsManagement,
   showAIAssistant,
@@ -80,7 +77,7 @@ export function ChatNavRail({
       {/* ── Left vertical rail (always visible) ───────────────── */}
       <div
         className={cn(
-          'flex bg-primary text-primary-foreground flex-col items-center shrink-0 z-20',
+          'flex bg-background border-r border-border text-foreground flex-col items-center shrink-0 z-20',
           isTabletOrDesktop ? 'w-16 py-6' : 'w-12 py-4',
         )}
       >
@@ -89,7 +86,7 @@ export function ChatNavRail({
           <TooltipTrigger asChild>
             <div
               className={cn(
-                'shrink-0 rounded-full overflow-hidden border border-primary-foreground/20 shadow-sm hover:opacity-90 transition-opacity cursor-pointer',
+                'shrink-0 rounded-full overflow-hidden border border-border shadow-sm hover:opacity-90 transition-opacity cursor-pointer',
                 isTabletOrDesktop ? 'size-12 mb-6' : 'size-10 mb-4',
               )}
               onClick={onOpenProfile}
@@ -105,7 +102,7 @@ export function ChatNavRail({
                 />
                 <AvatarFallback
                   className={cn(
-                    'bg-primary-foreground/20 text-primary-foreground font-bold',
+                    'bg-primary/10 text-primary font-bold',
                     isTabletOrDesktop ? 'text-lg' : 'text-sm',
                   )}
                 >
@@ -126,7 +123,7 @@ export function ChatNavRail({
             isActive={activeRailItem === 'messages'}
           >
             <MessageCircle
-              className={cn('fill-primary-foreground', isTabletOrDesktop ? 'size-6' : 'size-5')}
+              className={cn('fill-current', isTabletOrDesktop ? 'size-6' : 'size-5')}
             />
           </NavRailButton>
 
@@ -140,24 +137,7 @@ export function ChatNavRail({
           </NavRailButton>
 
           {/* Separator */}
-          <div
-            className={cn(
-              'h-px shrink-0 bg-primary-foreground/20 my-1',
-              isTabletOrDesktop ? 'w-8' : 'w-7',
-            )}
-          />
-
-          <NavRailButton title="Về Bảng Tin" onClick={() => navigate('/')}>
-            <Home className={isTabletOrDesktop ? 'size-6' : 'size-5'} />
-          </NavRailButton>
-
-          {/* Separator */}
-          <div
-            className={cn(
-              'h-px shrink-0 bg-primary-foreground/20 my-1',
-              isTabletOrDesktop ? 'w-8' : 'w-7',
-            )}
-          />
+          <div className={cn('h-px shrink-0 bg-border my-1', isTabletOrDesktop ? 'w-8' : 'w-7')} />
 
           <NavRailButton
             title="Trợ lý AI"

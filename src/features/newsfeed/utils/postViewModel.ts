@@ -1,4 +1,4 @@
-import type { IPost } from '@/types/newsfeed.types';
+import type { IPost, ICommunityInfo } from '@/types/newsfeed.types';
 import { extractTextFromTiptapJson } from '@/utils/tiptapText';
 
 export interface PostCardViewModel {
@@ -10,6 +10,7 @@ export interface PostCardViewModel {
   excerpt: string;
   hasExcerptOverflow: boolean;
   authorId: string;
+  communityInfo?: ICommunityInfo;
 }
 
 export const toPostCardViewModel = (post: IPost): PostCardViewModel => {
@@ -29,5 +30,6 @@ export const toPostCardViewModel = (post: IPost): PostCardViewModel => {
     excerpt,
     hasExcerptOverflow: fullText.length > 180,
     authorId: post.authorId,
+    communityInfo: post.communityInfo,
   };
 };
