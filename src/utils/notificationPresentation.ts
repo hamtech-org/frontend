@@ -40,6 +40,16 @@ const TYPE_LABEL: Record<NotificationType, string> = {
   comment_reply: 'Trả lời bình luận',
   ai_job_done: 'AI',
   stats_milestone: 'Thống kê',
+  community_invite: 'Lời mời cộng đồng',
+  community_invite_accepted: 'Chấp nhận lời mời',
+  community_join_request: 'Yêu cầu tham gia',
+  community_request_resolved: 'Duyệt yêu cầu',
+  community_member_kicked: 'Thành viên cộng đồng',
+  community_role_changed: 'Vai trò cộng đồng',
+  community_ownership_transferred: 'Quyền sở hữu',
+  community_chat_enabled: 'Cộng đồng',
+  post_approved: 'Bài viết được duyệt',
+  post_rejected: 'Bài viết bị từ chối',
 };
 
 function asRecord(value: unknown): DataRecord {
