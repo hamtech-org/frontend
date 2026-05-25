@@ -17,6 +17,7 @@ import type {
   ICommunityInvitation,
   ICommunityAutoMod,
   IUpdateAutoModDto,
+  ICommunityAnalyticsDashboard,
 } from '@/types/community.types';
 
 export const communityApi = createApi({
@@ -423,6 +424,16 @@ export const communityApi = createApi({
       }),
       invalidatesTags: ['Communities'],
     }),
+    getCommunityAnalytics: builder.query<
+      ApiSuccessResponse<ICommunityAnalyticsDashboard>,
+      { groupId: string; days?: number }
+    >({
+      query: ({ groupId, days = 30 }) => ({
+        url: `/communities/${groupId}/analytics`,
+        params: { days },
+      }),
+      providesTags: (_res, _err, { groupId }) => [{ type: 'CommunityDetail', id: groupId }],
+    }),
   }),
 });
 
@@ -465,4 +476,5 @@ export const {
   useDisableInviteLinkMutation,
   useGetCommunityByInviteCodeQuery,
   useAcceptInviteLinkMutation,
+  useGetCommunityAnalyticsQuery,
 } = communityApi;

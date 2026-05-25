@@ -32,6 +32,7 @@ import {
   MessageSquare,
   Loader2,
   X,
+  BarChart2,
 } from 'lucide-react';
 
 import {
@@ -90,6 +91,7 @@ import {
 import { usePostMultipleUsersMutation } from '@/store/api/userApi';
 import { MediaGallery } from '@/features/newsfeed/components/MediaGallery';
 import { extractTextFromTiptapJson } from '@/utils/tiptapText';
+import CommunityAnalytics from './CommunityAnalytics';
 
 import type {
   CommunityMemberRole,
@@ -816,6 +818,20 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
                 Bộ lọc từ khóa
               </button>
             )}
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('analytics')}
+              className={`relative rounded-none border-b-[3px] px-1 pb-3 pt-2 text-sm font-bold transition-all cursor-pointer flex items-center gap-2 bg-transparent hover:bg-transparent ${
+                activeTab === 'analytics'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <BarChart2 className="size-4" />
+              Thống kê
+            </button>
+          )}
         </div>
 
         {activeTab === 'posts' && (
@@ -1467,6 +1483,8 @@ export function CommunityDetail({ groupId }: { groupId: string }) {
       {canManage &&
         (community?.viewerRole === 'owner' || community?.viewerRole === 'admin') &&
         activeTab === 'automod' && <CommunityAutoModView groupId={groupId} />}
+
+      {canManage && activeTab === 'analytics' && <CommunityAnalytics groupId={groupId} />}
 
       {/* Dialog nhập lý do từ chối bài viết */}
       <AlertDialog
