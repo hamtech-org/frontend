@@ -12,6 +12,8 @@ export type CallStatus =
 
 export type UpgradeStatus = 'none' | 'pending-outgoing' | 'pending-incoming' | 'accepted';
 
+export type CallDeviceAvailability = 'available' | 'blocked' | 'failed' | 'unavailable';
+
 /** Phiên cuộc gọi nhóm đang mở — dùng nút Tham gia muộn trong chat. */
 export type ActiveGroupCallSession = {
   conversationId: string;
@@ -34,6 +36,11 @@ export interface CallState {
   calleeId: string | null;
   isMicOn: boolean;
   isCameraOn: boolean;
+  micAvailability: CallDeviceAvailability;
+  cameraAvailability: CallDeviceAvailability;
+  micErrorMessage: string | null;
+  cameraErrorMessage: string | null;
+  receiveOnly: boolean;
   upgradeStatus: UpgradeStatus;
   isScreenSharing: boolean;
   /** Route để quay về khi kết thúc/từ chối/timeout cuộc gọi (ưu tiên /chat/:conversationId). */

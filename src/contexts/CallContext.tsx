@@ -126,9 +126,22 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       dispatch(setCallEnded());
     };
 
-    const onEnded = () => {
-      const st = store.getState().call.status;
-      if (st === 'incoming-ringing') {
+    const onEnded = (data: unknown) => {
+      const payload = data as {
+        channelName?: string;
+        conversationId?: string;
+      };
+      const st = store.getState().call;
+      if (st.status === 'idle') return;
+      if (payload.channelName && st.channelName && st.channelName !== payload.channelName) return;
+      if (
+        payload.conversationId &&
+        st.conversationId &&
+        st.conversationId !== payload.conversationId
+      ) {
+        return;
+      }
+      if (st.status === 'incoming-ringing') {
         dispatch(setEndReason('missed'));
       }
       dispatch(setCallEnded());
