@@ -5,7 +5,22 @@ import type {
   CallScope,
   IncomingCallData,
   ActiveGroupCallSession,
+  CallDeviceAvailability,
 } from '@/types/call.types';
+
+function applyDefaultDeviceState(
+  state: CallState,
+  callType: CallType | null,
+  keepCameraPreference = false,
+): void {
+  state.isMicOn = true;
+  state.isCameraOn = keepCameraPreference ? state.isCameraOn : callType === 'video';
+  state.micAvailability = 'available';
+  state.cameraAvailability = callType === 'video' ? 'available' : 'unavailable';
+  state.micErrorMessage = null;
+  state.cameraErrorMessage = null;
+  state.receiveOnly = false;
+}
 
 const initialState: CallState = {
   status: 'idle',
@@ -19,6 +34,11 @@ const initialState: CallState = {
   calleeId: null,
   isMicOn: true,
   isCameraOn: true,
+  micAvailability: 'available',
+  cameraAvailability: 'unavailable',
+  micErrorMessage: null,
+  cameraErrorMessage: null,
+  receiveOnly: false,
   upgradeStatus: 'none',
   isScreenSharing: false,
   returnTo: null,
@@ -49,8 +69,7 @@ const callSlice = createSlice({
       state.calleeId = action.payload.calleeId ?? null;
       state.channelName = action.payload.channelName;
       state.conversationId = action.payload.conversationId ?? state.conversationId ?? null;
-      state.isMicOn = true;
-      state.isCameraOn = action.payload.callType === 'video';
+      applyDefaultDeviceState(state, action.payload.callType);
       state.returnTo = action.payload.returnTo ?? state.returnTo ?? null;
       state.endReason = null;
     },
@@ -67,8 +86,7 @@ const callSlice = createSlice({
       state.callScope = action.payload.scope ?? 'direct';
       state.hostId = action.payload.hostId ?? action.payload.callerId;
       state.calleeId = null;
-      state.isMicOn = true;
-      state.isCameraOn = action.payload.type === 'video';
+      applyDefaultDeviceState(state, action.payload.type);
       state.upgradeStatus = 'none';
       state.isScreenSharing = false;
       state.endReason = null;
@@ -88,6 +106,12 @@ const callSlice = createSlice({
     setReturnTo: (state, action: PayloadAction<string | null>) => {
       state.returnTo = action.payload;
     },
+    setMicEnabled: (state, action: PayloadAction<boolean>) => {
+      state.isMicOn = action.payload;
+    },
+    setCameraEnabled: (state, action: PayloadAction<boolean>) => {
+      state.isCameraOn = action.payload;
+    },
     toggleMic: (state) => {
       state.isMicOn = !state.isMicOn;
     },
@@ -104,12 +128,47 @@ const callSlice = createSlice({
       state.upgradeStatus = 'accepted';
       state.callType = 'video';
       state.isCameraOn = true;
+      if (state.cameraAvailability === 'unavailable') {
+        state.cameraAvailability = 'available';
+      }
+      state.cameraErrorMessage = null;
     },
     resetUpgrade: (state) => {
       state.upgradeStatus = 'none';
     },
     setScreenSharing: (state, action: PayloadAction<boolean>) => {
       state.isScreenSharing = action.payload;
+    },
+    setMicAvailability: (
+      state,
+      action: PayloadAction<{
+        availability: CallDeviceAvailability;
+        errorMessage?: string | null;
+        forceEnabled?: boolean;
+      }>,
+    ) => {
+      state.micAvailability = action.payload.availability;
+      state.micErrorMessage = action.payload.errorMessage ?? null;
+      if (typeof action.payload.forceEnabled === 'boolean') {
+        state.isMicOn = action.payload.forceEnabled;
+      }
+    },
+    setCameraAvailability: (
+      state,
+      action: PayloadAction<{
+        availability: CallDeviceAvailability;
+        errorMessage?: string | null;
+        forceEnabled?: boolean;
+      }>,
+    ) => {
+      state.cameraAvailability = action.payload.availability;
+      state.cameraErrorMessage = action.payload.errorMessage ?? null;
+      if (typeof action.payload.forceEnabled === 'boolean') {
+        state.isCameraOn = action.payload.forceEnabled;
+      }
+    },
+    setReceiveOnly: (state, action: PayloadAction<boolean>) => {
+      state.receiveOnly = action.payload;
     },
     setActiveGroupCall: (state, action: PayloadAction<ActiveGroupCallSession | null>) => {
       state.activeGroupCall = action.payload;
@@ -144,8 +203,7 @@ const callSlice = createSlice({
       state.callerId = null;
       state.calleeId = null;
       state.callerName = null;
-      state.isMicOn = true;
-      state.isCameraOn = action.payload.callType === 'video';
+      applyDefaultDeviceState(state, action.payload.callType);
       state.upgradeStatus = 'none';
       state.isScreenSharing = false;
       state.endReason = null;
@@ -165,6 +223,8 @@ export const {
   setCallEnded,
   setReturnTo,
   setEndReason,
+  setMicEnabled,
+  setCameraEnabled,
   toggleMic,
   toggleCamera,
   setUpgradePendingOutgoing,
@@ -172,6 +232,9 @@ export const {
   setUpgradeAccepted,
   resetUpgrade,
   setScreenSharing,
+  setMicAvailability,
+  setCameraAvailability,
+  setReceiveOnly,
   setActiveGroupCall,
   clearActiveGroupCallMatching,
   setJoiningGroupCall,

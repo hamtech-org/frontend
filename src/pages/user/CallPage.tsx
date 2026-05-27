@@ -24,6 +24,7 @@ import AgoraRTC, {
   type IAgoraRTCClient,
   type IMicrophoneAudioTrack,
   type ICameraVideoTrack,
+  type ILocalAudioTrack,
   type ILocalVideoTrack,
   type IAgoraRTCRemoteUser,
 } from 'agora-rtc-react';
@@ -33,15 +34,22 @@ import { groupApi } from '@/services/chat/groupApi';
 import { apiClient } from '@/services/api';
 import type { RootState, AppDispatch } from '@/store/store';
 import {
+  setCameraAvailability,
+  setCameraEnabled,
   setCallConnected,
   setCallEnded,
   resetCall,
   setScreenSharing,
   setEndReason,
+  setMicAvailability,
+  setMicEnabled,
+  setReceiveOnly,
 } from '@/store/slices/callSlice';
 import outgoingRingback from '@/assets/ringtones/amThanhGoi.mp3';
 import SparkMD5 from 'spark-md5';
 import { GROUP_TILE_GAP_PX, gridColsRows, maxTilesPerPage } from '@/utils/groupCallVideoGrid';
+import { toast } from 'react-toastify';
+import type { CallDeviceAvailability } from '@/types/call.types';
 
 export default function CallPage() {
   const navigate = useNavigate();
@@ -70,8 +78,14 @@ export default function CallPage() {
     callType,
     callScope,
     hostId,
+    callerId,
     isMicOn,
     isCameraOn,
+    micAvailability,
+    cameraAvailability,
+    micErrorMessage,
+    cameraErrorMessage,
+    receiveOnly,
     upgradeStatus,
     isScreenSharing,
     returnTo,
@@ -165,16 +179,32 @@ export default function CallPage() {
   const filmstripVisibleRef = useRef(filmstripVisible);
   filmstripVisibleRef.current = filmstripVisible;
   const ringbackRef = useRef<HTMLAudioElement | null>(null);
+  const deviceToastRef = useRef<string | number | null>(null);
+  const lastDeviceToastMessageRef = useRef<string | null>(null);
 
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const isGroupRef = useRef(isGroup);
   isGroupRef.current = isGroup;
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  const callTypeRef = useRef(callType);
+  callTypeRef.current = callType;
+  const callerIdRef = useRef(callerId);
+  callerIdRef.current = callerId;
+  const calleeIdRef = useRef(calleeId);
+  calleeIdRef.current = calleeId;
+  const isMicOnRef = useRef(isMicOn);
+  isMicOnRef.current = isMicOn;
+  const isCameraOnRef = useRef(isCameraOn);
+  isCameraOnRef.current = isCameraOn;
+  const rtcJoinedRef = useRef(false);
   const pinnedRemoteUidRef = useRef<number | null>(null);
   pinnedRemoteUidRef.current = pinnedRemoteUid;
 
   const micTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const camTrackRef = useRef<ICameraVideoTrack | null>(null);
   const screenTrackRef = useRef<ILocalVideoTrack | null>(null);
+  const screenAudioTrackRef = useRef<ILocalAudioTrack | null>(null);
   const localVideoRef = useRef<HTMLDivElement>(null);
   const remoteVideoRef = useRef<HTMLDivElement>(null);
   /** Giới hạn kéo PiP “Bạn” trong toàn màn hình gọi (thay dragConstraints số cố định). */
@@ -188,6 +218,7 @@ export default function CallPage() {
   const isVideoCall = (urlCallType ?? callType) === 'video';
   const isVideoCallRef = useRef(isVideoCall);
   if (isVideoCall) isVideoCallRef.current = true;
+  const currentCallIsVideo = callType === 'video' || (!isGroup && upgradeStatus === 'accepted');
 
   const createTrackWithRetry = async <T,>(
     factory: () => Promise<T>,
@@ -205,6 +236,42 @@ export default function CallPage() {
     }
     throw new Error('Track creation failed');
   };
+
+  const describeDeviceFailure = useCallback((kind: 'mic' | 'camera', error: unknown) => {
+    const raw =
+      error instanceof Error ? error.message : typeof error === 'string' ? error : 'Thiết bị lỗi.';
+    const msg = raw.trim() || 'Thiết bị lỗi.';
+    const lowered = msg.toLowerCase();
+    let availability: CallDeviceAvailability = 'failed';
+    if (
+      lowered.includes('permission') ||
+      lowered.includes('denied') ||
+      lowered.includes('notallowed') ||
+      lowered.includes('allowed')
+    ) {
+      availability = 'blocked';
+    } else if (
+      lowered.includes('not found') ||
+      lowered.includes('notfound') ||
+      lowered.includes('no device') ||
+      lowered.includes('unavailable')
+    ) {
+      availability = 'unavailable';
+    }
+    const errorMessage =
+      availability === 'blocked'
+        ? kind === 'mic'
+          ? 'Không có quyền micro. Bạn chỉ có thể nghe cho đến khi bật lại quyền.'
+          : 'Không có quyền camera. Bạn sẽ tham gia mà không bật camera.'
+        : availability === 'unavailable'
+          ? kind === 'mic'
+            ? 'Micro không khả dụng trên thiết bị này.'
+            : 'Camera không khả dụng trên thiết bị này.'
+          : kind === 'mic'
+            ? 'Không thể bật micro.'
+            : 'Không thể bật camera.';
+    return { availability, errorMessage };
+  }, []);
 
   useEffect(() => {
     const audio = new Audio(outgoingRingback);
@@ -230,6 +297,36 @@ export default function CallPage() {
     }
   }, [status]);
 
+  const applyMicFailure = useCallback(
+    (error: unknown) => {
+      const probe = describeDeviceFailure('mic', error);
+      dispatch(
+        setMicAvailability({
+          availability: probe.availability,
+          errorMessage: probe.errorMessage,
+          forceEnabled: false,
+        }),
+      );
+      return probe;
+    },
+    [describeDeviceFailure, dispatch],
+  );
+
+  const applyCameraFailure = useCallback(
+    (error: unknown) => {
+      const probe = describeDeviceFailure('camera', error);
+      dispatch(
+        setCameraAvailability({
+          availability: probe.availability,
+          errorMessage: probe.errorMessage,
+          forceEnabled: false,
+        }),
+      );
+      return probe;
+    },
+    [describeDeviceFailure, dispatch],
+  );
+
   useEffect(() => {
     if (!channelName) {
       navigate(resolvedReturnTo);
@@ -239,6 +336,7 @@ export default function CallPage() {
     let cancelled = false;
     const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
     clientRef.current = client;
+    rtcJoinedRef.current = false;
     const videoCall = isVideoCallRef.current;
     const group = channelName.startsWith('grp_');
 
@@ -384,6 +482,7 @@ export default function CallPage() {
 
         await client.join(appId, channelName, token, uid);
         if (cancelled) return;
+        rtcJoinedRef.current = true;
         setJoined(true);
         if (group) {
           dispatch(setCallConnected());
@@ -406,31 +505,99 @@ export default function CallPage() {
           console.warn('[CallPage] subscribe existing remote users failed', e);
         }
 
-        const micTrack = await createTrackWithRetry(() => AgoraRTC.createMicrophoneAudioTrack());
-        if (cancelled) {
-          (micTrack as IMicrophoneAudioTrack).close();
-          return;
-        }
-        micTrackRef.current = micTrack;
+        const tracksToPublish: Array<IMicrophoneAudioTrack | ICameraVideoTrack> = [];
 
-        if (videoCall) {
-          const camTrack = await createTrackWithRetry(() => AgoraRTC.createCameraVideoTrack());
+        try {
+          const micTrack = await createTrackWithRetry(() => AgoraRTC.createMicrophoneAudioTrack());
           if (cancelled) {
-            (camTrack as ICameraVideoTrack).close();
-            (micTrack as IMicrophoneAudioTrack).close();
+            micTrack.close();
             return;
           }
-          camTrackRef.current = camTrack;
-          if (localVideoRef.current) {
-            (camTrack as ICameraVideoTrack).play(localVideoRef.current);
+          micTrackRef.current = micTrack;
+          dispatch(
+            setMicAvailability({
+              availability: 'available',
+              errorMessage: null,
+            }),
+          );
+          if (isMicOnRef.current) tracksToPublish.push(micTrack);
+        } catch (error) {
+          applyMicFailure(error);
+        }
+
+        if (videoCall) {
+          try {
+            const camTrack = await createTrackWithRetry(() => AgoraRTC.createCameraVideoTrack());
+            if (cancelled) {
+              camTrack.close();
+              micTrackRef.current?.close();
+              return;
+            }
+            camTrackRef.current = camTrack;
+            dispatch(
+              setCameraAvailability({
+                availability: 'available',
+                errorMessage: null,
+              }),
+            );
+            if (localVideoRef.current) {
+              camTrack.play(localVideoRef.current);
+            }
+            if (isCameraOnRef.current) tracksToPublish.push(camTrack);
+          } catch (error) {
+            applyCameraFailure(error);
           }
-          await client.publish([micTrack, camTrack]);
         } else {
-          await client.publish([micTrack]);
+          dispatch(
+            setCameraAvailability({
+              availability: 'unavailable',
+              errorMessage: null,
+              forceEnabled: false,
+            }),
+          );
+        }
+
+        if (tracksToPublish.length > 0) {
+          await client.publish(tracksToPublish);
+          dispatch(setReceiveOnly(false));
+        } else {
+          dispatch(setReceiveOnly(true));
+          if (videoCall) {
+            dispatch(setMicEnabled(false));
+            dispatch(setCameraEnabled(false));
+          } else {
+            dispatch(setMicEnabled(false));
+          }
         }
       } catch (err) {
         console.error('Agora join failed:', err);
-        if (!cancelled) navigate(resolvedReturnTo);
+        if (!cancelled) {
+          const type = (urlCallType ?? callTypeRef.current ?? 'audio') as 'audio' | 'video';
+          const convId = resolvedConversationIdRef.current;
+          if (channelName && convId) {
+            if (!isGroupRef.current) {
+              const peerId = callerIdRef.current || calleeIdRef.current;
+              if (peerId) {
+                socketService.emit('call:end', {
+                  channelName,
+                  peerId,
+                  conversationId: convId,
+                  type,
+                  durationSec: 0,
+                  result: 'cancelled',
+                });
+              }
+            } else if (isHost && statusRef.current === 'outgoing-ringing') {
+              socketService.emit('call:group-missed', {
+                channelName,
+                conversationId: convId,
+                type,
+              });
+            }
+          }
+          toast.error('Không thể tham gia kênh Agora.');
+          dispatch(setCallEnded());
+        }
       }
     };
 
@@ -439,29 +606,34 @@ export default function CallPage() {
     return () => {
       cancelled = true;
       const convRtc = resolvedConversationIdRef.current;
-      if (channelName.startsWith('grp_') && convRtc) {
+      if (rtcJoinedRef.current && channelName.startsWith('grp_') && convRtc) {
         socketService.emit('call:group-rtc-left', { channelName, conversationId: convRtc });
       }
+      rtcJoinedRef.current = false;
       micTrackRef.current?.close();
       camTrackRef.current?.close();
       screenTrackRef.current?.close();
+      screenAudioTrackRef.current?.close();
       micTrackRef.current = null;
       camTrackRef.current = null;
       screenTrackRef.current = null;
+      screenAudioTrackRef.current = null;
       void client.leave().catch(() => undefined);
       if (clientRef.current === client) {
         clientRef.current = null;
       }
     };
   }, [
+    applyCameraFailure,
+    applyMicFailure,
     channelName,
     appId,
-    fetchAgoraToken,
     dispatch,
+    fetchAgoraToken,
     navigate,
     resolvedReturnTo,
-    conversationIdParam,
-    conversationId,
+    isHost,
+    urlCallType,
   ]);
 
   useEffect(() => {
@@ -480,50 +652,180 @@ export default function CallPage() {
   }, [isGroup, pinnedRemoteUid]);
 
   useEffect(() => {
-    micTrackRef.current?.setEnabled(isMicOn);
-  }, [isMicOn]);
-
-  useEffect(() => {
-    camTrackRef.current?.setEnabled(isCameraOn);
-  }, [isCameraOn]);
-
-  useEffect(() => {
-    if (isGroup) return;
-    if (upgradeStatus !== 'accepted') return;
     const client = clientRef.current;
     if (!client || client.connectionState !== 'CONNECTED') return;
 
+    if (!isMicOn) {
+      void micTrackRef.current?.setEnabled(false);
+      if (micTrackRef.current) {
+        void client.unpublish([micTrackRef.current]).catch(() => undefined);
+      }
+      return;
+    }
+
     let cancelled = false;
-    const enableCamera = async () => {
+    const syncMic = async () => {
+      try {
+        if (!micTrackRef.current) {
+          const micTrack = await createTrackWithRetry(() => AgoraRTC.createMicrophoneAudioTrack());
+          if (cancelled) {
+            micTrack.close();
+            return;
+          }
+          micTrackRef.current = micTrack;
+          await client.publish([micTrack]);
+        } else {
+          await micTrackRef.current.setEnabled(true);
+          await client.publish([micTrackRef.current]);
+        }
+        dispatch(
+          setMicAvailability({
+            availability: 'available',
+            errorMessage: null,
+          }),
+        );
+      } catch (error) {
+        applyMicFailure(error);
+        dispatch(setMicEnabled(false));
+      }
+    };
+    void syncMic();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyMicFailure, dispatch, isMicOn]);
+
+  useEffect(() => {
+    const client = clientRef.current;
+    if (!client || client.connectionState !== 'CONNECTED') return;
+    if (!currentCallIsVideo || isScreenSharing) return;
+
+    if (!isCameraOn) {
+      void camTrackRef.current?.setEnabled(false);
+      if (camTrackRef.current) {
+        void client.unpublish([camTrackRef.current]).catch(() => undefined);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const syncCamera = async () => {
       try {
         if (!camTrackRef.current) {
           const camTrack = await createTrackWithRetry(() => AgoraRTC.createCameraVideoTrack());
           if (cancelled) {
-            (camTrack as ICameraVideoTrack).close();
+            camTrack.close();
             return;
           }
           camTrackRef.current = camTrack;
           await client.publish([camTrack]);
+        } else {
+          await camTrackRef.current.setEnabled(true);
+          await client.publish([camTrackRef.current]);
         }
         if (localVideoRef.current && camTrackRef.current) {
           camTrackRef.current.play(localVideoRef.current);
         }
-      } catch (err) {
-        console.error('Failed to enable camera for upgrade:', err);
+        dispatch(
+          setCameraAvailability({
+            availability: 'available',
+            errorMessage: null,
+          }),
+        );
+      } catch (error) {
+        applyCameraFailure(error);
+        dispatch(setCameraEnabled(false));
       }
     };
-
-    enableCamera();
+    void syncCamera();
     return () => {
       cancelled = true;
     };
-  }, [upgradeStatus, isGroup]);
+  }, [applyCameraFailure, currentCallIsVideo, dispatch, isCameraOn, isScreenSharing]);
+
+  useEffect(() => {
+    const noMic = !isMicOn || micAvailability !== 'available';
+    const noVideo =
+      !currentCallIsVideo ||
+      (!isScreenSharing && (!isCameraOn || cameraAvailability !== 'available'));
+    dispatch(setReceiveOnly(joined && noMic && noVideo));
+  }, [
+    cameraAvailability,
+    currentCallIsVideo,
+    dispatch,
+    isCameraOn,
+    isMicOn,
+    isScreenSharing,
+    joined,
+    micAvailability,
+  ]);
+
+  const hasRemoteParticipant = isGroup ? remoteUids.length > 0 : Boolean(remoteUser);
+
+  const deviceToastMessage = useMemo(() => {
+    const micIssue =
+      micAvailability !== 'available' ? (micErrorMessage ?? 'Không thể bật micro.') : null;
+    const cameraIssue =
+      currentCallIsVideo && cameraAvailability !== 'available'
+        ? (cameraErrorMessage ?? 'Không thể bật camera.')
+        : null;
+
+    if (micIssue && cameraIssue) {
+      return 'Thiết bị không dùng được micro/camera. Bạn đã vào cuộc gọi ở chế độ chỉ nghe/xem.';
+    }
+
+    return micIssue ?? cameraIssue;
+  }, [
+    cameraAvailability,
+    cameraErrorMessage,
+    currentCallIsVideo,
+    micAvailability,
+    micErrorMessage,
+  ]);
+
+  useEffect(() => {
+    const shouldShowDeviceToast =
+      joined && hasRemoteParticipant && status === 'connected' && Boolean(deviceToastMessage);
+
+    if (!shouldShowDeviceToast) {
+      if (deviceToastRef.current != null) {
+        toast.dismiss(deviceToastRef.current);
+      }
+      deviceToastRef.current = null;
+      lastDeviceToastMessageRef.current = null;
+      return;
+    }
+
+    if (
+      deviceToastRef.current != null &&
+      toast.isActive(deviceToastRef.current) &&
+      lastDeviceToastMessageRef.current === deviceToastMessage
+    ) {
+      return;
+    }
+
+    if (deviceToastRef.current != null && toast.isActive(deviceToastRef.current)) {
+      toast.update(deviceToastRef.current, {
+        render: deviceToastMessage,
+        type: 'info',
+        autoClose: 4000,
+        closeButton: true,
+      });
+    } else {
+      deviceToastRef.current = toast.info(deviceToastMessage, {
+        autoClose: 4000,
+      });
+    }
+
+    lastDeviceToastMessageRef.current = deviceToastMessage;
+  }, [deviceToastMessage, hasRemoteParticipant, joined, status]);
 
   useEffect(() => {
     if (status !== 'ended') return;
     micTrackRef.current?.close();
     camTrackRef.current?.close();
     screenTrackRef.current?.close();
+    screenAudioTrackRef.current?.close();
     if (clientRef.current?.connectionState === 'CONNECTED') {
       clientRef.current.leave();
     }
@@ -581,9 +883,11 @@ export default function CallPage() {
     micTrackRef.current?.close();
     camTrackRef.current?.close();
     screenTrackRef.current?.close();
+    screenAudioTrackRef.current?.close();
     micTrackRef.current = null;
     camTrackRef.current = null;
     screenTrackRef.current = null;
+    screenAudioTrackRef.current = null;
     if (clientRef.current?.connectionState === 'CONNECTED') {
       void clientRef.current.leave();
     }
@@ -633,7 +937,7 @@ export default function CallPage() {
     const client = clientRef.current;
     if (!client || client.connectionState !== 'CONNECTED') return;
     const cam = camTrackRef.current;
-    if (cam) {
+    if (cam && isCameraOnRef.current) {
       await cam.setEnabled(true);
       await client.publish([cam]);
       if (localVideoRef.current) cam.play(localVideoRef.current);
@@ -641,35 +945,77 @@ export default function CallPage() {
     dispatch(setScreenSharing(false));
   }, [dispatch]);
 
+  const stopScreenShareTracks = useCallback(async (): Promise<void> => {
+    const client = clientRef.current;
+    const screenTrack = screenTrackRef.current;
+    const screenAudioTrack = screenAudioTrackRef.current;
+
+    if (screenAudioTrack) {
+      if (client?.connectionState === 'CONNECTED') {
+        try {
+          await client.unpublish([screenAudioTrack]);
+        } catch {
+          /* already unpublished */
+        }
+      }
+      screenAudioTrack.close();
+      screenAudioTrackRef.current = null;
+    }
+
+    if (screenTrack) {
+      if (client?.connectionState === 'CONNECTED') {
+        try {
+          await client.unpublish([screenTrack]);
+        } catch {
+          /* already unpublished */
+        }
+      }
+      screenTrack.close();
+      screenTrackRef.current = null;
+    }
+  }, []);
+
   const handleScreenShare = useCallback(async () => {
     const client = clientRef.current;
     if (!client || client.connectionState !== 'CONNECTED') return;
 
     if (isScreenSharing) {
-      if (screenTrackRef.current) {
-        await client.unpublish([screenTrackRef.current]);
-        screenTrackRef.current.close();
-        screenTrackRef.current = null;
-      }
+      await stopScreenShareTracks();
       await restoreCameraAfterScreenShare();
     } else {
       try {
-        const screenTrack = (await AgoraRTC.createScreenVideoTrack(
+        // Dùng cùng mode với Live để hộp thoại browser cho phép chọn share system/tab audio.
+        const createdTracks = await AgoraRTC.createScreenVideoTrack(
           { encoderConfig: '1080p_1' },
-          'disable',
-        )) as ILocalVideoTrack;
+          'auto',
+        );
+
+        let screenTrack: ILocalVideoTrack;
+        let screenAudioTrack: ILocalAudioTrack | null = null;
+        if (Array.isArray(createdTracks)) {
+          screenTrack = createdTracks[0];
+          screenAudioTrack = createdTracks[1] ?? null;
+        } else {
+          screenTrack = createdTracks;
+        }
 
         screenTrack.on('track-ended', async () => {
+          await stopScreenShareTracks();
+          await restoreCameraAfterScreenShare();
+        });
+
+        screenAudioTrack?.on('track-ended', async () => {
+          const audioTrack = screenAudioTrackRef.current;
+          if (!audioTrack) return;
           if (clientRef.current?.connectionState === 'CONNECTED') {
             try {
-              await clientRef.current.unpublish([screenTrack]);
+              await clientRef.current.unpublish([audioTrack]);
             } catch {
               /* already unpublished */
             }
           }
-          screenTrack.close();
-          screenTrackRef.current = null;
-          await restoreCameraAfterScreenShare();
+          audioTrack.close();
+          screenAudioTrackRef.current = null;
         });
 
         if (camTrackRef.current) {
@@ -678,16 +1024,15 @@ export default function CallPage() {
         }
 
         screenTrackRef.current = screenTrack;
-        await client.publish([screenTrack]);
+        screenAudioTrackRef.current = screenAudioTrack;
+        await client.publish(screenAudioTrack ? [screenTrack, screenAudioTrack] : [screenTrack]);
         if (localVideoRef.current) screenTrack.play(localVideoRef.current);
         dispatch(setScreenSharing(true));
       } catch (err) {
         console.error('Screen share failed:', err);
       }
     }
-  }, [isScreenSharing, dispatch, restoreCameraAfterScreenShare]);
-
-  const currentCallIsVideo = callType === 'video' || (!isGroup && upgradeStatus === 'accepted');
+  }, [dispatch, isScreenSharing, restoreCameraAfterScreenShare, stopScreenShareTracks]);
 
   useEffect(() => {
     if (!isGroup || !currentCallIsVideo) return;
@@ -714,11 +1059,11 @@ export default function CallPage() {
     setGroupVideoPage((p) => Math.min(p, Math.max(0, groupTilesLayout.pageCount - 1)));
   }, [groupTilesLayout.pageCount]);
 
+  const tilesPerPage = groupTilesLayout.tilesPerPage;
   const pagedRemoteUids = useMemo(() => {
-    const { tilesPerPage } = groupTilesLayout;
     const start = groupVideoPage * tilesPerPage;
     return remoteUids.slice(start, start + tilesPerPage);
-  }, [remoteUids, groupTilesLayout.tilesPerPage, groupVideoPage]);
+  }, [remoteUids, groupVideoPage, tilesPerPage]);
 
   /** Khi đổi ghim hoặc danh sách UID, gắn lại mọi remote video vào ô grid hoặc vùng ghim fullscreen. */
   useEffect(() => {
@@ -774,6 +1119,23 @@ export default function CallPage() {
           ? 'Đang chờ thành viên tham gia...'
           : 'Đang chờ người tham gia...'
         : 'Đang kết nối...';
+
+  const deviceStatusHint = useMemo(() => {
+    const parts: string[] = [];
+    if (receiveOnly) parts.push('Đang ở chế độ chỉ nghe/xem.');
+    if (micAvailability !== 'available' && micErrorMessage) parts.push(micErrorMessage);
+    if (currentCallIsVideo && cameraAvailability !== 'available' && cameraErrorMessage) {
+      parts.push(cameraErrorMessage);
+    }
+    return parts[0] ?? null;
+  }, [
+    cameraAvailability,
+    cameraErrorMessage,
+    currentCallIsVideo,
+    micAvailability,
+    micErrorMessage,
+    receiveOnly,
+  ]);
 
   return (
     <div
@@ -1133,6 +1495,11 @@ export default function CallPage() {
             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
             {statusLabel}
           </p>
+          {deviceStatusHint && (
+            <p className="mt-2 inline-flex rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-1 text-xs text-amber-100">
+              {deviceStatusHint}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {isGroup && currentCallIsVideo && pinnedRemoteUid != null ? (
@@ -1194,9 +1561,19 @@ export default function CallPage() {
         <button
           type="button"
           onClick={onToggleMic}
-          title={isMicOn ? 'Tắt mic' : 'Bật mic'}
+          title={
+            micAvailability === 'available'
+              ? isMicOn
+                ? 'Tắt mic'
+                : 'Bật mic'
+              : 'Micro đang lỗi - thử bật lại'
+          }
           className={`p-4 rounded-2xl transition-all ${
-            !isMicOn ? 'bg-red-600 text-white' : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
+            micAvailability !== 'available'
+              ? 'bg-amber-600 text-white'
+              : !isMicOn
+                ? 'bg-red-600 text-white'
+                : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
           }`}
         >
           {isMicOn ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
@@ -1206,11 +1583,19 @@ export default function CallPage() {
           <button
             type="button"
             onClick={onToggleCamera}
-            title={isCameraOn ? 'Tắt camera' : 'Bật camera'}
+            title={
+              cameraAvailability === 'available'
+                ? isCameraOn
+                  ? 'Tắt camera'
+                  : 'Bật camera'
+                : 'Camera đang lỗi - thử bật lại'
+            }
             className={`p-4 rounded-2xl transition-all ${
-              !isCameraOn
-                ? 'bg-red-600 text-white'
-                : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
+              cameraAvailability !== 'available'
+                ? 'bg-amber-600 text-white'
+                : !isCameraOn
+                  ? 'bg-red-600 text-white'
+                  : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
             }`}
           >
             {isCameraOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
