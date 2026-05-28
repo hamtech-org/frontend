@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -16,6 +17,7 @@ import {
   X,
   MonitorSmartphone,
   ShieldOff,
+  Eye,
 } from 'lucide-react';
 import { useGetProfileQuery, useUpdateProfileMutation } from '@/store/api/userApi';
 import {
@@ -27,6 +29,7 @@ import {
 import { apiClient } from '@/services/api';
 import AwsFaceLivenessComponent from '@/components/AwsFaceLivenessComponent';
 import type { IAuthSessionSummary } from '@/types/auth.types';
+import { PublicProfilePage } from '@/features/profile/components/PublicProfilePage';
 
 // ── Validation Schema ──
 const updateProfileSchema = z.object({
@@ -45,7 +48,8 @@ const updateProfileSchema = z.object({
 
 type UpdateProfileFormValues = z.infer<typeof updateProfileSchema>;
 
-const ProfilePage: React.FC = () => {
+const ProfileManagementPage: React.FC = () => {
+  const navigate = useNavigate();
   const { data: profileData, isLoading, error } = useGetProfileQuery();
   const [updateProfile, { isLoading: isUpdating }] = useUpdateProfileMutation();
   const [enableFaceLogin, { isLoading: isEnablingFaceLogin }] = useEnableFaceLoginMutation();
@@ -358,6 +362,16 @@ const ProfilePage: React.FC = () => {
           <p className="text-gray-600 dark:text-gray-400">
             Chỉnh sửa thông tin cá nhân và tùy chỉnh hồ sơ của bạn
           </p>
+          {user?.userId && (
+            <button
+              type="button"
+              onClick={() => navigate(`/profile/${encodeURIComponent(user.userId)}`)}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-200 transition hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-100 dark:ring-gray-700 dark:hover:bg-gray-700"
+            >
+              <Eye className="w-4 h-4" />
+              Xem trang cá nhân
+            </button>
+          )}
         </motion.div>
 
         {/* Main Card */}
@@ -798,6 +812,11 @@ const ProfilePage: React.FC = () => {
         )}
     </div>
   );
+};
+
+const ProfilePage: React.FC = () => {
+  const { userId } = useParams<{ userId?: string }>();
+  return userId ? <PublicProfilePage userId={userId} /> : <ProfileManagementPage />;
 };
 
 export default ProfilePage;
