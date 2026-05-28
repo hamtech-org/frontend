@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { FileText, Image as ImageIcon, Search, User, Users, Video, X } from 'lucide-react';
 import type { IConversation, IMessage } from '@/types/chat.types';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
+import { resolveGroupAvatarDisplayUrl } from '@/utils/groupAvatarUrl';
 
 type ForwardTab = 'recent' | 'groups' | 'friends';
 
@@ -57,7 +58,12 @@ function ForwardPreview({ msg }: { msg: IMessage }) {
     return (
       <div className="flex items-center gap-3">
         <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-200 ring-1 ring-black/5 dark:bg-slate-700 dark:ring-white/10">
-          <AuthenticatedMedia src={src} kind="image" className="h-full w-full object-cover" alt="" />
+          <AuthenticatedMedia
+            src={src}
+            kind="image"
+            className="h-full w-full object-cover"
+            alt=""
+          />
         </span>
         <div className="min-w-0">
           <p className="text-sm font-bold text-slate-900 dark:text-slate-100">Chia sẻ ảnh</p>
@@ -73,7 +79,12 @@ function ForwardPreview({ msg }: { msg: IMessage }) {
       <div className="flex items-center gap-3">
         {thumb ? (
           <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-black/5">
-            <AuthenticatedMedia src={thumb} kind="image" className="h-full w-full object-cover" alt="" />
+            <AuthenticatedMedia
+              src={thumb}
+              kind="image"
+              className="h-full w-full object-cover"
+              alt=""
+            />
             <span className="absolute inset-0 flex items-center justify-center bg-black/25">
               <Video className="h-6 w-6 text-white drop-shadow" aria-hidden />
             </span>
@@ -215,7 +226,10 @@ export function ForwardMediaPickerModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
-          <h2 id="forward-share-title" className="text-[17px] font-bold text-slate-900 dark:text-slate-50">
+          <h2
+            id="forward-share-title"
+            className="text-[17px] font-bold text-slate-900 dark:text-slate-50"
+          >
             Chia sẻ
           </h2>
           <button
@@ -278,6 +292,12 @@ export function ForwardMediaPickerModal({
                 const name = c.name ?? 'Hội thoại';
                 const isGroup = c.type === 'group';
                 const checked = selectedIds.has(c.conversationId);
+                const avatarSrc = isGroup
+                  ? resolveGroupAvatarDisplayUrl(c.avatar, {
+                      conversationId: c.conversationId,
+                      updatedAt: c.updatedAt,
+                    })
+                  : c.avatar;
                 return (
                   <li key={c.conversationId}>
                     <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-50 dark:hover:bg-white/[0.04]">
@@ -289,9 +309,9 @@ export function ForwardMediaPickerModal({
                         className="h-4 w-4 shrink-0 rounded border-slate-300 text-[#0068ff] focus:ring-[#0068ff]/40 dark:border-slate-600"
                       />
                       <div className="relative h-10 w-10 shrink-0">
-                        {c.avatar ? (
+                        {avatarSrc ? (
                           <img
-                            src={c.avatar}
+                            src={avatarSrc}
                             alt=""
                             className="h-10 w-10 rounded-full border border-slate-100 object-cover dark:border-slate-700"
                             referrerPolicy="no-referrer"
@@ -299,9 +319,15 @@ export function ForwardMediaPickerModal({
                         ) : (
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-100 dark:bg-sky-900/40">
                             {isGroup ? (
-                              <Users className="h-4 w-4 text-sky-600 dark:text-sky-300" aria-hidden />
+                              <Users
+                                className="h-4 w-4 text-sky-600 dark:text-sky-300"
+                                aria-hidden
+                              />
                             ) : (
-                              <User className="h-4 w-4 text-sky-600 dark:text-sky-300" aria-hidden />
+                              <User
+                                className="h-4 w-4 text-sky-600 dark:text-sky-300"
+                                aria-hidden
+                              />
                             )}
                           </div>
                         )}

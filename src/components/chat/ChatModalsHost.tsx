@@ -15,6 +15,7 @@ import type { IConversation, IMessage } from '@/types/chat.types';
 import type { MessageConfirmState } from '@/types/chat.group.types';
 import { toTaskModalMembers } from '@/pages/user/chat-page/adapters/groupAdapters';
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
+import { resolveGroupAvatarDisplayUrl } from '@/utils/groupAvatarUrl';
 interface ChatModalsHostProps {
   state: {
     showPollVoteModal: boolean;
@@ -168,6 +169,13 @@ export function ChatModalsHost({
     taskSubtaskRows,
     editingTaskId,
   } = state;
+  const editGroupAvatarPreviewSrc =
+    core.activeConversation?.type === 'group'
+      ? (resolveGroupAvatarDisplayUrl(editGroupAvatarPreview, {
+          conversationId: core.activeConversation.conversationId,
+          updatedAt: core.activeConversation.updatedAt,
+        }) ?? null)
+      : editGroupAvatarPreview;
 
   return (
     <>
@@ -327,7 +335,7 @@ export function ChatModalsHost({
       <EditGroupModal
         open={showEditGroupModal}
         groupName={editGroupName}
-        avatarPreview={editGroupAvatarPreview}
+        avatarPreview={editGroupAvatarPreviewSrc}
         isSaving={group.actionLoading.updateGroup}
         onClose={() => {
           actions.setShowEditGroupModal(false);
