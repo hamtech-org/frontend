@@ -10,6 +10,7 @@ export type PollVoteModalPoll = {
   isClosed?: boolean;
   isMultipleChoice?: boolean;
   isPinned?: boolean;
+  creatorId?: string;
 };
 
 type PollVoteModalProps = {
@@ -32,6 +33,9 @@ export function PollVoteModal({
   onTogglePinPoll,
 }: PollVoteModalProps) {
   const total = poll?.options?.reduce((sum, option) => sum + (option.voters?.length ?? 0), 0) ?? 0;
+  const canClosePoll =
+    Boolean(onClosePoll && poll && !poll.isClosed) &&
+    String(poll?.creatorId ?? '').trim() === String(currentUserId ?? '').trim();
   const userVotedIndexes = new Set<number>();
   if (poll?.options) {
     poll.options.forEach((opt, idx) => {
@@ -72,11 +76,11 @@ export function PollVoteModal({
                     <Pin className="w-4 h-4" />
                   </button>
                 ) : null}
-                {onClosePoll && !poll.isClosed ? (
+                {canClosePoll ? (
                   <button
                     type="button"
                     title="Khóa bình chọn"
-                    onClick={() => onClosePoll(poll.pollId)}
+                    onClick={() => onClosePoll?.(poll.pollId)}
                     className="w-9 h-9 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
                   >
                     <Lock className="w-4 h-4" />

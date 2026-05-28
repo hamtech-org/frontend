@@ -1016,16 +1016,6 @@ export function ChatMessageList({
                               const subAssigneeIds = subs
                                 .map((s) => String(s?.assigneeId ?? '').trim())
                                 .filter(Boolean);
-                              const labelRaw = String(taskCard.assigneeLabel ?? '');
-                              const labelNorm = labelRaw
-                                .toLowerCase()
-                                .normalize('NFD')
-                                // strip Vietnamese accents/diacritics
-                                .replace(/[\u0300-\u036f]/g, '');
-                              const labelLooksLikeGroup =
-                                labelNorm.includes('ca nhom') ||
-                                labelNorm.includes('group') ||
-                                labelNorm.includes('all');
                               const participants = Array.isArray((t as any)?.participants)
                                 ? ((t as any).participants as string[])
                                 : [];
@@ -1047,18 +1037,10 @@ export function ChatMessageList({
                                 Boolean((t as any)?.broadcast) ||
                                 Boolean(taskCard.assignToAll) ||
                                 Boolean(taskCard.broadcast);
-                              const hasTopLevelAssignees = topIds.length > 0;
                               const hasSubtasksAssignees = subAssigneeIds.length > 0;
                               const canJoinThisTask = hasSubtasksAssignees
                                 ? isSubtaskAssignee
-                                : explicitAssignToAll ||
-                                  // legacy: không có assignees/subtasks mà label ghi "cả nhóm"
-                                  (!hasTopLevelAssignees &&
-                                    !hasSubtasksAssignees &&
-                                    labelLooksLikeGroup) ||
-                                  // legacy: không có assignees/subtasks → coi như cả nhóm
-                                  (!hasTopLevelAssignees && !hasSubtasksAssignees) ||
-                                  isTopLevelAssignee;
+                                : explicitAssignToAll || isTopLevelAssignee;
                               const dueForJoin =
                                 (t as any)?.dueDate != null &&
                                 String((t as any).dueDate).trim() !== ''
@@ -1067,7 +1049,7 @@ export function ChatMessageList({
                               const joinDeadlinePassed = isTaskJoinDeadlinePassed(
                                 dueForJoin ?? undefined,
                               );
-                              const showJoin = !joined;
+                              const showJoin = !joined && canJoinThisTask && !joinDeadlinePassed;
                               return (
                                 <div className="flex flex-col gap-0 w-full text-left bg-transparent relative group">
                                   <button
@@ -1271,7 +1253,7 @@ export function ChatMessageList({
                                         <span className="px-3 py-1.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-500/20">
                                           Đã tham gia
                                         </span>
-                                      ) : joinDeadlinePassed ? (
+                                      ) : canJoinThisTask && joinDeadlinePassed ? (
                                         <span
                                           className="px-3 py-1.5 rounded-full text-[11px] font-bold bg-black/5 text-muted-foreground dark:bg-white/10 border border-black/5 dark:border-white/10"
                                           title="Đã quá hạn công việc"

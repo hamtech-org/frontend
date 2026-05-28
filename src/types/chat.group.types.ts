@@ -36,6 +36,8 @@ export type GroupPoll = {
   question: string;
   options: GroupPollOption[];
   createdAt: string;
+  creatorId?: string;
+  creatorDisplayName?: string | null;
   isClosed?: boolean;
   isMultipleChoice?: boolean;
 };

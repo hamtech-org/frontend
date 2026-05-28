@@ -1248,6 +1248,12 @@ export function useGroupConversationController({
   const handleClosePoll = useCallback(
     async (pollId: string) => {
       if (!activeConversationId) return;
+      const pollRow = groupPolls.find((poll) => String(poll.pollId) === String(pollId));
+      const pollCreatorId = String(pollRow?.creatorId ?? '').trim();
+      if (!pollCreatorId || pollCreatorId !== String(currentUserId ?? '').trim()) {
+        toast.error('Chỉ người tạo mới được khóa bình chọn');
+        return;
+      }
       setActionBusy('closePoll', true);
       const before = groupPolls;
       setGroupPolls((prev) =>
@@ -1258,13 +1264,17 @@ export function useGroupConversationController({
         toast.success('Đã đóng bình chọn');
       } catch (error) {
         setGroupPolls(before);
-        toast.error('Không thể đóng bình chọn');
+        const st = (error as Record<string, unknown> & { response?: { status?: number } })?.response
+          ?.status;
+        toast.error(
+          st === 403 ? 'Chỉ người tạo mới được khóa bình chọn' : 'Không thể đóng bình chọn',
+        );
         console.error('Failed to close poll:', error);
       } finally {
         setActionBusy('closePoll', false);
       }
     },
-    [activeConversationId, groupPolls, setActionBusy, setGroupPolls],
+    [activeConversationId, currentUserId, groupPolls, setActionBusy, setGroupPolls],
   );
 
   const handleApproveRequest = useCallback(
