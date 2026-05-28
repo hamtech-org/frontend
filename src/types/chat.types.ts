@@ -9,7 +9,8 @@ export type MessageType =
   | 'poll'
   | 'schedule'
   | 'call'
-  | 'system';
+  | 'system'
+  | 'voice';
 export type MessageStatus = 'sent' | 'delivered' | 'read';
 export type ConversationType = 'direct' | 'group';
 
@@ -113,6 +114,7 @@ export interface IMessage {
   isRecalled: boolean;
   isDeleted?: boolean;
   reactions: Record<string, string[]>;
+  duration?: number | null;
   /** Tin của mình: sent → delivered → read (chat 1-1). */
   status?: MessageStatus;
   /** Tin của mình: danh sách người đã đọc (API gộp từ lastReadAt thành viên). */

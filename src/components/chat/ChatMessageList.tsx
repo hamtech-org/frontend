@@ -51,6 +51,7 @@ import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { MediaLightbox } from '@/components/chat/MediaLightbox';
 import { ChatFileMessageCard } from '@/components/chat/ChatFileMessageCard';
+import { VoiceMessagePlayer } from '@/components/chat/VoiceMessagePlayer';
 import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMenu';
 import { ForwardMediaPickerModal } from '@/components/chat/ForwardMediaPickerModal';
 import { formatFileSize } from '@/utils/fileHelper';
@@ -183,7 +184,9 @@ function ChatDayListSeparator({ dateIso, now }: { dateIso: string; now: Date }) 
 }
 
 function isRichMediaMessage(msg: IMessage): boolean {
-  return msg.type === 'image' || msg.type === 'video' || msg.type === 'file';
+  return (
+    msg.type === 'image' || msg.type === 'video' || msg.type === 'file' || msg.type === 'voice'
+  );
 }
 
 /** Zalo: không ghim tin đã thu hồi / xóa / system. */
@@ -199,6 +202,7 @@ function canShowEditInMessageOverflowMenu(msg: IMessage): boolean {
 }
 
 function messageHasCaption(msg: IMessage): boolean {
+  if (msg.type === 'voice') return false;
   return (msg.content ?? '').trim().length > 0;
 }
 
@@ -1984,6 +1988,11 @@ export function ChatMessageList({
                                   </div>
                                 </div>
                               </motion.div>
+                            </div>
+                          )}
+                          {msg.type === 'voice' && msg.mediaUrl && (
+                            <div className={`w-full ${msg.replyToDetails ? 'mb-1.5' : ''}`}>
+                              <VoiceMessagePlayer message={msg} isMe={isMe} />
                             </div>
                           )}
                           {msg.type === 'file' && msg.mediaUrl && (

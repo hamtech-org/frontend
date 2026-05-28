@@ -8,7 +8,6 @@ import {
   Loader2,
   Mic,
   Paperclip,
-  Palette,
   Send,
   Smile,
   Sparkles,
@@ -58,8 +57,6 @@ export function ChatComposer({
   onOpenAISummary,
   groupMembers = [],
 }: ChatComposerProps) {
-  type VoiceUiState = 'idle' | 'active-ui' | 'cancelled-ui';
-
   const { theme } = useTheme();
   const currentUserId = useSelector((state: RootState) => state.auth.user?.userId ?? '');
   const [aiReplyLoading, setAiReplyLoading] = useState(false);
@@ -79,6 +76,10 @@ export function ChatComposer({
     clearReply,
     mediaUploading,
     composerStatusMessage,
+    isRecording,
+    recordingDuration,
+    startRecording,
+    stopRecording,
   } = useChatComposerController(
     activeConversationId,
     activeConversation,
@@ -93,29 +94,12 @@ export function ChatComposer({
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [emojiTranslateX, setEmojiTranslateX] = useState(0);
-  const [voiceUiState, setVoiceUiState] = useState<VoiceUiState>('idle');
   const busy = isSending || mediaUploading;
   const hasTypedMessage = inputText.trim().length > 0;
   const hasSendable = hasTypedMessage || pendingAttachments.length > 0;
   const sendDisabled = !activeConversationId || busy;
   const actionDisabled = !activeConversationId;
   const voiceDisabled = !activeConversationId;
-
-  useEffect(() => {
-    if (voiceUiState !== 'active-ui') return;
-    const timer = window.setTimeout(() => {
-      setVoiceUiState('cancelled-ui');
-    }, 1200);
-    return () => window.clearTimeout(timer);
-  }, [voiceUiState]);
-
-  useEffect(() => {
-    if (voiceUiState !== 'cancelled-ui') return;
-    const timer = window.setTimeout(() => {
-      setVoiceUiState('idle');
-    }, 900);
-    return () => window.clearTimeout(timer);
-  }, [voiceUiState]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -180,7 +164,11 @@ export function ChatComposer({
 
   const handleVoiceUiClick = () => {
     if (voiceDisabled) return;
-    setVoiceUiState((prev) => (prev === 'active-ui' ? 'idle' : 'active-ui'));
+    if (isRecording) {
+      void stopRecording(false);
+    } else {
+      void startRecording();
+    }
   };
 
   const appendFromFileList = (list: FileList | null) => {
@@ -438,32 +426,24 @@ export function ChatComposer({
                 type="button"
                 onClick={handleVoiceUiClick}
                 disabled={voiceDisabled}
-                aria-label="Nút voice bản xem trước UI"
-                aria-pressed={voiceUiState === 'active-ui'}
-                title={
-                  voiceUiState === 'active-ui'
-                    ? 'Đang mô phỏng ghi âm'
-                    : voiceUiState === 'cancelled-ui'
-                      ? 'Đã hủy mô phỏng ghi âm'
-                      : 'Voice UI preview (chưa ghi âm thật)'
-                }
-                className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 disabled:pointer-events-none disabled:opacity-40"
+                aria-label="Ghi âm tin nhắn thoại"
+                className={`shrink-0 rounded-lg p-2 transition-all hover:bg-muted disabled:pointer-events-none disabled:opacity-40 ${
+                  isRecording
+                    ? 'text-red-500 bg-red-500/10 hover:text-red-600 hover:bg-red-500/15'
+                    : 'text-muted-foreground hover:text-blue-600'
+                }`}
               >
-                {voiceUiState === 'active-ui' ? (
-                  <Loader2 className="size-5 animate-spin text-blue-600" />
+                {isRecording ? (
+                  <Loader2 className="size-5 animate-spin" />
                 ) : (
-                  <Mic
-                    className={
-                      voiceUiState === 'cancelled-ui'
-                        ? 'size-5 text-orange-500'
-                        : 'size-5 text-inherit'
-                    }
-                  />
+                  <Mic className="size-5" />
                 )}
-                <span className="sr-only">Voice UI placeholder</span>
+                <span className="sr-only">Voice recording trigger</span>
               </button>
             </TooltipTrigger>
-            <TooltipContent side="top">Voice (preview)</TooltipContent>
+            <TooltipContent side="top">
+              {isRecording ? 'Đang ghi âm (Bấm để hủy)' : 'Ghi âm tin nhắn thoại'}
+            </TooltipContent>
           </Tooltip>
 
           <div className="mx-0.5 h-5 w-px bg-border sm:mx-1" />
@@ -544,20 +524,6 @@ export function ChatComposer({
               </button>
             </>
           )}
-
-          {activeConversation?.type === 'direct' && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="hidden shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 sm:block"
-                >
-                  <Palette className="size-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Bảng trắng tương tác</TooltipContent>
-            </Tooltip>
-          )}
         </div>
       </TooltipProvider>
 
@@ -574,57 +540,97 @@ export function ChatComposer({
         />
       )}
 
-      <div className="relative flex items-end gap-2">
-        <div className="relative flex flex-1 flex-col rounded-xl border border-border/45 bg-muted/35 transition-all focus-within:border-border focus-within:bg-background/90">
-          <textarea
-            ref={textareaRef}
-            placeholder={
-              activeConversation
-                ? `Nhập tin nhắn tới ${activeConversation.name ?? 'hội thoại'}...`
-                : 'Chọn hội thoại để nhắn tin'
-            }
-            rows={1}
-            value={inputText}
-            onChange={(e) => {
-              setInputText(e.target.value);
-              handleTyping();
-            }}
-            onKeyDown={(e) => handleKeyDown(e)}
-            onPaste={handlePaste}
-            disabled={!activeConversationId}
-            aria-label="Soạn tin nhắn"
-            className="max-h-32 min-h-10 w-full resize-none bg-transparent px-3.5 py-2.5 text-sm font-medium leading-5 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50"
-          />
-        </div>
+      {isRecording ? (
+        <div className="flex items-center justify-between w-full bg-red-500/5 border border-red-500/20 px-4 py-2.5 rounded-xl animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-duration-1000"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+            </span>
+            <span className="text-xs font-semibold text-red-500 tracking-wider">
+              ĐANG GHI ÂM TIN NHẮN THOẠI...
+            </span>
+          </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          {hasSendable ? (
-            <button
-              type="button"
-              onClick={() => void handleSendMessage()}
-              disabled={sendDisabled}
-              aria-label={busy ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'}
-              className="group animate-in flex size-10 items-center justify-center rounded-lg bg-linear-to-br from-blue-600 to-blue-700 text-white shadow-md shadow-blue-600/20 transition-all fade-in zoom-in hover:-translate-y-0.5 hover:from-blue-600 hover:to-blue-800 hover:shadow-lg hover:shadow-blue-600/25 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:from-blue-600 disabled:hover:to-blue-700"
-            >
-              {busy ? (
-                <Loader2 className="size-5 animate-spin" />
-              ) : (
-                <Send className="size-5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-              )}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleLikeClick}
-              disabled={sendDisabled}
-              aria-label="Gửi like nhanh"
-              className="group animate-in flex size-10 items-center justify-center rounded-lg border border-border/60 bg-muted/45 text-blue-600 shadow-sm transition-all fade-in zoom-in hover:-translate-y-0.5 hover:border-blue-600/30 hover:bg-blue-600 hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-            >
-              <ThumbsUp className="size-5 transition-transform group-hover:scale-110" />
-            </button>
-          )}
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-black text-foreground font-mono">
+              {Math.floor(recordingDuration / 60)}:
+              {(recordingDuration % 60).toString().padStart(2, '0')}
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void stopRecording(false)}
+                title="Hủy ghi âm"
+                className="p-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => void stopRecording(true)}
+                title="Gửi tin nhắn thoại"
+                className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors shrink-0"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="relative flex items-end gap-2">
+          <div className="relative flex flex-1 flex-col rounded-xl border border-border/45 bg-muted/35 transition-all focus-within:border-border focus-within:bg-background/90">
+            <textarea
+              ref={textareaRef}
+              placeholder={
+                activeConversation
+                  ? `Nhập tin nhắn tới ${activeConversation.name ?? 'hội thoại'}...`
+                  : 'Chọn hội thoại để nhắn tin'
+              }
+              rows={1}
+              value={inputText}
+              onChange={(e) => {
+                setInputText(e.target.value);
+                handleTyping();
+              }}
+              onKeyDown={(e) => handleKeyDown(e)}
+              onPaste={handlePaste}
+              disabled={!activeConversationId}
+              aria-label="Soạn tin nhắn"
+              className="max-h-32 min-h-10 w-full resize-none bg-transparent px-3.5 py-2.5 text-sm font-medium leading-5 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {hasSendable ? (
+              <button
+                type="button"
+                onClick={() => void handleSendMessage()}
+                disabled={sendDisabled}
+                aria-label={busy ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'}
+                className="group animate-in flex size-10 items-center justify-center rounded-lg bg-linear-to-br from-blue-600 to-blue-700 text-white shadow-md shadow-blue-600/20 transition-all fade-in zoom-in hover:-translate-y-0.5 hover:from-blue-600 hover:to-blue-800 hover:shadow-lg hover:shadow-blue-600/25 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:from-blue-600 disabled:hover:to-blue-700"
+              >
+                {busy ? (
+                  <Loader2 className="size-5 animate-spin" />
+                ) : (
+                  <Send className="size-5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleLikeClick}
+                disabled={sendDisabled}
+                aria-label="Gửi like nhanh"
+                className="group animate-in flex size-10 items-center justify-center rounded-lg border border-border/60 bg-muted/45 text-blue-600 shadow-sm transition-all fade-in zoom-in hover:-translate-y-0.5 hover:border-blue-600/30 hover:bg-blue-600 hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+              >
+                <ThumbsUp className="size-5 transition-transform group-hover:scale-110" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <p aria-live="polite" className="sr-only">
         {composerStatusMessage}
       </p>
