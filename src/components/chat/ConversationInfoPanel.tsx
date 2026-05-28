@@ -201,6 +201,10 @@ function BulletinCardRow({
   const avatarUrl = item.creatorId ? memberAvatarById.get(item.creatorId) : undefined;
   const footer = formatBulletinFooterTime(item.createdAt);
   const pollOpen = item.kind === 'poll' && item.poll && !item.poll.isClosed;
+  const canClosePoll =
+    item.kind === 'poll' &&
+    Boolean(onClosePoll && item.poll && !item.poll.isClosed) &&
+    String(item.creatorId ?? '').trim() === String(currentUserId ?? '').trim();
   const openPollVote = () => {
     if (!item.poll || item.poll.isClosed) return;
     if (onOpenPollVote) onOpenPollVote(item.id);
@@ -264,10 +268,7 @@ function BulletinCardRow({
               const subAssigneeIds = subs
                 .map((s) => String(s.assigneeId ?? '').trim())
                 .filter(Boolean);
-              const assignToAll =
-                Boolean(t.assignToAll) ||
-                Boolean(t.broadcast) ||
-                (assignees.length === 0 && subAssigneeIds.length === 0);
+              const assignToAll = Boolean(t.assignToAll) || Boolean(t.broadcast);
               const uid = String(currentUserId ?? '');
               const joined = uid ? participants.includes(uid) : false;
               const canJoin =
@@ -290,7 +291,7 @@ function BulletinCardRow({
                     <span className="ml-auto rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
                       Bạn đã tham gia
                     </span>
-                  ) : joinDeadlinePassed ? (
+                  ) : canJoin && joinDeadlinePassed ? (
                     <span
                       className="ml-auto rounded-full bg-black/5 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground dark:bg-white/10"
                       title="Đã quá hạn công việc"
@@ -377,7 +378,7 @@ function BulletinCardRow({
           </>
         ) : null}
       </div>
-      {item.kind === 'poll' && item.poll ? (
+      {item.kind === 'poll' && item.poll && (onAddPollOption || canClosePoll) ? (
         <div className="mt-2 flex flex-wrap gap-1.5" onClick={(ev) => ev.stopPropagation()}>
           <button
             type="button"
@@ -386,13 +387,15 @@ function BulletinCardRow({
           >
             + Option
           </button>
-          <button
-            type="button"
-            onClick={() => onClosePoll?.(item.poll!.pollId)}
-            className="rounded-md bg-black/5 px-2 py-1 text-[10px] dark:bg-white/10"
-          >
-            Đóng
-          </button>
+          {canClosePoll ? (
+            <button
+              type="button"
+              onClick={() => onClosePoll?.(item.poll!.pollId)}
+              className="rounded-md bg-black/5 px-2 py-1 text-[10px] dark:bg-white/10"
+            >
+              Đóng
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

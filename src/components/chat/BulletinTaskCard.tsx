@@ -41,10 +41,7 @@ export function BulletinTaskCard({
   const participants = Array.isArray(t.participants) ? t.participants : [];
   const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
   const subAssigneeIds = subs.map((s) => String(s.assigneeId ?? '').trim()).filter(Boolean);
-  const assignToAll =
-    Boolean(t.assignToAll) ||
-    Boolean(t.broadcast) ||
-    (assignees.length === 0 && subAssigneeIds.length === 0);
+  const assignToAll = Boolean(t.assignToAll) || Boolean(t.broadcast);
   const uid = String(currentUserId ?? '');
   const joined = uid ? participants.includes(uid) : false;
   const canJoin =
@@ -100,7 +97,7 @@ export function BulletinTaskCard({
             >
               Bạn đã tham gia
             </span>
-          ) : joinDeadlinePassed ? (
+          ) : canJoin && joinDeadlinePassed ? (
             <span
               className={`${chipBase} bg-black/5 text-muted-foreground dark:bg-white/10`}
               title="Đã quá hạn công việc"
