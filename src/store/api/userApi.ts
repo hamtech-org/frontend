@@ -1,5 +1,5 @@
 import { createApi } from '@reduxjs/toolkit/query/react';
-import type { IUser } from '@/types/user.types';
+import type { IUser, IUserPublic } from '@/types/user.types';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import { baseQueryWithReauth } from './baseQuery';
 import { chatApi } from './chatApi';
@@ -13,6 +13,10 @@ export const userApi = createApi({
     getProfile: builder.query<ApiSuccessResponse<IUser>, void>({
       query: () => '/users/me',
       providesTags: ['User'],
+    }),
+    getUserById: builder.query<ApiSuccessResponse<IUserPublic>, string>({
+      query: (userId) => `/users/${encodeURIComponent(userId)}`,
+      providesTags: (_result, _error, userId) => [{ type: 'User', id: userId }],
     }),
     updateProfile: builder.mutation<ApiSuccessResponse<IUser>, FormData | Partial<IUser>>({
       query: (body) => {
@@ -190,6 +194,7 @@ export const userApi = createApi({
 
 export const {
   useGetProfileQuery,
+  useGetUserByIdQuery,
   useUpdateProfileMutation,
   useSendFriendRequestMutation,
   useCancelFriendRequestMutation,

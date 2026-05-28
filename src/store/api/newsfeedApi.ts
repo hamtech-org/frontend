@@ -88,6 +88,17 @@ export const newsfeedApi = createApi({
       providesTags: (_res, _err, postId) => [{ type: 'PostDetail', id: postId }],
     }),
 
+    getPostsByAuthor: builder.query<
+      ApiSuccessResponse<IFeedPage>,
+      { authorId: string; limit?: number }
+    >({
+      query: ({ authorId, limit }) => ({
+        url: `/newsfeed/posts/by-author/${encodeURIComponent(authorId)}`,
+        params: { limit },
+      }),
+      providesTags: (_res, _err, arg) => [{ type: 'Posts', id: `AUTHOR-${arg.authorId}` }],
+    }),
+
     createPost: builder.mutation<ApiSuccessResponse<IPost>, CreatePostBody>({
       query: (body) => ({
         url: '/newsfeed/posts',
@@ -485,6 +496,7 @@ export const {
   useGetFeedQuery,
   useLazyGetFeedQuery,
   useGetPostByIdQuery,
+  useGetPostsByAuthorQuery,
   useCreatePostMutation,
   useUpdatePostMutation,
   useDeletePostMutation,
