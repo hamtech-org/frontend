@@ -7,6 +7,7 @@ type ZaloStyleAvatarProps = {
   /** Tên thật để tính chữ (không dùng nhãn kiểu "Bạn"). */
   displayName: string;
   avatarUrl?: string | null;
+  avatarUrlResolved?: boolean;
   className?: string;
 };
 
@@ -14,11 +15,12 @@ export function ZaloStyleAvatar({
   userId,
   displayName,
   avatarUrl,
+  avatarUrlResolved = false,
   className = '',
 }: ZaloStyleAvatarProps) {
   const [broken, setBroken] = useState(false);
   const rawSrc = avatarUrl?.trim();
-  const src = rawSrc ? resolveChatMediaFetchUrl(rawSrc) : '';
+  const src = rawSrc ? (avatarUrlResolved ? rawSrc : resolveChatMediaFetchUrl(rawSrc)) : '';
   const showImg = Boolean(src) && !broken;
 
   useEffect(() => {
