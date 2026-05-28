@@ -1,4 +1,4 @@
-const MEDIA_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const MEDIA_UUID_EXACT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || '/api/v1';
 
 function absoluteApiUrl(pathOrUrl: string): string {
@@ -63,6 +63,7 @@ export function parseMediaIdFromStoredUrl(urlStr: string): string | null {
   if (/\/conversations\/[^/]+\/avatar/i.test(trimmed)) {
     return null;
   }
+  if (MEDIA_UUID_EXACT.test(trimmed)) return trimmed;
   try {
     const u = /^https?:\/\//i.test(trimmed)
       ? new URL(trimmed)
@@ -76,11 +77,9 @@ export function parseMediaIdFromStoredUrl(urlStr: string): string | null {
       /\/(?:chat|public)\/[^/]+\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(?:original|thumb)\b/i,
     );
     if (s3?.[1]) return s3[1];
-    const loose = trimmed.match(MEDIA_UUID);
-    return loose?.[0] ?? null;
+    return null;
   } catch {
-    const loose = trimmed.match(MEDIA_UUID);
-    return loose?.[0] ?? null;
+    return MEDIA_UUID_EXACT.test(trimmed) ? trimmed : null;
   }
 }
 
