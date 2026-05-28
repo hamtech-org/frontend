@@ -91,7 +91,9 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
           }
 
           const isActive =
-            pathname === item.path || (item.path !== '/' && pathname.startsWith(item.path));
+            item.path === '/profile'
+              ? pathname === '/profile'
+              : pathname === item.path || (item.path !== '/' && pathname.startsWith(item.path));
 
           return (
             <button
