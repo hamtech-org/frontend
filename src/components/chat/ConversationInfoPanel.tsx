@@ -271,10 +271,12 @@ function BulletinCardRow({
               const assignToAll = Boolean(t.assignToAll) || Boolean(t.broadcast);
               const uid = String(currentUserId ?? '');
               const joined = uid ? participants.includes(uid) : false;
-              const canJoin =
-                assignToAll ||
-                (uid ? assignees.map(String).includes(uid) : false) ||
-                (uid ? subAssigneeIds.includes(uid) : false);
+              const hasSubtasksAssignees = subAssigneeIds.length > 0;
+              const isSubtaskAssignee = uid ? subAssigneeIds.includes(uid) : false;
+              const isTopLevelAssignee = uid ? assignees.map(String).includes(uid) : false;
+              const canJoin = hasSubtasksAssignees
+                ? isSubtaskAssignee
+                : assignToAll || isTopLevelAssignee;
               const joinDeadlinePassed = dueOk && isTaskJoinDeadlinePassed(due);
               const showJoinButton =
                 Boolean(onTaskJoined) && !joined && canJoin && !joinDeadlinePassed;
