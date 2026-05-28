@@ -1,3 +1,4 @@
+import { useAuth } from '@/hooks/useAuth';
 import logoUrl from '@/assets/images/logo_vuong.png';
 import { navItems } from '@/constants/navlink';
 import { cn } from '@/utils/cn';
@@ -24,6 +25,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
   onToggleTheme,
   onLogout,
 }) => {
+  const { user } = useAuth();
   const isDesktopVariant = variant === 'desktop';
   const isMobileVariant = variant === 'mobile';
   const sidebarWidthClassName = isOpen ? 'w-[280px]' : 'w-20';
@@ -84,6 +86,10 @@ const AppSidebar: React.FC<AppSidebarProps> = ({
         )}
       >
         {navItems.map((item) => {
+          if (item.path === '/admin' && user?.role !== 'admin') {
+            return null;
+          }
+
           const isActive =
             pathname === item.path || (item.path !== '/' && pathname.startsWith(item.path));
 

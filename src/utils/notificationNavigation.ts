@@ -68,9 +68,6 @@ export function navigateFromNotification(navigate: NavigateFunction, item: INoti
       navigate(`/call?${qs.toString()}`);
       return;
     }
-    case 'ai':
-      navigate('/ai-studio');
-      return;
     case 'community':
       if (entityId) navigate(`/communities/${encodeURIComponent(entityId)}?joinChat=true`);
       else navigate('/communities');
