@@ -8,6 +8,7 @@ import { useShareGroupJoinLink } from '@/hooks/useShareGroupJoinLink';
 import { useGetFriendsQuery } from '@/store/api/contactApi';
 import { useGetConversationsQuery } from '@/store/api/chatApi';
 import type { IConversation } from '@/types/chat.types';
+import { resolveGroupAvatarDisplayUrl } from '@/utils/groupAvatarUrl';
 
 type ShareTab = 'all' | 'groups' | 'friends';
 
@@ -163,6 +164,10 @@ export function ShareGroupJoinLinkPickerModal({
 
   const renderGroupRow = (c: IConversation) => {
     const checked = selectedConvIds.has(c.conversationId);
+    const avatarSrc = resolveGroupAvatarDisplayUrl(c.avatar, {
+      conversationId: c.conversationId,
+      updatedAt: c.updatedAt,
+    });
     return (
       <li key={c.conversationId}>
         <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-50 dark:hover:bg-white/[0.04]">
@@ -173,11 +178,12 @@ export function ShareGroupJoinLinkPickerModal({
             onChange={() => toggleConv(c.conversationId)}
             className="h-4 w-4 shrink-0 accent-[#0068ff]"
           />
-          {c.avatar ? (
+          {avatarSrc ? (
             <img
-              src={c.avatar}
+              src={avatarSrc}
               alt=""
               className="size-10 rounded-full object-cover border border-slate-100"
+              referrerPolicy="no-referrer"
             />
           ) : (
             <div className="flex size-10 items-center justify-center rounded-full bg-sky-100">
