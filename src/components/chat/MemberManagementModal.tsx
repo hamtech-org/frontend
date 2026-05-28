@@ -88,7 +88,6 @@ export function MemberManagementModal({
   const [promoteSubmitting, setPromoteSubmitting] = useState(false);
   const [promotePickerOpen, setPromotePickerOpen] = useState(false);
   const [actionMenuUserId, setActionMenuUserId] = useState<string | null>(null);
-  const [friendActionUserIds, setFriendActionUserIds] = useState<Record<string, true>>({});
   const tabBtnBase =
     'inline-flex h-10 min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-3 text-[12px] font-bold transition-all';
   const tabBtnActive = 'bg-blue-600 text-white shadow-md shadow-blue-600/20';
@@ -289,18 +288,6 @@ export function MemberManagementModal({
     );
   };
 
-  const addFriend = async (userId: string) => {
-    try {
-      await apiClient.post('/contacts/friends/request', { userId });
-      setFriendActionUserIds((p) => ({ ...p, [userId]: true }));
-      toast.success('Đã kết bạn');
-    } catch (e: unknown) {
-      const status = (e as { response?: { status?: number } })?.response?.status;
-      if (status === 409) setFriendActionUserIds((p) => ({ ...p, [userId]: true }));
-      toast.error(status === 409 ? 'Đã kết bạn' : 'Không thể kết bạn');
-    }
-  };
-
   const renderMemberTabBar = (className: string) => (
     <div className={className}>
       {memberTabs.map((tab) => (
@@ -468,7 +455,6 @@ export function MemberManagementModal({
               );
               const subtitle =
                 person.status === 'invited' ? 'Được mời vào nhóm' : 'Yêu cầu tham gia';
-              const showAddFriend = !person.isFriend && !friendActionUserIds[person.userId];
               return (
                 <div
                   key={person.userId}
@@ -494,15 +480,6 @@ export function MemberManagementModal({
                   </div>
 
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                    {showAddFriend ? (
-                      <button
-                        type="button"
-                        onClick={() => void addFriend(person.userId)}
-                        className="rounded-lg bg-blue-600/10 px-3 py-1.5 text-[12px] font-bold text-blue-700 hover:bg-blue-600/15 dark:text-blue-300"
-                      >
-                        Kết bạn
-                      </button>
-                    ) : null}
                     <button
                       type="button"
                       disabled={busy?.rejecting}
@@ -833,7 +810,6 @@ export function MemberManagementModal({
                       person.userId) as string;
                     const subtitle =
                       person.status === 'invited' ? 'Được mời vào nhóm' : 'Yêu cầu tham gia';
-                    const showAddFriend = !person.isFriend && !friendActionUserIds[person.userId];
                     return (
                       <div
                         key={person.userId}
@@ -859,15 +835,6 @@ export function MemberManagementModal({
                         </div>
 
                         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                          {showAddFriend ? (
-                            <button
-                              type="button"
-                              onClick={() => void addFriend(person.userId)}
-                              className="rounded-lg bg-blue-600/10 px-3 py-1.5 text-[12px] font-bold text-blue-700 hover:bg-blue-600/15 dark:text-blue-300"
-                            >
-                              Kết bạn
-                            </button>
-                          ) : null}
                           <button
                             type="button"
                             disabled={busy?.rejecting}

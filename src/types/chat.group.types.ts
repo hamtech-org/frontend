@@ -22,7 +22,6 @@ export type GroupRequest = {
   name?: string;
   displayName?: string;
   status?: 'pending' | 'invited';
-  isFriend?: boolean;
   requestedAt?: string;
 };
 
