@@ -13,6 +13,8 @@ import { formatZaloConversationTime } from '@/utils/formatDate';
 import { toast } from 'react-toastify';
 import { apiClient } from '@/services/api';
 import type { ApiSuccessResponse } from '@/types/api.types';
+import { resolveChatMediaFetchUrl } from '@/utils/chatMediaDownload';
+import { resolveGroupAvatarDisplayUrl } from '@/utils/groupAvatarUrl';
 
 export type ConversationSearchMemberRow = {
   userId?: string;
@@ -435,6 +437,15 @@ export function ConversationSearchPanel({
                   {filteredConversationsDisplay.map((contact) => {
                     const displayName = contact.name ?? 'Hội thoại';
                     const preview = formatConversationListLastPreview(contact, currentUserId ?? '');
+                    const avatarSrc =
+                      contact.type === 'group'
+                        ? resolveGroupAvatarDisplayUrl(contact.avatar, {
+                            conversationId: contact.conversationId,
+                            updatedAt: contact.updatedAt,
+                          })
+                        : contact.avatar
+                          ? resolveChatMediaFetchUrl(contact.avatar)
+                          : undefined;
                     return (
                       <li key={contact.conversationId}>
                         <button
@@ -442,9 +453,9 @@ export function ConversationSearchPanel({
                           onClick={() => pickConversation(contact.conversationId)}
                           className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                         >
-                          {contact.avatar ? (
+                          {avatarSrc ? (
                             <img
-                              src={contact.avatar}
+                              src={avatarSrc}
                               alt=""
                               className="h-9 w-9 shrink-0 rounded-full object-cover"
                               referrerPolicy="no-referrer"

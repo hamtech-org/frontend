@@ -532,6 +532,13 @@ export function ConversationInfoPanel({
   const [unblockFriend, { isLoading: isUnblockingFriend }] = useUnblockFriendMutation();
   const isMuted = !!activeConversation?.isMuted;
   const isConvPinned = !!activeConversation?.isPinnedToTop;
+  const activeConversationAvatarSrc =
+    activeConversation?.type === 'group'
+      ? resolveGroupAvatarDisplayUrl(activeConversation.avatar, {
+          conversationId: activeConversation.conversationId,
+          updatedAt: activeConversation.updatedAt,
+        })
+      : activeConversation?.avatar;
   const directOtherUserId =
     activeConversation?.type === 'direct' ? activeConversation.otherUserId?.trim() : '';
   const { data: directFriendshipStatus } = useGetFriendRequestStatusQuery(
@@ -1394,18 +1401,11 @@ export function ConversationInfoPanel({
         <div className="flex-1 overflow-y-auto min-h-0 bg-black/5 dark:bg-transparent custom-scrollbar pb-12">
           <div className="p-6 flex flex-col items-center border-b border-black/5 dark:border-white/5 shrink-0 bg-white dark:bg-[#1a1a1a]">
             <div className="w-20 h-20 rounded-full overflow-hidden mb-4 relative bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
-              {activeConversation?.avatar ? (
+              {activeConversationAvatarSrc ? (
                 <img
-                  key={`${activeConversation.conversationId}:${activeConversation.updatedAt ?? ''}:${activeConversation.avatar}`}
-                  src={
-                    activeConversation.type === 'group'
-                      ? (resolveGroupAvatarDisplayUrl(activeConversation.avatar, {
-                          conversationId: activeConversation.conversationId,
-                          updatedAt: activeConversation.updatedAt,
-                        }) ?? activeConversation.avatar)
-                      : activeConversation.avatar
-                  }
-                  alt={activeConversation.name ?? ''}
+                  key={`${activeConversation?.conversationId ?? ''}:${activeConversation?.updatedAt ?? ''}:${activeConversationAvatarSrc}`}
+                  src={activeConversationAvatarSrc}
+                  alt={activeConversation?.name ?? ''}
                   className="w-full h-full object-cover"
                 />
               ) : activeConversation?.type === 'group' ? (

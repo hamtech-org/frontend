@@ -14,6 +14,7 @@ import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 import type { AppDispatch, RootState } from '@/store/store';
 import { setReplyingTo } from '@/store/slices/chatSlice';
 import { useCallContext } from '@/contexts/CallContext';
+import { resolveGroupAvatarDisplayUrl } from '@/utils/groupAvatarUrl';
 
 interface ChatMainContentProps {
   // UI visibility (from modalState)
@@ -159,6 +160,10 @@ export function ChatMainContent(props: ChatMainContentProps) {
             ) : (
               groupConversations.map((conv) => {
                 const name = conv.name ?? 'Nhóm';
+                const avatarSrc = resolveGroupAvatarDisplayUrl(conv.avatar, {
+                  conversationId: conv.conversationId,
+                  updatedAt: conv.updatedAt,
+                });
                 return (
                   <button
                     key={conv.conversationId}
@@ -172,9 +177,9 @@ export function ChatMainContent(props: ChatMainContentProps) {
                     className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
                   >
                     <div className="relative shrink-0 w-11 h-11 rounded-full overflow-hidden">
-                      {conv.avatar ? (
+                      {avatarSrc ? (
                         <img
-                          src={conv.avatar}
+                          src={avatarSrc}
                           alt=""
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"

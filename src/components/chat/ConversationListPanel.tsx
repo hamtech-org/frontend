@@ -321,6 +321,15 @@ export function ConversationListPanel({
                       {filteredConversations.slice(0, 8).map((contact) => {
                         const displayName = contact.name ?? 'Hội thoại';
                         const preview = formatConversationListLastPreview(contact, currentUserId);
+                        const avatarSrc =
+                          contact.type === 'group'
+                            ? resolveGroupAvatarDisplayUrl(contact.avatar, {
+                                conversationId: contact.conversationId,
+                                updatedAt: contact.updatedAt,
+                              })
+                            : contact.avatar
+                              ? resolveChatMediaFetchUrl(contact.avatar)
+                              : undefined;
                         return (
                           <button
                             key={contact.conversationId}
@@ -328,9 +337,9 @@ export function ConversationListPanel({
                             onClick={() => pickConversation(contact.conversationId)}
                             className="w-full px-3 py-2.5 flex items-center gap-2.5 hover:bg-muted transition-colors text-left"
                           >
-                            {contact.avatar ? (
+                            {avatarSrc ? (
                               <img
-                                src={contact.avatar}
+                                src={avatarSrc}
                                 alt=""
                                 className="size-9 rounded-full object-cover shrink-0"
                                 referrerPolicy="no-referrer"
@@ -464,6 +473,14 @@ export function ConversationListPanel({
                   /** Chỉ icon ghim hội thoại lên đầu; tin ghim trong chat không dùng icon này (tránh nhầm giới hạn 5). */
                   const showConvPinIcon = isConvPinnedToTop;
                   const displayName = conv.name ?? 'Hội thoại';
+                  const avatarSrc = isGroup
+                    ? resolveGroupAvatarDisplayUrl(conv.avatar, {
+                        conversationId: conv.conversationId,
+                        updatedAt: conv.updatedAt,
+                      })
+                    : conv.avatar
+                      ? resolveChatMediaFetchUrl(conv.avatar)
+                      : undefined;
                   const lastMsgText = formatConversationListLastPreview(conv, currentUserId);
                   const lastMsgType = conv.lastMessage?.type;
                   const lastPreviewParts =
@@ -496,21 +513,14 @@ export function ConversationListPanel({
                           className="flex flex-1 min-w-0 items-center gap-3 text-left rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
                         >
                           <div className="relative shrink-0">
-                            {conv.avatar ? (
+                            {avatarSrc ? (
                               <img
                                 key={
                                   isGroup
-                                    ? `${conv.conversationId}:${conv.updatedAt ?? ''}:${conv.avatar}`
+                                    ? `${conv.conversationId}:${conv.updatedAt ?? ''}:${avatarSrc}`
                                     : conv.avatar
                                 }
-                                src={
-                                  isGroup
-                                    ? (resolveGroupAvatarDisplayUrl(conv.avatar, {
-                                        conversationId: conv.conversationId,
-                                        updatedAt: conv.updatedAt,
-                                      }) ?? conv.avatar)
-                                    : resolveChatMediaFetchUrl(conv.avatar)
-                                }
+                                src={avatarSrc}
                                 alt={displayName}
                                 className={`w-11 h-11 rounded-full object-cover border-2 ${isActive ? 'border-blue-500/30' : 'border-transparent'}`}
                                 referrerPolicy="no-referrer"

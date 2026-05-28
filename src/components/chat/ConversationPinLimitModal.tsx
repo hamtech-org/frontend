@@ -2,6 +2,8 @@ import { AnimatePresence, motion } from 'motion/react';
 import { User, Users, X } from 'lucide-react';
 import type { IConversation } from '@/types/chat.types';
 import { MAX_PINNED_CHATS_TO_TOP } from '@/components/chat/chatPinConstants';
+import { resolveChatMediaFetchUrl } from '@/utils/chatMediaDownload';
+import { resolveGroupAvatarDisplayUrl } from '@/utils/groupAvatarUrl';
 
 type ConversationPinLimitModalProps = {
   open: boolean;
@@ -62,7 +64,10 @@ export function ConversationPinLimitModal({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-black/5 dark:border-white/10">
-              <h3 id="conv-pin-limit-title" className="font-bold text-[17px] text-[#0a1629] dark:text-white">
+              <h3
+                id="conv-pin-limit-title"
+                className="font-bold text-[17px] text-[#0a1629] dark:text-white"
+              >
                 Ghim hội thoại
               </h3>
               <button
@@ -80,7 +85,10 @@ export function ConversationPinLimitModal({
                 Bạn chỉ được ghim tối đa {max} trò chuyện.
                 <br />
                 <span className="mt-2 inline-block">
-                  Để ghim trò chuyện <span className="font-semibold text-slate-900 dark:text-slate-100">{pendingName}</span>
+                  Để ghim trò chuyện{' '}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {pendingName}
+                  </span>
                   , vui lòng bỏ ghim ít nhất 1 trò chuyện bên dưới.
                 </span>
               </p>
@@ -90,15 +98,23 @@ export function ConversationPinLimitModal({
                   const displayName = conv.name ?? 'Hội thoại';
                   const isGroup = conv.type === 'group';
                   const busy = unpinningConversationId === conv.conversationId;
+                  const avatarSrc = isGroup
+                    ? resolveGroupAvatarDisplayUrl(conv.avatar, {
+                        conversationId: conv.conversationId,
+                        updatedAt: conv.updatedAt,
+                      })
+                    : conv.avatar
+                      ? resolveChatMediaFetchUrl(conv.avatar)
+                      : undefined;
                   return (
                     <div
                       key={conv.conversationId}
                       className="flex items-center gap-3 px-3 py-3 hover:bg-slate-50 dark:hover:bg-zinc-800/80"
                     >
                       <div className="relative shrink-0">
-                        {conv.avatar ? (
+                        {avatarSrc ? (
                           <img
-                            src={conv.avatar}
+                            src={avatarSrc}
                             alt=""
                             className="w-11 h-11 rounded-full object-cover border border-black/5 dark:border-white/10"
                             referrerPolicy="no-referrer"
