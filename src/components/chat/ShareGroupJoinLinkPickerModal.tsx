@@ -166,7 +166,7 @@ export function ShareGroupJoinLinkPickerModal({
     const checked = selectedConvIds.has(c.conversationId);
     const avatarSrc = resolveGroupAvatarDisplayUrl(c.avatar, {
       conversationId: c.conversationId,
-      updatedAt: c.updatedAt,
+      avatarVersion: String(c.memberCount ?? ''),
     });
     return (
       <li key={c.conversationId}>

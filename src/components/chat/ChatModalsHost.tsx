@@ -173,7 +173,7 @@ export function ChatModalsHost({
     core.activeConversation?.type === 'group'
       ? (resolveGroupAvatarDisplayUrl(editGroupAvatarPreview, {
           conversationId: core.activeConversation.conversationId,
-          updatedAt: core.activeConversation.updatedAt,
+          avatarVersion: String(core.activeConversation.memberCount ?? ''),
         }) ?? null)
       : editGroupAvatarPreview;
 

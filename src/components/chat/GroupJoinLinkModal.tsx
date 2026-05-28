@@ -8,9 +8,14 @@ import { toast } from 'react-toastify';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { Button } from '@/components/ui';
 import type { GroupJoinLinkModalData } from '@/contexts/GroupJoinLinkModalContext';
-import { useGetGroupJoinPreviewQuery, useJoinGroupViaLinkMutation } from '@/store/api/chatApi';
+import {
+  useGetConversationsQuery,
+  useGetGroupJoinPreviewQuery,
+  useJoinGroupViaLinkMutation,
+} from '@/store/api/chatApi';
 import { getApiErrorMessage } from '@/utils/apiErrorMessage';
 import { useAuth } from '@/hooks/useAuth';
+import { resolveGroupAvatarDisplayUrl } from '@/utils/groupAvatarUrl';
 
 type GroupJoinLinkModalProps = {
   open: boolean;
@@ -40,12 +45,31 @@ export function GroupJoinLinkModal({
   } = useGetGroupJoinPreviewQuery(suffix, {
     skip: !open || !suffix,
   });
+  const { data: conversationsRes } = useGetConversationsQuery(undefined, {
+    skip: !open,
+  });
   const [joinViaLink, { isLoading: joining }] = useJoinGroupViaLinkMutation();
 
   const preview = previewRes?.data;
-  const groupName = data?.groupName ?? preview?.name ?? 'Nhóm chat';
-  const groupAvatar = data?.groupAvatar ?? preview?.avatar;
   const conversationIdForChat = preview?.conversationId ?? data?.conversationId;
+  const liveConversation = conversationsRes?.data?.find(
+    (c) => c.conversationId === conversationIdForChat,
+  );
+  const groupName =
+    liveConversation?.name?.trim() || data?.groupName || preview?.name || 'Nhóm chat';
+  const rawGroupAvatar = liveConversation?.avatar ?? data?.groupAvatar ?? preview?.avatar ?? null;
+  const groupAvatar = resolveGroupAvatarDisplayUrl(rawGroupAvatar, {
+    conversationId: conversationIdForChat,
+    avatarVersion: String(liveConversation?.memberCount ?? ''),
+  });
+  const currentData = data
+    ? {
+        ...data,
+        groupName,
+        groupAvatar: rawGroupAvatar,
+        conversationId: conversationIdForChat ?? data.conversationId,
+      }
+    : null;
 
   const previewFailed = Boolean(suffix) && !previewLoading && (previewQueryError || !preview);
 
@@ -65,9 +89,9 @@ export function GroupJoinLinkModal({
   }, [joinUrl]);
 
   const handleShare = useCallback(() => {
-    if (!data) return;
-    onOpenSharePicker(data);
-  }, [data, onOpenSharePicker]);
+    if (!currentData) return;
+    onOpenSharePicker(currentData);
+  }, [currentData, onOpenSharePicker]);
 
   const handleSaveQr = useCallback(() => {
     const canvas = qrRef.current;
@@ -228,6 +252,7 @@ export function GroupJoinLinkModal({
                   userId={conversationIdForChat ?? suffix}
                   displayName={groupName}
                   avatarUrl={groupAvatar}
+                  avatarUrlResolved
                   className="size-16 mb-3"
                 />
                 <p className="text-[16px] font-bold text-slate-900 dark:text-white leading-snug">

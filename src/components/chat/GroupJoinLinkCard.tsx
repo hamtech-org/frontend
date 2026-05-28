@@ -2,11 +2,13 @@ import { useNavigate } from 'react-router-dom';
 
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { useGroupJoinLinkModalOptional } from '@/contexts/GroupJoinLinkModalContext';
+import { useGetConversationsQuery, useGetGroupJoinPreviewQuery } from '@/store/api/chatApi';
 import {
   joinLinkMessageDomain,
   type GroupJoinLinkMessagePayload,
 } from '@/utils/groupJoinLinkMessage';
 import { cn } from '@/utils/cn';
+import { resolveGroupAvatarDisplayUrl } from '@/utils/groupAvatarUrl';
 
 type GroupJoinLinkCardProps = {
   payload: GroupJoinLinkMessagePayload;
@@ -36,6 +38,25 @@ export function GroupJoinLinkCard({ payload, className }: GroupJoinLinkCardProps
   const navigate = useNavigate();
   const joinLinkModal = useGroupJoinLinkModalOptional();
   const domain = joinLinkMessageDomain(payload.url);
+  const { data: conversationsRes } = useGetConversationsQuery();
+  const { data: previewRes } = useGetGroupJoinPreviewQuery(payload.suffix, {
+    skip: !payload.suffix,
+  });
+  const preview = previewRes?.data;
+  const conversationId = preview?.conversationId ?? payload.conversationId;
+  const liveConversation = conversationsRes?.data?.find((c) => c.conversationId === conversationId);
+  const groupName =
+    liveConversation?.name?.trim() || preview?.name || payload.groupName || 'Nhóm chat';
+  const fallbackAvatar = conversationId
+    ? `/api/v1/chat/conversations/${conversationId}/avatar`
+    : null;
+  const groupAvatar = resolveGroupAvatarDisplayUrl(
+    liveConversation?.avatar ?? preview?.avatar ?? payload.groupAvatar ?? fallbackAvatar,
+    {
+      conversationId,
+      avatarVersion: String(liveConversation?.memberCount ?? ''),
+    },
+  );
 
   const openLink = () => {
     if (joinLinkModal) {
@@ -53,7 +74,13 @@ export function GroupJoinLinkCard({ payload, className }: GroupJoinLinkCardProps
       className={cn(cardBase, className)}
     >
       <JoinLinkUrlRow url={payload.url} />
-      <JoinLinkCardBody payload={payload} domain={domain} />
+      <JoinLinkCardBody
+        payload={payload}
+        domain={domain}
+        groupName={groupName}
+        groupAvatar={groupAvatar}
+        conversationId={conversationId}
+      />
     </button>
   );
 }
@@ -69,21 +96,28 @@ function JoinLinkUrlRow({ url }: { url: string }) {
 function JoinLinkCardBody({
   payload,
   domain,
+  groupName,
+  groupAvatar,
+  conversationId,
 }: {
   payload: GroupJoinLinkMessagePayload;
   domain: string;
+  groupName: string;
+  groupAvatar?: string;
+  conversationId?: string;
 }) {
   return (
     <div className="px-3 py-3 flex gap-3 items-start">
       <ZaloStyleAvatar
-        userId={payload.conversationId ?? payload.suffix}
-        displayName={payload.groupName}
-        avatarUrl={payload.groupAvatar}
+        userId={conversationId ?? payload.suffix}
+        displayName={groupName}
+        avatarUrl={groupAvatar}
+        avatarUrlResolved
         className="size-11 shrink-0"
       />
       <div className="min-w-0 flex-1">
         <p className="text-[15px] font-bold leading-snug text-slate-900 dark:text-slate-50 line-clamp-2">
-          {payload.groupName}
+          {groupName}
         </p>
         <p className="mt-1.5 text-[13px] leading-snug text-slate-600 dark:text-slate-300 line-clamp-2">
           {payload.description ?? 'Bấm vào đây để tham gia nhóm trên HamTech'}

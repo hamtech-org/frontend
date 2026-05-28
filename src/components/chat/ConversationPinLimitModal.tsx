@@ -101,7 +101,7 @@ export function ConversationPinLimitModal({
                   const avatarSrc = isGroup
                     ? resolveGroupAvatarDisplayUrl(conv.avatar, {
                         conversationId: conv.conversationId,
-                        updatedAt: conv.updatedAt,
+                        avatarVersion: String(conv.memberCount ?? ''),
                       })
                     : conv.avatar
                       ? resolveChatMediaFetchUrl(conv.avatar)
