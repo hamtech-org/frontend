@@ -19,6 +19,7 @@ import {
   useReactToReelMutation,
   useToggleSaveReelMutation,
   useDeleteReelMutation,
+  useShareReelMutation,
 } from '@/store/api/newsfeedApi';
 import { REACTION_META } from '@/types/reaction.types';
 import type { ReactionType } from '@/types/reaction.types';
@@ -82,6 +83,7 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }
   const [reactToReel] = useReactToReelMutation();
   const [toggleSave] = useToggleSaveReelMutation();
   const [deleteReel] = useDeleteReelMutation();
+  const [shareReel] = useShareReelMutation();
   const currentUserId = useSelector((state: RootState) => state.auth.user?.userId);
   const navigate = useNavigate();
   const isAuthor = reel.author?.userId === currentUserId;
@@ -90,6 +92,7 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }
   const [likeCount, setLikeCount] = useState(totalReactions(reel.reactionsCount));
   const [saved, setSaved] = useState(reel.isSaved ?? false);
   const [saveCount, setSaveCount] = useState(reel.savesCount);
+  const [sharesCount, setSharesCount] = useState(reel.sharesCount);
   const [moreOpen, setMoreOpen] = useState(false);
   const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
   const reactionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -177,13 +180,27 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }
 
   const handleShare = useCallback(async () => {
     const url = `${window.location.origin}/reels/${reel.reelId}`;
-    if (navigator.share) {
-      await navigator.share({ title: reel.caption ?? 'Reel', url });
-    } else {
-      await navigator.clipboard.writeText(url);
-      toast.success('Đã copy link reel');
+    setSharesCount((c) => c + 1);
+    try {
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: reel.caption ?? 'Reel', url });
+        } catch (shareErr: any) {
+          if (shareErr?.name === 'AbortError') {
+            // User aborted the share dialog. We can still count it.
+          } else {
+            throw shareErr;
+          }
+        }
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success('Đã copy link reel');
+      }
+      await shareReel(reel.reelId).unwrap();
+    } catch (err) {
+      setSharesCount((c) => Math.max(0, c - 1));
     }
-  }, [reel.reelId, reel.caption]);
+  }, [reel.reelId, reel.caption, shareReel]);
 
   const handleDelete = useCallback(async () => {
     if (!window.confirm('Xóa reel này? Hành động không thể hoàn tác.')) return;
@@ -350,7 +367,7 @@ export const ReelActionRail = ({ reel, onOpenComments, onOpenReport, videoRect }
           strokeWidth={2}
         />
         <span className="text-xs font-semibold text-white drop-shadow-sm">
-          {formatCount(reel.sharesCount)}
+          {formatCount(sharesCount)}
         </span>
       </button>
 
