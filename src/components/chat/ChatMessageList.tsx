@@ -1023,24 +1023,22 @@ export function ChatMessageList({
                               const isSubtaskAssignee = subAssigneeIds.includes(
                                 String(currentUserId),
                               );
-                              const topIds =
-                                assignees.length > 0
-                                  ? assignees
-                                  : taskCard.assigneeUserIds.length > 0
-                                    ? taskCard.assigneeUserIds
-                                    : [];
+                              const topIds = assignees.map(String).filter(Boolean);
                               const isTopLevelAssignee = topIds
                                 .map(String)
                                 .includes(String(currentUserId));
                               const explicitAssignToAll =
-                                Boolean((t as any)?.assignToAll) ||
-                                Boolean((t as any)?.broadcast) ||
-                                Boolean(taskCard.assignToAll) ||
-                                Boolean(taskCard.broadcast);
+                                Boolean((t as any)?.assignToAll) || Boolean((t as any)?.broadcast);
                               const hasSubtasksAssignees = subAssigneeIds.length > 0;
-                              const canJoinThisTask = hasSubtasksAssignees
-                                ? isSubtaskAssignee
-                                : explicitAssignToAll || isTopLevelAssignee;
+                              const taskExistsOnBoard = Boolean(
+                                (t as any)?.taskId &&
+                                String((t as any).taskId) === String(taskCard.taskId),
+                              );
+                              const canJoinThisTask =
+                                taskExistsOnBoard &&
+                                (hasSubtasksAssignees
+                                  ? isSubtaskAssignee
+                                  : explicitAssignToAll || isTopLevelAssignee);
                               const dueForJoin =
                                 (t as any)?.dueDate != null &&
                                 String((t as any).dueDate).trim() !== ''

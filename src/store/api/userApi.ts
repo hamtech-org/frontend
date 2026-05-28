@@ -3,6 +3,7 @@ import type { IUser } from '@/types/user.types';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import { baseQueryWithReauth } from './baseQuery';
 import { chatApi } from './chatApi';
+import { setUser } from '@/store/slices/authSlice';
 
 export const userApi = createApi({
   reducerPath: 'userApi',
@@ -37,6 +38,17 @@ export const userApi = createApi({
         };
       },
       invalidatesTags: ['User'],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data: res } = await queryFulfilled;
+          if (res?.data) {
+            dispatch(setUser(res.data));
+          }
+          dispatch(chatApi.util.invalidateTags(['Conversations']));
+        } catch {
+          // no-op
+        }
+      },
     }),
 
     // Friend request endpoints

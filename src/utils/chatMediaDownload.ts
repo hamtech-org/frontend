@@ -1,4 +1,39 @@
-const MEDIA_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const MEDIA_UUID_EXACT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || '/api/v1';
+
+function absoluteApiUrl(pathOrUrl: string): string {
+  const raw = pathOrUrl.trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  const base = API_BASE_URL.replace(/\/+$/, '');
+  const absoluteBase = /^https?:\/\//i.test(base)
+    ? base
+    : `${window.location.origin}${base.startsWith('/') ? base : `/${base}`}`;
+  const path = raw.startsWith('/') ? raw : `/${raw}`;
+  let basePath = '';
+
+  try {
+    basePath = new URL(absoluteBase).pathname.replace(/\/+$/, '');
+  } catch {
+    basePath = base.replace(/^https?:\/\/[^/]+/i, '').replace(/\/+$/, '');
+  }
+
+  const normalizedPath =
+    basePath && path.toLowerCase().startsWith(`${basePath.toLowerCase()}/`)
+      ? path.slice(basePath.length)
+      : path;
+
+  return `${absoluteBase}${normalizedPath}`;
+}
+
+function isApiLikePath(value: string): boolean {
+  return /^\/?api\//i.test(value) || /^\/?(?:chat|media)\//i.test(value);
+}
+
+function isBrowserLocalUrl(value: string): boolean {
+  return /^(?:blob|data):/i.test(value);
+}
 
 function isCloudFrontSignedUrl(raw: string): boolean {
   const src = raw.trim();
@@ -28,6 +63,7 @@ export function parseMediaIdFromStoredUrl(urlStr: string): string | null {
   if (/\/conversations\/[^/]+\/avatar/i.test(trimmed)) {
     return null;
   }
+  if (MEDIA_UUID_EXACT.test(trimmed)) return trimmed;
   try {
     const u = /^https?:\/\//i.test(trimmed)
       ? new URL(trimmed)
@@ -41,23 +77,14 @@ export function parseMediaIdFromStoredUrl(urlStr: string): string | null {
       /\/(?:chat|public)\/[^/]+\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(?:original|thumb)\b/i,
     );
     if (s3?.[1]) return s3[1];
-    const loose = trimmed.match(MEDIA_UUID);
-    return loose?.[0] ?? null;
+    return null;
   } catch {
-    const loose = trimmed.match(MEDIA_UUID);
-    return loose?.[0] ?? null;
+    return MEDIA_UUID_EXACT.test(trimmed) ? trimmed : null;
   }
 }
 
 function buildClientMediaApiUrl(mediaId: string, endpoint: 'download' | 'thumbnail'): string {
-  const raw = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || '/api/v1';
-  const base = raw.replace(/\/+$/, '');
-  const suffix = `/media/${mediaId}/${endpoint}`;
-  if (/^https?:\/\//i.test(base)) {
-    return `${base}${suffix}`;
-  }
-  const prefix = base.startsWith('/') ? base : `/${base}`;
-  return `${window.location.origin}${prefix}${suffix}`;
+  return absoluteApiUrl(`/media/${mediaId}/${endpoint}`);
 }
 
 export function buildClientMediaDownloadUrl(mediaId: string): string {
@@ -89,6 +116,7 @@ function isThumbnailStoredUrl(urlStr: string): boolean {
 export function resolveChatMediaFetchUrl(storedUrl: string): string {
   const trimmed = storedUrl.trim();
   if (!trimmed) return '';
+  if (isBrowserLocalUrl(trimmed)) return trimmed;
   const mediaId = parseMediaIdFromStoredUrl(trimmed);
   if (mediaId) {
     return isThumbnailStoredUrl(trimmed)
@@ -96,6 +124,7 @@ export function resolveChatMediaFetchUrl(storedUrl: string): string {
       : buildClientMediaDownloadUrl(mediaId);
   }
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (isApiLikePath(trimmed)) return absoluteApiUrl(trimmed);
   const origin = window.location.origin;
   return trimmed.startsWith('/') ? `${origin}${trimmed}` : `${origin}/${trimmed}`;
 }
@@ -112,9 +141,11 @@ export function buildClientMediaAttachmentUrl(mediaId: string, filename?: string
 export function resolveChatMediaDownloadUrl(storedUrl: string): string {
   const trimmed = storedUrl.trim();
   if (!trimmed) return '';
+  if (isBrowserLocalUrl(trimmed)) return trimmed;
   const mediaId = parseMediaIdFromStoredUrl(trimmed);
   if (mediaId) return buildClientMediaDownloadUrl(mediaId);
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (isApiLikePath(trimmed)) return absoluteApiUrl(trimmed);
   const origin = window.location.origin;
   return trimmed.startsWith('/') ? `${origin}${trimmed}` : `${origin}/${trimmed}`;
 }
@@ -122,10 +153,12 @@ export function resolveChatMediaDownloadUrl(storedUrl: string): string {
 export function resolveChatMediaAttachmentUrl(storedUrl: string, filename?: string): string {
   const trimmed = storedUrl.trim();
   if (!trimmed) return '';
+  if (isBrowserLocalUrl(trimmed)) return trimmed;
   const safeName = filename?.trim() ? sanitizeDownloadFilename(filename) : undefined;
   const mediaId = parseMediaIdFromStoredUrl(trimmed);
   if (mediaId) return buildClientMediaAttachmentUrl(mediaId, safeName);
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (isApiLikePath(trimmed)) return absoluteApiUrl(trimmed);
   const origin = window.location.origin;
   const absolute = trimmed.startsWith('/') ? `${origin}${trimmed}` : `${origin}/${trimmed}`;
   return absolute;

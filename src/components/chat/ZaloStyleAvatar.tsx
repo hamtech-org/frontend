@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { zaloAvatarSurfaceStyle, zaloInitials } from '@/utils/avatarUtils';
+import { resolveChatMediaFetchUrl } from '@/utils/chatMediaDownload';
 
 type ZaloStyleAvatarProps = {
   userId: string;
@@ -9,10 +10,20 @@ type ZaloStyleAvatarProps = {
   className?: string;
 };
 
-export function ZaloStyleAvatar({ userId, displayName, avatarUrl, className = '' }: ZaloStyleAvatarProps) {
+export function ZaloStyleAvatar({
+  userId,
+  displayName,
+  avatarUrl,
+  className = '',
+}: ZaloStyleAvatarProps) {
   const [broken, setBroken] = useState(false);
-  const src = avatarUrl?.trim();
+  const rawSrc = avatarUrl?.trim();
+  const src = rawSrc ? resolveChatMediaFetchUrl(rawSrc) : '';
   const showImg = Boolean(src) && !broken;
+
+  useEffect(() => {
+    setBroken(false);
+  }, [src]);
 
   if (!showImg) {
     return (
