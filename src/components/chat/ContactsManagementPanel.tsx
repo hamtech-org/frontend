@@ -1,11 +1,20 @@
-import { UserPlus, Users } from 'lucide-react';
-import { useEffect } from 'react';
+import { Check, Clock, UserPlus, Users, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useGetFriendsQuery } from '@/store/api/contactApi';
-import { useGetPendingRequestsQuery, useGetSuggestedFriendsQuery } from '@/store/api/userApi';
+import {
+  useAcceptFriendRequestMutation,
+  useCancelFriendRequestMutation,
+  useGetPendingRequestsQuery,
+  useGetSuggestedFriendsQuery,
+  useRejectFriendRequestMutation,
+  useSendFriendRequestMutation,
+} from '@/store/api/userApi';
 import { socketService } from '@/services/socket';
 import type { IConversation } from '@/types/chat.types';
 
 export type ContactsTabId = 'friends' | 'groups' | 'friendRequests';
+type PendingFriendsTabId = 'received' | 'sent' | 'suggestions';
 
 type ContactsManagementPanelProps = {
   contactsTab: ContactsTabId;
@@ -39,20 +48,39 @@ function rowSubtitleFriends(row: unknown): string {
   return 'Ngoại tuyến';
 }
 
+function rowUserId(row: unknown): string {
+  if (row && typeof row === 'object') {
+    const o = row as Record<string, unknown>;
+    return String(o.userId ?? o.id ?? '');
+  }
+  return '';
+}
+
 export function ContactsManagementPanel({
   contactsTab,
   onContactsTabChange,
   groupConversations = [],
 }: ContactsManagementPanelProps) {
+  const [pendingTab, setPendingTab] = useState<PendingFriendsTabId>('received');
   const {
     data: friendsRes,
     isLoading: friendsLoading,
     refetch: refetchFriends,
   } = useGetFriendsQuery();
-  const { data: pendingRes, refetch: refetchPending } = useGetPendingRequestsQuery();
-  const { data: suggestedRes, refetch: refetchSuggested } = useGetSuggestedFriendsQuery({
-    limit: 10,
-  });
+  const {
+    data: pendingRes,
+    isLoading: pendingLoading,
+    refetch: refetchPending,
+  } = useGetPendingRequestsQuery();
+  const {
+    data: suggestedRes,
+    isLoading: suggestedLoading,
+    refetch: refetchSuggested,
+  } = useGetSuggestedFriendsQuery({ limit: 10 });
+  const [acceptFriendRequest] = useAcceptFriendRequestMutation();
+  const [rejectFriendRequest] = useRejectFriendRequestMutation();
+  const [cancelFriendRequest] = useCancelFriendRequestMutation();
+  const [sendFriendRequest] = useSendFriendRequestMutation();
 
   const friends = (friendsRes?.data ?? []) as unknown[];
   const receivedRequests = (pendingRes?.data?.received ?? []) as unknown[];
@@ -60,6 +88,49 @@ export function ContactsManagementPanel({
   const suggestedFriends = (suggestedRes?.data ?? []) as unknown[];
   const totalPendingFriendRequests =
     receivedRequests.length + sentRequests.length + suggestedFriends.length;
+  const pendingTabs: {
+    id: PendingFriendsTabId;
+    label: string;
+    count: number;
+  }[] = [
+    { id: 'received', label: 'Nhận được', count: receivedRequests.length },
+    { id: 'sent', label: 'Đã gửi', count: sentRequests.length },
+    { id: 'suggestions', label: 'Gợi ý', count: suggestedFriends.length },
+  ];
+
+  const refreshFriendRequests = () => {
+    refetchFriends();
+    refetchPending();
+    refetchSuggested();
+  };
+
+  const handleAcceptRequest = async (row: unknown) => {
+    const senderId = rowUserId(row);
+    if (!senderId) return;
+    await acceptFriendRequest({ senderId }).unwrap();
+    refreshFriendRequests();
+  };
+
+  const handleRejectRequest = async (row: unknown) => {
+    const senderId = rowUserId(row);
+    if (!senderId) return;
+    await rejectFriendRequest({ senderId }).unwrap();
+    refreshFriendRequests();
+  };
+
+  const handleCancelRequest = async (row: unknown) => {
+    const friendId = rowUserId(row);
+    if (!friendId) return;
+    await cancelFriendRequest({ friendId }).unwrap();
+    refreshFriendRequests();
+  };
+
+  const handleSendRequest = async (row: unknown) => {
+    const friendId = rowUserId(row);
+    if (!friendId) return;
+    await sendFriendRequest({ friendId }).unwrap();
+    refreshFriendRequests();
+  };
 
   useEffect(() => {
     const handleFriendAdded = () => {
@@ -185,6 +256,180 @@ export function ContactsManagementPanel({
             })}
         </div>
       )}
+
+      {contactsTab === 'friendRequests' && (
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          <div className="shrink-0 border-b border-black/5 px-3 pt-3 dark:border-white/5">
+            <div className="flex gap-1 overflow-x-auto">
+              {pendingTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setPendingTab(tab.id)}
+                  className={`shrink-0 border-b-2 px-3 py-2 text-[12px] font-semibold transition-colors ${
+                    pendingTab === tab.id
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tab.label}
+                  {tab.count > 0 && (
+                    <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[9px] font-bold text-white">
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 py-3">
+            {pendingTab === 'received' &&
+              (pendingLoading ? (
+                <p className="py-8 text-center text-[12px] text-muted-foreground">Đang tải...</p>
+              ) : (
+                <FriendRequestSection
+                  title="Lời mời đã nhận"
+                  emptyText="Chưa có lời mời mới."
+                  rows={receivedRequests}
+                  renderActions={(row) => (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void handleAcceptRequest(row)}
+                        className="inline-flex h-7 items-center gap-1 rounded-md bg-blue-600 px-2 text-[10px] font-bold text-white hover:bg-blue-700"
+                      >
+                        <Check className="w-3 h-3" />
+                        Chấp nhận
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleRejectRequest(row)}
+                        className="inline-flex h-7 items-center gap-1 rounded-md bg-black/5 px-2 text-[10px] font-bold text-muted-foreground hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
+                      >
+                        <X className="w-3 h-3" />
+                        Từ chối
+                      </button>
+                    </div>
+                  )}
+                />
+              ))}
+
+            {pendingTab === 'sent' &&
+              (pendingLoading ? (
+                <p className="py-8 text-center text-[12px] text-muted-foreground">Đang tải...</p>
+              ) : (
+                <FriendRequestSection
+                  title="Lời mời đã gửi"
+                  emptyText="Chưa gửi lời mời nào."
+                  rows={sentRequests}
+                  subtitle="Đang chờ phản hồi"
+                  renderActions={(row) => (
+                    <button
+                      type="button"
+                      onClick={() => void handleCancelRequest(row)}
+                      className="inline-flex h-7 items-center gap-1 rounded-md bg-black/5 px-2 text-[10px] font-bold text-muted-foreground hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
+                    >
+                      <X className="w-3 h-3" />
+                      Hủy
+                    </button>
+                  )}
+                />
+              ))}
+
+            {pendingTab === 'suggestions' &&
+              (suggestedLoading ? (
+                <p className="py-8 text-center text-[12px] text-muted-foreground">Đang tải...</p>
+              ) : (
+                <FriendRequestSection
+                  title="Gợi ý kết bạn"
+                  emptyText="Chưa có gợi ý phù hợp."
+                  rows={suggestedFriends}
+                  renderActions={(row) => (
+                    <button
+                      type="button"
+                      onClick={() => void handleSendRequest(row)}
+                      className="inline-flex h-7 items-center gap-1 rounded-md bg-blue-600 px-2 text-[10px] font-bold text-white hover:bg-blue-700"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      Thêm
+                    </button>
+                  )}
+                />
+              ))}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function FriendRequestSection({
+  title,
+  emptyText,
+  rows,
+  renderActions,
+  subtitle,
+}: {
+  title: string;
+  emptyText: string;
+  rows: unknown[];
+  renderActions: (row: unknown) => ReactNode;
+  subtitle?: string;
+}) {
+  return (
+    <section className="mb-4 last:mb-0">
+      <h3 className="mb-2 px-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+        {title} ({rows.length})
+      </h3>
+      {rows.length ? (
+        <div className="space-y-2">
+          {rows.map((row, idx) => {
+            const title = rowLabel(row);
+            const avatar = rowAvatar(row);
+            const key = rowUserId(row) || `${title}-${String(idx)}`;
+            return (
+              <div
+                key={key}
+                className="flex items-center gap-2 rounded-lg border border-black/5 bg-black/[0.02] p-2 dark:border-white/5 dark:bg-white/[0.03]"
+              >
+                {avatar ? (
+                  <img
+                    src={avatar}
+                    alt=""
+                    className="w-9 h-9 rounded-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-xs font-bold text-blue-600">
+                    {title.trim().slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[12px] font-semibold text-black dark:text-white">
+                    {title}
+                  </p>
+                  <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                    {subtitle ? (
+                      <>
+                        <Clock className="w-3 h-3" />
+                        {subtitle}
+                      </>
+                    ) : (
+                      rowSubtitleFriends(row)
+                    )}
+                  </p>
+                </div>
+                {renderActions(row)}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="rounded-lg bg-black/[0.02] px-3 py-4 text-center text-[11px] text-muted-foreground dark:bg-white/[0.03]">
+          {emptyText}
+        </p>
+      )}
+    </section>
   );
 }
