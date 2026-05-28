@@ -60,7 +60,7 @@ export function GroupJoinLinkModal({
   const rawGroupAvatar = liveConversation?.avatar ?? data?.groupAvatar ?? preview?.avatar ?? null;
   const groupAvatar = resolveGroupAvatarDisplayUrl(rawGroupAvatar, {
     conversationId: conversationIdForChat,
-    updatedAt: liveConversation?.updatedAt,
+    avatarVersion: String(liveConversation?.memberCount ?? ''),
   });
   const currentData = data
     ? {

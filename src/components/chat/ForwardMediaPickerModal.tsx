@@ -295,7 +295,7 @@ export function ForwardMediaPickerModal({
                 const avatarSrc = isGroup
                   ? resolveGroupAvatarDisplayUrl(c.avatar, {
                       conversationId: c.conversationId,
-                      updatedAt: c.updatedAt,
+                      avatarVersion: String(c.memberCount ?? ''),
                     })
                   : c.avatar;
                 return (

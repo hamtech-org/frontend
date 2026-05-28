@@ -54,7 +54,7 @@ export function GroupJoinLinkCard({ payload, className }: GroupJoinLinkCardProps
     liveConversation?.avatar ?? preview?.avatar ?? payload.groupAvatar ?? fallbackAvatar,
     {
       conversationId,
-      updatedAt: liveConversation?.updatedAt,
+      avatarVersion: String(liveConversation?.memberCount ?? ''),
     },
   );
 

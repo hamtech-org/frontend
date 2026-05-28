@@ -142,7 +142,7 @@ export function ChatHeader({
     activeConversation?.type === 'group'
       ? resolveGroupAvatarDisplayUrl(activeConversation.avatar, {
           conversationId: activeConversation.conversationId,
-          updatedAt: activeConversation.updatedAt,
+          avatarVersion: String(groupMemberDisplayCount),
         })
       : activeConversation?.avatar
         ? activeConversation.avatar

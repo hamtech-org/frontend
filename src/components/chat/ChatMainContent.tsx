@@ -162,7 +162,7 @@ export function ChatMainContent(props: ChatMainContentProps) {
                 const name = conv.name ?? 'Nhóm';
                 const avatarSrc = resolveGroupAvatarDisplayUrl(conv.avatar, {
                   conversationId: conv.conversationId,
-                  updatedAt: conv.updatedAt,
+                  avatarVersion: String(conv.memberCount ?? ''),
                 });
                 return (
                   <button

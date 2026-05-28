@@ -536,7 +536,7 @@ export function ConversationInfoPanel({
     activeConversation?.type === 'group'
       ? resolveGroupAvatarDisplayUrl(activeConversation.avatar, {
           conversationId: activeConversation.conversationId,
-          updatedAt: activeConversation.updatedAt,
+          avatarVersion: String(activeConversation.memberCount ?? ''),
         })
       : activeConversation?.avatar;
   const directOtherUserId =

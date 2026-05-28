@@ -325,7 +325,7 @@ export function ConversationListPanel({
                           contact.type === 'group'
                             ? resolveGroupAvatarDisplayUrl(contact.avatar, {
                                 conversationId: contact.conversationId,
-                                updatedAt: contact.updatedAt,
+                                avatarVersion: String(contact.memberCount ?? ''),
                               })
                             : contact.avatar
                               ? resolveChatMediaFetchUrl(contact.avatar)
@@ -476,7 +476,7 @@ export function ConversationListPanel({
                   const avatarSrc = isGroup
                     ? resolveGroupAvatarDisplayUrl(conv.avatar, {
                         conversationId: conv.conversationId,
-                        updatedAt: conv.updatedAt,
+                        avatarVersion: String(conv.memberCount ?? ''),
                       })
                     : conv.avatar
                       ? resolveChatMediaFetchUrl(conv.avatar)
