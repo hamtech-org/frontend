@@ -250,7 +250,7 @@ export function useGroupConversationController({
     setActionBusy('updateGroup', true);
     const previousName = activeConversation.name;
     const previousAvatar = activeConversation.avatar;
-    let nextAvatar = previousAvatar;
+    let nextAvatar: string | undefined;
 
     if (editGroupAvatarFile) {
       try {
@@ -262,7 +262,7 @@ export function useGroupConversationController({
         const mid = uploadResult.data.mediaId?.trim();
         nextAvatar = mid
           ? buildClientMediaDownloadUrl(mid)
-          : (uploadResult.data.url ?? previousAvatar);
+          : (uploadResult.data.url ?? previousAvatar ?? undefined);
       } catch (err) {
         console.error('Avatar upload failed:', err);
         toast.error('Không thể tải lên ảnh đại diện mới');
@@ -274,17 +274,19 @@ export function useGroupConversationController({
         const conv = draft?.data?.find((item) => item.conversationId === activeConversationId);
         if (!conv) return;
         conv.name = nextName;
-        if (nextAvatar) {
+        if (editGroupAvatarFile && nextAvatar) {
           conv.avatar = normalizeGroupAvatarStoredValue(nextAvatar, activeConversationId);
         }
       }),
     );
 
     try {
-      await groupApi.updateGroup(activeConversationId, {
-        name: nextName,
-        avatar: nextAvatar ?? undefined,
-      });
+      await groupApi.updateGroup(
+        activeConversationId,
+        editGroupAvatarFile && nextAvatar
+          ? { name: nextName, avatar: nextAvatar }
+          : { name: nextName },
+      );
       modalActions.setShowEditGroupModal(false);
       modalActions.setEditGroupAvatarFile(null);
       toast.success('Cập nhật nhóm thành công');
