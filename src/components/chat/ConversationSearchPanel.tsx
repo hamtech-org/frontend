@@ -441,7 +441,7 @@ export function ConversationSearchPanel({
                       contact.type === 'group'
                         ? resolveGroupAvatarDisplayUrl(contact.avatar, {
                             conversationId: contact.conversationId,
-                            updatedAt: contact.updatedAt,
+                            avatarVersion: String(contact.memberCount ?? ''),
                           })
                         : contact.avatar
                           ? resolveChatMediaFetchUrl(contact.avatar)

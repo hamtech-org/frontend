@@ -1,21 +1,79 @@
-import {
-  buildClientMediaDownloadUrl,
-  parseMediaIdFromStoredUrl,
-  resolveChatMediaFetchUrl,
-} from '@/utils/chatMediaDownload';
+const MEDIA_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || '/api/v1';
+
+function absoluteApiUrl(pathOrUrl: string): string {
+  const raw = pathOrUrl.trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  const base = API_BASE_URL.replace(/\/+$/, '');
+  const origin =
+    typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+  const absoluteBase = /^https?:\/\//i.test(base)
+    ? base
+    : `${origin}${base.startsWith('/') ? base : `/${base}`}`;
+  const path = raw.startsWith('/') ? raw : `/${raw}`;
+
+  let basePath = '';
+  try {
+    basePath = new URL(absoluteBase).pathname.replace(/\/+$/, '');
+  } catch {
+    basePath = base.replace(/^https?:\/\/[^/]+/i, '').replace(/\/+$/, '');
+  }
+
+  const normalizedPath =
+    basePath && path.toLowerCase().startsWith(`${basePath.toLowerCase()}/`)
+      ? path.slice(basePath.length)
+      : path;
+
+  return `${absoluteBase}${normalizedPath}`;
+}
+
+function parseGroupAvatarMediaId(urlStr: string): string | null {
+  const trimmed = urlStr.trim();
+  if (!trimmed || /\/conversations\/[^/]+\/avatar/i.test(trimmed)) return null;
+  if (MEDIA_UUID_RE.test(trimmed)) return trimmed;
+  try {
+    const u = /^https?:\/\//i.test(trimmed)
+      ? new URL(trimmed)
+      : new URL(trimmed, 'http://local.invalid');
+    const path = u.pathname.replace(/\/+$/, '');
+    const app = path.match(
+      /\/media\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(?:download|thumbnail)$/i,
+    );
+    if (app?.[1]) return app[1];
+    const object = path.match(
+      /\/(?:chat|public)\/[^/]+\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(?:original|thumb)\b/i,
+    );
+    return object?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function buildGroupAvatarMediaUrl(mediaId: string): string {
+  return absoluteApiUrl(`/media/${mediaId}/download`);
+}
+
+function resolveGroupAvatarFetchUrl(storedUrl: string): string {
+  const trimmed = storedUrl.trim();
+  if (!trimmed) return '';
+  if (/^(?:blob|data):/i.test(trimmed)) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^\/?api\//i.test(trimmed) || /^\/?(?:chat|media)\//i.test(trimmed)) {
+    return absoluteApiUrl(trimmed);
+  }
+  const origin =
+    typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+  return trimmed.startsWith('/') ? `${origin}${trimmed}` : `${origin}/${trimmed}`;
+}
 
 function isGroupAvatarCacheBustable(url: string): boolean {
   try {
     const path = url.includes('://') ? new URL(url).pathname : url.split('?')[0];
-    if (/\/conversations\/[^/]+\/avatar$/i.test(path)) return true;
-    return /\/media\/[0-9a-f-]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/download$/i.test(
-      path,
-    );
+    return /\/conversations\/[^/]+\/avatar$/i.test(path);
   } catch {
-    return (
-      /\/conversations\/[^/]+\/avatar(?:\?|$)/i.test(url) ||
-      /\/media\/[0-9a-f-]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/download/i.test(url)
-    );
+    return /\/conversations\/[^/]+\/avatar(?:\?|$)/i.test(url);
   }
 }
 
@@ -40,7 +98,7 @@ export function normalizeGroupAvatarStoredValue(
   const trimmed = (avatar ?? '').trim();
   if (!trimmed) return fallback;
 
-  const mediaId = parseMediaIdFromStoredUrl(trimmed);
+  const mediaId = parseGroupAvatarMediaId(trimmed);
   if (mediaId) return `/api/v1/media/${mediaId}/download`;
 
   let pathOnly = trimmed.split('?')[0];
@@ -58,13 +116,13 @@ export function normalizeGroupAvatarStoredValue(
 
 export function resolveGroupAvatarDisplayUrl(
   avatar: string | null | undefined,
-  opts?: { conversationId?: string; updatedAt?: string | null },
+  opts?: { conversationId?: string; updatedAt?: string | null; avatarVersion?: string | null },
 ): string | undefined {
   const cid = String(opts?.conversationId ?? '').trim();
   const stored = cid ? normalizeGroupAvatarStoredValue(avatar, cid) : (avatar ?? '').trim();
   if (!stored) return undefined;
 
-  const mediaId = parseMediaIdFromStoredUrl(stored);
-  const base = mediaId ? buildClientMediaDownloadUrl(mediaId) : resolveChatMediaFetchUrl(stored);
-  return withGroupAvatarCacheBuster(base, opts?.updatedAt) ?? base;
+  const mediaId = parseGroupAvatarMediaId(stored);
+  const base = mediaId ? buildGroupAvatarMediaUrl(mediaId) : resolveGroupAvatarFetchUrl(stored);
+  return withGroupAvatarCacheBuster(base, opts?.avatarVersion) ?? base;
 }
