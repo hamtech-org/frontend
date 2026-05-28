@@ -1,0 +1,16 @@
+{
+  "groupInteractions": [
+    { "groupId": "grp_demo_1", "name": "Nhóm Dự án CNM", "messages7d": 842, "activeMembers7d": 12, "reactions7d": 156 },
+    { "groupId": "grp_demo_2", "name": "Hamtech Dev", "messages7d": 1204, "activeMembers7d": 8, "reactions7d": 89 }
+  ],
+  "groups": [
+    { "groupId": "grp_demo_1", "name": "Nhóm Dự án CNM", "status": "active", "memberCount": 24, "updatedAt": "2026-05-10T08:00:00Z" },
+    { "groupId": "grp_demo_2", "name": "Hamtech Dev", "status": "locked", "memberCount": 8, "updatedAt": "2026-05-09T14:30:00Z" },
+    { "groupId": "grp_demo_3", "name": "Archive — HK1", "status": "archived", "memberCount": 40, "updatedAt": "2025-12-01T10:00:00Z" }
+  ],
+  "groupMembers": [
+    { "userId": "u1", "displayName": "Sang_2", "role": "owner", "joinedAt": "2026-01-15", "groupId": "grp_demo_1" },
+    { "userId": "u2", "displayName": "Minh", "role": "admin", "joinedAt": "2026-02-01", "groupId": "grp_demo_1" },
+    { "userId": "u3", "displayName": "Lan", "role": "member", "joinedAt": "2026-03-10", "groupId": "grp_demo_1" }
+  ]
+}

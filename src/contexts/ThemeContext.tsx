@@ -1,12 +1,24 @@
-import React, { createContext, useContext } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
-import type { RootState } from '@/store/store';
-import { toggleTheme as toggleThemeAction } from '@/store/slices/uiSlice';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+
+type ThemeMode = 'light' | 'dark';
 
 interface ThemeContextValue {
-  theme: 'light' | 'dark';
+  theme: ThemeMode;
   toggleTheme: () => void;
 }
+
+const getInitialTheme = (): ThemeMode => {
+  if (typeof window === 'undefined') {
+    return 'light';
+  }
+
+  const storedTheme = localStorage.getItem('theme');
+  if (storedTheme === 'dark' || storedTheme === 'light') {
+    return storedTheme;
+  }
+
+  return 'light';
+};
 
 const ThemeContext = createContext<ThemeContextValue>({
   theme: 'light',
@@ -14,15 +26,27 @@ const ThemeContext = createContext<ThemeContextValue>({
 });
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const dispatch = useDispatch();
-  const theme = useSelector((state: RootState) => state.ui.theme);
+  const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
 
   const toggleTheme = (): void => {
-    dispatch(toggleThemeAction());
+    setTheme((previousTheme) => (previousTheme === 'light' ? 'dark' : 'light'));
   };
 
+  useEffect(() => {
+    localStorage.setItem('theme', theme);
+
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      return;
+    }
+
+    document.documentElement.classList.remove('dark');
+  }, [theme]);
+
+  const value = useMemo<ThemeContextValue>(() => ({ theme, toggleTheme }), [theme]);
+
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );

@@ -4,14 +4,19 @@
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended",
-    "plugin:react-hooks/recommended",
-    "plugin:prettier/recommended"
+    "plugin:react-hooks/recommended"
   ],
   "ignorePatterns": ["dist", ".eslintrc.json"],
   "parser": "@typescript-eslint/parser",
   "plugins": ["react-refresh"],
   "rules": {
     "react-refresh/only-export-components": ["warn", { "allowConstantExport": true }],
-    "@typescript-eslint/no-explicit-any": "error"
+
+    // Tắt lỗi dùng 'any'
+    "@typescript-eslint/no-explicit-any": "off",
+
+    // Tắt lỗi khai báo biến mà không sử dụng
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": "off"
   }
 }

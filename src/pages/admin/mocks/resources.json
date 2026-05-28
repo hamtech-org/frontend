@@ -1,0 +1,9 @@
+{
+  "totalStorageGb": 128.4,
+  "byMediaType": [
+    { "type": "image", "label": "Hình ảnh", "gb": 42.1, "percent": 33 },
+    { "type": "video", "label": "Video", "gb": 61.2, "percent": 48 },
+    { "type": "audio", "label": "Âm thanh", "gb": 8.5, "percent": 7 },
+    { "type": "file", "label": "Tệp khác", "gb": 16.6, "percent": 12 }
+  ]
+}

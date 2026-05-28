@@ -1,36 +1,216 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Sora:wght@400;500;600;700;800&display=swap');
+@import 'tailwindcss';
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Plus Jakarta Sans", sans-serif;
-  
-  --color-ethereal-bg: #F8F9FA;
-  --color-ethereal-primary: #1A1A1A;
-  --color-ethereal-accent: #2563EB;
-  --color-ethereal-muted: #6C757D;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Sora', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --radius: 0.625rem;
+
+  --color-ethereal-bg: #f8f9fa;
+  --color-ethereal-primary: #1a1a1a;
+  --color-ethereal-accent: #0066ff;
+  --color-ethereal-muted: #6c757d;
   --color-ethereal-border: rgba(0, 0, 0, 0.05);
 
-  --color-midnight-bg: #0A0A0A;
-  --color-midnight-primary: #FFFFFF;
-  --color-midnight-accent: #2563EB;
-  --color-midnight-muted: #9BA3AF;
+  --color-midnight-bg: #0a0a0a;
+  --color-midnight-primary: #ffffff;
+  --color-midnight-accent: #3385ff;
+  --color-midnight-muted: #9ba3af;
   --color-midnight-border: rgba(255, 255, 255, 0.05);
 }
 
+@theme {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-destructive: hsl(var(--destructive));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+}
+
 @layer base {
-  body {
-    @apply font-sans antialiased selection:bg-blue-600/20 selection:text-blue-600;
+  :root {
+    --background: 210 20% 98%; /* #F8F9FA -> ethereal-bg */
+    --foreground: 0 0% 10%; /* #1A1A1A -> ethereal-primary */
+    --primary: 220 100% 50%; /* #0066FF -> design accent */
+    --primary-foreground: 0 0% 100%;
+    --muted: 210 16% 93%; /* subtle neutral surface for bg-muted */
+    --muted-foreground: 215 16% 47%; /* readable secondary text on muted */
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+    --border: 0 0% 0% / 0.05;
+    --input: 0 0% 0% / 0.05;
+    --ring: 220 100% 50%;
+    --destructive: 0 84% 60%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 0 0% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
   }
 
+  .dark {
+    --background: 0 0% 4%; /* #0A0A0A -> midnight-bg */
+    --foreground: 0 0% 100%; /* #FFFFFF -> midnight-primary */
+    --primary: 220 100% 55%; /* #3385FF -> design accent */
+    --primary-foreground: 0 0% 100%;
+    --muted: 0 0% 12%; /* elevated muted surface in dark mode */
+    --muted-foreground: 215 20% 72%; /* readable secondary text on dark muted */
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 100%;
+    --border: 0 0% 100% / 0.05;
+    --input: 0 0% 100% / 0.05;
+    --ring: 220 100% 55%;
+    --destructive: 0 62% 50%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 100%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 100%;
+  }
+
+  body {
+    @apply font-sans antialiased selection:bg-blue-600/20 selection:text-blue-600 bg-background text-foreground;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  /* Keeping original themes for backward comp for now */
   .theme-ethereal {
-    @apply bg-ethereal-bg text-ethereal-primary;
+    @apply bg-background text-foreground;
   }
 
   .theme-midnight {
-    @apply bg-midnight-bg text-midnight-primary;
+    @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .no-scrollbar,
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar,
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .feed-card-virtualized {
+    content-visibility: auto;
+    contain-intrinsic-size: 560px;
+  }
+
+  /** Nhảy từ danh sách ghim / tìm tin — bọc sát khối bubble/media, không lặp */
+  .chat-msg-jump-highlight {
+    animation: chat-msg-jump-flash 2.1s ease-out forwards;
+    border-radius: 0.75rem;
+    box-sizing: border-box;
+  }
+
+  .volume-slider-h {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .volume-slider-h::-webkit-slider-runnable-track {
+    height: 4px;
+    background: transparent;
+    border-radius: 2px;
+  }
+
+  .volume-slider-h::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+    margin-top: -5px;
+  }
+
+  .volume-slider-h::-moz-range-track {
+    height: 4px;
+    background: transparent;
+    border-radius: 2px;
+  }
+
+  .volume-slider-h::-moz-range-progress {
+    height: 4px;
+    background: white;
+    border-radius: 2px;
+  }
+
+  .volume-slider-h::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+  }
+}
+
+@keyframes chat-msg-jump-flash {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(0, 104, 255, 0.45),
+      0 0 0 0 rgba(0, 104, 255, 0.08) inset;
+  }
+  20% {
+    box-shadow:
+      0 0 0 4px rgba(0, 104, 255, 0.35),
+      0 0 28px rgba(0, 104, 255, 0.22),
+      0 0 0 1px rgba(0, 104, 255, 0.15) inset;
+  }
+  55% {
+    box-shadow:
+      0 0 0 2px rgba(0, 104, 255, 0.2),
+      0 0 14px rgba(0, 104, 255, 0.1),
+      0 0 0 0 rgba(0, 104, 255, 0.06) inset;
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(0, 104, 255, 0),
+      0 0 0 0 rgba(0, 104, 255, 0);
+  }
+}
+
+@keyframes floatUp {
+  0%   { transform: translateY(0) scale(1); opacity: 1; }
+  50%  { transform: translateY(-40px) scale(1.5); opacity: 1; }
+  100% { transform: translateY(-80px) scale(0.5); opacity: 0; }
+}
+.emoji-float { animation: floatUp 0.8s ease-out forwards; }
+
+@keyframes emojiPop {
+  0%   { transform: scale(0) translateY(4px); opacity: 0; }
+  60%  { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+.emoji-pop { animation: emojiPop 0.25s ease-out forwards; }
+
 
 @layer components {
   .glass-card {
@@ -42,11 +222,92 @@
   }
 
   .editorial-void {
-    @apply p-8 md:p-12 lg:p-16;
+    @apply p-4 md:p-6 lg:p-8;
   }
 
   .asymmetric-grid {
     @apply grid grid-cols-12 gap-6;
+  }
+
+  .post-richtext .ProseMirror {
+    @apply outline-none whitespace-normal leading-7 text-foreground;
+  }
+
+  .post-richtext .ProseMirror > * + * {
+    @apply mt-3;
+  }
+
+  .post-richtext .ProseMirror p {
+    @apply whitespace-pre-wrap;
+  }
+
+  .post-richtext .ProseMirror ul {
+    @apply list-disc pl-6;
+  }
+
+  .post-richtext .ProseMirror ol {
+    @apply list-decimal pl-6;
+  }
+
+  .post-richtext .ProseMirror li {
+    @apply whitespace-pre-wrap;
+  }
+
+  .post-richtext .ProseMirror li p {
+    @apply m-0;
+  }
+
+  .post-richtext .ProseMirror img {
+    @apply mt-4 w-full rounded-2xl object-cover;
+  }
+
+  .post-richtext .ProseMirror br {
+    content: '';
+  }
+
+  .post-richtext .ProseMirror strong {
+    @apply font-bold;
+  }
+
+  .post-richtext .ProseMirror em {
+    @apply italic;
+  }
+
+  .post-richtext .ProseMirror s {
+    @apply line-through;
+  }
+
+  .post-richtext .ProseMirror u {
+    @apply underline;
+  }
+
+  .post-richtext .ProseMirror mark {
+    @apply rounded bg-yellow-300/50 px-1 text-foreground;
+  }
+
+  .post-richtext .ProseMirror code {
+    @apply rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.9em];
+  }
+
+  /* ── Tiptap post editor (modal) ── */
+  .tiptap-post-editor .ProseMirror {
+    @apply min-h-[140px] outline-none text-lg leading-relaxed text-foreground;
+  }
+
+  .tiptap-post-editor .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .tiptap-post-editor .ProseMirror p {
+    margin: 0;
+  }
+
+  .tiptap-post-editor .ProseMirror > * + * {
+    margin-top: 0.5rem;
   }
 }
 

@@ -1,82 +1,76 @@
-import React, { useState, useEffect, Suspense } from 'react';
-import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
-import {
-  Home,
-  Compass,
-  Video,
-  MessageSquare,
-  BarChart3,
-  Sparkles,
-  Settings,
-  LogOut,
-  Search,
-  Bell,
-  Moon,
-  Sun,
-  PanelLeftClose,
-  PanelLeft,
-} from 'lucide-react';
+import IncomingCallModal from '@/components/call/IncomingCallModal';
+import AppHeader from '@/components/layout/AppHeader';
+import AppSidebar from '@/components/layout/AppSidebar';
+import { ReelUploadToast } from '@/components/layout/ReelUploadToast';
+import { ShellMain, ShellRoot } from '@/components/layout/ShellPrimitives';
+import GlobalSearchBox from '@/components/search/GlobalSearchBox';
+import { CallProvider } from '@/contexts/CallContext';
+import { GroupJoinLinkModalProvider } from '@/contexts/GroupJoinLinkModalContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useAppShellState } from '@/hooks/app/useAppShellState';
+import { useLogoutFlow } from '@/hooks/app/useLogoutFlow';
+import { useProfileSync } from '@/hooks/app/useProfileSync';
+import { useAuth } from '@/hooks/useAuth';
+import { appRouteElements, liveImmersiveRouteElements } from '@/routes/AppRoutes';
+import { guestRouteElements } from '@/routes/GuestRoutes';
 import { cn } from '@/utils/cn';
-import logoUrl from '@/assets/images/logo_vuong.png';
+import { AnimatePresence, motion } from 'motion/react';
+import React, { Suspense } from 'react';
+import { Route, Routes, useLocation } from 'react-router-dom';
 
-// Lazy-loaded pages
-const LoginPage = React.lazy(() => import('@/pages/user/LoginPage'));
-const OnboardingPage = React.lazy(() => import('@/pages/user/OnboardingPage'));
-const HomePage = React.lazy(() => import('@/pages/user/HomePage'));
-const ChatPage = React.lazy(() => import('@/pages/user/ChatPage'));
-const ContactsPage = React.lazy(() => import('@/pages/user/ContactsPage'));
-const StudioPage = React.lazy(() => import('@/pages/user/StudioPage'));
 const CallPage = React.lazy(() => import('@/pages/user/CallPage'));
-const AIStudioPage = React.lazy(() => import('@/pages/user/AIStudioPage'));
-const AdminDashboard = React.lazy(() => import('@/pages/admin/AdminDashboard'));
-const AdminAnalytics = React.lazy(() => import('@/pages/admin/AdminAnalytics'));
-
-const navItems = [
-  { path: '/', icon: Home, label: 'Bảng tin' },
-  { path: '/community', icon: Compass, label: 'Cộng đồng' },
-  { path: '/studio', icon: Video, label: 'Live Studio' },
-  { path: '/chat', icon: MessageSquare, label: 'Tin nhắn' },
-  { path: '/analytics', icon: BarChart3, label: 'Thống kê' },
-  { path: '/ai-studio', icon: Sparkles, label: 'AI Studio' },
-  { path: '/admin', icon: Settings, label: 'Quản trị' },
-];
 
 const GUEST_ROUTES = ['/login', '/onboarding'];
 
 const App: React.FC = () => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const navigate = useNavigate();
   const location = useLocation();
+  const { user: currentUser } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const { handleLogout } = useLogoutFlow();
+  const isDarkMode = theme === 'dark';
 
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [isDarkMode]);
+  useProfileSync();
 
   const isGuestRoute = GUEST_ROUTES.includes(location.pathname);
   const isCallRoute = location.pathname === '/call';
+  const isLiveImmersiveRoute = /^\/live\/[^/]+/.test(location.pathname);
+  const isJoinRoute = location.pathname.startsWith('/join/');
+  const isChatRoute = location.pathname.startsWith('/chat');
+  const isReelsRoute = location.pathname.startsWith('/reels');
+  const isImmersiveRoute = isChatRoute || isReelsRoute;
+  const routeTransitionKey = isChatRoute ? 'chat' : location.pathname;
+  const shouldRenderAppShell =
+    !isGuestRoute && !isCallRoute && !isLiveImmersiveRoute && !isJoinRoute;
+  const {
+    isMobileViewport,
+    isMobileSidebarOpen,
+    isMobileSearchOpen,
+    isDesktopSidebarExpanded,
+    setIsMobileSidebarOpen,
+    handleToggleSidebar,
+    handleNavigate,
+    toggleMobileSearch,
+  } = useAppShellState(location.pathname);
 
   if (isGuestRoute) {
     return (
-      <div className={cn('min-h-screen transition-colors duration-500', isDarkMode ? 'theme-midnight dark' : 'theme-ethereal')}>
-        <AnimatePresence mode="wait">
+      <div
+        className={cn(
+          'min-h-screen transition-colors duration-500',
+          isDarkMode ? 'theme-midnight dark' : 'theme-ethereal',
+        )}
+      >
+        <AnimatePresence initial={false} mode="sync">
           <motion.div
             key={location.pathname}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 1, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            exit={{ opacity: 1, y: -12 }}
+            transition={{ duration: 0.24, ease: 'easeOut' }}
+            className="min-h-screen bg-background"
           >
             <Suspense fallback={<PageLoader />}>
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/onboarding" element={<OnboardingPage />} />
-              </Routes>
+              <Routes>{guestRouteElements}</Routes>
             </Suspense>
           </motion.div>
         </AnimatePresence>
@@ -87,143 +81,157 @@ const App: React.FC = () => {
   if (isCallRoute) {
     return (
       <Suspense fallback={<PageLoader />}>
-        <Routes>
-          <Route path="/call" element={<CallPage />} />
-        </Routes>
+        <CallProvider>
+          <Routes>
+            <Route path="/call" element={<CallPage />} />
+          </Routes>
+        </CallProvider>
       </Suspense>
     );
   }
 
-  return (
-    <div className={cn('min-h-screen flex transition-colors duration-500', isDarkMode ? 'theme-midnight dark' : 'theme-ethereal')}>
-      {/* Sidebar */}
-      <motion.aside
-        initial={false}
-        animate={{ width: isSidebarOpen ? 280 : 80 }}
+  if (isLiveImmersiveRoute) {
+    return (
+      <div
         className={cn(
-          'h-screen sticky top-0 border-r transition-all duration-500 z-50 flex flex-col',
-          isDarkMode ? 'bg-midnight-bg border-midnight-border' : 'bg-ethereal-bg border-ethereal-border',
+          'min-h-screen transition-colors duration-500',
+          isDarkMode ? 'theme-midnight dark' : 'theme-ethereal',
         )}
       >
-        <div className="p-6 flex items-center gap-3">
-          <img src={logoUrl} alt="User Avatar" className="w-10 h-10" />
-          {isSidebarOpen && (
-            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="font-display font-bold text-xl tracking-tight">
-              HamTech
-            </motion.span>
-          )}
-        </div>
+        <Suspense fallback={<PageLoader />}>
+          <CallProvider>
+            <IncomingCallModal />
+            <Routes>{liveImmersiveRouteElements}</Routes>
+          </CallProvider>
+        </Suspense>
+      </div>
+    );
+  }
 
-        <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
-            return (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
+  return (
+    <ShellRoot
+      className={cn(
+        'transition-colors duration-500',
+        isDarkMode ? 'theme-midnight dark' : 'theme-ethereal',
+      )}
+    >
+      {shouldRenderAppShell && (
+        <div className="hidden md:block shrink-0">
+          <AppSidebar
+            isDarkMode={isDarkMode}
+            isOpen={isDesktopSidebarExpanded}
+            pathname={location.pathname}
+            onNavigate={handleNavigate}
+            onToggleTheme={toggleTheme}
+            onLogout={handleLogout}
+          />
+        </div>
+      )}
+
+      {shouldRenderAppShell && (
+        <AnimatePresence initial={false}>
+          {isMobileSidebarOpen && (
+            <>
+              <motion.button
+                type="button"
+                aria-label="Đóng menu điều hướng"
+                className="fixed inset-0 z-40 bg-black/40 md:hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsMobileSidebarOpen(false)}
+              />
+              <AppSidebar
+                variant="mobile"
+                isDarkMode={isDarkMode}
+                isOpen
+                pathname={location.pathname}
+                onNavigate={handleNavigate}
+                onToggleTheme={toggleTheme}
+                onLogout={handleLogout}
+              />
+            </>
+          )}
+        </AnimatePresence>
+      )}
+
+      <ShellMain>
+        <AnimatePresence initial={false}>
+          {isMobileSearchOpen && (
+            <motion.div
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="fixed top-0 inset-x-0 z-50 p-3 sm:hidden"
+            >
+              <div
                 className={cn(
-                  'w-full flex items-center gap-4 p-3 rounded-xl transition-all group relative',
-                  isActive
-                    ? isDarkMode ? 'bg-white/10 text-blue-500' : 'bg-black/5 text-blue-600'
-                    : isDarkMode ? 'text-midnight-muted hover:text-blue-400' : 'text-ethereal-muted hover:text-blue-600',
+                  'rounded-2xl border p-2 shadow-lg',
+                  isDarkMode ? 'bg-midnight-bg border-midnight-border' : 'bg-card border-border',
                 )}
               >
-                <item.icon className={cn('w-5 h-5', isActive && 'text-blue-600')} />
-                {isSidebarOpen && (
-                  <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="font-medium">
-                    {item.label}
-                  </motion.span>
-                )}
-                {isActive && <motion.div layoutId="active-nav" className="absolute left-0 w-1 h-6 bg-blue-600 rounded-r-full" />}
-              </button>
-            );
-          })}
-        </nav>
+                <GlobalSearchBox
+                  isDarkMode={isDarkMode}
+                  currentUserId={currentUser?.userId}
+                  autoFocusInput
+                  disableOutsideBackdrop
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        <div className="p-4 border-t border-inherit space-y-2">
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-            {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            {isSidebarOpen && <span>{isDarkMode ? 'Sáng' : 'Tối'}</span>}
-          </button>
-          <button onClick={() => navigate('/login')} className="w-full flex items-center gap-4 p-3 rounded-xl hover:bg-red-500/10 text-red-500 transition-all">
-            <LogOut className="w-5 h-5" />
-            {isSidebarOpen && <span>Đăng xuất</span>}
-          </button>
-        </div>
-      </motion.aside>
+        {!isImmersiveRoute && (
+          <AppHeader
+            isDarkMode={isDarkMode}
+            isSidebarOpen={isDesktopSidebarExpanded}
+            isMobile={isMobileViewport}
+            isMobileSidebarOpen={isMobileSidebarOpen}
+            currentUser={currentUser}
+            onToggleSidebar={handleToggleSidebar}
+            onNavigateHome={() => handleNavigate('/')}
+            onOpenProfile={() => handleNavigate('/profile')}
+            onOpenSearch={toggleMobileSearch}
+          />
+        )}
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
-        <header
+        <div
           className={cn(
-            'h-20 px-8 flex items-center justify-between border-b sticky top-0 z-40 backdrop-blur-md',
-            isDarkMode ? 'bg-midnight-bg/80 border-midnight-border' : 'bg-ethereal-bg/80 border-ethereal-border',
+            'flex-1 min-h-0 relative',
+            isImmersiveRoute ? 'overflow-hidden' : 'overflow-y-auto',
+            isReelsRoute ? 'bg-black' : isChatRoute ? 'bg-background' : 'bg-muted/55',
           )}
         >
-          <div className="flex items-center gap-4 flex-1 max-w-xl">
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-              {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeft className="w-5 h-5" />}
-            </button>
-            <div className="relative w-full">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Tìm kiếm người dùng, nội dung, cộng đồng..."
-                className="w-full pl-12 pr-4 py-2.5 rounded-full bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <button className="relative p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-blue-600 rounded-full border-2 border-inherit" />
-            </button>
-            <div className="flex items-center gap-3 pl-6 border-l border-inherit">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-semibold">Người dùng</p>
-                <p className="text-xs text-muted-foreground">Thành viên</p>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-[#f4c25f] flex items-center justify-center text-white font-bold">
-                Z
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto">
-          <AnimatePresence mode="wait">
+          <AnimatePresence initial={false} mode="sync">
             <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, x: 10 }}
+              key={routeTransitionKey}
+              initial={{ opacity: 1, x: 0 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="h-full"
+              exit={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="h-full will-change-transform"
             >
               <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/community" element={<ContactsPage />} />
-                  <Route path="/studio" element={<StudioPage />} />
-                  <Route path="/chat" element={<ChatPage />} />
-                  <Route path="/analytics" element={<AdminAnalytics />} />
-                  <Route path="/ai-studio" element={<AIStudioPage />} />
-                  <Route path="/admin" element={<AdminDashboard />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
+                <CallProvider>
+                  <GroupJoinLinkModalProvider>
+                    <IncomingCallModal />
+                    <Routes>{appRouteElements}</Routes>
+                  </GroupJoinLinkModalProvider>
+                </CallProvider>
               </Suspense>
             </motion.div>
           </AnimatePresence>
         </div>
-      </main>
-    </div>
+      </ShellMain>
+      <ReelUploadToast />
+    </ShellRoot>
   );
 };
 
 const PageLoader: React.FC = () => (
-  <div className="flex items-center justify-center h-full min-h-[50vh]">
-    <div className="w-12 h-12 rounded-full border-4 border-blue-600/20 border-t-blue-600 animate-spin" />
+  <div className="flex h-full min-h-[50vh] items-center justify-center">
+    <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-600/20 border-t-blue-600" />
   </div>
 );
 

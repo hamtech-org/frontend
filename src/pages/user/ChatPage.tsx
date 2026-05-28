@@ -1,206 +1,730 @@
-import { useState } from 'react';
-import { motion } from 'motion/react';
-import { Search, MoreVertical, Phone, Video, Send, Smile, Paperclip, CheckCheck } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { ChatNavRail } from '@/components/chat/ChatNavRail';
+import { ConversationListPanel } from '@/components/chat/ConversationListPanel';
+import { ChatMainContent } from '@/components/chat/ChatMainContent';
+import { AIAssistantPanel } from '@/components/chat/AIAssistantPanel';
+import { ChatSideInfoRail } from '@/components/chat/ChatSideInfoRail';
+import { ConversationInfoPanel } from '@/components/chat/ConversationInfoPanel';
+import { ChatModalsHost } from '@/components/chat/ChatModalsHost';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { useCallContext } from '@/contexts/CallContext';
+import { useSocketContext } from '@/contexts/SocketContext';
+import { ChatPageProvider, useChatPageContextValue } from '@/pages/user/chat-page/ChatPageContext';
+import { useChatModalController } from '@/pages/user/chat-page/hooks/useChatModalController';
+import { useChatMessageData } from '@/pages/user/chat-page/hooks/useChatMessageData';
+import { useChatScrollBehavior } from '@/pages/user/chat-page/hooks/useChatScrollBehavior';
+import { useTaskReminderScheduler } from '@/pages/user/chat-page/hooks/useTaskReminderScheduler';
+import { useChatRealtimeEvents } from '@/pages/user/chat-page/hooks/useChatRealtimeEvents';
+import { useConversationRealtimeLifecycle } from '@/pages/user/chat-page/hooks/useConversationRealtimeLifecycle';
+import { useConversationRoutingSync } from '@/pages/user/chat-page/hooks/useConversationRoutingSync';
+import { useDirectConversationActions } from '@/pages/user/chat-page/hooks/useDirectConversationActions';
+import { useGroupConversationController } from '@/pages/user/chat-page/hooks/useGroupConversationController';
+import { useGroupData } from '@/pages/user/chat-page/hooks/useGroupData';
+import { useMessageModerationActions } from '@/pages/user/chat-page/hooks/useMessageModerationActions';
+import { useChatMobileLayout } from '@/pages/user/chat-page/hooks/useChatMobileLayout';
+import { useMessageJumpNavigation } from '@/pages/user/chat-page/hooks/useMessageJumpNavigation';
+import { useConversationPreferences } from '@/pages/user/chat-page/hooks/useConversationPreferences';
+import { useMessagePinController } from '@/pages/user/chat-page/hooks/useMessagePinController';
+import { useConversationWithFreshGroupSettings } from '@/pages/user/chat-page/hooks/useConversationWithFreshGroupSettings';
+import { resolveGroupMemberRole } from '@/utils/groupConversationPermissions';
+import { useDueTaskNotifications } from '@/pages/user/chat-page/hooks/useDueTaskNotifications';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import {
+  useGetConversationsQuery,
+  useSendMessageMutation,
+  useEditMessageMutation,
+  useDeleteMessageMutation,
+  useRecallMessageMutation,
+  useMarkAsReadMutation,
+} from '@/store/api/chatApi';
+import { useUploadMediaMutation } from '@/store/api/mediaApi';
+import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
+import type { AppDispatch, RootState } from '@/store/store';
+import type { IMessage } from '@/types/chat.types';
+import { decodeJwtUserId } from '@/utils/chatUtils';
+import type { TypingUserEntry } from '@/types/chat.types';
 
-const contacts = [
-  {
-    id: 1,
-    name: 'Elena Vance',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop',
-    lastMsg: 'Hệ thống design mới trông tuyệt vời!',
-    time: '10:24',
-    unread: 2,
-    online: true,
-  },
-  {
-    id: 2,
-    name: 'Marcus Chen',
-    avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&h=100&fit=crop',
-    lastMsg: 'Bạn xem reel mới nhất chưa?',
-    time: '9:15',
-    unread: 0,
-    online: false,
-  },
-  {
-    id: 3,
-    name: 'Sarah Jenkins',
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop',
-    lastMsg: 'Họp lúc 2 giờ chiều nay.',
-    time: 'Hôm qua',
-    unread: 0,
-    online: true,
-  },
-  {
-    id: 4,
-    name: 'Julian Thorne',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop',
-    lastMsg: 'Tutorial đã lên rồi nhé!',
-    time: 'Hôm qua',
-    unread: 0,
-    online: false,
-  },
-];
-
-const messages = [
-  { id: 1, sender: 'Elena Vance', text: 'Hey! Bạn đã xem tính năng AI Studio mới chưa?', time: '10:20', isMe: false },
-  { id: 2, sender: 'Me', text: 'Chưa, mình sắp thử rồi. Có hay không?', time: '10:22', isMe: true },
-  {
-    id: 3,
-    sender: 'Elena Vance',
-    text: 'Tuyệt vời luôn. Tính năng tạo nội dung tự động thay đổi hoàn toàn workflow của mình.',
-    time: '10:23',
-    isMe: false,
-  },
-  { id: 4, sender: 'Elena Vance', text: 'Hệ thống design mới trông tuyệt vời!', time: '10:24', isMe: false },
-];
+const EMPTY_TYPING_USERS: readonly TypingUserEntry[] = [];
 
 export default function ChatPage() {
-  const [activeChat, setActiveChat] = useState(1);
-  const activeContact = contacts.find((c) => c.id === activeChat);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { conversationId: routeConversationId } = useParams<{ conversationId?: string }>();
+  const dispatch = useDispatch<AppDispatch>();
+
+  const isTabletOrDesktop = useBreakpoint('md');
+
+  const currentUser = useSelector((state: RootState) => state.auth.user);
+  const accessToken = useSelector((state: RootState) => state.auth.accessToken);
+  const currentUserId = useMemo(
+    () => currentUser?.userId ?? decodeJwtUserId(accessToken) ?? '',
+    [currentUser?.userId, accessToken],
+  );
+
+  const {
+    data: conversationsData,
+    isLoading: convsLoading,
+    isFetching: convsFetching,
+    refetch: refetchConversations,
+  } = useGetConversationsQuery();
+  const conversations = useMemo(() => conversationsData?.data ?? [], [conversationsData?.data]);
+  const conversationsPinnedToTop = useMemo(
+    () => conversations.filter((c) => c.isPinnedToTop),
+    [conversations],
+  );
+
+  const activeConversationId = useSelector((state: RootState) => state.chat.activeConversationId);
+  const activeConversation = conversations.find((c) => c.conversationId === activeConversationId);
+  const activeConversationForPermissions =
+    useConversationWithFreshGroupSettings(activeConversation);
+
+  const typingUsers = useSelector((state: RootState) => {
+    if (!activeConversationId) return EMPTY_TYPING_USERS;
+    return state.chat.typingUsers[activeConversationId] ?? EMPTY_TYPING_USERS;
+  });
+
+  const messageData = useChatMessageData(activeConversationId);
+
+  const [sendMessage] = useSendMessageMutation();
+  const [uploadMedia] = useUploadMediaMutation();
+  const [editMessage, { isLoading: isEditing }] = useEditMessageMutation();
+  const [deleteMessage] = useDeleteMessageMutation();
+  const [recallMessage] = useRecallMessageMutation();
+  const [markAsRead] = useMarkAsReadMutation();
+
+  const { initiateCall, initiateGroupCall } = useCallContext();
+  const { isConnected } = useSocketContext();
+
+  const {
+    groupMembers,
+    setGroupMembers,
+    groupRequests,
+    setGroupRequests,
+    groupPolls,
+    setGroupPolls,
+    groupTasks,
+    setGroupTasks,
+    groupJoinRequested,
+    setGroupJoinRequested,
+    groupLoading,
+    groupActionLoading,
+    setActionBusy,
+    fetchGroupMembers,
+    fetchGroupRequests,
+    fetchGroupPolls,
+    fetchGroupTasks,
+  } = useGroupData({
+    activeConversationId,
+    activeConversationType: activeConversation?.type,
+    refetchConversations,
+    isSocketReady: isConnected,
+  });
+  const currentUserRole = useMemo(
+    () =>
+      resolveGroupMemberRole({
+        userId: currentUserId,
+        members: groupMembers,
+        conversationLeaderId: activeConversation?.leaderId,
+        conversationCreatorId: activeConversation?.creatorId,
+      }),
+    [currentUserId, groupMembers, activeConversation?.leaderId, activeConversation?.creatorId],
+  );
+
+  const { state: modalState, actions: modalActions } = useChatModalController();
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  const [focusTaskNonce, setFocusTaskNonce] = useState(0);
+  const {
+    mobileView,
+    mobileListOpen,
+    setMobileListOpen,
+    handleSelectConversation,
+    handleBackToList,
+  } = useChatMobileLayout({
+    isTabletOrDesktop,
+    activeConversationId: activeConversationId ?? undefined,
+    routeConversationId,
+    navigate,
+  });
+
+  const convPrefs = useConversationPreferences({
+    activeConversationId,
+    conversations,
+  });
+
+  const pinController = useMessagePinController({
+    dispatch,
+    activeConversation: activeConversationForPermissions,
+    currentUserId,
+    groupMembers,
+    pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
+    allMessages: messageData.allMessages,
+    patchMessageInCache: messageData.patchMessageInCache,
+    setPinnedMessageOrderByConv: messageData.setPinnedMessageOrderByConv,
+    setActionMenuMsgId: modalActions.setActionMenuMsgId,
+  });
+
+  const directActions = useDirectConversationActions({
+    conversations,
+    activeConversation,
+    dispatch,
+    navigate,
+    initiateCall,
+    initiateGroupCall,
+    selectedGroupMembers: modalState.selectedGroupMembers,
+    groupName: modalState.groupName,
+    setShowCreateGroupModal: modalActions.setShowCreateGroupModal,
+    setSelectedGroupMembers: modalActions.setSelectedGroupMembers,
+    setGroupName: modalActions.setGroupName,
+    setShowContactsManagement: modalActions.setShowContactsManagement,
+  });
+
+  const uploadMediaForGroup = useCallback(
+    (payload: { file: File; mediaType: 'image' }) => uploadMedia(payload),
+    [uploadMedia],
+  );
+
+  const groupController = useGroupConversationController({
+    activeConversationId,
+    activeConversation: activeConversationForPermissions,
+    currentUserId,
+    currentUserDisplayName: currentUser?.displayName,
+    currentUserRole,
+    dispatch,
+    uploadMedia: uploadMediaForGroup,
+    groupState: {
+      groupMembers,
+      groupRequests,
+      groupPolls,
+      groupTasks,
+      groupJoinRequested,
+    },
+    groupSetters: {
+      setGroupMembers,
+      setGroupRequests,
+      setGroupPolls,
+      setGroupTasks,
+      setGroupJoinRequested,
+    },
+    groupFetchers: {
+      fetchGroupMembers,
+      fetchGroupRequests,
+      fetchGroupPolls,
+      fetchGroupTasks,
+    },
+    refetchConversations,
+    modalState: {
+      editGroupAvatarPreview: modalState.editGroupAvatarPreview,
+      editGroupName: modalState.editGroupName,
+      editGroupAvatarFile: modalState.editGroupAvatarFile,
+      taskTitle: modalState.taskTitle,
+      taskNote: modalState.taskNote,
+      taskAssignees: modalState.taskAssignees,
+      taskAssignToAll: modalState.taskAssignToAll,
+      taskDeadline: modalState.taskDeadline,
+      pollQuestion: modalState.pollQuestion,
+      pollOptions: modalState.pollOptions,
+      pollMultipleChoice: modalState.pollMultipleChoice,
+      selectedAddMembers: modalState.selectedAddMembers,
+      editingTaskId: modalState.editingTaskId,
+      taskSubtaskRows: modalState.taskSubtaskRows,
+      taskDeleteConfirm: modalState.taskDeleteConfirm,
+    },
+    modalActions: {
+      setEditGroupName: modalActions.setEditGroupName,
+      setEditGroupAvatarFile: modalActions.setEditGroupAvatarFile,
+      setEditGroupAvatarPreview: modalActions.setEditGroupAvatarPreview,
+      setShowEditGroupModal: modalActions.setShowEditGroupModal,
+      setSelectedAddMembers: modalActions.setSelectedAddMembers,
+      setShowAddMembersModal: modalActions.setShowAddMembersModal,
+      closeTaskModal: modalActions.closeTaskModal,
+      setShowAISummaryModal: modalActions.setShowAISummaryModal,
+      setAiSummaryResult: modalActions.setAiSummaryResult,
+      setAiSummaryLoading: modalActions.setAiSummaryLoading,
+      setShowPollModal: modalActions.setShowPollModal,
+      setPollQuestion: modalActions.setPollQuestion,
+      setPollOptions: modalActions.setPollOptions,
+      setPollMultipleChoice: modalActions.setPollMultipleChoice,
+      setTaskAssignToAll: modalActions.setTaskAssignToAll,
+      setTaskAssignees: modalActions.setTaskAssignees,
+      setActivePollId: modalActions.setActivePollId,
+      setShowPollVoteModal: modalActions.setShowPollVoteModal,
+      setShowTaskModal: modalActions.setShowTaskModal,
+      setTaskTitle: modalActions.setTaskTitle,
+      setTaskNote: modalActions.setTaskNote,
+      setTaskDeadline: modalActions.setTaskDeadline,
+      setEditingTaskId: modalActions.setEditingTaskId,
+      setTaskDeleteConfirm: modalActions.setTaskDeleteConfirm,
+      setTaskSubtaskRows: modalActions.setTaskSubtaskRows,
+    },
+    setActionBusy,
+    navigate,
+  });
+
+  const { handleSaveEdit, handleRecallMsg, handleDeleteMsg, handleMessageConfirm } =
+    useMessageModerationActions({
+      dispatch,
+      editingMessage: modalState.editingMessage,
+      editDraft: modalState.editDraft,
+      setEditingMessage: modalActions.setEditingMessage,
+      setActionMenuMsgId: modalActions.setActionMenuMsgId,
+      messageConfirm: modalState.messageConfirm,
+      setMessageConfirm: modalActions.setMessageConfirm,
+      setMessageConfirmSubmitting: modalActions.setMessageConfirmSubmitting,
+      patchMessageInCache: messageData.patchMessageInCache,
+      removeMessageFromCache: (conversationId, messageId) =>
+        applyMessageHiddenForMe(dispatch, conversationId, messageId),
+      editMessage,
+      recallMessage,
+      deleteMessage,
+    });
+
+  const messageActions = useMemo(
+    () => ({
+      handleSaveEdit,
+      handleRecallMsg,
+      handleDeleteMsg,
+      handleMessageConfirm,
+      handleTogglePinMsg: pinController.handleTogglePinMsg,
+      handleReactMessage: messageData.handleReactMessage,
+    }),
+    [
+      handleSaveEdit,
+      handleRecallMsg,
+      handleDeleteMsg,
+      handleMessageConfirm,
+      pinController.handleTogglePinMsg,
+      messageData.handleReactMessage,
+    ],
+  );
+
+  useConversationRoutingSync({
+    dispatch,
+    routeConversationId,
+    conversations,
+    convsLoading,
+    convsFetching,
+    navigate,
+  });
+
+  useConversationRealtimeLifecycle({
+    activeConversationId,
+    latestMessageIdForRead: messageData.latestMessageIdForRead,
+    dispatch,
+    markAsRead,
+  });
+
+  useChatRealtimeEvents({
+    dispatch,
+    isConnected,
+    activeConversationId,
+    currentUserId,
+    setActivePollId: modalActions.setActivePollId,
+    setShowPollVoteModal: modalActions.setShowPollVoteModal,
+    fetchGroupMembers,
+    patchMessageInCache: messageData.patchMessageInCache,
+    setPinnedMessageOrderByConv: messageData.setPinnedMessageOrderByConv,
+    navigate,
+  });
+
+  const {
+    jumpHighlightMessageId,
+    jumpFlashNonce,
+    conversationSearchRequestTick,
+    scrollToMessageBubble,
+    requestOpenConversationSearch,
+  } = useMessageJumpNavigation({
+    activeConversationId: activeConversationId ?? undefined,
+    onRequestOpenSearchPanel: () => {
+      modalActions.setShowInfo(true);
+    },
+  });
+
+  const {
+    messagesContainerRef,
+    messagesEndRef,
+    unreadIncomingCount,
+    isScrolledUp,
+    handleJumpToLatest,
+  } = useChatScrollBehavior({
+    allMessages: messageData.allMessages,
+    activeConversationId,
+    currentUserId,
+    typingUsers,
+    actionMenuMsgId: modalState.actionMenuMsgId,
+    setActionMenuMsgId: modalActions.setActionMenuMsgId,
+    loadOlderMessages: messageData.loadOlderMessages,
+    hasMore: messageData.hasMore,
+    isLoadingOlder: messageData.isLoadingOlder,
+  });
+
+  useEffect(() => {
+    modalActions.setMessageConfirm(null);
+  }, [activeConversationId, modalActions]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search ?? '');
+    const next = String(sp.get('focusTaskId') ?? '').trim();
+    if (!next) return;
+    setFocusTaskId(next);
+    setFocusTaskNonce((x) => x + 1);
+    modalActions.setShowInfo(true);
+  }, [location.search, modalActions]);
+
+  const handleForwardMediaMessage = useCallback(
+    async (targetConversationIds: string[], msg: IMessage, caption: string) => {
+      if (targetConversationIds.length === 0) return;
+      if (!msg.mediaUrl || (msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'file')) {
+        throw new Error('invalid');
+      }
+      const text = caption.trim();
+      const content = text.length > 0 ? text : ' ';
+      for (const targetConversationId of targetConversationIds) {
+        await sendMessage({
+          conversationId: targetConversationId,
+          type: msg.type,
+          content,
+          mediaUrl: msg.mediaUrl,
+        }).unwrap();
+      }
+    },
+    [sendMessage],
+  );
+
+  const handleFriendClick = useCallback(
+    async (friendId: string, friendName: string) => {
+      await directActions.handleFriendClick(friendId, friendName);
+    },
+    [directActions],
+  );
+
+  const handleGroupClick = useCallback(
+    async (conversationId: string, groupName: string) => {
+      await directActions.handleGroupClick(conversationId, groupName);
+    },
+    [directActions],
+  );
+
+  const handleOpenMessages = useCallback(() => {
+    setShowAIAssistant(false);
+    modalActions.setShowContactsManagement(false);
+  }, [modalActions]);
+
+  const handleToggleContacts = useCallback(() => {
+    setShowAIAssistant(false);
+    modalActions.setShowContactsManagement((v) => !v);
+    modalActions.setContactsTab('friends');
+  }, [modalActions]);
+
+  const handleOpenAIAssistant = useCallback(() => {
+    setShowAIAssistant(true);
+    modalActions.setShowContactsManagement(false);
+    modalActions.setShowInfo(false);
+  }, [modalActions]);
+
+  const handleOpenAiMessageResult = useCallback(
+    async (conversationId: string, messageId: string) => {
+      setShowAIAssistant(false);
+      handleSelectConversation(conversationId);
+      window.setTimeout(() => {
+        scrollToMessageBubble(messageId);
+      }, 180);
+    },
+    [handleSelectConversation, scrollToMessageBubble],
+  );
+
+  const handleOpenAiGroupResult = useCallback(
+    async (groupId: string) => {
+      setShowAIAssistant(false);
+      handleSelectConversation(groupId);
+    },
+    [handleSelectConversation],
+  );
+
+  const handleOpenProfile = useCallback(() => {
+    navigate('/profile');
+  }, [navigate]);
+
+  const handleOpenMarkRead = useCallback(() => {
+    modalActions.setShowMarkReadModal(true);
+  }, [modalActions]);
+
+  const handleOpenAddFriend = useCallback(() => {
+    modalActions.setShowAddFriendModal(true);
+  }, [modalActions]);
+
+  const handleToggleShowInfo = useCallback(() => {
+    modalActions.setShowInfo((v) => !v);
+  }, [modalActions]);
+
+  const handleCloseInfo = useCallback(() => {
+    modalActions.setShowInfo(false);
+  }, [modalActions]);
+
+  const handleStartEdit = useCallback(
+    (msg: IMessage) => {
+      if (msg.type !== 'text') return;
+      modalActions.setEditingMessage(msg);
+      modalActions.setEditDraft(msg.content);
+    },
+    [modalActions],
+  );
+
+  const openCreateGroupModal = modalActions.openCreateGroupModal;
+
+  const contextValue = useChatPageContextValue({
+    currentUserId,
+    currentUserRole,
+    activeConversationId,
+    activeConversation: activeConversationForPermissions,
+    groupMembers,
+    groupRequests,
+    groupPolls,
+    groupTasks,
+    groupJoinRequested,
+    groupLoading,
+    groupActionLoading,
+    setGroupTasks,
+    messages: messageData.allMessages,
+    groupActions: groupController,
+    directActions,
+    messageActions,
+  });
+
+  useTaskReminderScheduler({
+    conversationId: activeConversationId,
+    tasks: groupTasks,
+    members: groupMembers.map((m) => ({ userId: m.userId, displayName: m.displayName })),
+    currentUserId,
+  });
+
+  useDueTaskNotifications({
+    conversations,
+    currentUserId,
+  });
+
+  const convListPanelProps = {
+    conversations,
+    convsLoading,
+    activeMessages: messageData.allMessages,
+    showContactsManagement: modalState.showContactsManagement,
+    contactsTab: modalState.contactsTab,
+    onContactsTabChange: modalActions.setContactsTab,
+    onSelectConversation: handleSelectConversation,
+    onPickSearchMessage: scrollToMessageBubble,
+    onOpenCreateGroup: openCreateGroupModal,
+    onOpenMarkRead: handleOpenMarkRead,
+    onOpenAddFriend: handleOpenAddFriend,
+    onToggleConversationMute: convPrefs.handleToggleConversationMute,
+  };
+
+  const conversationInfoPanel = (
+    <ConversationInfoPanel
+      numRequests={groupRequests.length}
+      activeConversation={activeConversationForPermissions}
+      onOpenAISummaryFromPanel={groupController.openAISummaryFromPanel}
+      onEditGroup={groupController.openEditGroupModal}
+      onAddMembers={groupController.openAddMembersModal}
+      onOpenCreateGroup={openCreateGroupModal}
+      onToggleMuteNotifications={
+        activeConversationId
+          ? () => void convPrefs.handleToggleConversationMute(activeConversationId)
+          : undefined
+      }
+      onApplyMuteFromModal={activeConversationId ? convPrefs.handleApplyMuteFromModal : undefined}
+      onTogglePinConversation={
+        activeConversationId
+          ? () => void convPrefs.handleToggleConversationPin(activeConversationId)
+          : undefined
+      }
+      onRequestJoin={() => void groupController.handleRequestJoin()}
+      onVotePoll={(pollId, optionIndex) => void groupController.handleVotePoll(pollId, optionIndex)}
+      onOpenPollVote={(pollId) => groupController.openPollVoteModal(pollId)}
+      onAddPollOption={(pollId) => void groupController.handleAddPollOption(pollId)}
+      onClosePoll={(pollId) => void groupController.handleClosePoll(pollId)}
+      onOpenPollModalFromPanel={
+        activeConversation?.type === 'group' ? () => modalActions.setShowPollModal(true) : undefined
+      }
+      onOpenTaskModalFromPanel={
+        activeConversation?.type === 'group' ? groupController.openCreateTaskModal : undefined
+      }
+      polls={groupPolls}
+      tasks={groupTasks}
+      isJoinRequested={groupJoinRequested}
+      loading={{
+        polls: groupLoading.polls || groupActionLoading.votePoll,
+        tasks: groupLoading.tasks || groupActionLoading.updateTask,
+        recap: groupLoading.recap || groupActionLoading.generateRecap,
+        requestJoin: groupActionLoading.requestJoin,
+        updateGroup: groupActionLoading.updateGroup,
+        leaveGroup: groupActionLoading.leaveGroup,
+        deleteGroup: groupActionLoading.deleteGroup,
+      }}
+      onLeaveGroup={groupController.handleLeaveGroup}
+      onDeleteGroup={groupController.handleDeleteGroup}
+      onTransferGroupOwner={(userId, currentOwnerNewRole) =>
+        void groupController.handleTransferGroupOwner(userId, currentOwnerNewRole)
+      }
+      onOpenMemberModal={() => {}}
+      currentUserRole={currentUserRole}
+      currentUserId={currentUserId}
+      members={groupMembers}
+      requests={groupRequests}
+      onApproveMember={groupController.handleApproveRequest}
+      onRejectMember={groupController.handleRejectRequest}
+      onKickMember={groupController.handleKickMember}
+      onDemoteAdminToMember={groupController.handleDemoteAdminToMember}
+      onPromoteMemberToAdmin={groupController.handlePromoteMemberToAdmin}
+      busyMemberActions={{
+        approving: groupActionLoading.approveRequest,
+        rejecting: groupActionLoading.rejectRequest,
+        removing: groupActionLoading.removeMember,
+        changingRole: groupActionLoading.changeRole,
+      }}
+      conversationMessages={messageData.allMessages}
+      conversationSearchRequestTick={conversationSearchRequestTick}
+      onJumpToMessage={scrollToMessageBubble}
+      onTaskJoined={(taskId) => void groupController.handleTaskJoined(taskId)}
+      onEditTaskFromBulletin={(t) => groupController.openEditTaskFromGroupTask(String(t.taskId))}
+      onDeleteTaskFromBulletin={(id) => void groupController.handleDeleteGroupTask(id)}
+      taskActionBusy={groupActionLoading.createTask || groupActionLoading.updateTask}
+      focusTaskId={focusTaskId}
+      focusTaskNonce={focusTaskNonce}
+    />
+  );
 
   return (
-    <div className="h-full flex overflow-hidden bg-ethereal-bg dark:bg-midnight-bg">
-      <div className="w-96 border-r border-inherit flex flex-col shrink-0">
-        <div className="p-6 space-y-6">
-          <h1 className="text-2xl font-display font-bold tracking-tight">Tin nhắn</h1>
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Tìm kiếm tin nhắn..."
-              className="w-full pl-12 pr-4 py-3 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none"
+    <ChatPageProvider value={contextValue}>
+      <div className="w-full h-full min-h-0 flex overflow-hidden bg-background">
+        <ChatNavRail
+          onOpenProfile={handleOpenProfile}
+          showContactsManagement={modalState.showContactsManagement}
+          showAIAssistant={showAIAssistant}
+          onOpenMessages={handleOpenMessages}
+          onToggleContacts={handleToggleContacts}
+          onOpenAIAssistant={handleOpenAIAssistant}
+        />
+
+        {!showAIAssistant && (
+          <div className="hidden md:flex md:shrink-0">
+            <ConversationListPanel {...convListPanelProps} />
+          </div>
+        )}
+
+        {!showAIAssistant && !isTabletOrDesktop && mobileView === 'list' && (
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
+            <ConversationListPanel {...convListPanelProps} />
+          </div>
+        )}
+
+        {!showAIAssistant && !isTabletOrDesktop && (
+          <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
+            <SheetContent
+              side="left"
+              className="w-[clamp(280px,85vw,360px)] max-w-[100vw] p-0 overflow-y-auto"
+            >
+              <SheetTitle className="sr-only">Danh sách hội thoại</SheetTitle>
+              <ConversationListPanel {...convListPanelProps} />
+            </SheetContent>
+          </Sheet>
+        )}
+
+        {showAIAssistant ? (
+          <AIAssistantPanel
+            onOpenDirectChat={async (otherUserId, otherDisplayName) => {
+              await directActions.handleFriendClick(otherUserId, otherDisplayName);
+              setShowAIAssistant(false);
+            }}
+            onOpenMessage={handleOpenAiMessageResult}
+            onOpenGroup={handleOpenAiGroupResult}
+          />
+        ) : (
+          (isTabletOrDesktop || mobileView === 'chat') && (
+            <ChatMainContent
+              showContactsManagement={modalState.showContactsManagement}
+              contactsTab={modalState.contactsTab}
+              showInfo={modalState.showInfo}
+              onToggleShowInfo={handleToggleShowInfo}
+              onOpenConversationList={undefined}
+              typingUsers={typingUsers}
+              pinned={{
+                pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
+                pinnedMessageCount: activeConversation?.pinnedMessageCount ?? 0,
+                onScrollToMessage: scrollToMessageBubble,
+                onTogglePin: pinController.handleTogglePinMsg,
+              }}
+              scroll={{
+                containerRef: messagesContainerRef,
+                endRef: messagesEndRef,
+                allMessages: messageData.allMessages,
+                unreadIncomingCount,
+                isScrolledUp,
+                onJumpToLatest: handleJumpToLatest,
+              }}
+              jumpHighlightMessageId={jumpHighlightMessageId}
+              jumpFlashNonce={jumpFlashNonce}
+              onJumpToMessage={scrollToMessageBubble}
+              actionMenuMsgId={modalState.actionMenuMsgId}
+              onActionMenuMsgIdChange={modalActions.setActionMenuMsgId}
+              onStartEdit={handleStartEdit}
+              onOpenPoll={() => modalActions.setShowPollModal(true)}
+              onOpenTask={groupController.openCreateTaskModal}
+              onSearchMessages={activeConversationId ? requestOpenConversationSearch : undefined}
+              resolvedMemberCount={
+                activeConversation?.type === 'group' && groupMembers.length > 0
+                  ? groupMembers.length
+                  : undefined
+              }
+              onFriendClick={handleFriendClick}
+              onGroupClick={handleGroupClick}
+              groupConversations={conversations.filter((c) => c.type === 'group')}
+              shareTargetConversations={conversations}
+              onForwardMediaMessage={handleForwardMediaMessage}
+              onBack={!isTabletOrDesktop ? handleBackToList : undefined}
+              onEditGroupTask={(id) => groupController.openEditTaskFromGroupTask(id)}
+              onDeleteGroupTask={(id) => void groupController.handleDeleteGroupTask(id)}
+              postMessageListSlot={null}
             />
-          </div>
-        </div>
+          )
+        )}
 
-        <div className="flex-1 overflow-y-auto px-4 space-y-2 min-h-0">
-          {contacts.map((contact) => (
-            <button
-              key={contact.id}
-              type="button"
-              onClick={() => setActiveChat(contact.id)}
-              className={`w-full p-4 rounded-2xl flex items-center gap-4 transition-all group ${
-                activeChat === contact.id
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                  : 'hover:bg-black/5 dark:hover:bg-white/5'
-              }`}
-            >
-              <div className="relative flex-shrink-0">
-                <img
-                  src={contact.avatar}
-                  alt={contact.name}
-                  className="w-12 h-12 rounded-full object-cover border-2 border-inherit"
-                  referrerPolicy="no-referrer"
-                />
-                {contact.online && (
-                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-inherit" />
-                )}
-              </div>
-              <div className="flex-1 text-left overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <p className="font-bold truncate">{contact.name}</p>
-                  <p className={`text-xs ${activeChat === contact.id ? 'text-white/60' : 'text-muted-foreground'}`}>{contact.time}</p>
-                </div>
-                <p className={`text-sm truncate ${activeChat === contact.id ? 'text-white/80' : 'text-muted-foreground'}`}>
-                  {contact.lastMsg}
-                </p>
-              </div>
-              {contact.unread > 0 && activeChat !== contact.id && (
-                <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center text-[10px] font-bold text-white">
-                  {contact.unread}
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
+        {!showAIAssistant && (
+          <ChatSideInfoRail
+            showInfo={modalState.showInfo}
+            showContactsManagement={modalState.showContactsManagement}
+            onClose={handleCloseInfo}
+          >
+            {conversationInfoPanel}
+          </ChatSideInfoRail>
+        )}
+
+        <ChatModalsHost
+          state={modalState}
+          actions={modalActions}
+          isEditing={isEditing}
+          pinLimit={{
+            pinLimitModalMsg: pinController.pinLimitModalMsg,
+            setPinLimitModalMsg: pinController.setPinLimitModalMsg,
+            pinnedMessagesOrdered: messageData.pinnedMessagesOrdered,
+            pinReplaceIndex: pinController.pinReplaceIndex,
+            setPinReplaceIndex: pinController.setPinReplaceIndex,
+            pinLimitSubmitting: pinController.pinLimitSubmitting,
+            onConfirmPinReplace: pinController.handleConfirmPinReplace,
+          }}
+          convPinLimit={{
+            convPinLimitPendingId: convPrefs.convPinLimitPendingId,
+            setConvPinLimitPendingId: convPrefs.setConvPinLimitPendingId,
+            convPinLimitConfirmBusy: convPrefs.convPinLimitConfirmBusy,
+            convPinLimitUnpinningId: convPrefs.convPinLimitUnpinningId,
+            conversationsPinnedToTop,
+            conversations,
+            onUnpinConversation: convPrefs.handleUnpinFromConvPinModal,
+            onConfirmPinPending: convPrefs.handleConfirmPendingConvPin,
+          }}
+        />
       </div>
-
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <div className="h-20 px-8 flex items-center justify-between border-b border-inherit bg-inherit/80 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-blue-600/20">
-              <img
-                src={activeContact?.avatar}
-                alt={activeContact?.name ?? 'Chat'}
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-            <div>
-              <h2 className="font-bold leading-tight">{activeContact?.name}</h2>
-              <p className="text-xs text-green-500 font-bold">Đang hoạt động</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="button" className="p-3 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-              <Phone className="w-5 h-5" />
-            </button>
-            <button type="button" className="p-3 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-              <Video className="w-5 h-5" />
-            </button>
-            <button type="button" className="p-3 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all">
-              <MoreVertical className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-8 space-y-8 min-h-0">
-          <div className="flex justify-center">
-            <span className="px-4 py-1 rounded-full bg-black/5 dark:bg-white/5 text-xs font-bold text-muted-foreground uppercase tracking-widest">
-              Hôm nay
-            </span>
-          </div>
-          {messages.map((msg) => (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, y: 10, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}
-            >
-              <div className={`max-w-[70%] space-y-1 ${msg.isMe ? 'items-end' : 'items-start'}`}>
-                <div
-                  className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${
-                    msg.isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-black/5 dark:bg-white/5 rounded-tl-none'
-                  }`}
-                >
-                  {msg.text}
-                </div>
-                <div className="flex items-center gap-2 px-1">
-                  <p className="text-[10px] text-muted-foreground font-bold">{msg.time}</p>
-                  {msg.isMe && <CheckCheck className="w-3 h-3 text-blue-600" />}
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-
-        <div className="p-8 border-t border-inherit shrink-0">
-          <div className="max-w-4xl mx-auto relative flex items-center gap-4">
-            <button type="button" className="p-3 rounded-2xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-all">
-              <Paperclip className="w-5 h-5" />
-            </button>
-            <div className="flex-1 relative">
-              <input
-                type="text"
-                placeholder="Nhập tin nhắn..."
-                className="w-full pl-6 pr-12 py-4 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 ring-blue-600/20 transition-all outline-none text-sm font-medium"
-              />
-              <button
-                type="button"
-                className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-blue-600 transition-all"
-              >
-                <Smile className="w-5 h-5" />
-              </button>
-            </div>
-            <button
-              type="button"
-              className="p-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 transition-all group"
-            >
-              <Send className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </ChatPageProvider>
   );
 }

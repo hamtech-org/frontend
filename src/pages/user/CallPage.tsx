@@ -1,23 +1,877 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Mic, MicOff, Video, VideoOff, PhoneOff, Maximize2, Minimize2, 
-  MessageSquare, Users, Settings, MoreHorizontal, Volume2, VolumeX, Sparkles 
+import {
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  PhoneOff,
+  Maximize2,
+  Minimize2,
+  MonitorUp,
+  MonitorOff,
+  LogOut,
+  Users,
+  Pin,
+  PinOff,
+  PanelRight,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
+import AgoraRTC, {
+  type IAgoraRTCClient,
+  type IMicrophoneAudioTrack,
+  type ICameraVideoTrack,
+  type ILocalAudioTrack,
+  type ILocalVideoTrack,
+  type IAgoraRTCRemoteUser,
+} from 'agora-rtc-react';
+import { useCallContext } from '@/contexts/CallContext';
+import { socketService } from '@/services/socket';
+import { groupApi } from '@/services/chat/groupApi';
+import { apiClient } from '@/services/api';
+import type { RootState, AppDispatch } from '@/store/store';
+import {
+  setCameraAvailability,
+  setCameraEnabled,
+  setCallConnected,
+  setCallEnded,
+  resetCall,
+  setScreenSharing,
+  setEndReason,
+  setMicAvailability,
+  setMicEnabled,
+  setReceiveOnly,
+} from '@/store/slices/callSlice';
+import outgoingRingback from '@/assets/ringtones/amThanhGoi.mp3';
+import SparkMD5 from 'spark-md5';
+import { GROUP_TILE_GAP_PX, gridColsRows, maxTilesPerPage } from '@/utils/groupCallVideoGrid';
+import { toast } from 'react-toastify';
+import type { CallDeviceAvailability } from '@/types/call.types';
 
 export default function CallPage() {
   const navigate = useNavigate();
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-  const [isFullScreen, setIsFullScreen] = useState(false);
-  const [timer, setTimer] = useState(0);
+  const dispatch = useDispatch<AppDispatch>();
+  const [searchParams] = useSearchParams();
+  const channelName = searchParams.get('channel');
+  const urlCallType = searchParams.get('type') as 'audio' | 'video' | null;
+  const conversationIdParam = searchParams.get('conversationId');
+  const returnToParam = searchParams.get('returnTo');
+  const scopeParam = searchParams.get('scope');
+  const hostIdParam = searchParams.get('hostId');
+
+  const {
+    endCall,
+    leaveGroupCall,
+    endGroupCallForAll,
+    fetchAgoraToken,
+    appId,
+    onToggleMic,
+    onToggleCamera,
+    requestUpgradeToVideo,
+    respondUpgradeToVideo,
+  } = useCallContext();
+  const {
+    status,
+    callType,
+    callScope,
+    hostId,
+    callerId,
+    isMicOn,
+    isCameraOn,
+    micAvailability,
+    cameraAvailability,
+    micErrorMessage,
+    cameraErrorMessage,
+    receiveOnly,
+    upgradeStatus,
+    isScreenSharing,
+    returnTo,
+    conversationId,
+    calleeId,
+    endReason,
+  } = useSelector((state: RootState) => state.call);
+  const currentUserId = useSelector((state: RootState) => state.auth.user?.userId ?? '');
+
+  const resolvedReturnTo = decodeURIComponent(returnToParam || returnTo || '/chat');
+  const resolvedConversationId = decodeURIComponent(conversationIdParam || conversationId || '');
+  const resolvedConversationIdRef = useRef(resolvedConversationId);
+  resolvedConversationIdRef.current = resolvedConversationId;
+
+  const userIdToAgoraUid = useCallback((userId: string): number => {
+    // Backend: md5(userId) -> readUInt32BE(0)
+    // SparkMD5 trả hex string 32 ký tự; 4 bytes đầu = 8 ký tự hex đầu.
+    const hex = SparkMD5.hash(userId);
+    return (parseInt(hex.slice(0, 8), 16) >>> 0) as number;
+  }, []);
+
+  const [agoraUidToName, setAgoraUidToName] = useState<Map<number, string>>(new Map());
+  const agoraUidToNameRef = useRef(agoraUidToName);
+  agoraUidToNameRef.current = agoraUidToName;
 
   useEffect(() => {
-    const interval = setInterval(() => setTimer(t => t + 1), 1000);
-    return () => clearInterval(interval);
+    // Lấy danh sách thành viên group để map uid -> displayName.
+    // Chỉ cần khi đang call group.
+    const groupId = resolvedConversationId;
+    if (
+      !groupId ||
+      !(scopeParam === 'group' || callScope === 'group' || channelName?.startsWith('grp_'))
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        // Ưu tiên endpoint members của conversation (đã thấy request này chạy trong UI).
+        // Fallback sang groups/:id/members nếu backend cũ chỉ hỗ trợ group endpoint.
+        const res =
+          (await apiClient.get<{ data?: any[] }>(`/chat/conversations/${groupId}/members`)) ??
+          (await groupApi.getMembers(groupId));
+        const members = (res as any)?.data?.data ?? [];
+        const map = new Map<number, string>();
+        for (const m of members as Array<{
+          userId?: string;
+          displayName?: string;
+          email?: string;
+        }>) {
+          const uid = m.userId ? userIdToAgoraUid(m.userId) : null;
+          if (!uid) continue;
+          const name = (m.displayName || m.email || '').trim();
+          if (name) map.set(uid, name);
+        }
+        if (!cancelled) setAgoraUidToName(map);
+      } catch {
+        if (!cancelled) setAgoraUidToName(new Map());
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedConversationId, scopeParam, callScope, channelName, userIdToAgoraUid]);
+
+  const labelForAgoraUid = useCallback((uid: unknown): string => {
+    const n = typeof uid === 'number' ? uid : Number(uid);
+    if (!Number.isFinite(n)) return 'Ẩn danh';
+    return agoraUidToNameRef.current.get(n) ?? 'Ẩn danh';
   }, []);
+
+  const isGroup =
+    callScope === 'group' || scopeParam === 'group' || Boolean(channelName?.startsWith('grp_'));
+  const hostIdResolved = (hostId || hostIdParam || '').trim();
+  const isHost = Boolean(hostIdResolved && currentUserId && hostIdResolved === currentUserId);
+
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [timer, setTimer] = useState(0);
+  const [remoteUser, setRemoteUser] = useState<IAgoraRTCRemoteUser | null>(null);
+  /** UIDs người xa (nhóm) — cập nhật khi publish audio/video. */
+  const [remoteUids, setRemoteUids] = useState<number[]>([]);
+  const [joined, setJoined] = useState(false);
+  const [remoteHasVideo, setRemoteHasVideo] = useState(false);
+  /** Ghim video (camera hoặc màn hình chia sẻ) của một remote trong cuộc gọi nhóm — hiển thị fullscreen phía trên. */
+  const [pinnedRemoteUid, setPinnedRemoteUid] = useState<number | null>(null);
+  const [groupView, setGroupView] = useState<'grid' | 'pinned' | 'participants'>('grid');
+  const [filmstripVisible, setFilmstripVisible] = useState(false);
+  const groupViewRef = useRef(groupView);
+  groupViewRef.current = groupView;
+  const filmstripVisibleRef = useRef(filmstripVisible);
+  filmstripVisibleRef.current = filmstripVisible;
+  const ringbackRef = useRef<HTMLAudioElement | null>(null);
+  const deviceToastRef = useRef<string | number | null>(null);
+  const lastDeviceToastMessageRef = useRef<string | null>(null);
+
+  const clientRef = useRef<IAgoraRTCClient | null>(null);
+  const isGroupRef = useRef(isGroup);
+  isGroupRef.current = isGroup;
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  const callTypeRef = useRef(callType);
+  callTypeRef.current = callType;
+  const callerIdRef = useRef(callerId);
+  callerIdRef.current = callerId;
+  const calleeIdRef = useRef(calleeId);
+  calleeIdRef.current = calleeId;
+  const isMicOnRef = useRef(isMicOn);
+  isMicOnRef.current = isMicOn;
+  const isCameraOnRef = useRef(isCameraOn);
+  isCameraOnRef.current = isCameraOn;
+  const rtcJoinedRef = useRef(false);
+  const pinnedRemoteUidRef = useRef<number | null>(null);
+  pinnedRemoteUidRef.current = pinnedRemoteUid;
+
+  const micTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
+  const camTrackRef = useRef<ICameraVideoTrack | null>(null);
+  const screenTrackRef = useRef<ILocalVideoTrack | null>(null);
+  const screenAudioTrackRef = useRef<ILocalAudioTrack | null>(null);
+  const localVideoRef = useRef<HTMLDivElement>(null);
+  const remoteVideoRef = useRef<HTMLDivElement>(null);
+  /** Giới hạn kéo PiP “Bạn” trong toàn màn hình gọi (thay dragConstraints số cố định). */
+  const callShellRef = useRef<HTMLDivElement>(null);
+  const pinnedMainRef = useRef<HTMLDivElement>(null);
+
+  /** Kích thước vùng lưới video nhóm (ước lượng từ viewport — header + footer + PiP). */
+  const [groupGridViewport, setGroupGridViewport] = useState({ width: 0, height: 0 });
+  const [groupVideoPage, setGroupVideoPage] = useState(0);
+
+  const isVideoCall = (urlCallType ?? callType) === 'video';
+  const isVideoCallRef = useRef(isVideoCall);
+  if (isVideoCall) isVideoCallRef.current = true;
+  const currentCallIsVideo = callType === 'video' || (!isGroup && upgradeStatus === 'accepted');
+
+  const createTrackWithRetry = async <T,>(
+    factory: () => Promise<T>,
+    retries = 3,
+    delayMs = 800,
+  ): Promise<T> => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await factory();
+      } catch (e: unknown) {
+        const isDeviceBusy = e instanceof Error && /NOT_READABLE|in use/i.test(e.message);
+        if (!isDeviceBusy || i === retries - 1) throw e;
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+    throw new Error('Track creation failed');
+  };
+
+  const describeDeviceFailure = useCallback((kind: 'mic' | 'camera', error: unknown) => {
+    const raw =
+      error instanceof Error ? error.message : typeof error === 'string' ? error : 'Thiết bị lỗi.';
+    const msg = raw.trim() || 'Thiết bị lỗi.';
+    const lowered = msg.toLowerCase();
+    let availability: CallDeviceAvailability = 'failed';
+    if (
+      lowered.includes('permission') ||
+      lowered.includes('denied') ||
+      lowered.includes('notallowed') ||
+      lowered.includes('allowed')
+    ) {
+      availability = 'blocked';
+    } else if (
+      lowered.includes('not found') ||
+      lowered.includes('notfound') ||
+      lowered.includes('no device') ||
+      lowered.includes('unavailable')
+    ) {
+      availability = 'unavailable';
+    }
+    const errorMessage =
+      availability === 'blocked'
+        ? kind === 'mic'
+          ? 'Không có quyền micro. Bạn chỉ có thể nghe cho đến khi bật lại quyền.'
+          : 'Không có quyền camera. Bạn sẽ tham gia mà không bật camera.'
+        : availability === 'unavailable'
+          ? kind === 'mic'
+            ? 'Micro không khả dụng trên thiết bị này.'
+            : 'Camera không khả dụng trên thiết bị này.'
+          : kind === 'mic'
+            ? 'Không thể bật micro.'
+            : 'Không thể bật camera.';
+    return { availability, errorMessage };
+  }, []);
+
+  useEffect(() => {
+    const audio = new Audio(outgoingRingback);
+    audio.loop = true;
+    audio.volume = 0.55;
+    ringbackRef.current = audio;
+    return () => {
+      audio.pause();
+      audio.currentTime = 0;
+      ringbackRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const audio = ringbackRef.current;
+    if (!audio) return;
+    const shouldPlay = status === 'outgoing-ringing';
+    if (shouldPlay) {
+      void audio.play().catch(() => undefined);
+    } else {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+  }, [status]);
+
+  const applyMicFailure = useCallback(
+    (error: unknown) => {
+      const probe = describeDeviceFailure('mic', error);
+      dispatch(
+        setMicAvailability({
+          availability: probe.availability,
+          errorMessage: probe.errorMessage,
+          forceEnabled: false,
+        }),
+      );
+      return probe;
+    },
+    [describeDeviceFailure, dispatch],
+  );
+
+  const applyCameraFailure = useCallback(
+    (error: unknown) => {
+      const probe = describeDeviceFailure('camera', error);
+      dispatch(
+        setCameraAvailability({
+          availability: probe.availability,
+          errorMessage: probe.errorMessage,
+          forceEnabled: false,
+        }),
+      );
+      return probe;
+    },
+    [describeDeviceFailure, dispatch],
+  );
+
+  useEffect(() => {
+    if (!channelName) {
+      navigate(resolvedReturnTo);
+      return;
+    }
+
+    let cancelled = false;
+    const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+    clientRef.current = client;
+    rtcJoinedRef.current = false;
+    const videoCall = isVideoCallRef.current;
+    const group = channelName.startsWith('grp_');
+
+    const subscribeRemoteIfNeeded = async (user: IAgoraRTCRemoteUser) => {
+      const uidNum = Number(user.uid);
+      if (!Number.isFinite(uidNum)) return;
+      if (group) {
+        setRemoteUids((prev) => (prev.includes(uidNum) ? prev : [...prev, uidNum]));
+      } else {
+        setRemoteUser(user);
+      }
+
+      // NOTE: `user-published` không phải lúc nào cũng bắn cho người vào muộn trong group call,
+      // vì vậy ta chủ động subscribe dựa trên trạng thái hasAudio/hasVideo.
+      if (user.hasAudio && !user.audioTrack) {
+        const track = await client.subscribe(user, 'audio');
+        track.play();
+      }
+      if (user.hasVideo && !user.videoTrack) {
+        const track = await client.subscribe(user, 'video');
+        if (group) {
+          // `subscribe` sẽ gắn track vào user.videoTrack; dùng lại logic đặt vào grid/ghim.
+          placeGroupRemoteVideo(user);
+          setRemoteHasVideo(true);
+        } else if (remoteVideoRef.current) {
+          track.play(remoteVideoRef.current, { fit: 'contain' });
+          setRemoteHasVideo(true);
+        }
+      }
+    };
+
+    /** Đặt video remote (camera hoặc screen track) vào ô grid hoặc vùng ghim theo `pinnedRemoteUidRef`. */
+    const placeGroupRemoteVideo = (user: IAgoraRTCRemoteUser) => {
+      const track = user.videoTrack;
+      if (!track) return;
+      const uidNum = Number(user.uid);
+      const pinned = pinnedRemoteUidRef.current;
+      track.stop();
+      if (pinned === uidNum) {
+        const main = pinnedMainRef.current;
+        if (main) track.play(main, { fit: 'contain' });
+      } else {
+        // Khi đang ghim, tile remote chỉ tồn tại khi:
+        // - đang ở màn Participants, hoặc
+        // - đang bật filmstrip.
+        if (pinned != null) {
+          const view = groupViewRef.current;
+          const filmstrip = filmstripVisibleRef.current;
+          if (view !== 'participants' && !filmstrip) return;
+        }
+        const cell = document.getElementById(`agora-remote-${uidNum}`);
+        if (cell) track.play(cell, { fit: 'contain' });
+      }
+    };
+
+    const init = async () => {
+      try {
+        const { token, uid } = await fetchAgoraToken(channelName);
+        if (cancelled) return;
+
+        client.on('user-joined', (user: IAgoraRTCRemoteUser) => {
+          dispatch(setCallConnected());
+          if (group) {
+            const uidNum = Number(user.uid);
+            if (!Number.isFinite(uidNum)) return;
+            setRemoteUids((prev) => (prev.includes(uidNum) ? prev : [...prev, uidNum]));
+          }
+        });
+
+        client.on(
+          'user-published',
+          async (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
+            await client.subscribe(user, mediaType);
+            const uidNum = Number(user.uid);
+            if (!Number.isFinite(uidNum)) return;
+            if (group) {
+              setRemoteUids((prev) => (prev.includes(uidNum) ? prev : [...prev, uidNum]));
+            }
+            if (mediaType === 'video') {
+              if (group) {
+                placeGroupRemoteVideo(user);
+                setRemoteHasVideo(true);
+              } else if (remoteVideoRef.current) {
+                user.videoTrack?.play(remoteVideoRef.current, { fit: 'contain' });
+                setRemoteHasVideo(true);
+              }
+            }
+            if (mediaType === 'audio') {
+              user.audioTrack?.play();
+            }
+            if (!group) setRemoteUser(user);
+          },
+        );
+
+        client.on('user-info-updated', async (user: IAgoraRTCRemoteUser) => {
+          try {
+            await subscribeRemoteIfNeeded(user);
+          } catch {
+            // ignore noisy updates
+          }
+        });
+
+        client.on('user-unpublished', (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
+          if (mediaType === 'video') {
+            user.videoTrack?.stop();
+            if (group && pinnedRemoteUidRef.current === Number(user.uid)) {
+              setPinnedRemoteUid(null);
+            }
+            if (!group) {
+              setRemoteHasVideo(false);
+            } else {
+              setRemoteHasVideo(client.remoteUsers.some((u) => u.videoTrack != null));
+            }
+          }
+          if (mediaType === 'audio') {
+            user.audioTrack?.stop();
+          }
+        });
+
+        client.on('user-left', (user: IAgoraRTCRemoteUser) => {
+          const uidNum = Number(user.uid);
+          if (isGroupRef.current) {
+            if (pinnedRemoteUidRef.current === uidNum) {
+              setPinnedRemoteUid(null);
+            }
+            setRemoteUids((prev) => prev.filter((u) => u !== uidNum));
+            if (client.remoteUsers.length === 0) {
+              const convId = resolvedConversationIdRef.current;
+              if (convId) {
+                socketService.emit('call:group-vacant', {
+                  channelName,
+                  conversationId: convId,
+                });
+              }
+              dispatch(setCallEnded());
+            }
+          } else {
+            setRemoteUser(null);
+            setRemoteHasVideo(false);
+            dispatch(setCallEnded());
+          }
+        });
+
+        await client.join(appId, channelName, token, uid);
+        if (cancelled) return;
+        rtcJoinedRef.current = true;
+        setJoined(true);
+        if (group) {
+          dispatch(setCallConnected());
+          const convRtc = resolvedConversationIdRef.current;
+          if (convRtc && channelName.startsWith('grp_')) {
+            socketService.emit('call:group-rtc-joined', {
+              channelName,
+              conversationId: convRtc,
+            });
+          }
+        }
+
+        // Người vào kênh muộn có thể bỏ lỡ event `user-published` từ những người đã publish trước đó.
+        // Chủ động subscribe lại danh sách remoteUsers hiện có để mọi client đều thấy nhau.
+        try {
+          for (const user of client.remoteUsers) {
+            await subscribeRemoteIfNeeded(user);
+          }
+        } catch (e) {
+          console.warn('[CallPage] subscribe existing remote users failed', e);
+        }
+
+        const tracksToPublish: Array<IMicrophoneAudioTrack | ICameraVideoTrack> = [];
+
+        try {
+          const micTrack = await createTrackWithRetry(() => AgoraRTC.createMicrophoneAudioTrack());
+          if (cancelled) {
+            micTrack.close();
+            return;
+          }
+          micTrackRef.current = micTrack;
+          dispatch(
+            setMicAvailability({
+              availability: 'available',
+              errorMessage: null,
+            }),
+          );
+          if (isMicOnRef.current) tracksToPublish.push(micTrack);
+        } catch (error) {
+          applyMicFailure(error);
+        }
+
+        if (videoCall) {
+          try {
+            const camTrack = await createTrackWithRetry(() => AgoraRTC.createCameraVideoTrack());
+            if (cancelled) {
+              camTrack.close();
+              micTrackRef.current?.close();
+              return;
+            }
+            camTrackRef.current = camTrack;
+            dispatch(
+              setCameraAvailability({
+                availability: 'available',
+                errorMessage: null,
+              }),
+            );
+            if (localVideoRef.current) {
+              camTrack.play(localVideoRef.current);
+            }
+            if (isCameraOnRef.current) tracksToPublish.push(camTrack);
+          } catch (error) {
+            applyCameraFailure(error);
+          }
+        } else {
+          dispatch(
+            setCameraAvailability({
+              availability: 'unavailable',
+              errorMessage: null,
+              forceEnabled: false,
+            }),
+          );
+        }
+
+        if (tracksToPublish.length > 0) {
+          await client.publish(tracksToPublish);
+          dispatch(setReceiveOnly(false));
+        } else {
+          dispatch(setReceiveOnly(true));
+          if (videoCall) {
+            dispatch(setMicEnabled(false));
+            dispatch(setCameraEnabled(false));
+          } else {
+            dispatch(setMicEnabled(false));
+          }
+        }
+      } catch (err) {
+        console.error('Agora join failed:', err);
+        if (!cancelled) {
+          const type = (urlCallType ?? callTypeRef.current ?? 'audio') as 'audio' | 'video';
+          const convId = resolvedConversationIdRef.current;
+          if (channelName && convId) {
+            if (!isGroupRef.current) {
+              const peerId = callerIdRef.current || calleeIdRef.current;
+              if (peerId) {
+                socketService.emit('call:end', {
+                  channelName,
+                  peerId,
+                  conversationId: convId,
+                  type,
+                  durationSec: 0,
+                  result: 'cancelled',
+                });
+              }
+            } else if (isHost && statusRef.current === 'outgoing-ringing') {
+              socketService.emit('call:group-missed', {
+                channelName,
+                conversationId: convId,
+                type,
+              });
+            }
+          }
+          toast.error('Không thể tham gia kênh Agora.');
+          dispatch(setCallEnded());
+        }
+      }
+    };
+
+    init();
+
+    return () => {
+      cancelled = true;
+      const convRtc = resolvedConversationIdRef.current;
+      if (rtcJoinedRef.current && channelName.startsWith('grp_') && convRtc) {
+        socketService.emit('call:group-rtc-left', { channelName, conversationId: convRtc });
+      }
+      rtcJoinedRef.current = false;
+      micTrackRef.current?.close();
+      camTrackRef.current?.close();
+      screenTrackRef.current?.close();
+      screenAudioTrackRef.current?.close();
+      micTrackRef.current = null;
+      camTrackRef.current = null;
+      screenTrackRef.current = null;
+      screenAudioTrackRef.current = null;
+      void client.leave().catch(() => undefined);
+      if (clientRef.current === client) {
+        clientRef.current = null;
+      }
+    };
+  }, [
+    applyCameraFailure,
+    applyMicFailure,
+    channelName,
+    appId,
+    dispatch,
+    fetchAgoraToken,
+    navigate,
+    resolvedReturnTo,
+    isHost,
+    urlCallType,
+  ]);
+
+  useEffect(() => {
+    if (!isGroup) setPinnedRemoteUid(null);
+  }, [isGroup]);
+
+  // Đồng bộ groupView theo trạng thái ghim.
+  useEffect(() => {
+    if (!isGroup) return;
+    if (pinnedRemoteUid != null) {
+      setGroupView((v) => (v === 'participants' ? v : 'pinned'));
+    } else {
+      setGroupView('grid');
+      setFilmstripVisible(false);
+    }
+  }, [isGroup, pinnedRemoteUid]);
+
+  useEffect(() => {
+    const client = clientRef.current;
+    if (!client || client.connectionState !== 'CONNECTED') return;
+
+    if (!isMicOn) {
+      void micTrackRef.current?.setEnabled(false);
+      if (micTrackRef.current) {
+        void client.unpublish([micTrackRef.current]).catch(() => undefined);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const syncMic = async () => {
+      try {
+        if (!micTrackRef.current) {
+          const micTrack = await createTrackWithRetry(() => AgoraRTC.createMicrophoneAudioTrack());
+          if (cancelled) {
+            micTrack.close();
+            return;
+          }
+          micTrackRef.current = micTrack;
+          await client.publish([micTrack]);
+        } else {
+          await micTrackRef.current.setEnabled(true);
+          await client.publish([micTrackRef.current]);
+        }
+        dispatch(
+          setMicAvailability({
+            availability: 'available',
+            errorMessage: null,
+          }),
+        );
+      } catch (error) {
+        applyMicFailure(error);
+        dispatch(setMicEnabled(false));
+      }
+    };
+    void syncMic();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyMicFailure, dispatch, isMicOn]);
+
+  useEffect(() => {
+    const client = clientRef.current;
+    if (!client || client.connectionState !== 'CONNECTED') return;
+    if (!currentCallIsVideo || isScreenSharing) return;
+
+    if (!isCameraOn) {
+      void camTrackRef.current?.setEnabled(false);
+      if (camTrackRef.current) {
+        void client.unpublish([camTrackRef.current]).catch(() => undefined);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const syncCamera = async () => {
+      try {
+        if (!camTrackRef.current) {
+          const camTrack = await createTrackWithRetry(() => AgoraRTC.createCameraVideoTrack());
+          if (cancelled) {
+            camTrack.close();
+            return;
+          }
+          camTrackRef.current = camTrack;
+          await client.publish([camTrack]);
+        } else {
+          await camTrackRef.current.setEnabled(true);
+          await client.publish([camTrackRef.current]);
+        }
+        if (localVideoRef.current && camTrackRef.current) {
+          camTrackRef.current.play(localVideoRef.current);
+        }
+        dispatch(
+          setCameraAvailability({
+            availability: 'available',
+            errorMessage: null,
+          }),
+        );
+      } catch (error) {
+        applyCameraFailure(error);
+        dispatch(setCameraEnabled(false));
+      }
+    };
+    void syncCamera();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyCameraFailure, currentCallIsVideo, dispatch, isCameraOn, isScreenSharing]);
+
+  useEffect(() => {
+    const noMic = !isMicOn || micAvailability !== 'available';
+    const noVideo =
+      !currentCallIsVideo ||
+      (!isScreenSharing && (!isCameraOn || cameraAvailability !== 'available'));
+    dispatch(setReceiveOnly(joined && noMic && noVideo));
+  }, [
+    cameraAvailability,
+    currentCallIsVideo,
+    dispatch,
+    isCameraOn,
+    isMicOn,
+    isScreenSharing,
+    joined,
+    micAvailability,
+  ]);
+
+  const hasRemoteParticipant = isGroup ? remoteUids.length > 0 : Boolean(remoteUser);
+
+  const deviceToastMessage = useMemo(() => {
+    const micIssue =
+      micAvailability !== 'available' ? (micErrorMessage ?? 'Không thể bật micro.') : null;
+    const cameraIssue =
+      currentCallIsVideo && cameraAvailability !== 'available'
+        ? (cameraErrorMessage ?? 'Không thể bật camera.')
+        : null;
+
+    if (micIssue && cameraIssue) {
+      return 'Thiết bị không dùng được micro/camera. Bạn đã vào cuộc gọi ở chế độ chỉ nghe/xem.';
+    }
+
+    return micIssue ?? cameraIssue;
+  }, [
+    cameraAvailability,
+    cameraErrorMessage,
+    currentCallIsVideo,
+    micAvailability,
+    micErrorMessage,
+  ]);
+
+  useEffect(() => {
+    const shouldShowDeviceToast =
+      joined && hasRemoteParticipant && status === 'connected' && Boolean(deviceToastMessage);
+
+    if (!shouldShowDeviceToast) {
+      if (deviceToastRef.current != null) {
+        toast.dismiss(deviceToastRef.current);
+      }
+      deviceToastRef.current = null;
+      lastDeviceToastMessageRef.current = null;
+      return;
+    }
+
+    if (
+      deviceToastRef.current != null &&
+      toast.isActive(deviceToastRef.current) &&
+      lastDeviceToastMessageRef.current === deviceToastMessage
+    ) {
+      return;
+    }
+
+    if (deviceToastRef.current != null && toast.isActive(deviceToastRef.current)) {
+      toast.update(deviceToastRef.current, {
+        render: deviceToastMessage,
+        type: 'info',
+        autoClose: 4000,
+        closeButton: true,
+      });
+    } else {
+      deviceToastRef.current = toast.info(deviceToastMessage, {
+        autoClose: 4000,
+      });
+    }
+
+    lastDeviceToastMessageRef.current = deviceToastMessage;
+  }, [deviceToastMessage, hasRemoteParticipant, joined, status]);
+
+  useEffect(() => {
+    if (status !== 'ended') return;
+    micTrackRef.current?.close();
+    camTrackRef.current?.close();
+    screenTrackRef.current?.close();
+    screenAudioTrackRef.current?.close();
+    if (clientRef.current?.connectionState === 'CONNECTED') {
+      clientRef.current.leave();
+    }
+    if (endReason) {
+      const t = window.setTimeout(() => {
+        dispatch(resetCall());
+        navigate(resolvedReturnTo);
+      }, 2200);
+      return () => window.clearTimeout(t);
+    }
+    dispatch(resetCall());
+    navigate(resolvedReturnTo);
+  }, [status, dispatch, navigate, resolvedReturnTo, endReason]);
+
+  useEffect(() => {
+    if (status !== 'outgoing-ringing') return;
+    const timeoutMs = 25_000;
+    const t = window.setTimeout(() => {
+      dispatch(setEndReason('missed'));
+      const type = (urlCallType ?? callType ?? 'audio') as 'audio' | 'video';
+      if (channelName && resolvedConversationId) {
+        if (channelName.startsWith('grp_')) {
+          socketService.emit('call:group-missed', {
+            channelName,
+            conversationId: resolvedConversationId,
+            type,
+          });
+        } else if (calleeId) {
+          socketService.emit('call:missed', {
+            channelName,
+            peerId: calleeId,
+            conversationId: resolvedConversationId,
+            type,
+          });
+        }
+      }
+      dispatch(setCallEnded());
+    }, timeoutMs);
+    return () => window.clearTimeout(t);
+  }, [status, dispatch, channelName, resolvedConversationId, calleeId, urlCallType, callType]);
+
+  useEffect(() => {
+    if (status !== 'connected') return;
+    const interval = setInterval(() => setTimer((x) => x + 1), 1000);
+    return () => clearInterval(interval);
+  }, [status]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -25,76 +879,802 @@ export default function CallPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const cleanupLocalMedia = useCallback(() => {
+    micTrackRef.current?.close();
+    camTrackRef.current?.close();
+    screenTrackRef.current?.close();
+    screenAudioTrackRef.current?.close();
+    micTrackRef.current = null;
+    camTrackRef.current = null;
+    screenTrackRef.current = null;
+    screenAudioTrackRef.current = null;
+    if (clientRef.current?.connectionState === 'CONNECTED') {
+      void clientRef.current.leave();
+    }
+  }, []);
+
+  const handleDirectEnd = useCallback(() => {
+    endCall({
+      durationSec: status === 'connected' ? timer : 0,
+      result: status === 'outgoing-ringing' ? 'cancelled' : 'completed',
+    });
+    cleanupLocalMedia();
+    setTimeout(() => {
+      dispatch(resetCall());
+      navigate(resolvedReturnTo);
+    }, 500);
+  }, [endCall, timer, status, dispatch, navigate, resolvedReturnTo, cleanupLocalMedia]);
+
+  const handleGroupLeave = useCallback(() => {
+    leaveGroupCall();
+    cleanupLocalMedia();
+    setTimeout(() => {
+      dispatch(resetCall());
+      navigate(resolvedReturnTo);
+    }, 500);
+  }, [leaveGroupCall, dispatch, navigate, resolvedReturnTo, cleanupLocalMedia]);
+
+  const handleGroupEndAll = useCallback(() => {
+    endGroupCallForAll({ durationSec: timer });
+    cleanupLocalMedia();
+    setTimeout(() => {
+      dispatch(resetCall());
+      navigate(resolvedReturnTo);
+    }, 500);
+  }, [endGroupCallForAll, timer, dispatch, navigate, resolvedReturnTo, cleanupLocalMedia]);
+
+  const toggleFullScreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      setIsFullScreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullScreen(false);
+    }
+  }, []);
+
+  const restoreCameraAfterScreenShare = useCallback(async () => {
+    const client = clientRef.current;
+    if (!client || client.connectionState !== 'CONNECTED') return;
+    const cam = camTrackRef.current;
+    if (cam && isCameraOnRef.current) {
+      await cam.setEnabled(true);
+      await client.publish([cam]);
+      if (localVideoRef.current) cam.play(localVideoRef.current);
+    }
+    dispatch(setScreenSharing(false));
+  }, [dispatch]);
+
+  const stopScreenShareTracks = useCallback(async (): Promise<void> => {
+    const client = clientRef.current;
+    const screenTrack = screenTrackRef.current;
+    const screenAudioTrack = screenAudioTrackRef.current;
+
+    if (screenAudioTrack) {
+      if (client?.connectionState === 'CONNECTED') {
+        try {
+          await client.unpublish([screenAudioTrack]);
+        } catch {
+          /* already unpublished */
+        }
+      }
+      screenAudioTrack.close();
+      screenAudioTrackRef.current = null;
+    }
+
+    if (screenTrack) {
+      if (client?.connectionState === 'CONNECTED') {
+        try {
+          await client.unpublish([screenTrack]);
+        } catch {
+          /* already unpublished */
+        }
+      }
+      screenTrack.close();
+      screenTrackRef.current = null;
+    }
+  }, []);
+
+  const handleScreenShare = useCallback(async () => {
+    const client = clientRef.current;
+    if (!client || client.connectionState !== 'CONNECTED') return;
+
+    if (isScreenSharing) {
+      await stopScreenShareTracks();
+      await restoreCameraAfterScreenShare();
+    } else {
+      try {
+        // Dùng cùng mode với Live để hộp thoại browser cho phép chọn share system/tab audio.
+        const createdTracks = await AgoraRTC.createScreenVideoTrack(
+          { encoderConfig: '1080p_1' },
+          'auto',
+        );
+
+        let screenTrack: ILocalVideoTrack;
+        let screenAudioTrack: ILocalAudioTrack | null = null;
+        if (Array.isArray(createdTracks)) {
+          screenTrack = createdTracks[0];
+          screenAudioTrack = createdTracks[1] ?? null;
+        } else {
+          screenTrack = createdTracks;
+        }
+
+        screenTrack.on('track-ended', async () => {
+          await stopScreenShareTracks();
+          await restoreCameraAfterScreenShare();
+        });
+
+        screenAudioTrack?.on('track-ended', async () => {
+          const audioTrack = screenAudioTrackRef.current;
+          if (!audioTrack) return;
+          if (clientRef.current?.connectionState === 'CONNECTED') {
+            try {
+              await clientRef.current.unpublish([audioTrack]);
+            } catch {
+              /* already unpublished */
+            }
+          }
+          audioTrack.close();
+          screenAudioTrackRef.current = null;
+        });
+
+        if (camTrackRef.current) {
+          camTrackRef.current.stop();
+          await client.unpublish([camTrackRef.current]);
+        }
+
+        screenTrackRef.current = screenTrack;
+        screenAudioTrackRef.current = screenAudioTrack;
+        await client.publish(screenAudioTrack ? [screenTrack, screenAudioTrack] : [screenTrack]);
+        if (localVideoRef.current) screenTrack.play(localVideoRef.current);
+        dispatch(setScreenSharing(true));
+      } catch (err) {
+        console.error('Screen share failed:', err);
+      }
+    }
+  }, [dispatch, isScreenSharing, restoreCameraAfterScreenShare, stopScreenShareTracks]);
+
+  useEffect(() => {
+    if (!isGroup || !currentCallIsVideo) return;
+    const update = () => {
+      const w = Math.max(200, window.innerWidth - 32);
+      const h = Math.max(200, window.innerHeight - 260);
+      setGroupGridViewport({ width: w, height: h });
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [isGroup, currentCallIsVideo]);
+
+  const groupTilesLayout = useMemo(() => {
+    const n = remoteUids.length;
+    const { width: vw, height: vh } = groupGridViewport;
+    if (n === 0) return { tilesPerPage: 1, pageCount: 1 };
+    const tiles = vw > 0 && vh > 0 ? maxTilesPerPage(vw, vh, n) : Math.min(n, 4);
+    const pageCount = Math.max(1, Math.ceil(n / tiles));
+    return { tilesPerPage: tiles, pageCount };
+  }, [remoteUids.length, groupGridViewport]);
+
+  useEffect(() => {
+    setGroupVideoPage((p) => Math.min(p, Math.max(0, groupTilesLayout.pageCount - 1)));
+  }, [groupTilesLayout.pageCount]);
+
+  const tilesPerPage = groupTilesLayout.tilesPerPage;
+  const pagedRemoteUids = useMemo(() => {
+    const start = groupVideoPage * tilesPerPage;
+    return remoteUids.slice(start, start + tilesPerPage);
+  }, [remoteUids, groupVideoPage, tilesPerPage]);
+
+  /** Khi đổi ghim hoặc danh sách UID, gắn lại mọi remote video vào ô grid hoặc vùng ghim fullscreen. */
+  useEffect(() => {
+    if (!isGroup || !isVideoCall) return;
+    const client = clientRef.current;
+    if (!client || client.connectionState !== 'CONNECTED') return;
+
+    const placeAll = () => {
+      const pinned = pinnedRemoteUidRef.current;
+      for (const user of client.remoteUsers) {
+        const track = user.videoTrack;
+        if (!track) continue;
+        const uidNum = Number(user.uid);
+        track.stop();
+        if (pinned === uidNum) {
+          const main = pinnedMainRef.current;
+          if (main) track.play(main, { fit: 'contain' });
+        } else {
+          if (pinned != null) {
+            const view = groupViewRef.current;
+            const filmstrip = filmstripVisibleRef.current;
+            if (view !== 'participants' && !filmstrip) continue;
+          }
+          const cell = document.getElementById(`agora-remote-${uidNum}`);
+          if (cell) track.play(cell, { fit: 'contain' });
+        }
+      }
+    };
+
+    placeAll();
+    const id = requestAnimationFrame(() => placeAll());
+    return () => cancelAnimationFrame(id);
+  }, [
+    pinnedRemoteUid,
+    remoteUids,
+    isGroup,
+    isVideoCall,
+    joined,
+    status,
+    groupView,
+    filmstripVisible,
+    groupVideoPage,
+    pagedRemoteUids,
+  ]);
+
+  const groupGridDims = gridColsRows(Math.max(1, pagedRemoteUids.length));
+
+  const statusLabel =
+    status === 'connected'
+      ? `Đang gọi • ${formatTime(timer)}`
+      : joined
+        ? isGroup
+          ? 'Đang chờ thành viên tham gia...'
+          : 'Đang chờ người tham gia...'
+        : 'Đang kết nối...';
+
+  const deviceStatusHint = useMemo(() => {
+    const parts: string[] = [];
+    if (receiveOnly) parts.push('Đang ở chế độ chỉ nghe/xem.');
+    if (micAvailability !== 'available' && micErrorMessage) parts.push(micErrorMessage);
+    if (currentCallIsVideo && cameraAvailability !== 'available' && cameraErrorMessage) {
+      parts.push(cameraErrorMessage);
+    }
+    return parts[0] ?? null;
+  }, [
+    cameraAvailability,
+    cameraErrorMessage,
+    currentCallIsVideo,
+    micAvailability,
+    micErrorMessage,
+    receiveOnly,
+  ]);
+
   return (
-    <div className="fixed inset-0 z-[100] bg-black text-white flex flex-col overflow-hidden">
-      <div className="absolute inset-0 z-0">
-        <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=1920&h=1080&fit=crop" alt="Participant" className="w-full h-full object-cover opacity-80" referrerPolicy="no-referrer" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
-      </div>
-
-      <motion.div initial={{ y: -100 }} animate={{ y: 0 }} className="relative z-10 p-8 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full border-2 border-white/20 overflow-hidden">
-            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop" alt="Elena" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-display font-bold tracking-tight">Elena Vance</h2>
-            <p className="text-sm text-white/60 font-medium flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              Đang gọi • {formatTime(timer)}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <button className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"><Users className="w-6 h-6" /></button>
-          <button className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"><Settings className="w-6 h-6" /></button>
-        </div>
-      </motion.div>
-
-      <div className="flex-1 relative z-10 flex items-center justify-center p-12">
-        <AnimatePresence>
-          {!isVideoOff && (
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative aspect-video w-full max-w-5xl rounded-[3rem] overflow-hidden border-4 border-white/10 shadow-2xl shadow-black/50 group">
-              <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=1200&h=800&fit=crop" alt="Elena Focused" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="absolute bottom-8 left-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                <p className="text-xl font-bold">Elena Vance</p>
-                <p className="text-sm text-white/60">Nhà quay phim</p>
+    <div
+      ref={callShellRef}
+      className="fixed inset-0 z-[100] bg-gray-950 text-white flex flex-col overflow-hidden"
+    >
+      <AnimatePresence>
+        {status === 'ended' && endReason && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[120] flex items-center justify-center bg-gray-950"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 240 }}
+              className="w-[360px] max-w-[92vw] rounded-3xl bg-white/5 border border-white/10 p-7 text-center shadow-2xl"
+            >
+              <div className="mx-auto mb-5 w-20 h-20 rounded-full bg-blue-600/15 flex items-center justify-center">
+                {endReason === 'rejected' ? (
+                  <PhoneOff className="w-8 h-8 text-red-400" />
+                ) : endReason === 'busy' ? (
+                  <PhoneOff className="w-8 h-8 text-amber-400" />
+                ) : (
+                  <PhoneOff className="w-8 h-8 text-yellow-300" />
+                )}
               </div>
+              <p className="text-xl font-bold">
+                {endReason === 'rejected'
+                  ? 'Cuộc gọi bị từ chối'
+                  : endReason === 'busy'
+                    ? 'Đang bận'
+                    : 'Cuộc gọi nhỡ'}
+              </p>
+              <p className="text-sm text-white/60 mt-2">
+                {endReason === 'rejected'
+                  ? 'Người nghe đã từ chối cuộc gọi.'
+                  : endReason === 'busy'
+                    ? 'Người nhận đang trong cuộc gọi khác.'
+                    : 'Người nghe không phản hồi.'}
+              </p>
+              <p className="text-xs text-white/40 mt-5">Tự động quay lại cuộc trò chuyện...</p>
             </motion.div>
-          )}
-        </AnimatePresence>
-        <motion.div drag dragConstraints={{ left: -500, right: 500, top: -300, bottom: 300 }} className="absolute bottom-12 right-12 w-64 aspect-video rounded-3xl overflow-hidden border-2 border-white/20 shadow-2xl cursor-move z-20">
-          <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&h=300&fit=crop" alt="Self View" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-          <div className="absolute bottom-3 left-3 px-2 py-1 bg-black/40 backdrop-blur-md rounded-lg text-[10px] font-bold">Bạn</div>
-        </motion.div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <motion.div initial={{ y: 100 }} animate={{ y: 0 }} className="relative z-10 p-12 flex items-center justify-center gap-6">
-        <button onClick={() => setIsMuted(!isMuted)} className={`p-6 rounded-3xl transition-all ${isMuted ? 'bg-red-600 text-white' : 'bg-white/10 backdrop-blur-md hover:bg-white/20'}`}>
-          {isMuted ? <MicOff className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
-        </button>
-        <button onClick={() => setIsVideoOff(!isVideoOff)} className={`p-6 rounded-3xl transition-all ${isVideoOff ? 'bg-red-600 text-white' : 'bg-white/10 backdrop-blur-md hover:bg-white/20'}`}>
-          {isVideoOff ? <VideoOff className="w-8 h-8" /> : <Video className="w-8 h-8" />}
-        </button>
-        <button onClick={() => navigate('/studio')} className="p-8 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-2xl shadow-red-600/40 transition-all hover:scale-110 active:scale-95">
-          <PhoneOff className="w-10 h-10" />
-        </button>
-        <button onClick={() => setIsSpeakerOn(!isSpeakerOn)} className={`p-6 rounded-3xl transition-all ${!isSpeakerOn ? 'bg-red-600 text-white' : 'bg-white/10 backdrop-blur-md hover:bg-white/20'}`}>
-          {isSpeakerOn ? <Volume2 className="w-8 h-8" /> : <VolumeX className="w-8 h-8" />}
-        </button>
-        <button className="p-6 rounded-3xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all">
-          <Sparkles className="w-8 h-8 text-blue-600" />
-        </button>
+      {isGroup && currentCallIsVideo ? (
+        <>
+          {groupView === 'participants' ? (
+            <div className="absolute inset-0 z-0 pt-24 pb-40 px-4 min-h-0 overflow-hidden pointer-events-none">
+              <div className="pointer-events-auto flex h-full min-h-0 flex-col overflow-hidden">
+                <div
+                  className="grid min-h-0 w-full flex-1"
+                  style={{
+                    gridTemplateColumns: `repeat(${groupGridDims.cols}, minmax(0, 1fr))`,
+                    gridTemplateRows: `repeat(${groupGridDims.rows}, minmax(0, 1fr))`,
+                    gap: GROUP_TILE_GAP_PX,
+                  }}
+                >
+                  {pagedRemoteUids.map((uid) => (
+                    <div
+                      key={uid}
+                      className="group/tile relative min-h-0 min-w-0 overflow-hidden rounded-xl border border-white/10 bg-gray-900"
+                    >
+                      <div id={`agora-remote-${uid}`} className="absolute inset-0" />
+                      <button
+                        type="button"
+                        title="Ghim toàn màn hình"
+                        onClick={() => {
+                          setPinnedRemoteUid(uid);
+                          setGroupView('pinned');
+                        }}
+                        className="absolute top-2 right-2 z-20 rounded-lg border border-white/10 bg-black/60 p-1.5 opacity-0 transition-opacity hover:bg-black/80 group-hover/tile:opacity-100 sm:opacity-100"
+                      >
+                        <Pin className="h-4 w-4 text-white" />
+                      </button>
+                      <span className="pointer-events-none absolute left-2 top-2 z-10 rounded bg-black/60 px-2 py-0.5 text-[10px]">
+                        {labelForAgoraUid(uid)}
+                      </span>
+                    </div>
+                  ))}
+                  {remoteUids.length === 0 ? (
+                    <div className="col-span-full row-span-full flex min-h-[40vh] flex-col items-center justify-center text-white/40">
+                      <Users className="mb-3 h-16 w-16 opacity-30" />
+                      <p className="text-sm">Đang chờ thành viên vào kênh...</p>
+                    </div>
+                  ) : null}
+                </div>
+                {groupTilesLayout.pageCount > 1 ? (
+                  <div className="flex shrink-0 items-center justify-center gap-6 py-2">
+                    <button
+                      type="button"
+                      disabled={groupVideoPage <= 0}
+                      onClick={() => setGroupVideoPage((p) => Math.max(0, p - 1))}
+                      className="rounded-full bg-white/10 p-2 hover:bg-white/20 disabled:pointer-events-none disabled:opacity-30"
+                      aria-label="Trang trước"
+                    >
+                      <ChevronLeft className="h-7 w-7" />
+                    </button>
+                    <span className="text-xs text-white/70">
+                      {groupVideoPage + 1} / {groupTilesLayout.pageCount}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={groupVideoPage >= groupTilesLayout.pageCount - 1}
+                      onClick={() =>
+                        setGroupVideoPage((p) => Math.min(groupTilesLayout.pageCount - 1, p + 1))
+                      }
+                      className="rounded-full bg-white/10 p-2 hover:bg-white/20 disabled:pointer-events-none disabled:opacity-30"
+                      aria-label="Trang sau"
+                    >
+                      <ChevronRight className="h-7 w-7" />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="absolute inset-0 z-0 pt-24 pb-40 px-4 flex flex-col gap-3 min-h-0 overflow-hidden pointer-events-none">
+              {pinnedRemoteUid != null ? (
+                <div className="relative flex-1 min-h-[42vh] rounded-xl overflow-hidden border border-white/10 bg-gray-900 shadow-xl pointer-events-auto shrink">
+                  <div ref={pinnedMainRef} className="absolute inset-0 bg-black" />
+                  <button
+                    type="button"
+                    title="Bỏ ghim"
+                    onClick={() => setPinnedRemoteUid(null)}
+                    className="absolute top-3 right-3 z-20 flex items-center gap-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white text-xs px-3 py-2 border border-white/10"
+                  >
+                    <PinOff className="w-4 h-4" />
+                    Bỏ ghim
+                  </button>
+                  <span className="absolute bottom-3 left-3 z-20 text-[11px] bg-black/70 px-2 py-1 rounded text-white/90">
+                    Đang ghim · {labelForAgoraUid(pinnedRemoteUid)}
+                  </span>
+                </div>
+              ) : (
+                <div className="pointer-events-auto flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <div
+                    className="grid min-h-0 w-full flex-1"
+                    style={{
+                      gridTemplateColumns: `repeat(${groupGridDims.cols}, minmax(0, 1fr))`,
+                      gridTemplateRows: `repeat(${groupGridDims.rows}, minmax(0, 1fr))`,
+                      gap: GROUP_TILE_GAP_PX,
+                    }}
+                  >
+                    {pagedRemoteUids.map((uid) => (
+                      <div
+                        key={uid}
+                        className="group/tile relative min-h-0 min-w-0 overflow-hidden rounded-xl border border-white/10 bg-gray-900"
+                      >
+                        <div id={`agora-remote-${uid}`} className="absolute inset-0" />
+                        <button
+                          type="button"
+                          title="Ghim toàn màn hình (camera hoặc màn hình đang share)"
+                          onClick={() => setPinnedRemoteUid(uid)}
+                          className="absolute top-2 right-2 z-20 rounded-lg border border-white/10 bg-black/60 p-1.5 opacity-0 transition-opacity hover:bg-black/80 group-hover/tile:opacity-100 sm:opacity-100"
+                        >
+                          <Pin className="h-4 w-4 text-white" />
+                        </button>
+                        <span className="pointer-events-none absolute left-2 top-2 z-10 rounded bg-black/60 px-2 py-0.5 text-[10px]">
+                          {labelForAgoraUid(uid)}
+                        </span>
+                      </div>
+                    ))}
+                    {remoteUids.length === 0 ? (
+                      <div className="col-span-full row-span-full flex min-h-[40vh] flex-col items-center justify-center text-white/40">
+                        <Users className="mb-3 h-16 w-16 opacity-30" />
+                        <p className="text-sm">Đang chờ thành viên vào kênh...</p>
+                      </div>
+                    ) : null}
+                  </div>
+                  {groupTilesLayout.pageCount > 1 ? (
+                    <div className="flex shrink-0 items-center justify-center gap-6 py-2">
+                      <button
+                        type="button"
+                        disabled={groupVideoPage <= 0}
+                        onClick={() => setGroupVideoPage((p) => Math.max(0, p - 1))}
+                        className="rounded-full bg-white/10 p-2 hover:bg-white/20 disabled:pointer-events-none disabled:opacity-30"
+                        aria-label="Trang trước"
+                      >
+                        <ChevronLeft className="h-7 w-7" />
+                      </button>
+                      <span className="text-xs text-white/70">
+                        {groupVideoPage + 1} / {groupTilesLayout.pageCount}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={groupVideoPage >= groupTilesLayout.pageCount - 1}
+                        onClick={() =>
+                          setGroupVideoPage((p) => Math.min(groupTilesLayout.pageCount - 1, p + 1))
+                        }
+                        className="rounded-full bg-white/10 p-2 hover:bg-white/20 disabled:pointer-events-none disabled:opacity-30"
+                        aria-label="Trang sau"
+                      >
+                        <ChevronRight className="h-7 w-7" />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {pinnedRemoteUid != null && filmstripVisible ? (
+                <div className="pointer-events-auto shrink-0 max-h-[32vh] overflow-x-auto overflow-y-hidden py-1">
+                  <div className="flex flex-row gap-2 w-max pb-1">
+                    {remoteUids
+                      .filter((u) => u !== pinnedRemoteUid)
+                      .map((uid) => (
+                        <div
+                          key={uid}
+                          className="relative w-[140px] shrink-0 aspect-video bg-gray-900 rounded-lg overflow-hidden border border-white/10 group/tile"
+                        >
+                          <div id={`agora-remote-${uid}`} className="absolute inset-0" />
+                          <button
+                            type="button"
+                            title="Ghim toàn màn hình"
+                            onClick={() => setPinnedRemoteUid(uid)}
+                            className="absolute top-2 right-2 z-20 rounded-lg bg-black/60 p-1.5 opacity-0 group-hover/tile:opacity-100 sm:opacity-100 hover:bg-black/80 transition-opacity border border-white/10"
+                          >
+                            <Pin className="w-4 h-4 text-white" />
+                          </button>
+                          <span className="absolute top-2 left-2 z-10 text-[10px] bg-black/60 px-2 py-0.5 rounded pointer-events-none">
+                            {labelForAgoraUid(uid)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </>
+      ) : isGroup && !currentCallIsVideo ? (
+        <div className="absolute inset-0 z-0 flex flex-col items-center justify-center pt-16 pb-32">
+          <Users className="w-20 h-20 text-white/25 mb-4" />
+          <p className="text-white/50 text-sm mb-6">Cuộc gọi thoại nhóm</p>
+          <div className="flex flex-wrap justify-center gap-3 max-w-md">
+            {remoteUids.map((uid) => (
+              <div
+                key={uid}
+                className="w-16 h-16 rounded-full bg-gradient-to-tr from-green-600 to-emerald-500 flex items-center justify-center text-sm font-bold animate-pulse"
+              >
+                {labelForAgoraUid(uid).slice(0, 2).toUpperCase()}
+              </div>
+            ))}
+            {remoteUids.length === 0 && (
+              <p className="text-white/40 text-sm w-full text-center">Đang chờ thành viên...</p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div
+            ref={remoteVideoRef}
+            className={`absolute inset-0 z-0 ${remoteHasVideo ? '' : 'invisible'}`}
+          />
+          {!remoteHasVideo && (
+            <div className="absolute inset-0 z-0 flex items-center justify-center">
+              {remoteUser && !currentCallIsVideo ? (
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-green-600 to-emerald-400 flex items-center justify-center animate-pulse">
+                    <Mic className="w-14 h-14" />
+                  </div>
+                  <p className="text-white/60 text-sm font-medium">Đang nghe...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-5xl font-bold">
+                    ?
+                  </div>
+                  {!remoteUser && (
+                    <p className="text-white/40 text-sm">Đang chờ người tham gia...</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="absolute inset-0 z-[1] bg-gradient-to-t from-black/70 via-transparent to-black/30 pointer-events-none" />
+
+      {!isGroup && (
+        <>
+          <AnimatePresence>
+            {upgradeStatus === 'pending-incoming' && (
+              <motion.div
+                initial={{ opacity: 0, y: -30 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -30 }}
+                className="absolute top-24 left-1/2 -translate-x-1/2 z-30 w-[340px]"
+              >
+                <div className="rounded-2xl bg-gray-900/95 border border-white/10 backdrop-blur-xl p-5 shadow-2xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center">
+                      <Video className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm">Yêu cầu chuyển sang Video</p>
+                      <p className="text-xs text-white/50">Đối phương muốn bật camera</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => respondUpgradeToVideo(false)}
+                      className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-medium transition-all"
+                    >
+                      Từ chối
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => respondUpgradeToVideo(true)}
+                      className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-sm font-medium transition-all"
+                    >
+                      Chấp nhận
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {upgradeStatus === 'pending-outgoing' && (
+              <motion.div
+                initial={{ opacity: 0, y: -30 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -30 }}
+                className="absolute top-24 left-1/2 -translate-x-1/2 z-30"
+              >
+                <div className="rounded-2xl bg-gray-900/95 border border-white/10 backdrop-blur-xl px-6 py-4 shadow-2xl flex items-center gap-3">
+                  <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm text-white/70">Đang chờ đối phương chấp nhận...</p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
+
+      <motion.div
+        initial={{ y: -60 }}
+        animate={{ y: 0 }}
+        className="relative z-10 p-6 flex items-center justify-between"
+      >
+        <div>
+          <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            {isGroup && <Users className="w-6 h-6 text-blue-400" />}
+            {currentCallIsVideo ? 'Video Call' : 'Voice Call'}
+            {isGroup && <span className="text-sm font-normal text-white/50">(nhóm)</span>}
+          </h2>
+          <p className="text-sm text-white/50 flex items-center gap-2">
+            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            {statusLabel}
+          </p>
+          {deviceStatusHint && (
+            <p className="mt-2 inline-flex rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-1 text-xs text-amber-100">
+              {deviceStatusHint}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {isGroup && currentCallIsVideo && pinnedRemoteUid != null ? (
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  setGroupView((v) => (v === 'participants' ? 'pinned' : 'participants'))
+                }
+                className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"
+                title={
+                  groupView === 'participants' ? 'Quay lại màn ghim' : 'Xem danh sách thành viên'
+                }
+              >
+                <Users className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilmstripVisible((v) => !v)}
+                className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"
+                title={filmstripVisible ? 'Ẩn filmstrip' : 'Hiện filmstrip'}
+              >
+                <PanelRight className="w-5 h-5" />
+              </button>
+            </>
+          ) : null}
+          <button
+            type="button"
+            onClick={toggleFullScreen}
+            className="p-3 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"
+          >
+            {isFullScreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+          </button>
+        </div>
       </motion.div>
 
-      <div className="absolute right-8 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-10">
-        <button className="p-4 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"><MessageSquare className="w-6 h-6" /></button>
-        <button onClick={() => setIsFullScreen(!isFullScreen)} className="p-4 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all">
-          {isFullScreen ? <Minimize2 className="w-6 h-6" /> : <Maximize2 className="w-6 h-6" />}
+      <div className="flex-1" />
+
+      {currentCallIsVideo && (
+        <motion.div
+          drag
+          dragConstraints={callShellRef}
+          dragElastic={0}
+          dragMomentum={false}
+          className="absolute bottom-36 right-6 w-48 aspect-video rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl cursor-move z-20 bg-gray-800"
+        >
+          <div ref={localVideoRef} className="w-full h-full" />
+          <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/50 backdrop-blur-md rounded-lg text-[10px] font-bold">
+            {isScreenSharing ? 'Màn hình' : 'Bạn'}
+          </div>
+        </motion.div>
+      )}
+
+      <motion.div
+        initial={{ y: 80 }}
+        animate={{ y: 0 }}
+        className="relative z-10 p-8 flex flex-wrap items-center justify-center gap-3"
+      >
+        <button
+          type="button"
+          onClick={onToggleMic}
+          title={
+            micAvailability === 'available'
+              ? isMicOn
+                ? 'Tắt mic'
+                : 'Bật mic'
+              : 'Micro đang lỗi - thử bật lại'
+          }
+          className={`p-4 rounded-2xl transition-all ${
+            micAvailability !== 'available'
+              ? 'bg-amber-600 text-white'
+              : !isMicOn
+                ? 'bg-red-600 text-white'
+                : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
+          }`}
+        >
+          {isMicOn ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
         </button>
-        <button className="p-4 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all"><MoreHorizontal className="w-6 h-6" /></button>
-      </div>
+
+        {currentCallIsVideo && (
+          <button
+            type="button"
+            onClick={onToggleCamera}
+            title={
+              cameraAvailability === 'available'
+                ? isCameraOn
+                  ? 'Tắt camera'
+                  : 'Bật camera'
+                : 'Camera đang lỗi - thử bật lại'
+            }
+            className={`p-4 rounded-2xl transition-all ${
+              cameraAvailability !== 'available'
+                ? 'bg-amber-600 text-white'
+                : !isCameraOn
+                  ? 'bg-red-600 text-white'
+                  : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
+            }`}
+          >
+            {isCameraOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
+          </button>
+        )}
+
+        {!isGroup && !currentCallIsVideo && status === 'connected' && upgradeStatus === 'none' && (
+          <button
+            type="button"
+            onClick={requestUpgradeToVideo}
+            title="Chuyển sang Video Call"
+            className="p-4 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-blue-600/80 transition-all"
+          >
+            <Video className="w-6 h-6" />
+          </button>
+        )}
+
+        {currentCallIsVideo && (
+          <button
+            type="button"
+            onClick={handleScreenShare}
+            title={isScreenSharing ? 'Dừng chia sẻ màn hình' : 'Chia sẻ màn hình'}
+            className={`p-4 rounded-2xl transition-all ${
+              isScreenSharing
+                ? 'bg-blue-600 text-white'
+                : 'bg-white/10 backdrop-blur-md hover:bg-white/20'
+            }`}
+          >
+            {isScreenSharing ? (
+              <MonitorOff className="w-6 h-6" />
+            ) : (
+              <MonitorUp className="w-6 h-6" />
+            )}
+          </button>
+        )}
+
+        {isGroup ? (
+          isHost ? (
+            <>
+              <button
+                type="button"
+                onClick={handleGroupLeave}
+                title="Rời cuộc gọi — nhóm vẫn tiếp tục"
+                className="p-4 rounded-2xl bg-white/10 backdrop-blur-md hover:bg-white/20 transition-all flex items-center gap-2 text-sm font-medium"
+              >
+                <LogOut className="w-6 h-6" />
+                Rời
+              </button>
+              <button
+                type="button"
+                onClick={handleGroupEndAll}
+                title="Kết thúc cuộc gọi cho mọi người"
+                className="p-5 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-xl flex items-center gap-2 text-sm font-semibold px-6"
+              >
+                <PhoneOff className="w-7 h-7" />
+                Kết thúc tất cả
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={handleGroupLeave}
+              title="Rời cuộc gọi"
+              className="p-5 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-xl flex items-center gap-2"
+            >
+              <LogOut className="w-7 h-7" />
+            </button>
+          )
+        ) : (
+          <button
+            type="button"
+            onClick={handleDirectEnd}
+            title="Kết thúc cuộc gọi"
+            className="p-5 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-2xl shadow-red-600/40 transition-all hover:scale-110 active:scale-95"
+          >
+            <PhoneOff className="w-7 h-7" />
+          </button>
+        )}
+      </motion.div>
     </div>
   );
 }

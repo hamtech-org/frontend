@@ -1,28 +1,50 @@
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import type { IConversation, IMessage } from '@/types/chat.types';
-import type { ApiSuccessResponse } from '@/types/api.types';
+export * from './chat/types';
+export { chatApi } from './chat/core';
+export {
+  patchConversationsFromNewMessage,
+  patchMessageInGetMessagesCache,
+  patchMessageInPaginatedCache,
+  appendMessageToPaginatedCache,
+} from './chat/cache';
 
-export const chatApi = createApi({
-  reducerPath: 'chatApi',
-  baseQuery: fetchBaseQuery({
-    baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1',
-    prepareHeaders: (headers) => {
-      const token = localStorage.getItem('accessToken');
-      if (token) headers.set('Authorization', `Bearer ${token}`);
-      return headers;
-    },
-  }),
-  tagTypes: ['Conversations', 'Messages'],
-  endpoints: (builder) => ({
-    getConversations: builder.query<ApiSuccessResponse<IConversation[]>, void>({
-      query: () => '/chat/conversations',
-      providesTags: ['Conversations'],
-    }),
-    getMessages: builder.query<ApiSuccessResponse<IMessage[]>, string>({
-      query: (conversationId) => `/chat/conversations/${conversationId}/messages`,
-      providesTags: ['Messages'],
-    }),
-  }),
-});
+import { chatApi } from './chat/core';
 
-export const { useGetConversationsQuery, useGetMessagesQuery } = chatApi;
+export const {
+  useGetConversationsQuery,
+  useGetMessagesQuery,
+  useGetMessagesPaginatedQuery,
+  useLazyGetMessagesPaginatedQuery,
+  useGetConversationMembersQuery,
+  useCreateConversationMutation,
+  useSendMessageMutation,
+  useEditMessageMutation,
+  useDeleteMessageMutation,
+  useRecallMessageMutation,
+  useMarkAsReadMutation,
+  useUpdateConversationPreferencesMutation,
+  usePinMessageMutation,
+  useUnpinMessageMutation,
+  useReactMessageMutation,
+  useUpdateGroupMutation,
+  useDeleteGroupMutation,
+  useLeaveGroupMutation,
+  useAddMembersMutation,
+  useRemoveMemberMutation,
+  useChangeMemberRoleMutation,
+  useJoinRequestMutation,
+  useApproveRequestMutation,
+  useRejectRequestMutation,
+  useCreatePollMutation,
+  useVotePollMutation,
+  useUnvotePollMutation,
+  useCreateTaskMutation,
+  useUpdateTaskStatusMutation,
+  useGetPollsQuery,
+  useGetTasksQuery,
+  useTriggerTaskDueReminderMutation,
+  useGetGroupRequestsQuery,
+  useGetGroupSettingsQuery,
+  useUpdateGroupSettingsMutation,
+  useGetGroupJoinPreviewQuery,
+  useJoinGroupViaLinkMutation,
+} = chatApi;
