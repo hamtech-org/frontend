@@ -188,6 +188,7 @@ export function conversationActivityMs(conv: IConversation): number {
   consider(conv.lastMessageAt);
   consider(conv.updatedAt);
   consider(conv.lastMessage?.createdAt ?? null);
+  consider(conv.conversationListAt);
   return best;
 }
 

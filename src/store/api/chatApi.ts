@@ -22,6 +22,7 @@ export const {
   useRecallMessageMutation,
   useMarkAsReadMutation,
   useUpdateConversationPreferencesMutation,
+  useDeleteConversationMutation,
   usePinMessageMutation,
   useUnpinMessageMutation,
   useReactMessageMutation,
