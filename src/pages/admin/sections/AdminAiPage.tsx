@@ -12,9 +12,26 @@ import {
 } from '@/components/ui/select';
 import { useGetAiAdminDashboardQuery, useUpdateAiAdminConfigMutation } from '@/store/api/adminApi';
 import type { AiAdminConfig, AiTextProvider, UpdateAiAdminConfigBody } from '@/types/adminAi.types';
-import { Activity, Bot, Database, KeyRound, Loader2, Save, Settings2 } from 'lucide-react';
+import { cn } from '@/utils/cn';
+import { Activity, Bot, KeyRound, Loader2, Save, Settings2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import type React from 'react';
 import { toast } from 'react-toastify';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 type DraftConfig = UpdateAiAdminConfigBody & {
   bedrockAccessKeyId: string;
@@ -41,6 +58,15 @@ const emptyDraft: DraftConfig = {
   qdrantUrl: '',
   qdrantApiKey: '',
   qdrantCollection: 'hamtech_ai_memories',
+};
+
+const CHART_COLORS = ['#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed', '#64748b'];
+
+type CountChartRow = {
+  name: string;
+  requests: number;
+  tokens?: number;
+  errors?: number;
 };
 
 function toDraft(config?: AiAdminConfig): DraftConfig {
@@ -74,6 +100,10 @@ function KpiCard({ label, value, hint }: { label: string; value: string | number
       {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
+}
+
+function ChartFrame({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={cn('h-[260px] w-full min-h-0 min-w-0', className)}>{children}</div>;
 }
 
 function TextField({
@@ -119,6 +149,64 @@ export default function AdminAiPage() {
     if (!config) return '-';
     return config.provider === 'openai' ? 'OpenAI compatible' : 'AWS Bedrock';
   }, [config]);
+
+  const providerChartData = useMemo(
+    () =>
+      Object.entries(usage?.byProvider ?? {})
+        .map(([name, requests]) => ({ name, requests }))
+        .filter((row) => row.requests > 0),
+    [usage?.byProvider],
+  );
+
+  const statusChartData = useMemo(
+    () =>
+      [
+        { name: 'Thành công', requests: usage?.successRequests ?? 0 },
+        { name: 'Lỗi', requests: usage?.failedRequests ?? 0 },
+      ].filter((row) => row.requests > 0),
+    [usage?.failedRequests, usage?.successRequests],
+  );
+
+  const timelineChartData = useMemo(
+    () =>
+      [...(usage?.recent ?? [])]
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .map((row) => ({
+          time: new Date(row.createdAt).toLocaleTimeString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          tokens: row.tokensUsed,
+          latencyMs: row.latencyMs,
+        })),
+    [usage?.recent],
+  );
+
+  const stageChartData = useMemo(() => {
+    const map = new Map<string, CountChartRow>();
+    for (const row of usage?.recent ?? []) {
+      const name = row.stage || row.feature || 'unknown';
+      const current = map.get(name) ?? { name, requests: 0, tokens: 0, errors: 0 };
+      current.requests += 1;
+      current.tokens = (current.tokens ?? 0) + row.tokensUsed;
+      current.errors = (current.errors ?? 0) + (row.success ? 0 : 1);
+      map.set(name, current);
+    }
+    return [...map.values()].sort((a, b) => b.requests - a.requests).slice(0, 8);
+  }, [usage?.recent]);
+
+  const modelChartData = useMemo(() => {
+    const map = new Map<string, CountChartRow>();
+    for (const row of usage?.recent ?? []) {
+      const name = row.modelId || 'unknown';
+      const current = map.get(name) ?? { name, requests: 0, tokens: 0, errors: 0 };
+      current.requests += 1;
+      current.tokens = (current.tokens ?? 0) + row.tokensUsed;
+      current.errors = (current.errors ?? 0) + (row.success ? 0 : 1);
+      map.set(name, current);
+    }
+    return [...map.values()].sort((a, b) => b.requests - a.requests).slice(0, 8);
+  }, [usage?.recent]);
 
   const patch = (next: Partial<DraftConfig>) => setDraft((prev) => ({ ...prev, ...next }));
 
@@ -202,6 +290,189 @@ export default function AdminAiPage() {
         <KpiCard label="Tokens hôm nay" value={usage.totalTokens} />
         <KpiCard label="Lỗi" value={usage.failedRequests} />
         <KpiCard label="Latency TB" value={`${usage.averageLatencyMs}ms`} />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card className="glass-card min-w-0 border-none shadow-lg">
+          <CardHeader>
+            <CardTitle>Request theo provider</CardTitle>
+            <CardDescription>Phân bổ lượt gọi AI theo provider đang được log.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {providerChartData.length === 0 ? (
+              <p className="py-8 text-sm text-muted-foreground">Chưa có dữ liệu provider.</p>
+            ) : (
+              <ChartFrame>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={providerChartData}
+                      dataKey="requests"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={54}
+                      outerRadius={86}
+                      paddingAngle={2}
+                      label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                    >
+                      {providerChartData.map((row, i) => (
+                        <Cell key={row.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: 12 }} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartFrame>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card min-w-0 border-none shadow-lg">
+          <CardHeader>
+            <CardTitle>Tỷ lệ thành công</CardTitle>
+            <CardDescription>So sánh request thành công và request lỗi.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {statusChartData.length === 0 ? (
+              <p className="py-8 text-sm text-muted-foreground">Chưa có request nào hôm nay.</p>
+            ) : (
+              <ChartFrame>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={statusChartData}
+                      dataKey="requests"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={54}
+                      outerRadius={86}
+                      paddingAngle={2}
+                      label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                    >
+                      {statusChartData.map((row, i) => (
+                        <Cell key={row.name} fill={i === 0 ? '#059669' : '#dc2626'} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: 12 }} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartFrame>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card min-w-0 border-none shadow-lg xl:col-span-2">
+          <CardHeader>
+            <CardTitle>Tokens và latency gần đây</CardTitle>
+            <CardDescription>Các lượt gọi AI mới nhất theo thời gian phát sinh.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {timelineChartData.length === 0 ? (
+              <p className="py-8 text-sm text-muted-foreground">Chưa có log gần đây.</p>
+            ) : (
+              <ChartFrame className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={timelineChartData}
+                    margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                    <XAxis dataKey="time" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                    <YAxis yAxisId="tokens" tick={{ fontSize: 11 }} width={44} />
+                    <YAxis
+                      yAxisId="latency"
+                      orientation="right"
+                      tick={{ fontSize: 11 }}
+                      width={54}
+                    />
+                    <Tooltip contentStyle={{ borderRadius: 12 }} />
+                    <Legend />
+                    <Line
+                      yAxisId="tokens"
+                      type="monotone"
+                      dataKey="tokens"
+                      name="Tokens"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                    />
+                    <Line
+                      yAxisId="latency"
+                      type="monotone"
+                      dataKey="latencyMs"
+                      name="Latency ms"
+                      stroke="#d97706"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartFrame>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card min-w-0 border-none shadow-lg">
+          <CardHeader>
+            <CardTitle>Request theo stage</CardTitle>
+            <CardDescription>Nhóm theo stage/feature trong usage log gần đây.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {stageChartData.length === 0 ? (
+              <p className="py-8 text-sm text-muted-foreground">Chưa có dữ liệu stage.</p>
+            ) : (
+              <ChartFrame>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stageChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} height={48} />
+                    <YAxis tick={{ fontSize: 11 }} width={36} />
+                    <Tooltip contentStyle={{ borderRadius: 12 }} />
+                    <Legend />
+                    <Bar dataKey="requests" name="Requests" fill="#2563eb" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="errors" name="Lỗi" fill="#dc2626" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartFrame>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card min-w-0 border-none shadow-lg">
+          <CardHeader>
+            <CardTitle>Request theo model</CardTitle>
+            <CardDescription>Top model được gọi trong usage log gần đây.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {modelChartData.length === 0 ? (
+              <p className="py-8 text-sm text-muted-foreground">Chưa có dữ liệu model.</p>
+            ) : (
+              <ChartFrame>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={modelChartData}
+                    layout="vertical"
+                    margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      className="stroke-border/50"
+                      horizontal={false}
+                    />
+                    <XAxis type="number" tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 10 }} />
+                    <Tooltip contentStyle={{ borderRadius: 12 }} />
+                    <Bar dataKey="requests" name="Requests" fill="#7c3aed" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartFrame>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
@@ -363,14 +634,31 @@ export default function AdminAiPage() {
               </div>
             </div>
 
-            <Button onClick={() => void handleSave()} disabled={updateState.isLoading}>
-              {updateState.isLoading ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Save className="size-4" />
-              )}
-              Lưu cấu hình
-            </Button>
+            <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Áp dụng cấu hình AI</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Secret để trống sẽ giữ nguyên giá trị đã lưu trước đó.
+                </p>
+              </div>
+              <Button
+                onClick={() => void handleSave()}
+                disabled={updateState.isLoading}
+                className="h-11 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[160px]"
+              >
+                {updateState.isLoading ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Đang lưu...
+                  </>
+                ) : (
+                  <>
+                    <Save className="size-4" />
+                    Lưu cấu hình
+                  </>
+                )}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -432,19 +720,6 @@ export default function AdminAiPage() {
           </Card>
         </div>
       </div>
-
-      <Card className="glass-card border-none shadow-lg">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Database className="size-5 text-cyan-600" />
-            <CardTitle>Lưu trữ</CardTitle>
-          </div>
-          <CardDescription>
-            AiConfig, AiUsageLog và AiConfigAudit đang được lưu trong bảng AiAssistant theo item
-            type.
-          </CardDescription>
-        </CardHeader>
-      </Card>
     </div>
   );
 }
