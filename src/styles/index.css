@@ -204,6 +204,13 @@
 }
 .emoji-float { animation: floatUp 0.8s ease-out forwards; }
 
+@keyframes liveFloatUp {
+  0%   { transform: translateY(0) scale(1); opacity: 1; }
+  30%  { transform: translateY(-70px) scale(1.25); opacity: 1; }
+  100% { transform: translateY(-220px) scale(0.9); opacity: 0; }
+}
+.live-emoji-float { animation: liveFloatUp 3.5s ease-out forwards; }
+
 @keyframes emojiPop {
   0%   { transform: scale(0) translateY(4px); opacity: 0; }
   60%  { transform: scale(1.1); opacity: 1; }
