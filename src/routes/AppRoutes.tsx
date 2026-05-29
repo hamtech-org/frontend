@@ -12,6 +12,7 @@ const AdminUsersPage = React.lazy(() => import('@/pages/admin/sections/AdminUser
 const AdminStatisticsPage = React.lazy(() => import('@/pages/admin/sections/AdminStatisticsPage'));
 const AdminPostsPage = React.lazy(() => import('@/pages/admin/sections/AdminPostsPage'));
 const AdminResourcesPage = React.lazy(() => import('@/pages/admin/sections/AdminResourcesPage'));
+const AdminAiPage = React.lazy(() => import('@/pages/admin/sections/AdminAiPage'));
 const LiveDirectoryPage = React.lazy(() => import('@/pages/user/LiveDirectoryPage'));
 const LiveWatchPage = React.lazy(() => import('@/pages/user/LiveWatchPage'));
 const LiveHostPage = React.lazy(() => import('@/pages/user/LiveHostPage'));
@@ -52,6 +53,7 @@ export const appRouteElements = (
       <Route path="statistics" element={<AdminStatisticsPage />} />
       <Route path="posts" element={<AdminPostsPage />} />
       <Route path="resources" element={<AdminResourcesPage />} />
+      <Route path="ai" element={<AdminAiPage />} />
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
   </>

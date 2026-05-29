@@ -5,6 +5,11 @@ import type {
 } from '@/types/adminAnalytics.types';
 import type { IAdminResourceSummary } from '@/types/adminResources.types';
 import type {
+  AiAdminDashboard,
+  AiAdminConfig,
+  UpdateAiAdminConfigBody,
+} from '@/types/adminAi.types';
+import type {
   AdminGroupListItem,
   AdminListQuery,
   AdminListResult,
@@ -35,7 +40,7 @@ function listParams(query?: AdminListQuery): Record<string, string | number> {
 export const adminApi = createApi({
   reducerPath: 'adminApi',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['AdminUsers', 'AdminGroups', 'AdminPosts', 'Analytics', 'Resources'],
+  tagTypes: ['AdminUsers', 'AdminGroups', 'AdminPosts', 'Analytics', 'Resources', 'AiAdmin'],
   endpoints: (builder) => ({
     listAdminUsers: builder.query<
       ApiSuccessResponse<AdminListResult<AdminUserListItem>>,
@@ -173,6 +178,18 @@ export const adminApi = createApi({
       providesTags: ['Resources'],
     }),
 
+    getAiAdminDashboard: builder.query<ApiSuccessResponse<AiAdminDashboard>, void>({
+      query: () => '/ai/admin/dashboard',
+      providesTags: ['AiAdmin'],
+    }),
+    updateAiAdminConfig: builder.mutation<
+      ApiSuccessResponse<AiAdminConfig>,
+      UpdateAiAdminConfigBody
+    >({
+      query: (body) => ({ url: '/ai/admin/config', method: 'PUT', body }),
+      invalidatesTags: ['AiAdmin'],
+    }),
+
     getAnalytics: builder.query<ApiSuccessResponse<unknown>, string>({
       query: (type) => `/admin/analytics/${type}`,
       providesTags: ['Analytics'],
@@ -212,6 +229,8 @@ export const {
   useUpdateAdminPostMutation,
   useDeleteAdminPostMutation,
   useGetAdminResourceSummaryQuery,
+  useGetAiAdminDashboardQuery,
+  useUpdateAiAdminConfigMutation,
   useGetAnalyticsQuery,
   useGetAdminAnalyticsDashboardQuery,
 } = adminApi;
