@@ -173,7 +173,10 @@ export default function LiveHostPage() {
     };
   }, [dispatch, onChatMessage, onSessionEnded, onSessionUpdated]);
 
+  const videoRectReady = !isLoading && Boolean(session) && isHost;
+
   useEffect(() => {
+    if (!videoRectReady) return;
     const el = videoShellRef.current;
     if (!el) return;
 
@@ -191,7 +194,7 @@ export default function LiveHostPage() {
       window.removeEventListener('scroll', update, true);
       window.removeEventListener('resize', update);
     };
-  }, []);
+  }, [videoRectReady, session?.sessionId, chatOpen]);
 
   const stopCompositor = useCallback(async () => {
     compositorRef.current?.stop();
