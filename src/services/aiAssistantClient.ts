@@ -28,3 +28,9 @@ export async function fetchAiAssistantThread(threadId?: string): Promise<{
   const json = res.data;
   return json.data;
 }
+
+export async function clearAiAssistantThread(): Promise<{ threadId: string }> {
+  const res =
+    await apiClient.delete<ApiSuccessResponse<{ threadId: string }>>('/ai/assistant/thread');
+  return res.data.data;
+}
