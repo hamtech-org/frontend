@@ -265,10 +265,10 @@ function chatItemsFromAssistantActions(
       a.type === 'show_community_results' && Array.isArray(a.payload?.communities),
   );
 
-  for (const act of showUsersActions) {
+  for (const [index, act] of showUsersActions.entries()) {
     if (!act.payload?.users?.length) continue;
     items.push({
-      id: `assistant-cards-${baseId}-${act.payload.source}`,
+      id: `assistant-cards-${baseId}-${act.payload.source}-${index}-${act.payload.query}`,
       role: 'assistant',
       kind: 'user_cards',
       source: act.payload.source,
