@@ -27,6 +27,17 @@ function messageSendErrorText(error: unknown): string {
   return 'Gửi tin nhắn thất bại. Vui lòng thử lại.';
 }
 
+function extractMentionIds(content: string): string[] {
+  if (!content) return [];
+  const regex = /@\[.*?\]\(mention:([a-zA-Z0-9-]+|all)\)/g;
+  const ids: string[] = [];
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    if (match[1]) ids.push(match[1]);
+  }
+  return [...new Set(ids)];
+}
+
 /**
  * Self-contained composer controller.
  * Internally calls RTK mutations and reads Redux state.
@@ -155,6 +166,7 @@ export function useChatComposerController(
               content: i === 0 ? captionFirst : ' ',
               mediaId: result.mediaId,
               replyTo: i === 0 ? replyingToMessageId : undefined,
+              mentions: i === 0 ? extractMentionIds(captionFirst) : undefined,
             }).unwrap();
           }
           pendingAttachments.forEach((p) => {
@@ -188,6 +200,7 @@ export function useChatComposerController(
           type: 'text',
           content,
           replyTo: replyingToMessageId,
+          mentions: extractMentionIds(content),
         }).unwrap();
         clearReply();
         setComposerStatusMessage('Đã gửi tin nhắn.');
@@ -254,42 +267,6 @@ export function useChatComposerController(
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-
-  const startRecording = useCallback(async () => {
-    if (!activeConversationId) return;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      audioChunksRef.current = [];
-
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      setRecordingDuration(0);
-
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingDuration((prev) => {
-          if (prev >= 300) {
-            // Giới hạn 5 phút
-            void stopRecording(true);
-            return prev;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    } catch (err) {
-      console.error('Không thể truy cập Microphone:', err);
-      toast.error('Không thể truy cập Microphone. Vui lòng kiểm tra quyền cài đặt trình duyệt.');
-    }
-  }, [activeConversationId]);
 
   const stopRecording = useCallback(
     async (shouldSend: boolean) => {
@@ -366,6 +343,42 @@ export function useChatComposerController(
       clearReply,
     ],
   );
+
+  const startRecording = useCallback(async () => {
+    if (!activeConversationId) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      audioChunksRef.current = [];
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => {
+          if (prev >= 300) {
+            // Giới hạn 5 phút
+            void stopRecording(true);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    } catch (err) {
+      console.error('Không thể truy cập Microphone:', err);
+      toast.error('Không thể truy cập Microphone. Vui lòng kiểm tra quyền cài đặt trình duyệt.');
+    }
+  }, [activeConversationId, stopRecording]);
 
   return {
     inputText,
