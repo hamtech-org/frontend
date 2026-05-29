@@ -31,6 +31,9 @@ import type {
 import { useChatPageContext } from '@/pages/user/chat-page/ChatPageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
+import { useDeleteConversationMutation } from '@/store/api/chatApi';
+import { setActiveConversation } from '@/store/slices/chatSlice';
 import { useLeaveCommunityMutation } from '@/store/api/communityApi';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import { apiClient } from '@/services/api';
@@ -527,6 +530,34 @@ export function ConversationInfoPanel({
   const { core, groupActions } = useChatPageContext();
   const { user: authUser } = useAuth();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  const [deleteConversation, { isLoading: isDeletingConversation }] =
+    useDeleteConversationMutation();
+  const [clearHistoryModalOpen, setClearHistoryModalOpen] = useState(false);
+
+  const handleConfirmClearHistory = async () => {
+    if (!activeConversation?.conversationId) return;
+    try {
+      await deleteConversation({
+        conversationId: activeConversation.conversationId,
+        type: activeConversation.type as 'direct' | 'group',
+      }).unwrap();
+
+      toast.success(
+        activeConversation.type === 'direct'
+          ? 'Đã xóa cuộc hội thoại'
+          : 'Đã xóa lịch sử trò chuyện',
+      );
+
+      setClearHistoryModalOpen(false);
+
+      dispatch(setActiveConversation(null));
+      navigate('/chat');
+    } catch (err: any) {
+      toast.error(err?.data?.message || 'Không thể xóa cuộc hội thoại');
+    }
+  };
   const [leaveCommunity, { isLoading: leavingCommunityLoading }] = useLeaveCommunityMutation();
   const [blockFriend, { isLoading: isBlockingFriend }] = useBlockFriendMutation();
   const [unblockFriend, { isLoading: isUnblockingFriend }] = useUnblockFriendMutation();
@@ -1820,6 +1851,29 @@ export function ConversationInfoPanel({
                   {loading?.deleteGroup ? 'Đang xử lý…' : 'Giải tán nhóm'}
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => setClearHistoryModalOpen(true)}
+                disabled={isDeletingConversation}
+                className="flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-3 rounded-xl transition-colors border border-red-500/20 disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                Xóa lịch sử trò chuyện
+              </button>
+            </div>
+          )}
+
+          {activeConversation?.type === 'direct' && (
+            <div className="p-4 bg-white dark:bg-transparent mt-2 flex flex-col gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => setClearHistoryModalOpen(true)}
+                disabled={isDeletingConversation}
+                className="flex items-center justify-center gap-2 text-sm font-bold text-red-500 hover:bg-red-500/10 px-4 py-3 rounded-xl transition-colors border border-red-500/20 disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                Xóa cuộc hội thoại
+              </button>
             </div>
           )}
         </div>
@@ -2209,6 +2263,26 @@ export function ConversationInfoPanel({
             }
           })();
         }}
+      />
+
+      <ConfirmModal
+        open={clearHistoryModalOpen}
+        title={
+          activeConversation?.type === 'direct' ? 'Xóa cuộc hội thoại?' : 'Xóa lịch sử trò chuyện?'
+        }
+        description={
+          activeConversation?.type === 'direct'
+            ? 'Toàn bộ lịch sử tin nhắn của cuộc trò chuyện này sẽ bị xóa phía bạn và cuộc trò chuyện sẽ ẩn khỏi danh sách.'
+            : 'Toàn bộ lịch sử tin nhắn của nhóm này sẽ bị xóa phía bạn và nhóm sẽ ẩn khỏi danh sách.'
+        }
+        cancelLabel="Không"
+        confirmLabel="Xóa"
+        variant="danger"
+        isConfirming={isDeletingConversation}
+        onClose={() => {
+          if (!isDeletingConversation) setClearHistoryModalOpen(false);
+        }}
+        onConfirm={handleConfirmClearHistory}
       />
       <MuteNotificationsModal
         open={showMuteDurationModal}

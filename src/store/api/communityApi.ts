@@ -1,6 +1,7 @@
 import { createApi } from '@reduxjs/toolkit/query/react';
 import type { ApiSuccessResponse } from '@/types/api.types';
 import { baseQueryWithReauth } from './baseQuery';
+import { chatApi } from './chatApi';
 import type { IPost } from '@/types/newsfeed.types';
 import type {
   CommunityCategory,
@@ -333,6 +334,14 @@ export const communityApi = createApi({
         method: 'POST',
       }),
       invalidatesTags: (_res, _err, { groupId }) => [{ type: 'CommunityDetail', id: groupId }],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          dispatch(chatApi.util.invalidateTags(['Conversations']));
+        } catch {
+          // no-op
+        }
+      },
     }),
     linkExistingChat: builder.mutation<
       ApiSuccessResponse<null>,

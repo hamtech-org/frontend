@@ -15,6 +15,7 @@ import {
   bumpGroupBoardRefresh,
   markGroupMemberRemovedRealtime,
   setActiveConversation,
+  clearConversationMessages,
 } from '@/store/slices/chatSlice';
 import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
 import type { ConversationType, IGroupSettings, IMessage, MessageStatus } from '@/types/chat.types';
@@ -246,6 +247,67 @@ export function useChatSocketListeners(
       patchMessageInCache(conversationId, messageId, { reactions });
     };
 
+    const handleConversationDeletedForMe = (data: unknown) => {
+      const p = data as {
+        conversationId: string;
+        type: 'direct' | 'group';
+        clearedAt: string;
+        clearedAtMs: number;
+        shouldHideFromList: boolean;
+      };
+      if (!p?.conversationId) return;
+
+      const { conversationId, shouldHideFromList, clearedAt } = p;
+
+      // Always clear Redux messages buffer
+      dispatch(clearConversationMessages(conversationId));
+
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          if (!draft?.data) return;
+          if (shouldHideFromList) {
+            draft.data = draft.data.filter((c) => c.conversationId !== conversationId);
+          } else {
+            const idx = draft.data.findIndex((c) => c.conversationId === conversationId);
+            if (idx >= 0) {
+              draft.data[idx].lastMessage = null as any;
+              draft.data[idx].lastMessageAt = clearedAt;
+              draft.data[idx].unreadCount = 0;
+            }
+          }
+        }),
+      );
+
+      // Always clear RTK Query messages cache
+      dispatch(
+        chatApi.util.updateQueryData('getMessages', { conversationId }, (draft) => {
+          if (draft?.data) draft.data = [];
+        }),
+      );
+      dispatch(
+        chatApi.util.updateQueryData('getMessagesPaginated', { conversationId }, (draft) => {
+          if (draft?.data) {
+            draft.data.items = [];
+            draft.data.hasMore = false;
+            draft.data.nextCursor = null;
+          }
+        }),
+      );
+
+      if (activeConversationIdRef.current === conversationId) {
+        if (shouldHideFromList) {
+          dispatch(setActiveConversation(null));
+        }
+      }
+
+      dispatch(
+        chatApi.util.invalidateTags([
+          { type: 'Messages', id: conversationId },
+          { type: 'Messages', id: `paginated-${conversationId}` },
+        ]),
+      );
+    };
+
     const handleMessageStatus = (data: unknown) => {
       const p = data as { conversationId?: string; messageId?: string; status?: MessageStatus };
       if (!p?.conversationId || !p?.messageId || !p?.status) return;
@@ -442,6 +504,7 @@ export function useChatSocketListeners(
     };
 
     socketService.on('conversation:created', handleConversationCreated);
+    socketService.on('conversation:deleted_for_me', handleConversationDeletedForMe);
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:status', handleMessageStatus);
     socketService.on('message:recall', handleRecall);
@@ -493,6 +556,7 @@ export function useChatSocketListeners(
         conversationsRefetchTimerRef.current = null;
       }
       socketService.off('conversation:created', handleConversationCreated);
+      socketService.off('conversation:deleted_for_me', handleConversationDeletedForMe);
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:status', handleMessageStatus);
       socketService.off('message:recall', handleRecall);
