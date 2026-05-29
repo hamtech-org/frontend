@@ -72,8 +72,10 @@ export default function LiveWatchPage() {
   const [joinedRtc, setJoinedRtc] = useState(false);
   const [videoBoxFs, setVideoBoxFs] = useState(false);
   const [remoteUids, setRemoteUids] = useState<number[]>([]);
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
 
   const clientRef = useRef<IAgoraRTCClient | null>(null);
+  const reactionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoShellRef = useRef<HTMLDivElement>(null);
   const [videoRect, setVideoRect] = useState<DOMRect | null>(null);
   const sessionIdRef = useRef(sessionId);
@@ -128,7 +130,10 @@ export default function LiveWatchPage() {
     };
   }, [onChatMessage, onSessionEnded, refetch]);
 
+  const videoRectReady = !isLoading && session?.status === 'live';
+
   useEffect(() => {
+    if (!videoRectReady) return;
     const el = videoShellRef.current;
     if (!el) return;
 
@@ -146,7 +151,7 @@ export default function LiveWatchPage() {
       window.removeEventListener('scroll', update, true);
       window.removeEventListener('resize', update);
     };
-  }, []);
+  }, [videoRectReady, session?.sessionId, chatOpen]);
 
   useEffect(() => {
     if (!session || session.status !== 'live' || !AGORA_APP_ID) return;
@@ -296,6 +301,22 @@ export default function LiveWatchPage() {
     [sessionId],
   );
 
+  const handleReactionEnter = useCallback(() => {
+    if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current);
+    reactionTimeoutRef.current = setTimeout(() => setReactionPickerOpen(true), 400);
+  }, []);
+
+  const handleReactionLeave = useCallback(() => {
+    if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current);
+    reactionTimeoutRef.current = setTimeout(() => setReactionPickerOpen(false), 300);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current);
+    };
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex h-[calc(100dvh-4rem)] items-center justify-center bg-background">
@@ -380,32 +401,48 @@ export default function LiveWatchPage() {
             </div>
 
             <div className="absolute bottom-4 right-4 flex gap-2 z-10">
-              <div className="relative group">
+              <div
+                className="relative"
+                onMouseEnter={handleReactionEnter}
+                onMouseLeave={handleReactionLeave}
+              >
+                {reactionPickerOpen && (
+                  <div
+                    className="absolute bottom-full right-0 mb-1 flex gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2 z-50"
+                    onMouseEnter={() => {
+                      if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current);
+                      setReactionPickerOpen(true);
+                    }}
+                    onMouseLeave={handleReactionLeave}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {(
+                      ['like', 'love', 'haha', 'wow', 'sad', 'angry'] as Array<
+                        keyof typeof REACTION_META
+                      >
+                    ).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className="h-8 w-8 rounded-full bg-white/5 hover:bg-white/10 grid place-items-center"
+                        onClick={() => sendReaction(t)}
+                        aria-label={`Gửi reaction ${REACTION_META[t].label}`}
+                      >
+                        <span className="text-base">{REACTION_META[t].emoji}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <Button
                   type="button"
                   size="icon"
                   variant="secondary"
                   className="rounded-full bg-black/50 border-white/10 text-white hover:bg-black/70"
+                  onClick={() => sendReaction('love')}
+                  aria-label="Gửi reaction yêu thích"
                 >
                   ❤️
                 </Button>
-                <div className="pointer-events-none opacity-0 group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity absolute bottom-full right-0 mb-2 flex gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">
-                  {(
-                    ['like', 'love', 'haha', 'wow', 'sad', 'angry'] as Array<
-                      keyof typeof REACTION_META
-                    >
-                  ).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      className="h-8 w-8 rounded-full bg-white/5 hover:bg-white/10 grid place-items-center"
-                      onClick={() => sendReaction(t)}
-                      aria-label={`Gửi reaction ${REACTION_META[t].label}`}
-                    >
-                      <span className="text-base">{REACTION_META[t].emoji}</span>
-                    </button>
-                  ))}
-                </div>
               </div>
               <Button
                 type="button"

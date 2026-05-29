@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Player } from '@lottiefiles/react-lottie-player';
 import { REACTION_META } from '@/types/reaction.types';
@@ -40,6 +40,8 @@ export const LiveFloatingReactions = ({
 }) => {
   const [items, setItems] = useState<Item[]>([]);
   const sid = useMemo(() => sessionId.trim(), [sessionId]);
+  const containerRectRef = useRef(containerRect);
+  containerRectRef.current = containerRect;
 
   useEffect(() => {
     if (!sid) return;
@@ -49,7 +51,7 @@ export const LiveFloatingReactions = ({
       const type = p.reactionType;
       if (!REACTION_META[type]) return;
 
-      const rect = containerRect;
+      const rect = containerRectRef.current;
       if (!rect) return;
       const x = clamp(rect.left + Math.random() * rect.width, rect.left + 16, rect.right - 56);
       const y = rect.bottom - 84;
@@ -64,7 +66,7 @@ export const LiveFloatingReactions = ({
     return () => {
       socketService.off('live:reaction', onReaction);
     };
-  }, [containerRect, sid]);
+  }, [sid]);
 
   if (items.length === 0) return null;
 
