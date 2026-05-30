@@ -73,6 +73,13 @@ export interface IConversation {
   groupId?: string | null;
   /** Cho biết tính năng chat của cộng đồng liên kết có đang bật không */
   chatEnabled?: boolean;
+  clearedAt?: string | null;
+  clearedAtMs?: number | null;
+  clearedUntilSK?: string | null;
+  revealedAt?: string | null;
+  revealedAtMs?: number | null;
+  conversationListAt?: string | null;
+  conversationListAtMs?: number | null;
 }
 
 export interface ILastMessage {
@@ -82,6 +89,7 @@ export interface ILastMessage {
   type: MessageType;
   createdAt: string;
   senderDisplayName?: string | null;
+  mentions?: string[];
 }
 
 export interface IReplyToDetails {
@@ -119,6 +127,7 @@ export interface IMessage {
   status?: MessageStatus;
   /** Tin của mình: danh sách người đã đọc (API gộp từ lastReadAt thành viên). */
   readBy?: { userId: string; displayName?: string | null }[];
+  mentions?: string[];
   createdAt: string;
 }
 

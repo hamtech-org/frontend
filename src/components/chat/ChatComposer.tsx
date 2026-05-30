@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import EmojiPicker from 'emoji-picker-react';
 import {
@@ -34,6 +34,7 @@ import {
   type PendingAttachment,
 } from '@/components/chat/ChatPendingAttachmentsStrip';
 import type { GroupMember } from '@/types/chat.group.types';
+import { escapeMentionLabel } from '@/utils/mentionHelper';
 
 export type { PendingAttachment };
 
@@ -61,6 +62,15 @@ export function ChatComposer({
   const currentUserId = useSelector((state: RootState) => state.auth.user?.userId ?? '');
   const [aiReplyLoading, setAiReplyLoading] = useState(false);
   const [showAiQuickReplies, setShowAiQuickReplies] = useState(true);
+
+  // Mentions local state
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionSearchTerm, setMentionSearchTerm] = useState('');
+  const [mentionTriggerIndex, setMentionTriggerIndex] = useState(-1);
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const [mentionsMetadata, setMentionsMetadata] = useState<
+    { userId: string; displayName: string }[]
+  >([]);
 
   const {
     inputText,
@@ -93,6 +103,7 @@ export function ChatComposer({
   const emojiPanelRef = useRef<HTMLDivElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mentionDropdownRef = useRef<HTMLDivElement>(null);
   const [emojiTranslateX, setEmojiTranslateX] = useState(0);
   const busy = isSending || mediaUploading;
   const hasTypedMessage = inputText.trim().length > 0;
@@ -100,6 +111,138 @@ export function ChatComposer({
   const sendDisabled = !activeConversationId || busy;
   const actionDisabled = !activeConversationId;
   const voiceDisabled = !activeConversationId;
+
+  // Filtered mention list
+  const filteredMentionMembers = useMemo(() => {
+    if (!showMentionDropdown) return [];
+
+    const list = groupMembers.filter((m) => {
+      if (m.userId === currentUserId) return false; // Không tự tag chính mình
+      const nameLower = (m.displayName || m.name || '').toLowerCase();
+      return nameLower.includes(mentionSearchTerm.toLowerCase());
+    });
+
+    const showAll =
+      'cả nhóm'.includes(mentionSearchTerm.toLowerCase()) ||
+      'all'.includes(mentionSearchTerm.toLowerCase()) ||
+      mentionSearchTerm === '';
+    if (showAll && activeConversation?.type === 'group') {
+      return [
+        { userId: 'all', displayName: 'Cả nhóm', name: 'Cả nhóm (@All)', avatar: '' },
+        ...list,
+      ];
+    }
+    return list;
+  }, [showMentionDropdown, groupMembers, mentionSearchTerm, currentUserId, activeConversation]);
+
+  useEffect(() => {
+    if (showMentionDropdown && filteredMentionMembers.length === 0) {
+      setShowMentionDropdown(false);
+    }
+  }, [showMentionDropdown, filteredMentionMembers]);
+
+  const handleSelectMention = useCallback(
+    (member: { userId: string; displayName?: string; name?: string }) => {
+      if (mentionTriggerIndex === -1) return;
+      const name = member.displayName || member.name || 'Thành viên';
+
+      const escapedName = escapeMentionLabel(name);
+
+      // Thêm thông tin tag vào metadata local để đổi sang markdown khi bấm gửi
+      setMentionsMetadata((prev) => [...prev, { userId: member.userId, displayName: escapedName }]);
+
+      const tag = `@${escapedName} `;
+
+      const beforeAt = inputText.slice(0, mentionTriggerIndex);
+      const afterCursor = inputText.slice(mentionTriggerIndex + mentionSearchTerm.length + 1);
+
+      const newText = beforeAt + tag + afterCursor;
+      setInputText(newText);
+      setShowMentionDropdown(false);
+
+      window.setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const cursorPosition = mentionTriggerIndex + tag.length;
+          textareaRef.current.setSelectionRange(cursorPosition, cursorPosition);
+        }
+      }, 0);
+    },
+    [inputText, mentionTriggerIndex, mentionSearchTerm, setInputText],
+  );
+
+  const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showMentionDropdown && filteredMentionMembers.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveMentionIndex((prev) => (prev + 1) % filteredMentionMembers.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveMentionIndex(
+          (prev) => (prev - 1 + filteredMentionMembers.length) % filteredMentionMembers.length,
+        );
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const selected = filteredMentionMembers[activeMentionIndex];
+        if (selected) {
+          handleSelectMention(selected as any);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowMentionDropdown(false);
+        return;
+      }
+    }
+
+    // Intercept Enter key press to convert display tag to raw markdown before sending
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+
+      let processedText = inputText;
+      const sortedMetadata = [...mentionsMetadata].sort(
+        (a, b) => b.displayName.length - a.displayName.length,
+      );
+
+      for (const item of sortedMetadata) {
+        const escapedNameForRegex = item.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`@${escapedNameForRegex}`, 'g');
+        const replacement =
+          item.userId === 'all'
+            ? `@[Cả nhóm](mention:all)`
+            : `@[${item.displayName}](mention:${item.userId})`;
+        processedText = processedText.replace(regex, replacement);
+      }
+
+      setMentionsMetadata([]);
+      void handleSendMessage(processedText);
+      return;
+    }
+
+    handleKeyDown(e);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        mentionDropdownRef.current &&
+        !mentionDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowMentionDropdown(false);
+      }
+    };
+    if (showMentionDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMentionDropdown]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -581,6 +724,48 @@ export function ChatComposer({
       ) : (
         <div className="relative flex items-end gap-2">
           <div className="relative flex flex-1 flex-col rounded-xl border border-border/45 bg-muted/35 transition-all focus-within:border-border focus-within:bg-background/90">
+            {showMentionDropdown && filteredMentionMembers.length > 0 && (
+              <div
+                ref={mentionDropdownRef}
+                className="absolute bottom-full left-0 z-50 mb-2 max-h-60 w-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl animate-in slide-in-from-bottom-2 duration-150 custom-scrollbar"
+              >
+                {filteredMentionMembers.map((member, idx) => {
+                  const isActive = idx === activeMentionIndex;
+                  return (
+                    <button
+                      key={member.userId}
+                      type="button"
+                      onClick={() => handleSelectMention(member as any)}
+                      onMouseEnter={() => setActiveMentionIndex(idx)}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-semibold transition-all ${
+                        isActive
+                          ? 'bg-slate-100 text-slate-900'
+                          : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {member.userId === 'all' ? (
+                        <div className="size-6 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-600 font-bold text-[10px]">
+                          @
+                        </div>
+                      ) : member.avatar ? (
+                        <img
+                          src={member.avatar}
+                          alt=""
+                          className="size-6 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="size-6 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-600 text-[10px] font-bold">
+                          {(member.displayName || member.name || 'U').slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="truncate">
+                        {member.displayName || member.name || 'Thành viên'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <textarea
               ref={textareaRef}
               placeholder={
@@ -591,10 +776,31 @@ export function ChatComposer({
               rows={1}
               value={inputText}
               onChange={(e) => {
-                setInputText(e.target.value);
+                const val = e.target.value;
+                setInputText(val);
                 handleTyping();
+
+                // Mentions trigger detection
+                const cursorIndex = e.target.selectionStart;
+                const textBeforeCursor = val.slice(0, cursorIndex);
+                const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+
+                if (lastAtIndex !== -1 && activeConversation?.type === 'group') {
+                  const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1);
+                  // Chỉ trigger khi không chứa dấu cách
+                  if (!/\s/.test(textAfterAt)) {
+                    setShowMentionDropdown(true);
+                    setMentionTriggerIndex(lastAtIndex);
+                    setMentionSearchTerm(textAfterAt);
+                    setActiveMentionIndex(0);
+                  } else {
+                    setShowMentionDropdown(false);
+                  }
+                } else {
+                  setShowMentionDropdown(false);
+                }
               }}
-              onKeyDown={(e) => handleKeyDown(e)}
+              onKeyDown={(e) => handleComposerKeyDown(e)}
               onPaste={handlePaste}
               disabled={!activeConversationId}
               aria-label="Soạn tin nhắn"
@@ -606,7 +812,26 @@ export function ChatComposer({
             {hasSendable ? (
               <button
                 type="button"
-                onClick={() => void handleSendMessage()}
+                onClick={() => {
+                  let processedText = inputText;
+                  const sortedMetadata = [...mentionsMetadata].sort(
+                    (a, b) => b.displayName.length - a.displayName.length,
+                  );
+                  for (const item of sortedMetadata) {
+                    const escapedNameForRegex = item.displayName.replace(
+                      /[.*+?^${}()|[\]\\]/g,
+                      '\\$&',
+                    );
+                    const regex = new RegExp(`@${escapedNameForRegex}`, 'g');
+                    const replacement =
+                      item.userId === 'all'
+                        ? `@[Cả nhóm](mention:all)`
+                        : `@[${item.displayName}](mention:${item.userId})`;
+                    processedText = processedText.replace(regex, replacement);
+                  }
+                  setMentionsMetadata([]);
+                  void handleSendMessage(processedText);
+                }}
                 disabled={sendDisabled}
                 aria-label={busy ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'}
                 className="group animate-in flex size-10 items-center justify-center rounded-lg bg-linear-to-br from-blue-600 to-blue-700 text-white shadow-md shadow-blue-600/20 transition-all fade-in zoom-in hover:-translate-y-0.5 hover:from-blue-600 hover:to-blue-800 hover:shadow-lg hover:shadow-blue-600/25 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:from-blue-600 disabled:hover:to-blue-700"

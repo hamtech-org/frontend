@@ -28,6 +28,7 @@ import { fetchLiveRtcToken } from '@/utils/liveAgora';
 import { Button } from '@/components/ui/button';
 import { LiveCompositePipOverlay } from '@/components/live/LiveCompositePipOverlay';
 import { LiveHostChatPanel } from '@/components/live/LiveHostStudioSidebar';
+import { LiveFloatingReactions } from '@/components/live/LiveFloatingReactions';
 import {
   defaultPipRectBottomRight,
   getScreenShareSurface,
@@ -102,6 +103,8 @@ export default function LiveHostPage() {
   const localCamRef = useRef<HTMLDivElement>(null);
   const localScreenRef = useRef<HTMLDivElement>(null);
   const compositePreviewRef = useRef<HTMLDivElement>(null);
+  const videoShellRef = useRef<HTMLDivElement>(null);
+  const [videoRect, setVideoRect] = useState<DOMRect | null>(null);
   const camOnRef = useRef(camOn);
   const screenOnRef = useRef(screenOn);
   const micOnRef = useRef(micOn);
@@ -169,6 +172,29 @@ export default function LiveHostPage() {
       socketService.off('live:viewers-updated', onViewersUpdated);
     };
   }, [dispatch, onChatMessage, onSessionEnded, onSessionUpdated]);
+
+  const videoRectReady = !isLoading && Boolean(session) && isHost;
+
+  useEffect(() => {
+    if (!videoRectReady) return;
+    const el = videoShellRef.current;
+    if (!el) return;
+
+    const update = () => {
+      setVideoRect(el.getBoundingClientRect());
+    };
+    update();
+
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [videoRectReady, session?.sessionId, chatOpen]);
 
   const stopCompositor = useCallback(async () => {
     compositorRef.current?.stop();
@@ -615,7 +641,7 @@ export default function LiveHostPage() {
 
   if (isLoading) {
     return (
-      <div className="fixed inset-0 z-[90] flex items-center justify-center bg-background">
+      <div className="fixed inset-0 z-90 flex items-center justify-center bg-background">
         <div className="w-10 h-10 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
       </div>
     );
@@ -623,7 +649,7 @@ export default function LiveHostPage() {
 
   if (error || !session) {
     return (
-      <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center gap-4 px-4 bg-background">
+      <div className="fixed inset-0 z-90 flex flex-col items-center justify-center gap-4 px-4 bg-background">
         <p className="text-muted-foreground">Không tải được phiên.</p>
         <Button type="button" variant="outline" onClick={() => navigate('/live')}>
           Về danh sách
@@ -634,7 +660,7 @@ export default function LiveHostPage() {
 
   if (!isHost) {
     return (
-      <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center gap-4 px-4 bg-background text-center">
+      <div className="fixed inset-0 z-90 flex flex-col items-center justify-center gap-4 px-4 bg-background text-center">
         <p className="text-muted-foreground max-w-md">
           Chỉ host của phiên mới mở được Live Studio.
         </p>
@@ -646,7 +672,7 @@ export default function LiveHostPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-[90] flex flex-col bg-background text-foreground">
+    <div className="fixed inset-0 z-90 flex flex-col bg-background text-foreground">
       <header className="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-border bg-card/80 backdrop-blur">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white shrink-0">
@@ -695,7 +721,10 @@ export default function LiveHostPage() {
 
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 flex flex-col min-w-0 min-h-0 p-2 sm:p-3 gap-2">
-          <div className="relative flex-1 min-h-[200px] rounded-2xl overflow-hidden bg-zinc-900 border border-border">
+          <div
+            ref={videoShellRef}
+            className="relative flex-1 min-h-[200px] rounded-2xl overflow-hidden bg-zinc-900 border border-border"
+          >
             {screenWithCamCompositeMode && (
               <>
                 <div ref={compositePreviewRef} className="absolute inset-0" />
@@ -716,6 +745,8 @@ export default function LiveHostPage() {
                 Bật camera hoặc chia sẻ màn hình
               </div>
             )}
+
+            <LiveFloatingReactions sessionId={sessionId} containerRect={videoRect} />
           </div>
 
           <div className="shrink-0 flex flex-wrap items-center justify-center gap-2 py-3 border-t border-border">
