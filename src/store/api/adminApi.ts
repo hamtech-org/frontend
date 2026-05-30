@@ -6,6 +6,8 @@ import type {
 import type { IAdminResourceSummary } from '@/types/adminResources.types';
 import type {
   AiAdminDashboard,
+  AiUsageInterval,
+  AiUsageRange,
   AiAdminConfig,
   UpdateAiAdminConfigBody,
 } from '@/types/adminAi.types';
@@ -178,8 +180,17 @@ export const adminApi = createApi({
       providesTags: ['Resources'],
     }),
 
-    getAiAdminDashboard: builder.query<ApiSuccessResponse<AiAdminDashboard>, void>({
-      query: () => '/ai/admin/dashboard',
+    getAiAdminDashboard: builder.query<
+      ApiSuccessResponse<AiAdminDashboard>,
+      { range?: AiUsageRange; interval?: AiUsageInterval } | void
+    >({
+      query: (params) => ({
+        url: '/ai/admin/dashboard',
+        params: {
+          ...(params?.range ? { range: params.range } : {}),
+          ...(params?.interval ? { interval: params.interval } : {}),
+        },
+      }),
       providesTags: ['AiAdmin'],
     }),
     updateAiAdminConfig: builder.mutation<

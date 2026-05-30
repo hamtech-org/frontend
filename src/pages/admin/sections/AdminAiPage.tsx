@@ -11,7 +11,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useGetAiAdminDashboardQuery, useUpdateAiAdminConfigMutation } from '@/store/api/adminApi';
-import type { AiAdminConfig, AiTextProvider, UpdateAiAdminConfigBody } from '@/types/adminAi.types';
+import type {
+  AiAdminConfig,
+  AiTextProvider,
+  AiUsageInterval,
+  AiUsageRange,
+  UpdateAiAdminConfigBody,
+} from '@/types/adminAi.types';
 import { cn } from '@/utils/cn';
 import { Activity, Bot, KeyRound, Loader2, Save, Settings2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -62,6 +68,16 @@ const emptyDraft: DraftConfig = {
 
 const CHART_COLORS = ['#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed', '#64748b'];
 
+const AI_USAGE_RANGES: Array<{
+  value: AiUsageRange;
+  label: string;
+  interval: AiUsageInterval;
+}> = [
+  { value: 'day', label: 'Ngày', interval: 'hour' },
+  { value: 'week', label: 'Tuần', interval: 'day' },
+  { value: 'month', label: 'Tháng', interval: 'day' },
+];
+
 type CountChartRow = {
   name: string;
   requests: number;
@@ -106,6 +122,21 @@ function ChartFrame({ children, className }: { children: React.ReactNode; classN
   return <div className={cn('h-[260px] w-full min-h-0 min-w-0', className)}>{children}</div>;
 }
 
+function formatTimelineLabel(iso: string, interval: AiUsageInterval): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  if (interval === 'hour') {
+    return d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  }
+  if (interval === 'week') {
+    return `Tuần ${d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}`;
+  }
+  if (interval === 'month') {
+    return d.toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' });
+  }
+  return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+}
+
 function TextField({
   label,
   value,
@@ -134,12 +165,22 @@ function TextField({
 }
 
 export default function AdminAiPage() {
-  const { data, isLoading, isFetching, isError } = useGetAiAdminDashboardQuery();
+  const [usageRange, setUsageRange] = useState<AiUsageRange>('day');
+  const usageInterval = useMemo(
+    () => AI_USAGE_RANGES.find((item) => item.value === usageRange)?.interval ?? 'hour',
+    [usageRange],
+  );
+  const { data, isLoading, isFetching, isError } = useGetAiAdminDashboardQuery({
+    range: usageRange,
+    interval: usageInterval,
+  });
   const [updateConfig, updateState] = useUpdateAiAdminConfigMutation();
   const config = data?.data.config;
   const usage = data?.data.usage;
   const audits = data?.data.audits ?? [];
   const [draft, setDraft] = useState<DraftConfig>(emptyDraft);
+  const usageRangeLabel =
+    AI_USAGE_RANGES.find((item) => item.value === usageRange)?.label.toLowerCase() ?? 'ngày';
 
   useEffect(() => {
     if (config) setDraft(toDraft(config));
@@ -167,20 +208,25 @@ export default function AdminAiPage() {
     [usage?.failedRequests, usage?.successRequests],
   );
 
-  const timelineChartData = useMemo(
-    () =>
-      [...(usage?.recent ?? [])]
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-        .map((row) => ({
-          time: new Date(row.createdAt).toLocaleTimeString('vi-VN', {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          tokens: row.tokensUsed,
-          latencyMs: row.latencyMs,
-        })),
-    [usage?.recent],
-  );
+  const timelineChartData = useMemo(() => {
+    const interval = usage?.meta?.interval ?? usageInterval;
+    if (usage?.timeline?.length) {
+      return usage.timeline.map((row) => ({
+        time: formatTimelineLabel(row.t, interval),
+        requests: row.requests,
+        tokens: row.tokens,
+        latencyMs: row.averageLatencyMs,
+      }));
+    }
+    return [...(usage?.recent ?? [])]
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .map((row) => ({
+        time: formatTimelineLabel(row.createdAt, interval),
+        requests: 1,
+        tokens: row.tokensUsed,
+        latencyMs: row.latencyMs,
+      }));
+  }, [usage?.meta?.interval, usage?.recent, usage?.timeline, usageInterval]);
 
   const stageChartData = useMemo(() => {
     const map = new Map<string, CountChartRow>();
@@ -273,7 +319,23 @@ export default function AdminAiPage() {
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">Khoảng</span>
+          <Select
+            value={usageRange}
+            onValueChange={(value) => setUsageRange(value as AiUsageRange)}
+          >
+            <SelectTrigger className="h-9 w-[120px] rounded-xl" aria-label="Khoảng báo cáo AI">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {AI_USAGE_RANGES.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Badge variant="outline" className="rounded-xl px-3 py-1">
             {providerLabel}
           </Badge>
@@ -286,9 +348,17 @@ export default function AdminAiPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard label="Requests hôm nay" value={usage.totalRequests} />
-        <KpiCard label="Tokens hôm nay" value={usage.totalTokens} />
-        <KpiCard label="Lỗi" value={usage.failedRequests} />
+        <KpiCard
+          label="Requests"
+          value={usage.totalRequests.toLocaleString('vi-VN')}
+          hint={`Theo ${usageRangeLabel}`}
+        />
+        <KpiCard
+          label="Tokens"
+          value={usage.totalTokens.toLocaleString('vi-VN')}
+          hint={`Theo ${usageRangeLabel}`}
+        />
+        <KpiCard label="Lỗi" value={usage.failedRequests.toLocaleString('vi-VN')} />
         <KpiCard label="Latency TB" value={`${usage.averageLatencyMs}ms`} />
       </div>
 
@@ -336,7 +406,9 @@ export default function AdminAiPage() {
           </CardHeader>
           <CardContent>
             {statusChartData.length === 0 ? (
-              <p className="py-8 text-sm text-muted-foreground">Chưa có request nào hôm nay.</p>
+              <p className="py-8 text-sm text-muted-foreground">
+                Chưa có request nào trong khoảng này.
+              </p>
             ) : (
               <ChartFrame>
                 <ResponsiveContainer width="100%" height="100%">
@@ -367,12 +439,14 @@ export default function AdminAiPage() {
 
         <Card className="glass-card min-w-0 border-none shadow-lg xl:col-span-2">
           <CardHeader>
-            <CardTitle>Tokens và latency gần đây</CardTitle>
-            <CardDescription>Các lượt gọi AI mới nhất theo thời gian phát sinh.</CardDescription>
+            <CardTitle>Requests, tokens và latency</CardTitle>
+            <CardDescription>
+              Gom theo {usage.meta?.interval ?? usageInterval} trong khoảng {usageRangeLabel}.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {timelineChartData.length === 0 ? (
-              <p className="py-8 text-sm text-muted-foreground">Chưa có log gần đây.</p>
+              <p className="py-8 text-sm text-muted-foreground">Chưa có log trong khoảng này.</p>
             ) : (
               <ChartFrame className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -391,6 +465,15 @@ export default function AdminAiPage() {
                     />
                     <Tooltip contentStyle={{ borderRadius: 12 }} />
                     <Legend />
+                    <Line
+                      yAxisId="tokens"
+                      type="monotone"
+                      dataKey="requests"
+                      name="Requests"
+                      stroke="#059669"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                    />
                     <Line
                       yAxisId="tokens"
                       type="monotone"
@@ -672,7 +755,9 @@ export default function AdminAiPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {usage.recent.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Chưa có log sử dụng hôm nay.</p>
+                <p className="text-sm text-muted-foreground">
+                  Chưa có log sử dụng trong khoảng này.
+                </p>
               ) : (
                 usage.recent.slice(0, 8).map((row) => (
                   <div key={row.usageId} className="rounded-xl border border-border/60 p-3 text-sm">
