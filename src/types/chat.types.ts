@@ -89,6 +89,7 @@ export interface ILastMessage {
   type: MessageType;
   createdAt: string;
   senderDisplayName?: string | null;
+  mentions?: string[];
 }
 
 export interface IReplyToDetails {
@@ -126,6 +127,7 @@ export interface IMessage {
   status?: MessageStatus;
   /** Tin của mình: danh sách người đã đọc (API gộp từ lastReadAt thành viên). */
   readBy?: { userId: string; displayName?: string | null }[];
+  mentions?: string[];
   createdAt: string;
 }
 

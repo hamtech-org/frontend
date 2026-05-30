@@ -1,5 +1,6 @@
 import type { IConversation, IMessage, MessageType, TypingUserEntry } from '@/types/chat.types';
 import { pinnedChatFileDisplayName, resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
+import { stripMentionMarkdown } from '@/utils/mentionHelper';
 
 export { pinnedChatFileDisplayName } from '@/utils/chatFileDisplay';
 import { resolveGroupSystemDisplayLine } from '@/utils/groupSystemMessage';
@@ -471,14 +472,16 @@ export function formatConversationListLastPreview(
     lm.type,
     lm.type === 'call' ? formatCallPreview() : (joinLinkPreview ?? content),
   );
+  let finalPreview = '';
   if (currentUserId && lm.senderId === currentUserId) {
-    return `Bạn: ${previewText}`;
+    finalPreview = `Bạn: ${previewText}`;
+  } else if (conv.type === 'direct') {
+    finalPreview = previewText;
+  } else {
+    const name = lm.senderDisplayName?.trim() || 'Thành viên';
+    finalPreview = `${name}: ${previewText}`;
   }
-  if (conv.type === 'direct') {
-    return previewText;
-  }
-  const name = lm.senderDisplayName?.trim() || 'Thành viên';
-  return `${name}: ${previewText}`;
+  return stripMentionMarkdown(finalPreview);
 }
 
 const IMAGE_PLACEHOLDER_LABEL = 'Hình ảnh';
