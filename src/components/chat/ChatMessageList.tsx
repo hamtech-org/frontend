@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, Fragment, type ReactNode, type Ref } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
+import { parseMentionTokens } from '@/utils/mentionHelper';
 import {
   AlarmClock,
   AlarmClockOff,
@@ -51,6 +53,7 @@ import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { MediaLightbox } from '@/components/chat/MediaLightbox';
 import { ChatFileMessageCard } from '@/components/chat/ChatFileMessageCard';
+import { VoiceMessagePlayer } from '@/components/chat/VoiceMessagePlayer';
 import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMenu';
 import { ForwardMediaPickerModal } from '@/components/chat/ForwardMediaPickerModal';
 import { formatFileSize } from '@/utils/fileHelper';
@@ -123,6 +126,55 @@ function LinkifiedChatText({ text, isMe }: { text: string; isMe: boolean }) {
   return <>{nodes.length > 0 ? nodes : text}</>;
 }
 
+function MentionifiedChatText({ text, isMe }: { text: string; isMe: boolean }) {
+  const navigate = useNavigate();
+  const tokens = parseMentionTokens(text);
+
+  if (tokens.length === 0) return null;
+
+  return (
+    <>
+      {tokens.map((token, index) => {
+        if (token.type === 'text') {
+          return <LinkifiedChatText key={index} text={token.value} isMe={isMe} />;
+        }
+        if (token.userId === 'all') {
+          return (
+            <span
+              key={index}
+              className={`font-extrabold px-1 py-0.5 rounded-sm select-all ${
+                isMe
+                  ? 'text-amber-200 bg-white/20'
+                  : 'text-orange-600 dark:text-orange-400 bg-orange-500/10'
+              }`}
+            >
+              @{token.value}
+            </span>
+          );
+        }
+        return (
+          <span
+            key={index}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (token.userId) {
+                navigate(`/profile/${token.userId}`);
+              }
+            }}
+            className={`font-bold hover:underline cursor-pointer select-all ${
+              isMe
+                ? 'text-blue-100 hover:text-white'
+                : 'text-blue-600 dark:text-blue-400 hover:text-blue-700'
+            }`}
+          >
+            @{token.value}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
 /** Trạng thái gửi/nhận/đã xem (Zalo) — chỉ tin của mình; nhóm chỉ hiện «đã gửi». */
 function OutgoingDeliveryTicks({
   status,
@@ -183,7 +235,9 @@ function ChatDayListSeparator({ dateIso, now }: { dateIso: string; now: Date }) 
 }
 
 function isRichMediaMessage(msg: IMessage): boolean {
-  return msg.type === 'image' || msg.type === 'video' || msg.type === 'file';
+  return (
+    msg.type === 'image' || msg.type === 'video' || msg.type === 'file' || msg.type === 'voice'
+  );
 }
 
 /** Zalo: không ghim tin đã thu hồi / xóa / system. */
@@ -199,6 +253,7 @@ function canShowEditInMessageOverflowMenu(msg: IMessage): boolean {
 }
 
 function messageHasCaption(msg: IMessage): boolean {
+  if (msg.type === 'voice') return false;
   return (msg.content ?? '').trim().length > 0;
 }
 
@@ -1986,6 +2041,11 @@ export function ChatMessageList({
                               </motion.div>
                             </div>
                           )}
+                          {msg.type === 'voice' && msg.mediaUrl && (
+                            <div className={`w-full ${msg.replyToDetails ? 'mb-1.5' : ''}`}>
+                              <VoiceMessagePlayer message={msg} isMe={isMe} />
+                            </div>
+                          )}
                           {msg.type === 'file' && msg.mediaUrl && (
                             <div className={`w-full ${msg.replyToDetails ? 'mb-1.5' : ''}`}>
                               <ChatFileMessageCard
@@ -1994,7 +2054,7 @@ export function ChatMessageList({
                                 showCaption={showCaption}
                                 isJumpHighlighted={isJumpHighlight}
                                 captionBlock={
-                                  <LinkifiedChatText text={msg.content ?? ''} isMe={false} />
+                                  <MentionifiedChatText text={msg.content ?? ''} isMe={false} />
                                 }
                                 onOpen={() => {
                                   const url = resolveChatMediaDownloadUrl(msg.mediaUrl as string);
@@ -2030,13 +2090,13 @@ export function ChatMessageList({
                                   : 'bg-black/5 dark:bg-white/10 text-foreground'
                               }`}
                             >
-                              <LinkifiedChatText text={msg.content ?? ''} isMe={false} />
+                              <MentionifiedChatText text={msg.content ?? ''} isMe={false} />
                             </div>
                           )}
                           {joinLinkPayload ? <GroupJoinLinkCard payload={joinLinkPayload} /> : null}
                           {!isMediaMsg && showCaption && !joinLinkPayload && (
                             <span className="break-words whitespace-pre-wrap">
-                              <LinkifiedChatText text={msg.content ?? ''} isMe={isMe} />
+                              <MentionifiedChatText text={msg.content ?? ''} isMe={isMe} />
                             </span>
                           )}
                           {msg.isEdited && (

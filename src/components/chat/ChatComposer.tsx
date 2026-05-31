@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import EmojiPicker from 'emoji-picker-react';
 import {
@@ -8,7 +8,6 @@ import {
   Loader2,
   Mic,
   Paperclip,
-  Palette,
   Send,
   Smile,
   Sparkles,
@@ -35,6 +34,7 @@ import {
   type PendingAttachment,
 } from '@/components/chat/ChatPendingAttachmentsStrip';
 import type { GroupMember } from '@/types/chat.group.types';
+import { escapeMentionLabel } from '@/utils/mentionHelper';
 
 export type { PendingAttachment };
 
@@ -58,12 +58,19 @@ export function ChatComposer({
   onOpenAISummary,
   groupMembers = [],
 }: ChatComposerProps) {
-  type VoiceUiState = 'idle' | 'active-ui' | 'cancelled-ui';
-
   const { theme } = useTheme();
   const currentUserId = useSelector((state: RootState) => state.auth.user?.userId ?? '');
   const [aiReplyLoading, setAiReplyLoading] = useState(false);
   const [showAiQuickReplies, setShowAiQuickReplies] = useState(true);
+
+  // Mentions local state
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionSearchTerm, setMentionSearchTerm] = useState('');
+  const [mentionTriggerIndex, setMentionTriggerIndex] = useState(-1);
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const [mentionsMetadata, setMentionsMetadata] = useState<
+    { userId: string; displayName: string }[]
+  >([]);
 
   const {
     inputText,
@@ -79,6 +86,10 @@ export function ChatComposer({
     clearReply,
     mediaUploading,
     composerStatusMessage,
+    isRecording,
+    recordingDuration,
+    startRecording,
+    stopRecording,
   } = useChatComposerController(
     activeConversationId,
     activeConversation,
@@ -92,8 +103,8 @@ export function ChatComposer({
   const emojiPanelRef = useRef<HTMLDivElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mentionDropdownRef = useRef<HTMLDivElement>(null);
   const [emojiTranslateX, setEmojiTranslateX] = useState(0);
-  const [voiceUiState, setVoiceUiState] = useState<VoiceUiState>('idle');
   const busy = isSending || mediaUploading;
   const hasTypedMessage = inputText.trim().length > 0;
   const hasSendable = hasTypedMessage || pendingAttachments.length > 0;
@@ -101,21 +112,137 @@ export function ChatComposer({
   const actionDisabled = !activeConversationId;
   const voiceDisabled = !activeConversationId;
 
-  useEffect(() => {
-    if (voiceUiState !== 'active-ui') return;
-    const timer = window.setTimeout(() => {
-      setVoiceUiState('cancelled-ui');
-    }, 1200);
-    return () => window.clearTimeout(timer);
-  }, [voiceUiState]);
+  // Filtered mention list
+  const filteredMentionMembers = useMemo(() => {
+    if (!showMentionDropdown) return [];
+
+    const list = groupMembers.filter((m) => {
+      if (m.userId === currentUserId) return false; // Không tự tag chính mình
+      const nameLower = (m.displayName || m.name || '').toLowerCase();
+      return nameLower.includes(mentionSearchTerm.toLowerCase());
+    });
+
+    const showAll =
+      'cả nhóm'.includes(mentionSearchTerm.toLowerCase()) ||
+      'all'.includes(mentionSearchTerm.toLowerCase()) ||
+      mentionSearchTerm === '';
+    if (showAll && activeConversation?.type === 'group') {
+      return [
+        { userId: 'all', displayName: 'Cả nhóm', name: 'Cả nhóm (@All)', avatar: '' },
+        ...list,
+      ];
+    }
+    return list;
+  }, [showMentionDropdown, groupMembers, mentionSearchTerm, currentUserId, activeConversation]);
 
   useEffect(() => {
-    if (voiceUiState !== 'cancelled-ui') return;
-    const timer = window.setTimeout(() => {
-      setVoiceUiState('idle');
-    }, 900);
-    return () => window.clearTimeout(timer);
-  }, [voiceUiState]);
+    if (showMentionDropdown && filteredMentionMembers.length === 0) {
+      setShowMentionDropdown(false);
+    }
+  }, [showMentionDropdown, filteredMentionMembers]);
+
+  const handleSelectMention = useCallback(
+    (member: { userId: string; displayName?: string; name?: string }) => {
+      if (mentionTriggerIndex === -1) return;
+      const name = member.displayName || member.name || 'Thành viên';
+
+      const escapedName = escapeMentionLabel(name);
+
+      // Thêm thông tin tag vào metadata local để đổi sang markdown khi bấm gửi
+      setMentionsMetadata((prev) => [...prev, { userId: member.userId, displayName: escapedName }]);
+
+      const tag = `@${escapedName} `;
+
+      const beforeAt = inputText.slice(0, mentionTriggerIndex);
+      const afterCursor = inputText.slice(mentionTriggerIndex + mentionSearchTerm.length + 1);
+
+      const newText = beforeAt + tag + afterCursor;
+      setInputText(newText);
+      setShowMentionDropdown(false);
+
+      window.setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const cursorPosition = mentionTriggerIndex + tag.length;
+          textareaRef.current.setSelectionRange(cursorPosition, cursorPosition);
+        }
+      }, 0);
+    },
+    [inputText, mentionTriggerIndex, mentionSearchTerm, setInputText],
+  );
+
+  const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showMentionDropdown && filteredMentionMembers.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveMentionIndex((prev) => (prev + 1) % filteredMentionMembers.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveMentionIndex(
+          (prev) => (prev - 1 + filteredMentionMembers.length) % filteredMentionMembers.length,
+        );
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const selected = filteredMentionMembers[activeMentionIndex];
+        if (selected) {
+          handleSelectMention(selected as any);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowMentionDropdown(false);
+        return;
+      }
+    }
+
+    // Intercept Enter key press to convert display tag to raw markdown before sending
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+
+      let processedText = inputText;
+      const sortedMetadata = [...mentionsMetadata].sort(
+        (a, b) => b.displayName.length - a.displayName.length,
+      );
+
+      for (const item of sortedMetadata) {
+        const escapedNameForRegex = item.displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`@${escapedNameForRegex}`, 'g');
+        const replacement =
+          item.userId === 'all'
+            ? `@[Cả nhóm](mention:all)`
+            : `@[${item.displayName}](mention:${item.userId})`;
+        processedText = processedText.replace(regex, replacement);
+      }
+
+      setMentionsMetadata([]);
+      void handleSendMessage(processedText);
+      return;
+    }
+
+    handleKeyDown(e);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        mentionDropdownRef.current &&
+        !mentionDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowMentionDropdown(false);
+      }
+    };
+    if (showMentionDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMentionDropdown]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -180,7 +307,11 @@ export function ChatComposer({
 
   const handleVoiceUiClick = () => {
     if (voiceDisabled) return;
-    setVoiceUiState((prev) => (prev === 'active-ui' ? 'idle' : 'active-ui'));
+    if (isRecording) {
+      void stopRecording(false);
+    } else {
+      void startRecording();
+    }
   };
 
   const appendFromFileList = (list: FileList | null) => {
@@ -438,32 +569,24 @@ export function ChatComposer({
                 type="button"
                 onClick={handleVoiceUiClick}
                 disabled={voiceDisabled}
-                aria-label="Nút voice bản xem trước UI"
-                aria-pressed={voiceUiState === 'active-ui'}
-                title={
-                  voiceUiState === 'active-ui'
-                    ? 'Đang mô phỏng ghi âm'
-                    : voiceUiState === 'cancelled-ui'
-                      ? 'Đã hủy mô phỏng ghi âm'
-                      : 'Voice UI preview (chưa ghi âm thật)'
-                }
-                className="shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 disabled:pointer-events-none disabled:opacity-40"
+                aria-label="Ghi âm tin nhắn thoại"
+                className={`shrink-0 rounded-lg p-2 transition-all hover:bg-muted disabled:pointer-events-none disabled:opacity-40 ${
+                  isRecording
+                    ? 'text-red-500 bg-red-500/10 hover:text-red-600 hover:bg-red-500/15'
+                    : 'text-muted-foreground hover:text-blue-600'
+                }`}
               >
-                {voiceUiState === 'active-ui' ? (
-                  <Loader2 className="size-5 animate-spin text-blue-600" />
+                {isRecording ? (
+                  <Loader2 className="size-5 animate-spin" />
                 ) : (
-                  <Mic
-                    className={
-                      voiceUiState === 'cancelled-ui'
-                        ? 'size-5 text-orange-500'
-                        : 'size-5 text-inherit'
-                    }
-                  />
+                  <Mic className="size-5" />
                 )}
-                <span className="sr-only">Voice UI placeholder</span>
+                <span className="sr-only">Voice recording trigger</span>
               </button>
             </TooltipTrigger>
-            <TooltipContent side="top">Voice (preview)</TooltipContent>
+            <TooltipContent side="top">
+              {isRecording ? 'Đang ghi âm (Bấm để hủy)' : 'Ghi âm tin nhắn thoại'}
+            </TooltipContent>
           </Tooltip>
 
           <div className="mx-0.5 h-5 w-px bg-border sm:mx-1" />
@@ -544,20 +667,6 @@ export function ChatComposer({
               </button>
             </>
           )}
-
-          {activeConversation?.type === 'direct' && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="hidden shrink-0 rounded-lg p-2 text-muted-foreground transition-all hover:bg-muted hover:text-blue-600 sm:block"
-                >
-                  <Palette className="size-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Bảng trắng tương tác</TooltipContent>
-            </Tooltip>
-          )}
         </div>
       </TooltipProvider>
 
@@ -574,57 +683,179 @@ export function ChatComposer({
         />
       )}
 
-      <div className="relative flex items-end gap-2">
-        <div className="relative flex flex-1 flex-col rounded-xl border border-border/45 bg-muted/35 transition-all focus-within:border-border focus-within:bg-background/90">
-          <textarea
-            ref={textareaRef}
-            placeholder={
-              activeConversation
-                ? `Nhập tin nhắn tới ${activeConversation.name ?? 'hội thoại'}...`
-                : 'Chọn hội thoại để nhắn tin'
-            }
-            rows={1}
-            value={inputText}
-            onChange={(e) => {
-              setInputText(e.target.value);
-              handleTyping();
-            }}
-            onKeyDown={(e) => handleKeyDown(e)}
-            onPaste={handlePaste}
-            disabled={!activeConversationId}
-            aria-label="Soạn tin nhắn"
-            className="max-h-32 min-h-10 w-full resize-none bg-transparent px-3.5 py-2.5 text-sm font-medium leading-5 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50"
-          />
-        </div>
+      {isRecording ? (
+        <div className="flex items-center justify-between w-full bg-red-500/5 border border-red-500/20 px-4 py-2.5 rounded-xl animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-duration-1000"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+            </span>
+            <span className="text-xs font-semibold text-red-500 tracking-wider">
+              ĐANG GHI ÂM TIN NHẮN THOẠI...
+            </span>
+          </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          {hasSendable ? (
-            <button
-              type="button"
-              onClick={() => void handleSendMessage()}
-              disabled={sendDisabled}
-              aria-label={busy ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'}
-              className="group animate-in flex size-10 items-center justify-center rounded-lg bg-linear-to-br from-blue-600 to-blue-700 text-white shadow-md shadow-blue-600/20 transition-all fade-in zoom-in hover:-translate-y-0.5 hover:from-blue-600 hover:to-blue-800 hover:shadow-lg hover:shadow-blue-600/25 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:from-blue-600 disabled:hover:to-blue-700"
-            >
-              {busy ? (
-                <Loader2 className="size-5 animate-spin" />
-              ) : (
-                <Send className="size-5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-              )}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleLikeClick}
-              disabled={sendDisabled}
-              aria-label="Gửi like nhanh"
-              className="group animate-in flex size-10 items-center justify-center rounded-lg border border-border/60 bg-muted/45 text-blue-600 shadow-sm transition-all fade-in zoom-in hover:-translate-y-0.5 hover:border-blue-600/30 hover:bg-blue-600 hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-            >
-              <ThumbsUp className="size-5 transition-transform group-hover:scale-110" />
-            </button>
-          )}
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-black text-foreground font-mono">
+              {Math.floor(recordingDuration / 60)}:
+              {(recordingDuration % 60).toString().padStart(2, '0')}
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void stopRecording(false)}
+                title="Hủy ghi âm"
+                className="p-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => void stopRecording(true)}
+                title="Gửi tin nhắn thoại"
+                className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors shrink-0"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="relative flex items-end gap-2">
+          <div className="relative flex flex-1 flex-col rounded-xl border border-border/45 bg-muted/35 transition-all focus-within:border-border focus-within:bg-background/90">
+            {showMentionDropdown && filteredMentionMembers.length > 0 && (
+              <div
+                ref={mentionDropdownRef}
+                className="absolute bottom-full left-0 z-50 mb-2 max-h-60 w-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl animate-in slide-in-from-bottom-2 duration-150 custom-scrollbar"
+              >
+                {filteredMentionMembers.map((member, idx) => {
+                  const isActive = idx === activeMentionIndex;
+                  return (
+                    <button
+                      key={member.userId}
+                      type="button"
+                      onClick={() => handleSelectMention(member as any)}
+                      onMouseEnter={() => setActiveMentionIndex(idx)}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-semibold transition-all ${
+                        isActive
+                          ? 'bg-slate-100 text-slate-900'
+                          : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {member.userId === 'all' ? (
+                        <div className="size-6 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-600 font-bold text-[10px]">
+                          @
+                        </div>
+                      ) : member.avatar ? (
+                        <img
+                          src={member.avatar}
+                          alt=""
+                          className="size-6 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="size-6 rounded-full bg-blue-600/10 flex items-center justify-center text-blue-600 text-[10px] font-bold">
+                          {(member.displayName || member.name || 'U').slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="truncate">
+                        {member.displayName || member.name || 'Thành viên'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <textarea
+              ref={textareaRef}
+              placeholder={
+                activeConversation
+                  ? `Nhập tin nhắn tới ${activeConversation.name ?? 'hội thoại'}...`
+                  : 'Chọn hội thoại để nhắn tin'
+              }
+              rows={1}
+              value={inputText}
+              onChange={(e) => {
+                const val = e.target.value;
+                setInputText(val);
+                handleTyping();
+
+                // Mentions trigger detection
+                const cursorIndex = e.target.selectionStart;
+                const textBeforeCursor = val.slice(0, cursorIndex);
+                const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+
+                if (lastAtIndex !== -1 && activeConversation?.type === 'group') {
+                  const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1);
+                  // Chỉ trigger khi không chứa dấu cách
+                  if (!/\s/.test(textAfterAt)) {
+                    setShowMentionDropdown(true);
+                    setMentionTriggerIndex(lastAtIndex);
+                    setMentionSearchTerm(textAfterAt);
+                    setActiveMentionIndex(0);
+                  } else {
+                    setShowMentionDropdown(false);
+                  }
+                } else {
+                  setShowMentionDropdown(false);
+                }
+              }}
+              onKeyDown={(e) => handleComposerKeyDown(e)}
+              onPaste={handlePaste}
+              disabled={!activeConversationId}
+              aria-label="Soạn tin nhắn"
+              className="max-h-32 min-h-10 w-full resize-none bg-transparent px-3.5 py-2.5 text-sm font-medium leading-5 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {hasSendable ? (
+              <button
+                type="button"
+                onClick={() => {
+                  let processedText = inputText;
+                  const sortedMetadata = [...mentionsMetadata].sort(
+                    (a, b) => b.displayName.length - a.displayName.length,
+                  );
+                  for (const item of sortedMetadata) {
+                    const escapedNameForRegex = item.displayName.replace(
+                      /[.*+?^${}()|[\]\\]/g,
+                      '\\$&',
+                    );
+                    const regex = new RegExp(`@${escapedNameForRegex}`, 'g');
+                    const replacement =
+                      item.userId === 'all'
+                        ? `@[Cả nhóm](mention:all)`
+                        : `@[${item.displayName}](mention:${item.userId})`;
+                    processedText = processedText.replace(regex, replacement);
+                  }
+                  setMentionsMetadata([]);
+                  void handleSendMessage(processedText);
+                }}
+                disabled={sendDisabled}
+                aria-label={busy ? 'Đang gửi tin nhắn' : 'Gửi tin nhắn'}
+                className="group animate-in flex size-10 items-center justify-center rounded-lg bg-linear-to-br from-blue-600 to-blue-700 text-white shadow-md shadow-blue-600/20 transition-all fade-in zoom-in hover:-translate-y-0.5 hover:from-blue-600 hover:to-blue-800 hover:shadow-lg hover:shadow-blue-600/25 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:from-blue-600 disabled:hover:to-blue-700"
+              >
+                {busy ? (
+                  <Loader2 className="size-5 animate-spin" />
+                ) : (
+                  <Send className="size-5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleLikeClick}
+                disabled={sendDisabled}
+                aria-label="Gửi like nhanh"
+                className="group animate-in flex size-10 items-center justify-center rounded-lg border border-border/60 bg-muted/45 text-blue-600 shadow-sm transition-all fade-in zoom-in hover:-translate-y-0.5 hover:border-blue-600/30 hover:bg-blue-600 hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+              >
+                <ThumbsUp className="size-5 transition-transform group-hover:scale-110" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <p aria-live="polite" className="sr-only">
         {composerStatusMessage}
       </p>

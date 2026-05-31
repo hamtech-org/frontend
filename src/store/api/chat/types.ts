@@ -18,6 +18,8 @@ export interface SendMessageRequest {
   mediaUrl?: string;
   mediaId?: string;
   replyTo?: string;
+  duration?: number | null;
+  mentions?: string[];
 }
 
 export interface EditMessageRequest {

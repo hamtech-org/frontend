@@ -443,6 +443,14 @@ export default function ChatPage() {
     [handleSelectConversation],
   );
 
+  const handleOpenAiCommunityResult = useCallback(
+    (groupId: string) => {
+      setShowAIAssistant(false);
+      navigate(`/communities/${encodeURIComponent(groupId)}`);
+    },
+    [navigate],
+  );
+
   const handleOpenProfile = useCallback(() => {
     navigate('/profile');
   }, [navigate]);
@@ -639,6 +647,7 @@ export default function ChatPage() {
             }}
             onOpenMessage={handleOpenAiMessageResult}
             onOpenGroup={handleOpenAiGroupResult}
+            onOpenCommunity={handleOpenAiCommunityResult}
           />
         ) : (
           (isTabletOrDesktop || mobileView === 'chat') && (

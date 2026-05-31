@@ -1,5 +1,7 @@
 import type { IConversation, IMessage, MessageType, TypingUserEntry } from '@/types/chat.types';
+import { formatCallMessagePreview } from '@/utils/callMessagePreview';
 import { pinnedChatFileDisplayName, resolveChatFileBubbleMeta } from '@/utils/chatFileDisplay';
+import { stripMentionMarkdown } from '@/utils/mentionHelper';
 
 export { pinnedChatFileDisplayName } from '@/utils/chatFileDisplay';
 import { resolveGroupSystemDisplayLine } from '@/utils/groupSystemMessage';
@@ -188,6 +190,7 @@ export function conversationActivityMs(conv: IConversation): number {
   consider(conv.lastMessageAt);
   consider(conv.updatedAt);
   consider(conv.lastMessage?.createdAt ?? null);
+  consider(conv.conversationListAt);
   return best;
 }
 
@@ -324,6 +327,7 @@ export function bulletinPinnedPreviewLine(msg: IMessage, viewerUserId?: string):
   const pollQ = pollQuestionFromPinnedMessage(msg);
   if (pollQ) return pollQ;
   const raw = String(msg.content ?? '').trim();
+  if (msg.type === 'call') return formatCallMessagePreview(raw);
   if (raw.startsWith('{')) {
     const line = lastMessageLineFromSystemJson(raw, {
       currentUserId: viewerUserId,
@@ -378,15 +382,7 @@ export function formatPinnedMessagePreviewLine(msg: IMessage): string {
   if (msg.isRecalled) return 'Tin nhắn đã được thu hồi';
   if (msg.isDeleted) return 'Tin nhắn đã xóa';
   if (msg.type === 'call') {
-    const content = msg.content ?? '';
-    try {
-      const payload = JSON.parse(content) as { kind?: string; callType?: string };
-      if (payload.kind === 'missed') return 'Cuộc gọi nhỡ';
-      if (payload.kind === 'rejected') return 'Cuộc gọi bị từ chối';
-      return payload.callType === 'video' ? 'Cuộc gọi video' : 'Cuộc gọi thoại';
-    } catch {
-      return 'Cuộc gọi';
-    }
+    return formatCallMessagePreview(msg.content);
   }
   if ((msg as { type?: string }).type === 'system') {
     const raw = String(msg.content ?? '').trim();
@@ -419,20 +415,6 @@ export function formatConversationListLastPreview(
   const lm = conv.lastMessage;
   if (!lm) return 'Chưa có tin nhắn';
   const content = lm.content ?? '';
-  const formatCallPreview = (): string => {
-    try {
-      const payload = JSON.parse(content) as { kind?: string; callType?: string };
-      const kind = payload.kind;
-      const callType = payload.callType;
-      if (kind === 'missed') return 'Cuộc gọi nhỡ';
-      if (kind === 'rejected') return 'Cuộc gọi bị từ chối';
-      if (callType === 'video') return 'Cuộc gọi video';
-      return 'Cuộc gọi thoại';
-    } catch {
-      return 'Cuộc gọi';
-    }
-  };
-
   const formatSystemPreview = (): string | null => {
     if (lm.type !== ('system' as any)) return null;
     if (typeof content !== 'string') return null;
@@ -468,16 +450,18 @@ export function formatConversationListLastPreview(
 
   const previewText = normalizeLastMessagePreview(
     lm.type,
-    lm.type === 'call' ? formatCallPreview() : (joinLinkPreview ?? content),
+    lm.type === 'call' ? formatCallMessagePreview(content) : (joinLinkPreview ?? content),
   );
+  let finalPreview = '';
   if (currentUserId && lm.senderId === currentUserId) {
-    return `Bạn: ${previewText}`;
+    finalPreview = `Bạn: ${previewText}`;
+  } else if (conv.type === 'direct') {
+    finalPreview = previewText;
+  } else {
+    const name = lm.senderDisplayName?.trim() || 'Thành viên';
+    finalPreview = `${name}: ${previewText}`;
   }
-  if (conv.type === 'direct') {
-    return previewText;
-  }
-  const name = lm.senderDisplayName?.trim() || 'Thành viên';
-  return `${name}: ${previewText}`;
+  return stripMentionMarkdown(finalPreview);
 }
 
 const IMAGE_PLACEHOLDER_LABEL = 'Hình ảnh';

@@ -4,6 +4,7 @@ import {
   MessageSquare,
   ShieldCheck,
   Sparkles,
+  Trash2,
   WandSparkles,
 } from 'lucide-react';
 
@@ -15,10 +16,16 @@ const QUICK_PROMPTS = [
 
 type ConversationInfoPanelAIRightProps = {
   onPromptSelect?: (prompt: string) => void;
+  onClearAll?: () => void;
+  clearDisabled?: boolean;
+  clearing?: boolean;
 };
 
 export function ConversationInfoPanelAIRight({
   onPromptSelect,
+  onClearAll,
+  clearDisabled,
+  clearing,
 }: ConversationInfoPanelAIRightProps) {
   return (
     <aside className="hidden lg:flex w-80 shrink-0">
@@ -89,6 +96,19 @@ export function ConversationInfoPanelAIRight({
             <p className="text-sm leading-relaxed text-muted-foreground">
               Không chia sẽ thông tin nhạy cảm (OTP, mật khẩu, private key) trong khung chat AI.
             </p>
+          </div>
+
+          <div className="mt-2 bg-white dark:bg-transparent p-4">
+            <button
+              type="button"
+              onClick={onClearAll}
+              disabled={clearDisabled}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/40 bg-red-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:pointer-events-none"
+              title="Xóa toàn bộ cuộc trò chuyện"
+            >
+              <Trash2 className="size-4" />
+              {clearing ? 'Đang xóa...' : 'Xóa chat'}
+            </button>
           </div>
         </div>
       </div>

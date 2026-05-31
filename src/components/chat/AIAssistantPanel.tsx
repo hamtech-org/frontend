@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MessageSquare, Send, Sparkles, Square, User, Users } from 'lucide-react';
+import { CircleDot, MessageSquare, Send, Sparkles, Square, User, Users } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { cn } from '@/utils/cn';
+import { AiAssistantMarkdown } from '@/components/chat/AiAssistantMarkdown';
 import { ConversationInfoPanelAIRight } from '@/components/chat/ConversationInfoPanelAIRight';
 import { socketService } from '@/services/socket';
-import { fetchAiAssistantThread } from '@/services/aiAssistantClient';
+import { clearAiAssistantThread, fetchAiAssistantThread } from '@/services/aiAssistantClient';
 import { useAuth } from '@/hooks/useAuth';
+import { useSocketContext } from '@/contexts/SocketContext';
 
 type AIAssistantMessage = {
   id: string;
@@ -39,11 +41,20 @@ type AIAssistantGroupResultsMessage = {
   query: string;
 };
 
+type AIAssistantCommunityResultsMessage = {
+  id: string;
+  role: 'assistant';
+  kind: 'community_results';
+  communities: ShowCommunityResultsAction['payload']['communities'];
+  query: string;
+};
+
 type AIAssistantChatItem =
   | AIAssistantMessage
   | AIAssistantUserCardsMessage
   | AIAssistantMessageResultsMessage
-  | AIAssistantGroupResultsMessage;
+  | AIAssistantGroupResultsMessage
+  | AIAssistantCommunityResultsMessage;
 
 type AiClientAction = {
   type: string;
@@ -114,6 +125,26 @@ type ShowGroupResultsAction = {
   };
 };
 
+type ShowCommunityResultsAction = {
+  type: 'show_community_results';
+  payload: {
+    source: 'search_communities';
+    query: string;
+    communities: Array<{
+      resultKey?: string;
+      groupId: string;
+      communityId: string;
+      name: string;
+      description: string | null;
+      category?: string | null;
+      memberCount: number;
+      type: string;
+      slug?: string | null;
+      avatar?: string | null;
+    }>;
+  };
+};
+
 type AiMessageDonePayload = {
   threadId: string;
   requestId?: string;
@@ -143,8 +174,33 @@ const WELCOME: AIAssistantMessage = {
   role: 'assistant',
   kind: 'text',
   content:
-    'Chào bạn, mình là trợ lý HAMTECH. Bạn có thể hỏi hoặc nhờ mình tìm tin nhắn, bạn bè, nhóm.',
+    'Chào bạn, mình là trợ lý HAMTECH. Bạn có thể hỏi hoặc nhờ mình tìm tin nhắn, bạn bè, nhóm hoặc gợi ý cộng đồng.',
 };
+
+function isStoredWelcomeEcho(content: string): boolean {
+  const t = content.trim();
+  return (
+    t.includes('Chào bạn, mình là trợ lý HAMTECH') &&
+    t.includes('tin nhắn, bạn bè') &&
+    t.length < 220
+  );
+}
+
+const COMMUNITY_CATEGORY_LABELS: Record<string, string> = {
+  general: 'Chung',
+  technology: 'Công nghệ',
+  sports: 'Thể thao',
+  music: 'Âm nhạc',
+  education: 'Giáo dục',
+  gaming: 'Game',
+  lifestyle: 'Đời sống',
+};
+
+function formatCommunityCategory(category: string | null | undefined): string | null {
+  if (!category?.trim()) return null;
+  const key = category.trim().toLowerCase();
+  return COMMUNITY_CATEGORY_LABELS[key] ?? category;
+}
 
 function createAiRequestId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -204,11 +260,15 @@ function chatItemsFromAssistantActions(
     (a): a is ShowGroupResultsAction =>
       a.type === 'show_group_results' && Array.isArray(a.payload?.groups),
   );
+  const showCommunityActions = actions.filter(
+    (a): a is ShowCommunityResultsAction =>
+      a.type === 'show_community_results' && Array.isArray(a.payload?.communities),
+  );
 
-  for (const act of showUsersActions) {
+  for (const [index, act] of showUsersActions.entries()) {
     if (!act.payload?.users?.length) continue;
     items.push({
-      id: `assistant-cards-${baseId}-${act.payload.source}`,
+      id: `assistant-cards-${baseId}-${act.payload.source}-${index}-${act.payload.query}`,
       role: 'assistant',
       kind: 'user_cards',
       source: act.payload.source,
@@ -236,6 +296,16 @@ function chatItemsFromAssistantActions(
       groups: act.payload.groups.slice(0, 8),
     });
   }
+  for (const act of showCommunityActions) {
+    if (!act.payload?.communities?.length) continue;
+    items.push({
+      id: `assistant-communities-${baseId}`,
+      role: 'assistant',
+      kind: 'community_results',
+      query: act.payload.query,
+      communities: act.payload.communities.slice(0, 8),
+    });
+  }
   return items;
 }
 
@@ -243,17 +313,21 @@ export function AIAssistantPanel({
   onOpenDirectChat,
   onOpenMessage,
   onOpenGroup,
+  onOpenCommunity,
 }: {
   onOpenDirectChat?: (otherUserId: string, otherDisplayName: string) => Promise<void> | void;
   onOpenMessage?: (conversationId: string, messageId: string) => Promise<void> | void;
   onOpenGroup?: (groupId: string) => Promise<void> | void;
+  onOpenCommunity?: (groupId: string) => Promise<void> | void;
 }) {
   const { accessToken } = useAuth();
+  const { isConnected } = useSocketContext();
   const [threadId, setThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AIAssistantChatItem[]>([WELCOME]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendingStatus, setSendingStatus] = useState<string>('');
+  const [clearing, setClearing] = useState(false);
   const [lastActions, setLastActions] = useState<AiClientAction[]>([]);
   const lastSentUserText = useRef('');
   const currentRequestId = useRef<string | null>(null);
@@ -295,17 +369,19 @@ export function AIAssistantPanel({
         if (data.messages.length > 0) {
           const hydrated: AIAssistantChatItem[] = [];
           for (const m of data.messages) {
+            const content = m.role === 'assistant' ? unwrapAiReply(m.content) : m.content;
+            if (m.role === 'assistant' && isStoredWelcomeEcho(content)) continue;
             hydrated.push({
               id: m.messageId,
               role: m.role,
               kind: 'text',
-              content: m.role === 'assistant' ? unwrapAiReply(m.content) : m.content,
+              content,
             });
             if (m.role === 'assistant') {
               hydrated.push(...chatItemsFromAssistantActions(m.actions, m.messageId));
             }
           }
-          setMessages(hydrated);
+          setMessages(hydrated.length > 0 ? hydrated : [WELCOME]);
         }
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Không tải được lịch sử AI');
@@ -427,13 +503,16 @@ export function AIAssistantPanel({
   }, [accessToken]);
 
   useEffect(() => {
-    if (!accessToken || !threadId) return;
-    try {
-      socketService.emit('ai:thread_join', { threadId });
-    } catch {
-      /* socket chưa sẵn sàng */
-    }
-  }, [accessToken, threadId]);
+    if (!accessToken || !threadId || !isConnected) return;
+    socketService.emit('ai:thread_join', { threadId });
+  }, [accessToken, threadId, isConnected]);
+
+  const ensureSocketReady = useCallback((): boolean => {
+    if (socketService.isConnected()) return true;
+    if (!accessToken) return false;
+    socketService.ensureConnected(accessToken);
+    return socketService.isConnected();
+  }, [accessToken]);
 
   const handleSend = useCallback(() => {
     const userMessage = draft.trim();
@@ -453,20 +532,27 @@ export function AIAssistantPanel({
     ]);
     setDraft('');
 
-    try {
-      socketService.emit('ai:message_send', {
-        threadId: threadId ?? undefined,
-        requestId,
-        message: userMessage,
-        locale: 'vi',
-      });
-    } catch {
+    if (!ensureSocketReady()) {
       setSending(false);
-      toast.error('Socket chưa kết nối');
+      toast.error('Mất kết nối realtime. Đang kết nối lại — vui lòng thử gửi lại sau vài giây.');
+      currentRequestId.current = null;
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      return;
+    }
+
+    const sent = socketService.emit('ai:message_send', {
+      threadId: threadId ?? undefined,
+      requestId,
+      message: userMessage,
+      locale: 'vi',
+    });
+    if (!sent) {
+      setSending(false);
+      toast.error('Không gửi được tin. Vui lòng thử lại.');
       currentRequestId.current = null;
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
     }
-  }, [draft, sending, threadId]);
+  }, [draft, sending, threadId, ensureSocketReady]);
 
   const applyQuickPrompt = useCallback((text: string) => {
     setDraft(text);
@@ -494,22 +580,28 @@ export function AIAssistantPanel({
           { id: tempId, role: 'user', kind: 'text' as const, content: text },
         ]);
         setDraft('');
-        try {
-          socketService.emit('ai:message_send', {
-            threadId: threadId ?? undefined,
-            requestId,
-            message: outgoingMessage,
-            locale: 'vi',
-          });
-        } catch {
+        if (!ensureSocketReady()) {
           setSending(false);
-          toast.error('Socket chưa kết nối');
+          toast.error('Mất kết nối realtime. Vui lòng thử lại sau vài giây.');
+          currentRequestId.current = null;
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
+          return;
+        }
+        const sent = socketService.emit('ai:message_send', {
+          threadId: threadId ?? undefined,
+          requestId,
+          message: outgoingMessage,
+          locale: 'vi',
+        });
+        if (!sent) {
+          setSending(false);
+          toast.error('Không gửi được tin. Vui lòng thử lại.');
           currentRequestId.current = null;
           setMessages((prev) => prev.filter((m) => m.id !== tempId));
         }
       }, 0);
     },
-    [sending, threadId],
+    [sending, threadId, ensureSocketReady],
   );
 
   const handleCancel = useCallback(() => {
@@ -517,11 +609,43 @@ export function AIAssistantPanel({
     if (!requestId) return;
     cancelledRequestIds.current.add(requestId);
     setSendingStatus('Đang dừng trợ lý HAMTECH...');
+    if (!ensureSocketReady()) {
+      toast.error('Mất kết nối realtime, không thể hủy yêu cầu.');
+      return;
+    }
     socketService.emit('ai:message_cancel', {
       threadId: threadId ?? undefined,
       requestId,
     });
-  }, [threadId]);
+  }, [threadId, ensureSocketReady]);
+
+  const handleClearAll = useCallback(() => {
+    if (!accessToken) return;
+    if (sending || clearing) return;
+    const ok = window.confirm(
+      'Bạn muốn xóa toàn bộ cuộc trò chuyện với Trợ lý HAMTECH?\n\nThao tác này sẽ xóa lịch sử chat và dữ liệu liên quan.',
+    );
+    if (!ok) return;
+
+    setClearing(true);
+    void (async () => {
+      try {
+        const res = await clearAiAssistantThread();
+        setThreadId(res.threadId);
+        setMessages([WELCOME]);
+        setLastActions([]);
+        setDraft('');
+        setSending(false);
+        setSendingStatus('');
+        currentRequestId.current = null;
+        toast.success('Đã xóa toàn bộ cuộc trò chuyện với AI');
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Không xóa được cuộc trò chuyện AI');
+      } finally {
+        setClearing(false);
+      }
+    })();
+  }, [accessToken, sending, clearing]);
 
   const handleOpenUserCard = useCallback(
     async (userId: string, displayName: string) => {
@@ -559,17 +683,31 @@ export function AIAssistantPanel({
     [onOpenGroup],
   );
 
+  const handleOpenCommunityResult = useCallback(
+    async (groupId: string) => {
+      if (!groupId) return;
+      try {
+        await onOpenCommunity?.(groupId);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Không mở được cộng đồng');
+      }
+    },
+    [onOpenCommunity],
+  );
+
   return (
     <div className="flex-1 min-w-0 min-h-0 flex bg-background">
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
         <div className="shrink-0 border-b border-border/60 px-4 py-3 md:px-6">
           <div className="flex items-center gap-2 text-foreground">
-            <Sparkles className="size-5 text-primary" />
-            <h2 className="text-sm md:text-base font-semibold">Trợ lý HAMTECH</h2>
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-5 text-primary" />
+              <h2 className="text-sm md:text-base font-semibold">Trợ lý HAMTECH</h2>
+            </div>
           </div>
           <p className="mt-1 text-xs md:text-sm text-muted-foreground">
             Hãy cùng HAMTECH khám phá những thông tin hữu ích. Bạn có thể hỏi về tin nhắn, bạn bè,
-            nhóm hoặc bất cứ điều gì bạn muốn biết!
+            nhóm, cộng đồng hoặc bất cứ điều gì bạn muốn biết!
           </p>
         </div>
 
@@ -713,17 +851,77 @@ export function AIAssistantPanel({
               );
             }
 
+            if (message.kind === 'community_results') {
+              return (
+                <div
+                  key={message.id}
+                  className="max-w-[92%] md:max-w-[80%] self-start rounded-2xl border border-border/60 bg-muted/40 p-3"
+                >
+                  <p className="text-xs font-semibold text-foreground mb-2">Gợi ý cộng đồng</p>
+                  <div className="space-y-2">
+                    {message.communities.map((community) => {
+                      const categoryLabel = formatCommunityCategory(community.category);
+                      return (
+                        <button
+                          key={community.groupId}
+                          type="button"
+                          onClick={() => void handleOpenCommunityResult(community.groupId)}
+                          className="w-full rounded-xl border border-border/50 bg-background/70 p-3 text-left transition-colors hover:bg-background"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="size-10 shrink-0 overflow-hidden rounded-xl border border-border bg-muted flex items-center justify-center">
+                              {community.avatar ? (
+                                <img
+                                  src={community.avatar}
+                                  alt={community.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <CircleDot className="size-5 text-muted-foreground" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="truncate text-sm font-semibold text-foreground">
+                                  {community.name}
+                                </p>
+                                <span className="shrink-0 text-[10px] text-muted-foreground">
+                                  {community.memberCount.toLocaleString('vi-VN')} thành viên
+                                </span>
+                              </div>
+                              {categoryLabel ? (
+                                <p className="mt-0.5 text-[10px] font-medium text-primary">
+                                  {categoryLabel}
+                                </p>
+                              ) : null}
+                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                                {community.description?.trim() || 'Chưa có mô tả'}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div
                 key={message.id}
                 className={cn(
-                  'max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap',
+                  'max-w-[85%] md:max-w-[70%] rounded-2xl px-4 py-2.5 text-sm',
                   message.role === 'assistant'
                     ? 'bg-muted text-foreground self-start'
-                    : 'bg-primary text-primary-foreground self-end',
+                    : 'bg-primary text-primary-foreground self-end whitespace-pre-wrap',
                 )}
               >
-                {message.content}
+                {message.role === 'assistant' ? (
+                  <AiAssistantMarkdown content={message.content} />
+                ) : (
+                  message.content
+                )}
               </div>
             );
           })}
@@ -799,7 +997,12 @@ export function AIAssistantPanel({
         </div>
       </div>
 
-      <ConversationInfoPanelAIRight onPromptSelect={applyQuickPrompt} />
+      <ConversationInfoPanelAIRight
+        onPromptSelect={applyQuickPrompt}
+        onClearAll={handleClearAll}
+        clearDisabled={!accessToken || sending || clearing}
+        clearing={clearing}
+      />
     </div>
   );
 }

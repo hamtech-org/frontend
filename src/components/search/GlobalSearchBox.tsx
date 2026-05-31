@@ -79,7 +79,7 @@ const GlobalSearchBox: React.FC<GlobalSearchBoxProps> = ({
           clearAndCloseSearch();
         }}
         onOpenGroup={(groupId) => {
-          navigate(`/group/${groupId}`);
+          navigate(`/communities/${encodeURIComponent(groupId)}`);
           clearAndCloseSearch();
         }}
         onOpenPost={(_postId) => {

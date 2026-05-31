@@ -1,6 +1,6 @@
 import { cn } from '@/utils/cn';
 import { motion } from 'motion/react';
-import { BarChart3, FileText, HardDrive, Users, UsersRound } from 'lucide-react';
+import { BarChart3, Bot, FileText, HardDrive, Users, UsersRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const modules = [
@@ -38,6 +38,13 @@ const modules = [
     description: 'Dung lượng media trên hệ thống.',
     icon: HardDrive,
     color: 'text-cyan-600',
+  },
+  {
+    to: '/admin/ai',
+    title: 'Quản lý và Cấu Hình AI',
+    description: 'Theo dõi sử dụng AI, provider, model, token và cấu hình RAG/Qdrant.',
+    icon: Bot,
+    color: 'text-indigo-600',
   },
 ];
 

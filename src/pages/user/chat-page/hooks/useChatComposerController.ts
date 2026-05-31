@@ -27,6 +27,17 @@ function messageSendErrorText(error: unknown): string {
   return 'Gửi tin nhắn thất bại. Vui lòng thử lại.';
 }
 
+function extractMentionIds(content: string): string[] {
+  if (!content) return [];
+  const regex = /@\[.*?\]\(mention:([a-zA-Z0-9-]+|all)\)/g;
+  const ids: string[] = [];
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    if (match[1]) ids.push(match[1]);
+  }
+  return [...new Set(ids)];
+}
+
 /**
  * Self-contained composer controller.
  * Internally calls RTK mutations and reads Redux state.
@@ -155,6 +166,7 @@ export function useChatComposerController(
               content: i === 0 ? captionFirst : ' ',
               mediaId: result.mediaId,
               replyTo: i === 0 ? replyingToMessageId : undefined,
+              mentions: i === 0 ? extractMentionIds(captionFirst) : undefined,
             }).unwrap();
           }
           pendingAttachments.forEach((p) => {
@@ -188,6 +200,7 @@ export function useChatComposerController(
           type: 'text',
           content,
           replyTo: replyingToMessageId,
+          mentions: extractMentionIds(content),
         }).unwrap();
         clearReply();
         setComposerStatusMessage('Đã gửi tin nhắn.');
@@ -247,6 +260,126 @@ export function useChatComposerController(
     }, 900);
   }, [activeConversationId]);
 
+  // ── Logic thu âm (Voice Recording) ──
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const stopRecording = useCallback(
+    async (shouldSend: boolean) => {
+      if (!mediaRecorderRef.current || !isRecording) return;
+
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+
+      setIsRecording(false);
+      const durationAtStop = recordingDuration;
+
+      return new Promise<void>((resolve) => {
+        mediaRecorderRef.current!.onstop = async () => {
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+          }
+
+          if (shouldSend) {
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm;codecs=opus' });
+            if (audioBlob.size < 100) {
+              toast.warning('Tin nhắn thoại quá ngắn.');
+              resolve();
+              return;
+            }
+
+            const audioFile = new File([audioBlob], `voice-${Date.now()}.webm`, {
+              type: 'audio/webm;codecs=opus',
+            });
+
+            setMediaUploading(true);
+            setComposerStatusMessage('Đang gửi tin nhắn thoại...');
+
+            try {
+              const up = await uploadMediaMulti([audioFile]).unwrap();
+              const result = up.data[0];
+              if (!result) {
+                throw new Error('Upload file thất bại');
+              }
+
+              await sendMessage({
+                conversationId: activeConversationId!,
+                type: 'voice',
+                content: '[Tin nhắn thoại]',
+                mediaId: result.mediaId,
+                replyTo: replyingToMessageId,
+                duration: durationAtStop,
+              }).unwrap();
+
+              clearReply();
+              setComposerStatusMessage('Đã gửi tin nhắn thoại.');
+            } catch (err) {
+              console.error('Gửi tin nhắn thoại thất bại:', err);
+              toast.error('Gửi tin nhắn thoại thất bại. Vui lòng thử lại.');
+            } finally {
+              setMediaUploading(false);
+            }
+          }
+          resolve();
+        };
+
+        mediaRecorderRef.current!.stop();
+      });
+    },
+    [
+      activeConversationId,
+      isRecording,
+      recordingDuration,
+      uploadMediaMulti,
+      sendMessage,
+      replyingToMessageId,
+      clearReply,
+    ],
+  );
+
+  const startRecording = useCallback(async () => {
+    if (!activeConversationId) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      audioChunksRef.current = [];
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => {
+          if (prev >= 300) {
+            // Giới hạn 5 phút
+            void stopRecording(true);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    } catch (err) {
+      console.error('Không thể truy cập Microphone:', err);
+      toast.error('Không thể truy cập Microphone. Vui lòng kiểm tra quyền cài đặt trình duyệt.');
+    }
+  }, [activeConversationId, stopRecording]);
+
   return {
     inputText,
     isSending,
@@ -261,5 +394,9 @@ export function useChatComposerController(
     clearReply,
     mediaUploading,
     composerStatusMessage,
+    isRecording,
+    recordingDuration,
+    startRecording,
+    stopRecording,
   };
 }

@@ -5,6 +5,7 @@ interface Props {
   createPostAvatar: string;
   createPostInitial: string;
   onCreatePost: () => void;
+  onCreateReel?: () => void;
 }
 
 export const CreatePostPromptCard = ({
@@ -12,6 +13,7 @@ export const CreatePostPromptCard = ({
   createPostAvatar,
   createPostInitial,
   onCreatePost,
+  onCreateReel,
 }: Props) => (
   <div className="rounded-2xl border border-border/40 bg-card px-4 py-3">
     <div className="flex items-center gap-2.5">
@@ -34,13 +36,25 @@ export const CreatePostPromptCard = ({
       >
         {createPostName} ơi, bạn đang nghĩ gì thế?
       </button>
-      <button type="button" className="p-1.5 text-rose-500 hover:opacity-80">
+      <button
+        type="button"
+        className="p-1.5 text-rose-500 hover:opacity-80"
+        onClick={onCreateReel ?? onCreatePost}
+      >
         <Video className="w-5 h-5" />
       </button>
-      <button type="button" className="p-1.5 text-green-600 hover:opacity-80">
+      <button
+        type="button"
+        className="p-1.5 text-green-600 hover:opacity-80"
+        onClick={onCreatePost}
+      >
         <ImageIcon className="w-5 h-5" />
       </button>
-      <button type="button" className="p-1.5 text-amber-500 hover:opacity-80">
+      <button
+        type="button"
+        className="p-1.5 text-amber-500 hover:opacity-80"
+        onClick={onCreatePost}
+      >
         <Smile className="w-5 h-5" />
       </button>
     </div>
