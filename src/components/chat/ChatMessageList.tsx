@@ -2110,9 +2110,7 @@ export function ChatMessageList({
                           )}
 
                           {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                            <div
-                              className={`absolute -bottom-3 ${isMe ? '-left-2' : '-right-2 flex-row-reverse'} flex flex-wrap gap-1 z-10`}
-                            >
+                            <div className="absolute -bottom-3 -right-2 flex flex-row-reverse flex-wrap gap-1 z-10">
                               {Object.entries(msg.reactions).map(([emoji, userIds]) => (
                                 <div
                                   key={emoji}
