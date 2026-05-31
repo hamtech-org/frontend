@@ -2,7 +2,11 @@ import { useEffect, useRef } from 'react';
 import { socketService } from '@/services/socket';
 import type { AppDispatch } from '@/store/store';
 import { store } from '@/store/store';
-import { chatApi } from '@/store/api/chatApi';
+import {
+  chatApi,
+  patchMessageInGetMessagesCache,
+  patchMessageInPaginatedCache,
+} from '@/store/api/chatApi';
 import {
   messageReceived,
   messageRecalled,
@@ -10,6 +14,7 @@ import {
   messagePinUpdated,
   messageReacted,
   messageStatusUpdated,
+  messageReadAckReceived,
   typingStarted,
   typingStopped,
   bumpGroupBoardRefresh,
@@ -75,6 +80,79 @@ function applyMessageStatusPatch(
     );
   }
   dispatch(chatApi.util.invalidateTags([{ type: 'Messages', id: conversationId }]));
+}
+
+function applyMessageReadAckPatch(
+  dispatch: AppDispatch,
+  conversationId: string,
+  messageId: string,
+  readBy: { userId: string; displayName?: string | null; avatar?: string | null },
+) {
+  dispatch(messageReadAckReceived({ conversationId, messageId, readBy }));
+
+  const msgs =
+    chatApi.endpoints.getMessages.select({ conversationId })(store.getState())?.data?.data ?? [];
+  const pivot = msgs.find((m) => String(m.messageId) === String(messageId));
+
+  const paginatedMsgs =
+    chatApi.endpoints.getMessagesPaginated.select({ conversationId } as never)(store.getState())
+      ?.data?.data?.items ?? [];
+  const paginatedPivot = paginatedMsgs.find((m) => String(m.messageId) === String(messageId));
+
+  const pivotMsg = pivot || paginatedPivot;
+  if (!pivotMsg) {
+    patchMessageInGetMessagesCache(dispatch, conversationId, messageId, {
+      status: 'read',
+    });
+    patchMessageInPaginatedCache(dispatch, conversationId, messageId, {
+      status: 'read',
+    });
+    return;
+  }
+
+  const pivotMs = new Date(pivotMsg.createdAt).getTime();
+
+  msgs.forEach((m) => {
+    const mTime = new Date(m.createdAt).getTime();
+    if (String(m.messageId) === String(messageId)) {
+      const newReadBy = m.readBy ? [...m.readBy] : [];
+      if (!newReadBy.some((r) => r.userId === readBy.userId)) {
+        newReadBy.push(readBy);
+      }
+      patchMessageInGetMessagesCache(dispatch, conversationId, m.messageId, {
+        readBy: newReadBy,
+        status: 'read',
+      });
+    } else if (m.readBy?.some((r) => r.userId === readBy.userId)) {
+      if (mTime < pivotMs) {
+        const newReadBy = m.readBy.filter((r) => r.userId !== readBy.userId);
+        patchMessageInGetMessagesCache(dispatch, conversationId, m.messageId, {
+          readBy: newReadBy,
+        });
+      }
+    }
+  });
+
+  paginatedMsgs.forEach((m) => {
+    const mTime = new Date(m.createdAt).getTime();
+    if (String(m.messageId) === String(messageId)) {
+      const newReadBy = m.readBy ? [...m.readBy] : [];
+      if (!newReadBy.some((r) => r.userId === readBy.userId)) {
+        newReadBy.push(readBy);
+      }
+      patchMessageInPaginatedCache(dispatch, conversationId, m.messageId, {
+        readBy: newReadBy,
+        status: 'read',
+      });
+    } else if (m.readBy?.some((r) => r.userId === readBy.userId)) {
+      if (mTime < pivotMs) {
+        const newReadBy = m.readBy.filter((r) => r.userId !== readBy.userId);
+        patchMessageInPaginatedCache(dispatch, conversationId, m.messageId, {
+          readBy: newReadBy,
+        });
+      }
+    }
+  });
 }
 
 type PatchMessageInCache = (
@@ -333,6 +411,16 @@ export function useChatSocketListeners(
       );
     };
 
+    const handleReadAck = (data: unknown) => {
+      const p = data as {
+        conversationId?: string;
+        messageId?: string;
+        readBy?: { userId: string; displayName?: string | null; avatar?: string | null };
+      };
+      if (!p?.conversationId || !p?.messageId || !p?.readBy) return;
+      applyMessageReadAckPatch(dispatch, p.conversationId, p.messageId, p.readBy);
+    };
+
     const handleTyping = (data: unknown) => {
       const { userId, conversationId, displayName, isTyping } = data as {
         userId: string;
@@ -530,6 +618,7 @@ export function useChatSocketListeners(
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:status', handleMessageStatus);
     socketService.on('conversation:read', handleConversationRead);
+    socketService.on('message:read_ack', handleReadAck);
     socketService.on('message:recall', handleRecall);
     socketService.on('message:recalled', handleRecall);
     socketService.on('message:edited', handleEdited);
@@ -583,6 +672,7 @@ export function useChatSocketListeners(
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:status', handleMessageStatus);
       socketService.off('conversation:read', handleConversationRead);
+      socketService.off('message:read_ack', handleReadAck);
       socketService.off('message:recall', handleRecall);
       socketService.off('message:recalled', handleRecall);
       socketService.off('message:edited', handleEdited);

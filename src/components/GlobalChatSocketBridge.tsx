@@ -1,6 +1,10 @@
 import { useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { patchMessageInGetMessagesCache, useGetConversationsQuery } from '@/store/api/chatApi';
+import {
+  patchMessageInGetMessagesCache,
+  patchMessageInPaginatedCache,
+  useGetConversationsQuery,
+} from '@/store/api/chatApi';
 import type { AppDispatch, RootState } from '@/store/store';
 import type { IMessage } from '@/types/chat.types';
 import { useSocketContext } from '@/contexts/SocketContext';
@@ -32,6 +36,7 @@ export function GlobalChatSocketBridge(): null {
   const patchMessageInCache = useCallback(
     (conversationId: string, messageId: string, patch: Partial<IMessage>) => {
       patchMessageInGetMessagesCache(dispatch, conversationId, messageId, patch);
+      patchMessageInPaginatedCache(dispatch, conversationId, messageId, patch);
     },
     [dispatch],
   );
