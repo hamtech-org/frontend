@@ -238,7 +238,20 @@ export function useChatRealtimeEvents({
       conversationId: string;
       userId: string;
       displayName?: string | null;
+      isTyping?: boolean;
     }) => {
+      const timerKey = `${payload.conversationId}:${payload.userId}`;
+      const existingTimer = typingCleanupTimersRef.current[timerKey];
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        delete typingCleanupTimersRef.current[timerKey];
+      }
+
+      if (payload.isTyping === false) {
+        dispatch(typingStopped({ conversationId: payload.conversationId, userId: payload.userId }));
+        return;
+      }
+
       dispatch(
         typingStarted({
           conversationId: payload.conversationId,
@@ -246,13 +259,11 @@ export function useChatRealtimeEvents({
           displayName: payload.displayName ?? undefined,
         }),
       );
-      const timerKey = `${payload.conversationId}:${payload.userId}`;
-      const existingTimer = typingCleanupTimersRef.current[timerKey];
-      if (existingTimer) clearTimeout(existingTimer);
+
       typingCleanupTimersRef.current[timerKey] = setTimeout(() => {
         dispatch(typingStopped({ conversationId: payload.conversationId, userId: payload.userId }));
         delete typingCleanupTimersRef.current[timerKey];
-      }, 1000);
+      }, 3000); // Tăng TTL lên 3000ms để tránh giật/nháy UI
     };
 
     const handleGroupUpdated = (payload: GroupUpdatedPayload) => {

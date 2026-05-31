@@ -1,4 +1,12 @@
-import { useState, useCallback, useEffect, Fragment, type ReactNode, type Ref } from 'react';
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  Fragment,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { parseMentionTokens } from '@/utils/mentionHelper';
@@ -142,10 +150,8 @@ function MentionifiedChatText({ text, isMe }: { text: string; isMe: boolean }) {
           return (
             <span
               key={index}
-              className={`font-extrabold px-1 py-0.5 rounded-sm select-all ${
-                isMe
-                  ? 'text-amber-200 bg-white/20'
-                  : 'text-orange-600 dark:text-orange-400 bg-orange-500/10'
+              className={`font-semibold select-all ${
+                isMe ? 'text-blue-100 hover:text-white' : 'text-[#0068FF] dark:text-blue-400'
               }`}
             >
               @{token.value}
@@ -161,10 +167,10 @@ function MentionifiedChatText({ text, isMe }: { text: string; isMe: boolean }) {
                 navigate(`/profile/${token.userId}`);
               }
             }}
-            className={`font-bold hover:underline cursor-pointer select-all ${
+            className={`font-semibold hover:underline cursor-pointer select-all ${
               isMe
                 ? 'text-blue-100 hover:text-white'
-                : 'text-blue-600 dark:text-blue-400 hover:text-blue-700'
+                : 'text-[#0068FF] dark:text-blue-400 hover:text-[#0055DD]'
             }`}
           >
             @{token.value}
@@ -534,6 +540,16 @@ export function ChatMessageList({
   /** Fallback cho direct chat: avatar người kia = activeConversation.avatar. */
   const directOtherAvatar =
     activeConversation?.type === 'direct' ? (activeConversation.avatar ?? null) : null;
+
+  const lastUserMessageIndex = useMemo(() => {
+    for (let i = allMessages.length - 1; i >= 0; i--) {
+      const m = allMessages[i];
+      if ((m as any).type !== 'system' && (m as any).position !== 'center') {
+        return i;
+      }
+    }
+    return -1;
+  }, [allMessages]);
 
   const scrollToMessage = (messageId: string) => {
     if (onJumpToMessage) {
@@ -2112,9 +2128,7 @@ export function ChatMessageList({
                           )}
 
                           {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                            <div
-                              className={`absolute -bottom-3 ${isMe ? '-left-2' : '-right-2 flex-row-reverse'} flex flex-wrap gap-1 z-10`}
-                            >
+                            <div className="absolute -bottom-3 -right-2 flex flex-row-reverse flex-wrap gap-1 z-10">
                               {Object.entries(msg.reactions).map(([emoji, userIds]) => (
                                 <div
                                   key={emoji}
@@ -2293,7 +2307,7 @@ export function ChatMessageList({
 
                     {showMeta && (
                       <div
-                        className={`mt-1 px-1 ${isMe ? 'flex flex-col items-end gap-0.5' : 'flex flex-row items-center gap-1'}`}
+                        className={`mt-0.5 px-1 flex flex-col ${isMe ? 'items-end' : 'items-start'} gap-0.5`}
                       >
                         <div
                           className={`flex items-center gap-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
@@ -2301,39 +2315,56 @@ export function ChatMessageList({
                           <span className="text-[10px] text-muted-foreground/70">
                             {formatTime(msg.createdAt)}
                           </span>
-                          {isMe && !msg.isRecalled && !msg.isDeleted && (
-                            <OutgoingDeliveryTicks
-                              status={msg.status}
-                              convIsDirect={activeConversation?.type === 'direct'}
-                              isMe={isMe}
-                            />
-                          )}
+                          {isMe &&
+                            !msg.isRecalled &&
+                            !msg.isDeleted &&
+                            (!msg.readBy || msg.readBy.length === 0) && (
+                              <OutgoingDeliveryTicks
+                                status={msg.status}
+                                convIsDirect={activeConversation?.type === 'direct'}
+                                isMe={isMe}
+                              />
+                            )}
                         </div>
                         {isMe &&
+                          index === lastUserMessageIndex &&
                           !msg.isRecalled &&
                           !msg.isDeleted &&
                           msg.readBy &&
                           msg.readBy.length > 0 && (
                             <div
-                              className="flex flex-wrap items-center justify-end gap-x-1 gap-y-0 max-w-[min(100%,280px)]"
+                              className="flex items-center justify-end -mt-0.5 gap-1 select-none"
                               title={msg.readBy
                                 .map((r) => (r.displayName?.trim() ? r.displayName : 'Thành viên'))
                                 .join(', ')}
                             >
-                              <span className="text-[10px] text-white/65 shrink-0">Đã xem</span>
-                              {msg.readBy.slice(0, 6).map((r) => (
-                                <span
-                                  key={r.userId}
-                                  className="text-[10px] font-semibold text-white/90 truncate max-w-[100px]"
-                                >
-                                  {r.displayName?.trim() || 'Người dùng'}
-                                </span>
-                              ))}
-                              {msg.readBy.length > 6 ? (
-                                <span className="text-[10px] text-white/65">
-                                  +{msg.readBy.length - 6}
-                                </span>
-                              ) : null}
+                              <span className="text-[9px] text-muted-foreground/60 shrink-0 mr-0.5">
+                                Đã xem
+                              </span>
+                              <div className="flex -space-x-1 items-center">
+                                {msg.readBy.slice(0, 5).map((r) =>
+                                  r.avatar ? (
+                                    <img
+                                      key={r.userId}
+                                      src={r.avatar}
+                                      alt={r.displayName || 'Avatar'}
+                                      className="w-3.5 h-3.5 rounded-full border border-background bg-slate-200 object-cover shrink-0"
+                                    />
+                                  ) : (
+                                    <div
+                                      key={r.userId}
+                                      className="w-3.5 h-3.5 rounded-full border border-background bg-primary/10 flex items-center justify-center text-[7px] font-bold text-primary shrink-0"
+                                    >
+                                      {(r.displayName || 'U').charAt(0).toUpperCase()}
+                                    </div>
+                                  ),
+                                )}
+                                {msg.readBy.length > 5 && (
+                                  <div className="w-3.5 h-3.5 rounded-full border border-background bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-[7px] font-semibold text-muted-foreground shrink-0">
+                                    +{msg.readBy.length - 5}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
                       </div>

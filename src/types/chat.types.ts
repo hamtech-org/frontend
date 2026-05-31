@@ -126,7 +126,7 @@ export interface IMessage {
   /** Tin của mình: sent → delivered → read (chat 1-1). */
   status?: MessageStatus;
   /** Tin của mình: danh sách người đã đọc (API gộp từ lastReadAt thành viên). */
-  readBy?: { userId: string; displayName?: string | null }[];
+  readBy?: { userId: string; displayName?: string | null; avatar?: string | null }[];
   mentions?: string[];
   createdAt: string;
 }

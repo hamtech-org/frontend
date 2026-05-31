@@ -778,7 +778,7 @@ export function ChatComposer({
               onChange={(e) => {
                 const val = e.target.value;
                 setInputText(val);
-                handleTyping();
+                handleTyping(val);
 
                 // Mentions trigger detection
                 const cursorIndex = e.target.selectionStart;
