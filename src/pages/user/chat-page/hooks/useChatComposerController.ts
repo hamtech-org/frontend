@@ -66,6 +66,17 @@ export function useChatComposerController(
   const [mediaUploading, setMediaUploading] = useState(false);
   const [composerStatusMessage, setComposerStatusMessage] = useState('');
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevConversationIdRef = useRef<string | null>(null);
+  const activeConversationIdRef = useRef<string | null>(activeConversationId);
+
+  const emitTypingStop = useCallback(() => {
+    if (!activeConversationId) return;
+    socketService.emit('message:typing_stop', activeConversationId);
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+  }, [activeConversationId]);
 
   const inputText = activeConversationId ? inputTextMap[activeConversationId] || '' : '';
 
@@ -124,6 +135,16 @@ export function useChatComposerController(
   }, [dispatch]);
 
   useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+    if (prevConversationIdRef.current && prevConversationIdRef.current !== activeConversationId) {
+      socketService.emit('message:typing_stop', prevConversationIdRef.current);
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+    }
+    prevConversationIdRef.current = activeConversationId;
+
     setPendingAttachments((prev) => {
       prev.forEach((p) => {
         if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
@@ -131,6 +152,17 @@ export function useChatComposerController(
       return [];
     });
   }, [activeConversationId]);
+
+  useEffect(() => {
+    return () => {
+      if (activeConversationIdRef.current) {
+        socketService.emit('message:typing_stop', activeConversationIdRef.current);
+      }
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleSendMessage = useCallback(
     async (overrideText?: string) => {
@@ -174,6 +206,7 @@ export function useChatComposerController(
           });
           setPendingAttachments([]);
           setInputText('');
+          emitTypingStop();
           clearReply();
           setComposerStatusMessage('Đã gửi tệp thành công.');
         } catch (error) {
@@ -193,6 +226,7 @@ export function useChatComposerController(
 
       if (!content) return;
       setInputText('');
+      emitTypingStop();
       setComposerStatusMessage('Đang gửi tin nhắn...');
       try {
         await sendMessage({
@@ -249,16 +283,24 @@ export function useChatComposerController(
     [clearReply, handleSendMessage, replyingToMessageId],
   );
 
-  const handleTyping = useCallback(() => {
-    if (!activeConversationId) return;
-    if (!typingTimerRef.current) {
-      socketService.emit('message:typing', activeConversationId);
-    }
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    typingTimerRef.current = setTimeout(() => {
-      typingTimerRef.current = null;
-    }, 900);
-  }, [activeConversationId]);
+  const handleTyping = useCallback(
+    (text?: string) => {
+      if (!activeConversationId) return;
+      const currentText = typeof text === 'string' ? text : inputText;
+      if (currentText.trim() === '') {
+        emitTypingStop();
+        return;
+      }
+      if (!typingTimerRef.current) {
+        socketService.emit('message:typing', activeConversationId);
+      }
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = setTimeout(() => {
+        typingTimerRef.current = null;
+      }, 1000); // Standardized to 1000ms
+    },
+    [activeConversationId, inputText, emitTypingStop],
+  );
 
   // ── Logic thu âm (Voice Recording) ──
   const [isRecording, setIsRecording] = useState(false);
@@ -391,6 +433,7 @@ export function useChatComposerController(
     handleSendMessage,
     handleKeyDown,
     handleTyping,
+    emitTypingStop,
     clearReply,
     mediaUploading,
     composerStatusMessage,

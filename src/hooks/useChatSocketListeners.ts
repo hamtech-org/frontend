@@ -334,19 +334,29 @@ export function useChatSocketListeners(
     };
 
     const handleTyping = (data: unknown) => {
-      const { userId, conversationId, displayName } = data as {
+      const { userId, conversationId, displayName, isTyping } = data as {
         userId: string;
         conversationId: string;
         displayName?: string | null;
+        isTyping?: boolean;
       };
-      dispatch(typingStarted({ conversationId, userId, displayName }));
       const timerKey = `${conversationId}:${userId}`;
       const existingTimer = typingCleanupTimersRef.current[timerKey];
-      if (existingTimer) clearTimeout(existingTimer);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        delete typingCleanupTimersRef.current[timerKey];
+      }
+
+      if (isTyping === false) {
+        dispatch(typingStopped({ conversationId, userId }));
+        return;
+      }
+
+      dispatch(typingStarted({ conversationId, userId, displayName }));
       typingCleanupTimersRef.current[timerKey] = setTimeout(() => {
         dispatch(typingStopped({ conversationId, userId }));
         delete typingCleanupTimersRef.current[timerKey];
-      }, 1000);
+      }, 3000); // Tăng TTL lên 3000ms để tránh giật/nháy UI
     };
 
     const handleGroupSettingsUpdated = (data: unknown) => {
