@@ -321,6 +321,18 @@ export function useChatSocketListeners(
       );
     };
 
+    const handleConversationRead = (data: unknown) => {
+      const p = data as { conversationId?: string; messageId?: string };
+      if (!p?.conversationId) return;
+      dispatch(
+        chatApi.util.updateQueryData('getConversations', undefined, (draft) => {
+          if (!draft?.data) return;
+          const conv = draft.data.find((c) => c.conversationId === p.conversationId);
+          if (conv) conv.unreadCount = 0;
+        }),
+      );
+    };
+
     const handleTyping = (data: unknown) => {
       const { userId, conversationId, displayName } = data as {
         userId: string;
@@ -507,6 +519,7 @@ export function useChatSocketListeners(
     socketService.on('conversation:deleted_for_me', handleConversationDeletedForMe);
     socketService.on('message:new', handleNewMessage);
     socketService.on('message:status', handleMessageStatus);
+    socketService.on('conversation:read', handleConversationRead);
     socketService.on('message:recall', handleRecall);
     socketService.on('message:recalled', handleRecall);
     socketService.on('message:edited', handleEdited);
@@ -559,6 +572,7 @@ export function useChatSocketListeners(
       socketService.off('conversation:deleted_for_me', handleConversationDeletedForMe);
       socketService.off('message:new', handleNewMessage);
       socketService.off('message:status', handleMessageStatus);
+      socketService.off('conversation:read', handleConversationRead);
       socketService.off('message:recall', handleRecall);
       socketService.off('message:recalled', handleRecall);
       socketService.off('message:edited', handleEdited);
