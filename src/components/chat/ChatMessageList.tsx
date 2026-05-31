@@ -142,10 +142,8 @@ function MentionifiedChatText({ text, isMe }: { text: string; isMe: boolean }) {
           return (
             <span
               key={index}
-              className={`font-extrabold px-1 py-0.5 rounded-sm select-all ${
-                isMe
-                  ? 'text-amber-200 bg-white/20'
-                  : 'text-orange-600 dark:text-orange-400 bg-orange-500/10'
+              className={`font-semibold select-all ${
+                isMe ? 'text-blue-100 hover:text-white' : 'text-[#0068FF] dark:text-blue-400'
               }`}
             >
               @{token.value}
@@ -161,10 +159,10 @@ function MentionifiedChatText({ text, isMe }: { text: string; isMe: boolean }) {
                 navigate(`/profile/${token.userId}`);
               }
             }}
-            className={`font-bold hover:underline cursor-pointer select-all ${
+            className={`font-semibold hover:underline cursor-pointer select-all ${
               isMe
                 ? 'text-blue-100 hover:text-white'
-                : 'text-blue-600 dark:text-blue-400 hover:text-blue-700'
+                : 'text-[#0068FF] dark:text-blue-400 hover:text-[#0055DD]'
             }`}
           >
             @{token.value}
