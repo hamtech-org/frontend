@@ -196,7 +196,7 @@ export const CommentItem = ({ comment, postId, isNested = false, groupId }: Comm
             </button>
           )}
 
-          {groupId && (
+          {groupId && currentUser?.userId !== comment.authorId && (
             <button
               type="button"
               className="hover:text-red-500 transition-colors"
