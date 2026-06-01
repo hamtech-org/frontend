@@ -61,7 +61,7 @@ export function ChatComposer({
   const { theme } = useTheme();
   const currentUserId = useSelector((state: RootState) => state.auth.user?.userId ?? '');
   const [aiReplyLoading, setAiReplyLoading] = useState(false);
-  const [showAiQuickReplies, setShowAiQuickReplies] = useState(true);
+  const [showAiQuickReplies, setShowAiQuickReplies] = useState(false);
 
   // Mentions local state
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);

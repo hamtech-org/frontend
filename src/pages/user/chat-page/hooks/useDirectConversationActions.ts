@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { chatApi } from '@/store/api/chatApi';
 import { useCreateConversationMutation } from '@/store/api/chatApi';
 import { socketService } from '@/services/socket';
+import { toast } from 'react-toastify';
 import type { IConversation } from '@/types/chat.types';
 import type { AppDispatch } from '@/store/store';
 
@@ -41,34 +42,39 @@ export function useDirectConversationActions({
   const [createConversation] = useCreateConversationMutation();
 
   // Tạo nhóm mới
-  const handleConfirmCreateGroup = useCallback(async () => {
-    if (selectedGroupMembers.length < 2) return;
-    try {
-      const result = await createConversation({
-        type: 'group',
-        name: groupName || `Nhóm (${selectedGroupMembers.length + 1} thành viên)`,
-        memberIds: selectedGroupMembers,
-      }).unwrap();
-      const conversationId = result.data.conversationId;
-      socketService.emit('conversation:join', conversationId);
-      void navigate(`/chat/${conversationId}`);
-      dispatch(chatApi.endpoints.getMessages.initiate({ conversationId }));
-    } catch (err) {
-      console.error('[DEBUG] Tạo nhóm lỗi:', err);
-    }
-    setShowCreateGroupModal(false);
-    setSelectedGroupMembers([]);
-    setGroupName('');
-  }, [
-    selectedGroupMembers,
-    groupName,
-    createConversation,
-    navigate,
-    dispatch,
-    setShowCreateGroupModal,
-    setSelectedGroupMembers,
-    setGroupName,
-  ]);
+  const handleConfirmCreateGroup = useCallback(
+    async (avatarUrl?: string) => {
+      if (selectedGroupMembers.length < 2) return;
+      try {
+        const result = await createConversation({
+          type: 'group',
+          name: groupName || `Nhóm (${selectedGroupMembers.length + 1} thành viên)`,
+          ...(avatarUrl ? { avatar: avatarUrl } : {}),
+          memberIds: selectedGroupMembers,
+        }).unwrap();
+        const conversationId = result.data.conversationId;
+        socketService.emit('conversation:join', conversationId);
+        void navigate(`/chat/${conversationId}`);
+        dispatch(chatApi.endpoints.getMessages.initiate({ conversationId }));
+        setShowCreateGroupModal(false);
+        setSelectedGroupMembers([]);
+        setGroupName('');
+      } catch (err) {
+        console.error('[DEBUG] Tạo nhóm lỗi:', err);
+        toast.error('Không tạo được nhóm. Vui lòng thử lại.');
+      }
+    },
+    [
+      selectedGroupMembers,
+      groupName,
+      createConversation,
+      navigate,
+      dispatch,
+      setShowCreateGroupModal,
+      setSelectedGroupMembers,
+      setGroupName,
+    ],
+  );
 
   // Mở chat nhóm từ danh sách nhóm
   const handleGroupClick = useCallback(
