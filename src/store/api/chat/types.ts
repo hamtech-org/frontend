@@ -8,6 +8,7 @@ import type {
 export interface CreateConversationRequest {
   type: IConversation['type'];
   name?: string;
+  avatar?: string;
   memberIds: string[];
 }
 
