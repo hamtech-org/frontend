@@ -27,6 +27,7 @@ import {
 import { Plus, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
+import { extractTextFromTiptapJson } from '@/utils/tiptapText';
 
 type PostStatusFilter = 'all' | AdminPostDisplayStatus;
 
@@ -61,14 +62,24 @@ export default function AdminPostsPage() {
 
   const openEdit = (post: AdminPostListItem) => {
     setEditPost(post);
-    setEditContent(post.content);
+    setEditContent(extractTextFromTiptapJson(post.content));
     setEditVisibility(post.visibility);
     setEditStatus(post.status);
   };
 
   const handleCreate = async () => {
     try {
-      await createPost({ content, visibility, status }).unwrap();
+      const contentJson = content.trim()
+        ? JSON.stringify({
+            type: 'doc',
+            content: content.split('\n').map((line) => ({
+              type: 'paragraph',
+              content: line ? [{ type: 'text', text: line }] : [],
+            })),
+          })
+        : JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] });
+
+      await createPost({ content: contentJson, visibility, status }).unwrap();
       toast.success('Đã tạo bài viết');
       setCreateOpen(false);
       setContent('');
@@ -82,9 +93,19 @@ export default function AdminPostsPage() {
   const handleUpdate = async () => {
     if (!editPost) return;
     try {
+      const contentJson = editContent.trim()
+        ? JSON.stringify({
+            type: 'doc',
+            content: editContent.split('\n').map((line) => ({
+              type: 'paragraph',
+              content: line ? [{ type: 'text', text: line }] : [],
+            })),
+          })
+        : JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] });
+
       await updatePost({
         postId: editPost.postId,
-        body: { content: editContent, visibility: editVisibility, status: editStatus },
+        body: { content: contentJson, visibility: editVisibility, status: editStatus },
       }).unwrap();
       toast.success('Đã cập nhật bài viết');
       setEditPost(null);
@@ -181,7 +202,12 @@ export default function AdminPostsPage() {
               <tbody>
                 {posts.map((row) => (
                   <tr key={row.postId} className="border-b border-border/40">
-                    <td className="py-3 pr-4 max-w-[240px] truncate font-medium">{row.title}</td>
+                    <td
+                      className="py-3 pr-4 max-w-[240px] truncate font-medium"
+                      title={extractTextFromTiptapJson(row.content)}
+                    >
+                      {extractTextFromTiptapJson(row.content)}
+                    </td>
                     <td className="py-3 pr-4 text-muted-foreground">
                       {row.authorDisplayName ?? row.authorId}
                     </td>
