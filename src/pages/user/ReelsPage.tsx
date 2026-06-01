@@ -9,11 +9,13 @@ import {
   useLazyGetReelsFeedQuery,
 } from '@/store/api/newsfeedApi';
 import { ReelPlayerFull } from '@/features/reels/components/ReelPlayerFull';
-import type { VideoRect } from '@/features/reels/components/ReelPlayerFull';
+import type { ReelPlayerFullHandle, VideoRect } from '@/features/reels/components/ReelPlayerFull';
 import { ReelActionRail } from '@/features/reels/components/ReelActionRail';
 import { ReelCommentsSheet } from '@/features/reels/components/ReelCommentsSheet';
 import { ReelReportDialog } from '@/features/reels/components/ReelReportDialog';
 import { CreateReelModal } from '@/features/reels/components/CreateReelModal';
+import { ReelsKeyboardShortcutTip } from '@/features/reels/components/ReelsKeyboardShortcutTip';
+import { useReelsKeyboardShortcuts } from '@/features/reels/hooks/useReelsKeyboardShortcuts';
 import { useSocketContext } from '@/contexts/SocketContext';
 import { socketService } from '@/services/socket';
 import type { IReel } from '@/types/newsfeed.types';
@@ -66,8 +68,11 @@ export default function ReelsPage() {
   // Intersection Observer cho snap scroll
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const itemNodesRef = useRef<Array<HTMLDivElement | null>>([]);
+  const activePlayerRef = useRef<ReelPlayerFullHandle | null>(null);
 
   const itemRefs = useCallback((node: HTMLDivElement | null, index: number) => {
+    itemNodesRef.current[index] = node;
     if (!node) return;
     // Observe this element
     if (observerRef.current) {
@@ -75,6 +80,10 @@ export default function ReelsPage() {
     }
     node.dataset.index = String(index);
   }, []);
+
+  useEffect(() => {
+    itemNodesRef.current = itemNodesRef.current.slice(0, allReels.length);
+  }, [allReels.length]);
 
   // Setup Intersection Observer
   useEffect(() => {
@@ -125,6 +134,19 @@ export default function ReelsPage() {
       setCommentsReelId(allReels[visibleIndex].reelId);
     }
   }, [visibleIndex, allReels, commentsReelId]);
+
+  useReelsKeyboardShortcuts({
+    activePlayerRef,
+    allReelsCount: allReels.length,
+    disabled: isCreateOpen || !!reportReelId,
+    globalMuted,
+    globalVolume,
+    itemNodesRef,
+    setGlobalMuted,
+    setGlobalVolume,
+    setVisibleIndex,
+    visibleIndex,
+  });
 
   const visibleReelId = allReels[visibleIndex]?.reelId ?? null;
 
@@ -227,6 +249,7 @@ export default function ReelsPage() {
                 className="relative w-full h-full snap-start snap-always"
               >
                 <ReelPlayerFull
+                  ref={visibleIndex === index ? activePlayerRef : undefined}
                   reel={reel}
                   isVisible={visibleIndex === index}
                   volume={globalVolume}
@@ -252,6 +275,8 @@ export default function ReelsPage() {
             )}
           </div>
         )}
+
+        {allReels.length > 0 && <ReelsKeyboardShortcutTip />}
       </div>
 
       {/* Comments sidebar — đẩy video qua thay vì overlay */}
