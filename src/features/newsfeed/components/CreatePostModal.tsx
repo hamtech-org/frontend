@@ -4,9 +4,7 @@ import EmojiPicker from 'emoji-picker-react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Image as ImageIcon,
-  MapPin,
   Smile,
-  UserPlus,
   Lock,
   Globe,
   Users,
@@ -543,38 +541,6 @@ export function CreatePostModal({
                                 }}
                               />
                             </label>
-
-                            <button className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted">
-                              <UserPlus className="h-5 w-5 text-blue-500" />
-                            </button>
-
-                            <Popover
-                              open={activeEmojiPicker === 'bottom'}
-                              onOpenChange={(open) => setActiveEmojiPicker(open ? 'bottom' : null)}
-                            >
-                              <PopoverTrigger asChild>
-                                <button className="hidden h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted sm:flex">
-                                  <Smile className="h-5 w-5 text-yellow-500" />
-                                </button>
-                              </PopoverTrigger>
-                              <PopoverContent
-                                side="top"
-                                align="center"
-                                className="w-auto p-0 border-none shadow-none bg-transparent"
-                                sideOffset={8}
-                              >
-                                <EmojiPicker
-                                  onEmojiClick={handleEmojiClick}
-                                  theme={theme as any}
-                                  width={320}
-                                  height={380}
-                                />
-                              </PopoverContent>
-                            </Popover>
-
-                            <button className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-muted">
-                              <MapPin className="h-5 w-5 text-red-500" />
-                            </button>
                           </div>
                         </div>
                       </div>
