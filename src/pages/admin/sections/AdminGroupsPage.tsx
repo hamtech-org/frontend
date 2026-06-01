@@ -86,7 +86,7 @@ export default function AdminGroupsPage() {
     }
     try {
       await createGroup({ name, description: description || undefined, ownerId }).unwrap();
-      toast.success('Đã tạo nhóm');
+      toast.success('Đã tạo cộng đồng');
       setCreateOpen(false);
       setName('');
       setDescription('');
@@ -94,7 +94,7 @@ export default function AdminGroupsPage() {
       setOwnerId('');
       setOwnerLabel('');
     } catch {
-      toast.error('Không thể tạo nhóm');
+      toast.error('Không thể tạo cộng đồng');
     }
   };
 
@@ -105,7 +105,7 @@ export default function AdminGroupsPage() {
         groupId: editGroup.groupId,
         body: { name: editName, description: editDescription, status: editStatus },
       }).unwrap();
-      toast.success('Đã cập nhật nhóm');
+      toast.success('Đã cập nhật cộng đồng');
       setEditGroup(null);
     } catch {
       toast.error('Không thể cập nhật');
@@ -116,10 +116,10 @@ export default function AdminGroupsPage() {
     if (!deleteGroup) return;
     try {
       await removeGroup(deleteGroup.groupId).unwrap();
-      toast.success('Đã giải tán nhóm');
+      toast.success('Đã lưu trữ cộng đồng');
       setDeleteGroup(null);
     } catch {
-      toast.error('Không thể xóa nhóm');
+      toast.error('Không thể lưu trữ cộng đồng');
     }
   };
 
@@ -128,11 +128,11 @@ export default function AdminGroupsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-display font-extrabold tracking-tight">Quản lý nhóm</h1>
-          <p className="text-sm text-muted-foreground mt-1">CRUD nhóm chat</p>
+          <p className="text-sm text-muted-foreground mt-1">Quản lý cộng đồng</p>
         </div>
         <Button className="rounded-xl" onClick={() => setCreateOpen(true)}>
           <Plus className="size-4 mr-2" />
-          Tạo nhóm
+          Tạo cộng đồng
         </Button>
       </div>
 
@@ -157,7 +157,7 @@ export default function AdminGroupsPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm tên nhóm, groupId…"
+            placeholder="Tìm tên cộng đồng, groupId…"
             className="w-full rounded-xl pl-10"
           />
         </div>
@@ -168,7 +168,6 @@ export default function AdminGroupsPage() {
           <SelectContent>
             <SelectItem value="all">Mọi trạng thái</SelectItem>
             <SelectItem value="active">active</SelectItem>
-            <SelectItem value="locked">locked</SelectItem>
             <SelectItem value="archived">archived</SelectItem>
           </SelectContent>
         </Select>
@@ -179,7 +178,7 @@ export default function AdminGroupsPage() {
 
       <Card className="glass-card border-none shadow-lg">
         <CardHeader>
-          <CardTitle>Danh sách nhóm</CardTitle>
+          <CardTitle>Danh sách cộng đồng</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {isLoading ? (
@@ -191,7 +190,7 @@ export default function AdminGroupsPage() {
               <thead>
                 <tr className="border-b text-muted-foreground">
                   <th className="py-2 pr-4">Tên</th>
-                  <th className="py-2 pr-4">Chủ nhóm</th>
+                  <th className="py-2 pr-4">Chủ sở hữu</th>
                   <th className="py-2 pr-4">Thành viên</th>
                   <th className="py-2 pr-4">Trạng thái</th>
                   <th className="py-2 text-right">Thao tác</th>
@@ -225,13 +224,13 @@ export default function AdminGroupsPage() {
       <AdminFormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        title="Tạo nhóm"
+        title="Tạo cộng đồng"
         submitLabel="Tạo"
         loading={creating}
         onSubmit={handleCreate}
       >
         <div className="space-y-2">
-          <Label>Tên nhóm</Label>
+          <Label>Tên cộng đồng</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="space-y-2">
@@ -239,7 +238,7 @@ export default function AdminGroupsPage() {
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
         <div className="space-y-2">
-          <Label>Chủ nhóm (tìm kiếm)</Label>
+          <Label>Chủ sở hữu (tìm kiếm)</Label>
           <Input
             value={ownerQuery}
             onChange={(e) => setOwnerQuery(e.target.value)}
@@ -256,7 +255,7 @@ export default function AdminGroupsPage() {
       <AdminFormDialog
         open={!!editGroup}
         onOpenChange={(o) => !o && setEditGroup(null)}
-        title="Sửa nhóm"
+        title="Sửa cộng đồng"
         loading={updating}
         onSubmit={handleUpdate}
       >
@@ -276,7 +275,6 @@ export default function AdminGroupsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="active">active</SelectItem>
-              <SelectItem value="locked">locked</SelectItem>
               <SelectItem value="archived">archived</SelectItem>
             </SelectContent>
           </Select>
@@ -286,8 +284,8 @@ export default function AdminGroupsPage() {
       <AdminConfirmDialog
         open={!!deleteGroup}
         onOpenChange={(o) => !o && setDeleteGroup(null)}
-        title="Giải tán nhóm?"
-        description={`Nhóm "${deleteGroup?.name}" sẽ bị giải tán và thành viên nhận sự kiện realtime.`}
+        title="Lưu trữ cộng đồng?"
+        description={`Cộng đồng "${deleteGroup?.name}" sẽ được lưu trữ và không còn hiển thị trong danh sách hoạt động.`}
         loading={deleting}
         onConfirm={handleDelete}
       />

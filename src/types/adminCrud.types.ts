@@ -1,7 +1,17 @@
 export type UserRole = 'admin' | 'user';
-export type GroupAdminStatus = 'active' | 'locked' | 'archived';
+export type GroupAdminStatus = 'active' | 'archived';
 export type AdminPostDisplayStatus = 'visible' | 'hidden' | 'flagged';
 export type PostVisibility = 'public' | 'friends' | 'private';
+export type CommunityCategory =
+  | 'general'
+  | 'technology'
+  | 'sports'
+  | 'music'
+  | 'education'
+  | 'gaming'
+  | 'lifestyle';
+export type CommunityType = 'public' | 'private';
+export type CommunityJoinPolicy = 'open' | 'approval';
 
 export interface AdminListQuery {
   query?: string;
@@ -74,9 +84,13 @@ export interface UpdateAdminUserBody {
 
 export interface CreateAdminGroupBody {
   name: string;
+  slug?: string;
   description?: string;
   ownerId: string;
   memberIds?: string[];
+  category?: CommunityCategory;
+  type?: CommunityType;
+  joinPolicy?: CommunityJoinPolicy;
 }
 
 export interface UpdateAdminGroupBody {
