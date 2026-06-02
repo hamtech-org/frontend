@@ -1,4 +1,4 @@
-export type AiTextProvider = 'bedrock' | 'openai';
+export type AiTextProvider = 'bedrock' | 'openai' | 'gemini';
 
 export type AiAdminConfig = {
   provider: AiTextProvider;
@@ -13,6 +13,8 @@ export type AiAdminConfig = {
   openAiModelId: string;
   openAiBaseUrl: string;
   openAiApiKeyConfigured: boolean;
+  geminiModelId: string;
+  geminiApiKeyConfigured: boolean;
   bedrockEmbeddingModelId: string;
   embeddingDimension: number;
   qdrantUrl: string;
@@ -28,6 +30,7 @@ export type UpdateAiAdminConfigBody = Partial<
     | 'bedrockAccessKeyConfigured'
     | 'bedrockSecretKeyConfigured'
     | 'openAiApiKeyConfigured'
+    | 'geminiApiKeyConfigured'
     | 'qdrantApiKeyConfigured'
     | 'updatedAt'
     | 'updatedBy'
@@ -36,6 +39,7 @@ export type UpdateAiAdminConfigBody = Partial<
   bedrockAccessKeyId?: string;
   bedrockSecretAccessKey?: string;
   openAiApiKey?: string;
+  geminiApiKey?: string;
   qdrantApiKey?: string;
 };
 
