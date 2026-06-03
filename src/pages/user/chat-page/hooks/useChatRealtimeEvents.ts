@@ -4,7 +4,6 @@ import { toast } from 'react-toastify';
 import { chatApi } from '@/store/api/chatApi';
 import {
   messageEdited,
-  messageHiddenForViewer,
   messagePinUpdated,
   messageReacted,
   messageReceived,
@@ -22,6 +21,7 @@ import {
   patchGroupProfileInConversationsCache,
 } from '@/utils/groupRealtimeCache';
 import { groupUpdateNoticeText, type GroupUpdatedPayload } from '@/utils/groupProfileUpdateNotice';
+import { applyMessageHiddenForMe } from '@/store/applyMessageHiddenForMe';
 
 interface UseChatRealtimeEventsParams {
   dispatch: AppDispatch;
@@ -185,18 +185,7 @@ export function useChatRealtimeEvents({
     };
 
     const handleHiddenForMe = (payload: { messageId: string; conversationId: string }) => {
-      dispatch(messageHiddenForViewer(payload));
-      dispatch(
-        chatApi.util.updateQueryData(
-          'getMessages',
-          { conversationId: payload.conversationId },
-          (draft) => {
-            if (!draft.data) return;
-            draft.data = draft.data.filter((x) => x.messageId !== payload.messageId);
-          },
-        ),
-      );
-      dispatch(chatApi.util.invalidateTags(['Conversations']));
+      applyMessageHiddenForMe(dispatch, payload.conversationId, payload.messageId);
     };
 
     const handlePinUpdated = (payload: {

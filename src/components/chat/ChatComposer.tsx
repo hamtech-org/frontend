@@ -74,7 +74,6 @@ export function ChatComposer({
 
   const {
     inputText,
-    isSending,
     pendingAttachments,
     replyingTo,
     setInputText,
@@ -105,7 +104,7 @@ export function ChatComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mentionDropdownRef = useRef<HTMLDivElement>(null);
   const [emojiTranslateX, setEmojiTranslateX] = useState(0);
-  const busy = isSending || mediaUploading;
+  const busy = false;
   const hasTypedMessage = inputText.trim().length > 0;
   const hasSendable = hasTypedMessage || pendingAttachments.length > 0;
   const sendDisabled = !activeConversationId || busy;

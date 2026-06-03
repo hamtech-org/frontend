@@ -170,7 +170,7 @@ export function useChatComposerController(
       const rawContent = typeof overrideText === 'string' ? overrideText : inputText;
       const content = rawContent.trim();
 
-      if (!activeConversationId || isSending || mediaUploading) return;
+      if (!activeConversationId) return;
 
       if (
         !canUserSendMessageInGroup({
@@ -184,44 +184,95 @@ export function useChatComposerController(
       }
 
       if (pendingAttachments.length > 0) {
-        const files = pendingAttachments.map((p) => p.file);
-        setMediaUploading(true);
-        setComposerStatusMessage(`Đang tải lên ${files.length} tệp...`);
-        try {
-          const up = await uploadMediaMulti(files).unwrap();
-          const results = up.data;
-          const captionFirst = content.length > 0 ? content : ' ';
-          for (let i = 0; i < results.length; i++) {
-            const result = results[i]!;
-            await sendMessage({
-              conversationId: activeConversationId,
-              type: messageTypeFromUploadResult(result) as MessageType,
-              content: i === 0 ? captionFirst : ' ',
-              mediaId: result.mediaId,
-              replyTo: i === 0 ? replyingToMessageId : undefined,
-              mentions: i === 0 ? extractMentionIds(captionFirst) : undefined,
-            }).unwrap();
+        // Capture context parameters
+        const attachmentsToSend = [...pendingAttachments];
+        const textToSend = content;
+        const replyToId = replyingToMessageId;
+        const mentionsToSend = extractMentionIds(textToSend);
+        const targetConvId = activeConversationId;
+
+        // Lập tức reset composer để giải phóng giao diện người dùng
+        setPendingAttachments([]);
+        setInputText('');
+        clearReply();
+        emitTypingStop();
+        setMediaUploading(false);
+        setComposerStatusMessage('');
+
+        // Khởi chạy tiến trình upload và gửi ngầm bất đồng bộ
+        (async () => {
+          try {
+            const files = attachmentsToSend.map((p) => p.file);
+            const up = await uploadMediaMulti(files).unwrap();
+            const results = up.data;
+
+            if (results.length >= 2) {
+              const mediaResults = results.filter((r) => r.type === 'image' || r.type === 'video');
+              const otherResults = results.filter((r) => r.type !== 'image' && r.type !== 'video');
+
+              if (mediaResults.length >= 2) {
+                // Gom media thành album
+                const mediaIds = mediaResults.map((r) => r.mediaId);
+                await sendMessage({
+                  conversationId: targetConvId,
+                  type: 'album',
+                  content: textToSend.length > 0 ? textToSend : ' ',
+                  mediaIds,
+                  replyTo: replyToId,
+                  mentions: mentionsToSend,
+                }).unwrap();
+
+                // Gửi các tệp tin không phải media còn lại (nếu có)
+                for (const other of otherResults) {
+                  await sendMessage({
+                    conversationId: targetConvId,
+                    type: messageTypeFromUploadResult(other) as MessageType,
+                    content: ' ',
+                    mediaId: other.mediaId,
+                  }).unwrap();
+                }
+              } else {
+                // Nếu chỉ có 1 media và các file khác, gửi rời rạc
+                const captionFirst = textToSend.length > 0 ? textToSend : ' ';
+                for (let i = 0; i < results.length; i++) {
+                  const result = results[i]!;
+                  await sendMessage({
+                    conversationId: targetConvId,
+                    type: messageTypeFromUploadResult(result) as MessageType,
+                    content: i === 0 ? captionFirst : ' ',
+                    mediaId: result.mediaId,
+                    replyTo: i === 0 ? replyToId : undefined,
+                    mentions: i === 0 ? mentionsToSend : undefined,
+                  }).unwrap();
+                }
+              }
+            } else {
+              // results.length === 1 -> Gửi đơn lẻ
+              const result = results[0]!;
+              const captionFirst = textToSend.length > 0 ? textToSend : ' ';
+              await sendMessage({
+                conversationId: targetConvId,
+                type: messageTypeFromUploadResult(result) as MessageType,
+                content: captionFirst,
+                mediaId: result.mediaId,
+                replyTo: replyToId,
+                mentions: mentionsToSend,
+              }).unwrap();
+            }
+          } catch (error: any) {
+            const apiErrorMessage =
+              error?.data?.error?.message ||
+              error?.data?.message ||
+              error?.message ||
+              'Gửi tệp thất bại. Vui lòng thử lại.';
+            toast.error(apiErrorMessage);
+          } finally {
+            // URL.revokeObjectURL trong finally block của upload để giải phóng bộ nhớ
+            attachmentsToSend.forEach((p) => {
+              if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+            });
           }
-          pendingAttachments.forEach((p) => {
-            if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
-          });
-          setPendingAttachments([]);
-          setInputText('');
-          emitTypingStop();
-          clearReply();
-          setComposerStatusMessage('Đã gửi tệp thành công.');
-        } catch (error) {
-          const blockedText = messageSendErrorText(error);
-          if (blockedText !== 'Gửi tin nhắn thất bại. Vui lòng thử lại.') {
-            setComposerStatusMessage(blockedText);
-            toast.error(blockedText);
-            return;
-          }
-          setComposerStatusMessage('Gửi tệp thất bại, vui lòng thử lại.');
-          toast.error('Gửi tệp thất bại. Bạn có thể thử lại.');
-        } finally {
-          setMediaUploading(false);
-        }
+        })();
         return;
       }
 
