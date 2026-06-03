@@ -2,6 +2,7 @@ import type { AppDispatch } from '@/store/store';
 import { store } from '@/store/store';
 import { chatApi } from '@/store/api/chatApi';
 import { messageEdited, messageHiddenForViewer } from '@/store/slices/chatSlice';
+import type { IMessage } from '@/types/chat.types';
 
 /** Xóa tin khỏi UI phía user hiện tại (đồng bộ với API ẩn-theo-user, không đụng người khác). */
 export function applyMessageHiddenForMe(
@@ -14,6 +15,17 @@ export function applyMessageHiddenForMe(
       if (!draft.data) return;
       draft.data = draft.data.filter((m) => m.messageId !== messageId);
     }),
+  );
+  dispatch(
+    chatApi.util.updateQueryData(
+      'getMessagesPaginated',
+      { conversationId } as never,
+      (draft: any) => {
+        if (draft?.data?.items) {
+          draft.data.items = draft.data.items.filter((m: IMessage) => m.messageId !== messageId);
+        }
+      },
+    ),
   );
   dispatch(messageHiddenForViewer({ conversationId, messageId }));
   dispatch(chatApi.util.invalidateTags(['Conversations']));

@@ -10,7 +10,8 @@ export type MessageType =
   | 'schedule'
   | 'call'
   | 'system'
-  | 'voice';
+  | 'voice'
+  | 'album';
 export type MessageStatus = 'sent' | 'delivered' | 'read';
 export type ConversationType = 'direct' | 'group';
 
@@ -103,6 +104,19 @@ export interface IReplyToDetails {
   mediaType?: string | null;
 }
 
+export interface IMessageMediaItem {
+  mediaId: string;
+  type: 'image' | 'video';
+  mimeType: string;
+  url: string;
+  thumbnailUrl?: string | null;
+  size?: number | null;
+  originalName?: string | null;
+  width?: number | null;
+  height?: number | null;
+  durationMs?: number | null;
+}
+
 export interface IMessage {
   messageId: string;
   conversationId: string;
@@ -115,6 +129,7 @@ export interface IMessage {
   mediaSize?: number | null;
   mediaOriginalName?: string | null;
   thumbnailUrl: string | null;
+  medias?: IMessageMediaItem[] | null;
   replyTo: string | null;
   replyToDetails?: IReplyToDetails | null;
   isPinned: boolean;
@@ -128,6 +143,7 @@ export interface IMessage {
   /** Tin của mình: danh sách người đã đọc (API gộp từ lastReadAt thành viên). */
   readBy?: { userId: string; displayName?: string | null; avatar?: string | null }[];
   mentions?: string[];
+  clientTempId?: string | null;
   createdAt: string;
 }
 

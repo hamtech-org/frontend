@@ -18,6 +18,10 @@ export interface SendMessageRequest {
   content: string;
   mediaUrl?: string;
   mediaId?: string;
+  mediaIds?: string[];
+  sourceMessageId?: string;
+  sourceConversationId?: string;
+  clientTempId?: string;
   replyTo?: string;
   duration?: number | null;
   mentions?: string[];

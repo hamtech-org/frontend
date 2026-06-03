@@ -60,6 +60,7 @@ import { GroupJoinLinkCard } from '@/components/chat/GroupJoinLinkCard';
 import { AuthenticatedMedia } from '@/components/chat/AuthenticatedMedia';
 import { ZaloStyleAvatar } from '@/components/chat/ZaloStyleAvatar';
 import { MediaLightbox } from '@/components/chat/MediaLightbox';
+import { ChatAlbumMessageBubble } from '@/components/chat/ChatAlbumMessageBubble';
 import { ChatFileMessageCard } from '@/components/chat/ChatFileMessageCard';
 import { VoiceMessagePlayer } from '@/components/chat/VoiceMessagePlayer';
 import { ImageMessageContextMenu } from '@/components/chat/ImageMessageContextMenu';
@@ -242,7 +243,11 @@ function ChatDayListSeparator({ dateIso, now }: { dateIso: string; now: Date }) 
 
 function isRichMediaMessage(msg: IMessage): boolean {
   return (
-    msg.type === 'image' || msg.type === 'video' || msg.type === 'file' || msg.type === 'voice'
+    msg.type === 'image' ||
+    msg.type === 'video' ||
+    msg.type === 'file' ||
+    msg.type === 'voice' ||
+    msg.type === 'album'
   );
 }
 
@@ -564,8 +569,10 @@ export function ChatMessageList({
 
   const [hiddenReactPopupId, setHiddenReactPopupId] = useState<string | null>(null);
   const [mediaLightbox, setMediaLightbox] = useState<{
-    src: string;
-    kind: 'image' | 'video';
+    items?: Array<{ url: string; type: 'image' | 'video' }>;
+    startIndex?: number;
+    src?: string;
+    kind?: 'image' | 'video';
   } | null>(null);
   /** Tin nhắn đã bấm tải file về máy trong phiên (hiện “Đã có trên máy”). */
   const [downloadedMediaIds, setDownloadedMediaIds] = useState<Set<string>>(() => new Set());
@@ -1833,7 +1840,8 @@ export function ChatMessageList({
             const showMeta = !isSameSenderAsNext;
             const showDaySepMsg = chatSystemPillShowDateLine(prevMsg?.createdAt, msg.createdAt);
             const isMediaMsg = isRichMediaMessage(msg);
-            const isWideMediaBubble = msg.type === 'image' || msg.type === 'video';
+            const isWideMediaBubble =
+              msg.type === 'image' || msg.type === 'video' || msg.type === 'album';
             const showCaption = messageHasCaption(msg);
             const mediaSavedOnDevice = downloadedMediaIds.has(msg.messageId);
             const isJumpHighlight = jumpHighlightMessageId === msg.messageId;
@@ -1912,6 +1920,21 @@ export function ChatMessageList({
                               isWideMediaBubble={isWideMediaBubble}
                               onNavigate={() => scrollToMessage(msg.replyToDetails!.messageId)}
                             />
+                          )}
+                          {msg.type === 'album' && msg.medias && (
+                            <div
+                              className={`w-full ${showCaption || msg.replyToDetails ? 'mb-1.5' : ''}`}
+                            >
+                              <ChatAlbumMessageBubble
+                                msg={msg}
+                                isMe={isMe}
+                                isJumpHighlight={isJumpHighlight}
+                                jumpFlashNonce={jumpFlashNonce}
+                                onOpenLightbox={(items, index) => {
+                                  setMediaLightbox({ items, startIndex: index });
+                                }}
+                              />
+                            </div>
                           )}
                           {msg.type === 'image' && (msg.mediaUrl || msg.thumbnailUrl) && (
                             <div
@@ -2424,8 +2447,10 @@ export function ChatMessageList({
           <MediaLightbox
             open={mediaLightbox !== null}
             onClose={() => setMediaLightbox(null)}
-            src={mediaLightbox?.src ?? ''}
-            kind={mediaLightbox?.kind ?? 'image'}
+            items={mediaLightbox?.items}
+            startIndex={mediaLightbox?.startIndex}
+            src={mediaLightbox?.src}
+            kind={mediaLightbox?.kind}
           />
           <Dialog open={taskDetailOpen} onOpenChange={handleTaskDetailDialogOpenChange}>
             <DialogContent className="bg-white dark:bg-zinc-900 rounded-3xl max-w-[540px] w-full shadow-2xl border border-black/5 dark:border-white/10 flex flex-col overflow-hidden max-h-[90vh] p-0 gap-0">
