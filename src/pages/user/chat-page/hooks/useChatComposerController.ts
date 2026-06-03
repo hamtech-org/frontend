@@ -15,6 +15,7 @@ import type { AppDispatch, RootState } from '@/store/store';
 import { clearReplyingTo } from '@/store/slices/chatSlice';
 import { useSendMessageMutation } from '@/store/api/chatApi';
 import { useUploadMediaMultiMutation } from '@/store/api/mediaApi';
+import { splitMessageContent } from '@/utils/chatTextSplitter';
 
 function messageSendErrorText(error: unknown): string {
   const code = (error as { data?: { error?: { code?: string } } })?.data?.error?.code;
@@ -228,18 +229,41 @@ export function useChatComposerController(
       setInputText('');
       emitTypingStop();
       setComposerStatusMessage('Đang gửi tin nhắn...');
+
+      const chunks = splitMessageContent(content, 2000);
+
       try {
-        await sendMessage({
-          conversationId: activeConversationId,
-          type: 'text',
-          content,
-          replyTo: replyingToMessageId,
-          mentions: extractMentionIds(content),
-        }).unwrap();
+        if (chunks.length > 1) {
+          for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i]!;
+            setComposerStatusMessage(`Đang gửi đoạn ${i + 1}/${chunks.length}...`);
+            try {
+              await sendMessage({
+                conversationId: activeConversationId,
+                type: 'text',
+                content: chunk,
+                replyTo: i === 0 ? replyingToMessageId : undefined,
+                mentions: extractMentionIds(chunk),
+              }).unwrap();
+            } catch (error) {
+              // Khôi phục lại những mảnh chưa được gửi thành công vào ô nhập liệu
+              const remainingText = chunks.slice(i).join('');
+              setInputText(remainingText);
+              throw error;
+            }
+          }
+        } else {
+          await sendMessage({
+            conversationId: activeConversationId,
+            type: 'text',
+            content,
+            replyTo: replyingToMessageId,
+            mentions: extractMentionIds(content),
+          }).unwrap();
+        }
         clearReply();
         setComposerStatusMessage('Đã gửi tin nhắn.');
       } catch (error) {
-        setInputText(content);
         const text = messageSendErrorText(error);
         setComposerStatusMessage(text);
         toast.error(text);
