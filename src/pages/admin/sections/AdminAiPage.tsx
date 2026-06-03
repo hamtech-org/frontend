@@ -43,6 +43,7 @@ type DraftConfig = UpdateAiAdminConfigBody & {
   bedrockAccessKeyId: string;
   bedrockSecretAccessKey: string;
   openAiApiKey: string;
+  geminiApiKey: string;
   qdrantApiKey: string;
 };
 
@@ -59,6 +60,8 @@ const emptyDraft: DraftConfig = {
   openAiModelId: 'gpt-4o-mini',
   openAiBaseUrl: 'https://api.openai.com/v1',
   openAiApiKey: '',
+  geminiModelId: 'gemini-2.5-flash',
+  geminiApiKey: '',
   bedrockEmbeddingModelId: 'amazon.titan-embed-text-v2:0',
   embeddingDimension: 1024,
   qdrantUrl: '',
@@ -100,6 +103,8 @@ function toDraft(config?: AiAdminConfig): DraftConfig {
     openAiModelId: config.openAiModelId,
     openAiBaseUrl: config.openAiBaseUrl,
     openAiApiKey: '',
+    geminiModelId: config.geminiModelId,
+    geminiApiKey: '',
     bedrockEmbeddingModelId: config.bedrockEmbeddingModelId,
     embeddingDimension: config.embeddingDimension,
     qdrantUrl: config.qdrantUrl,
@@ -188,7 +193,9 @@ export default function AdminAiPage() {
 
   const providerLabel = useMemo(() => {
     if (!config) return '-';
-    return config.provider === 'openai' ? 'OpenAI compatible' : 'AWS Bedrock';
+    if (config.provider === 'openai') return 'OpenAI compatible';
+    if (config.provider === 'gemini') return 'Google Gemini';
+    return 'AWS Bedrock';
   }, [config]);
 
   const providerChartData = useMemo(
@@ -270,11 +277,13 @@ export default function AdminAiPage() {
         ? { bedrockSecretAccessKey: draft.bedrockSecretAccessKey.trim() }
         : {}),
       ...(draft.openAiApiKey?.trim() ? { openAiApiKey: draft.openAiApiKey.trim() } : {}),
+      ...(draft.geminiApiKey?.trim() ? { geminiApiKey: draft.geminiApiKey.trim() } : {}),
       ...(draft.qdrantApiKey?.trim() ? { qdrantApiKey: draft.qdrantApiKey.trim() } : {}),
     };
     if (!draft.bedrockAccessKeyId?.trim()) delete body.bedrockAccessKeyId;
     if (!draft.bedrockSecretAccessKey?.trim()) delete body.bedrockSecretAccessKey;
     if (!draft.openAiApiKey?.trim()) delete body.openAiApiKey;
+    if (!draft.geminiApiKey?.trim()) delete body.geminiApiKey;
     if (!draft.qdrantApiKey?.trim()) delete body.qdrantApiKey;
     try {
       await updateConfig(body).unwrap();
@@ -283,6 +292,7 @@ export default function AdminAiPage() {
         bedrockAccessKeyId: '',
         bedrockSecretAccessKey: '',
         openAiApiKey: '',
+        geminiApiKey: '',
         qdrantApiKey: '',
       });
     } catch (error) {
@@ -584,6 +594,7 @@ export default function AdminAiPage() {
                   <SelectContent>
                     <SelectItem value="bedrock">Bedrock</SelectItem>
                     <SelectItem value="openai">OpenAI compatible</SelectItem>
+                    <SelectItem value="gemini">Gemini</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -611,7 +622,11 @@ export default function AdminAiPage() {
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-foreground">
-                    {draft.provider === 'bedrock' ? 'AWS Bedrock' : 'OpenAI compatible'}
+                    {draft.provider === 'bedrock'
+                      ? 'AWS Bedrock'
+                      : draft.provider === 'gemini'
+                        ? 'Google Gemini'
+                        : 'OpenAI compatible'}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Chỉ cấu hình model text/chat của provider đang chọn.
@@ -654,7 +669,7 @@ export default function AdminAiPage() {
                       onChange={(v) => patch({ bedrockSecretAccessKey: v })}
                     />
                   </>
-                ) : (
+                ) : draft.provider === 'openai' ? (
                   <>
                     <TextField
                       label="OPENAI_MODEL_ID"
@@ -672,6 +687,21 @@ export default function AdminAiPage() {
                       value={draft.openAiApiKey}
                       placeholder=""
                       onChange={(v) => patch({ openAiApiKey: v })}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <TextField
+                      label="GEMINI_MODEL_ID"
+                      value={draft.geminiModelId}
+                      onChange={(v) => patch({ geminiModelId: v })}
+                    />
+                    <TextField
+                      label={`GEMINI_API_KEY ${config.geminiApiKeyConfigured ? '(đã cấu hình)' : ''}`}
+                      type="password"
+                      value={draft.geminiApiKey}
+                      placeholder=""
+                      onChange={(v) => patch({ geminiApiKey: v })}
                     />
                   </>
                 )}
