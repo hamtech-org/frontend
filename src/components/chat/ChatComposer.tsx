@@ -345,6 +345,18 @@ export function ChatComposer({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Tự động thay đổi chiều cao của textarea khi người dùng nhập hoặc dán nội dung dài
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Reset height trước để scrollHeight đo chính xác
+    textarea.style.height = 'auto';
+    // Đặt chiều cao bằng scrollHeight nhưng giới hạn tối đa 192px (tương đương max-h-48)
+    const nextHeight = Math.min(textarea.scrollHeight, 192);
+    textarea.style.height = `${nextHeight}px`;
+  }, [inputText]);
+
   const handleGalleryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     appendFromFileList(e.target.files);
     e.target.value = '';
@@ -804,7 +816,7 @@ export function ChatComposer({
               onPaste={handlePaste}
               disabled={!activeConversationId}
               aria-label="Soạn tin nhắn"
-              className="max-h-32 min-h-10 w-full resize-none bg-transparent px-3.5 py-2.5 text-sm font-medium leading-5 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50"
+              className="max-h-48 min-h-10 w-full resize-none bg-transparent px-3.5 py-2.5 text-sm font-medium leading-5 outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
 
